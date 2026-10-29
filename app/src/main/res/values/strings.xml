@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">مدرستي</string>
+    <string name="platform_subtitle">منصة مدرستي التعليمية والإدارية المتكاملة</string>
+    <string name="default_address_hint">الموصل - زمار</string>
+    <string name="developer_credit">تصميم وتطوير: أحمد أبو رسلان | 07512362567</string>
+    <string name="start_now">البدء الآن</string>
+    <string name="login_title">تسجيل الدخول الموحد</string>
+    <string name="setup_title">تأسيس منصة المدرسة وإنشاء حساب المدير العام</string>
+    <string name="logout">تسجيل الخروج</string>
+</resources>
