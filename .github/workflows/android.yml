@@ -28,6 +28,10 @@ jobs:
           fi
           ls -la app/src/main/assets/public/index.html
 
+      - name: Generate debug.keystore for Signing Config
+        run: |
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
