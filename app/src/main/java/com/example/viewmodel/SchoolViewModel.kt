@@ -70,16 +70,93 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _latestBannerAlert = MutableStateFlow<AppNotification?>(null)
     val latestBannerAlert: StateFlow<AppNotification?> = _latestBannerAlert.asStateFlow()
 
-    val availableClasses = listOf(
-        "الأول المتوسط",
-        "الثاني المتوسط",
-        "الثالث المتوسط",
-        "الرابع الإعدادي",
-        "الخامس الإعدادي",
-        "السادس الإعدادي"
-    )
-    val availableSections = listOf("أ", "ب", "ج")
+    val availableClasses: List<String>
+        get() = _schoolConfig.value.registeredClasses.ifEmpty { SchoolStage.SECONDARY.defaultClasses }
+
+    val availableSections: List<String>
+        get() = _schoolConfig.value.registeredSections.ifEmpty { listOf("أ", "ب", "ج") }
+
+    val availableSubjects: List<String>
+        get() = _schoolConfig.value.registeredSubjects.ifEmpty { SchoolStage.SECONDARY.defaultSubjects }
+
     val weekDays = listOf("الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس")
+
+    // =========================================================================
+    // ROLE-BASED DYNAMIC SCOPING HELPERS
+    // =========================================================================
+
+    fun getAllowedClassesForUser(user: UserAccount? = _currentUser.value): List<String> {
+        val regClasses = availableClasses
+        if (user == null || user.role == UserRole.ADMIN) return regClasses
+        return when (user.role) {
+            UserRole.TEACHER -> {
+                val filtered = regClasses.filter { cls -> user.canTeacherAccessClassSection(cls, null) }
+                filtered.ifEmpty { regClasses.take(1) }
+            }
+            UserRole.PARENT, UserRole.STUDENT -> {
+                val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
+                if (linkedStu != null) listOf(linkedStu.gradeClass) else listOf(user.gradeClass)
+            }
+            else -> regClasses
+        }
+    }
+
+    fun getAllowedSectionsForClass(gradeClass: String, user: UserAccount? = _currentUser.value): List<String> {
+        val regSections = availableSections
+        if (user == null || user.role == UserRole.ADMIN) return regSections
+        return when (user.role) {
+            UserRole.TEACHER -> {
+                val filtered = regSections.filter { sec -> user.canTeacherAccessClassSection(gradeClass, sec) }
+                filtered.ifEmpty { regSections }
+            }
+            UserRole.PARENT, UserRole.STUDENT -> {
+                val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
+                if (linkedStu != null) listOf(linkedStu.sectionName) else listOf(user.sectionName)
+            }
+            else -> regSections
+        }
+    }
+
+    fun getAllowedSubjectsForUser(user: UserAccount? = _currentUser.value): List<String> {
+        val regSubjects = availableSubjects
+        if (user == null || user.role == UserRole.ADMIN) return regSubjects
+        return when (user.role) {
+            UserRole.TEACHER -> {
+                val teacherSubs = user.teacherSubjectsList
+                if (teacherSubs.isNotEmpty()) teacherSubs else regSubjects
+            }
+            else -> regSubjects
+        }
+    }
+
+    fun getScopedStudentsForUser(user: UserAccount? = _currentUser.value): List<StudentRecord> {
+        val all = _students.value
+        if (user == null) return emptyList()
+        return when (user.role) {
+            UserRole.ADMIN -> all
+            UserRole.TEACHER -> all.filter { stu ->
+                user.canTeacherAccessClassSection(stu.gradeClass, stu.sectionName)
+            }
+            UserRole.PARENT, UserRole.STUDENT -> all.filter { stu ->
+                stu.id == user.linkedStudentId
+            }
+        }
+    }
+
+    fun getScopedNotificationsForUser(user: UserAccount? = _currentUser.value): List<AppNotification> {
+        val all = _notifications.value
+        if (user == null) return emptyList()
+        return when (user.role) {
+            UserRole.ADMIN -> all
+            UserRole.TEACHER -> {
+                val allowedStuIds = getScopedStudentsForUser(user).map { it.id }.toSet()
+                all.filter { it.targetStudentId.isEmpty() || it.targetStudentId in allowedStuIds }
+            }
+            UserRole.PARENT, UserRole.STUDENT -> {
+                all.filter { it.targetStudentId.isEmpty() || it.targetStudentId == user.linkedStudentId }
+            }
+        }
+    }
 
     fun toggleDarkMode() {
         val next = !_isDarkMode.value
@@ -119,20 +196,36 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         logoBase64: String,
         adminFullName: String,
         adminUsername: String,
-        adminPassword: String
+        adminPassword: String,
+        schoolStage: SchoolStage = SchoolStage.SECONDARY,
+        customSections: List<String> = listOf("أ", "ب", "ج")
     ) {
         val finalAddress = address.trim().ifBlank { "الموصل - زمار" }
+        val generatedClasses = schoolStage.defaultClasses
+        val generatedSubjects = schoolStage.defaultSubjects
+        val finalSections = customSections.ifEmpty { listOf("أ", "ب", "ج") }
+
         val config = SchoolConfig(
             isSetupCompleted = true,
             schoolName = schoolName.trim().ifBlank { "مدرستي النموذجية" },
             address = finalAddress,
             schoolType = schoolType,
+            schoolStage = schoolStage,
+            registeredClasses = generatedClasses,
+            registeredSections = finalSections,
+            registeredSubjects = generatedSubjects,
             logoBase64 = logoBase64,
             academicYear = "2026 - 2027",
             phone = "07512362567"
         )
         repo.saveSchoolConfig(config)
         _schoolConfig.value = config
+
+        val firstClass = generatedClasses.firstOrNull() ?: "الأول المتوسط"
+        val secondClass = generatedClasses.getOrElse(1) { firstClass }
+        val thirdClass = generatedClasses.getOrElse(2) { secondClass }
+        val firstSection = finalSections.firstOrNull() ?: "أ"
+        val secondSection = finalSections.getOrElse(1) { firstSection }
 
         val adminAccount = UserAccount(
             id = "admin_main",
@@ -148,16 +241,57 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             photoBase64 = logoBase64
         )
 
-        // Build synced accounts list from default teachers + default students/parents
+        // Align default students and teachers with the selected SchoolStage's generated classes
+        val rawStudents = _students.value.ifEmpty { repo.defaultStudents() }
+        val alignedStudents = rawStudents.mapIndexed { idx, s ->
+            val targetCls = when (idx) {
+                0, 1 -> firstClass
+                2 -> secondClass
+                else -> thirdClass
+            }
+            val targetSec = if (idx == 3) secondSection else firstSection
+            s.copy(gradeClass = targetCls, sectionName = targetSec)
+        }
+        repo.saveStudents(alignedStudents)
+        _students.value = alignedStudents
+
+        val sub1 = generatedSubjects.getOrElse(3) { "الرياضيات" }
+        val sub2 = generatedSubjects.getOrElse(5) { generatedSubjects.lastOrNull() ?: "العلوم" }
+        val subAr = generatedSubjects.getOrElse(1) { "اللغة العربية" }
+        val subIsl = generatedSubjects.firstOrNull() ?: "التربية الإسلامية"
+
+        val alignedTeachers = listOf(
+            UserAccount(
+                id = "tch_1",
+                username = "teacher_math",
+                password = "123",
+                fullName = "أ. عمر قاسم الحديثي",
+                role = UserRole.TEACHER,
+                isActive = true,
+                phone = "07512362567",
+                specialty = "$sub1، $sub2",
+                assignedClasses = "$firstClass - $firstSection، $secondClass - $firstSection",
+                address = finalAddress
+            ),
+            UserAccount(
+                id = "tch_2",
+                username = "teacher_arabic",
+                password = "123",
+                fullName = "أ. سارة نبيل الموصلي",
+                role = UserRole.TEACHER,
+                isActive = true,
+                phone = "07512362567",
+                specialty = "$subAr، $subIsl",
+                assignedClasses = "$firstClass - $firstSection، $thirdClass - $secondSection",
+                address = finalAddress
+            )
+        )
+
         val seededAccounts = mutableListOf<UserAccount>()
         seededAccounts.add(adminAccount)
-        seededAccounts.addAll(repo.defaultTeachers())
+        seededAccounts.addAll(alignedTeachers)
 
-        val currentStudents = _students.value.ifEmpty { repo.defaultStudents() }
-        repo.saveStudents(currentStudents)
-        _students.value = currentStudents
-
-        currentStudents.forEach { stu ->
+        alignedStudents.forEach { stu ->
             seededAccounts.add(
                 UserAccount(
                     id = "acc_parent_${stu.id}",
@@ -194,19 +328,36 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveAccounts(seededAccounts)
         _accounts.value = seededAccounts
 
-        // Persist default records so everything is saved cleanly
-        repo.saveAttendance(_attendance.value)
+        // Align attendance, grades, tuitions, reports with alignedStudents
+        val alignedAttendance = _attendance.value.map { att ->
+            val stu = alignedStudents.firstOrNull { it.id == att.studentId }
+            if (stu != null) att.copy(gradeClass = stu.gradeClass, sectionName = stu.sectionName) else att
+        }
+        _attendance.value = alignedAttendance
+        repo.saveAttendance(alignedAttendance)
+
+        val alignedGrades = _grades.value.map { grd ->
+            val stu = alignedStudents.firstOrNull { it.id == grd.studentId }
+            if (stu != null) grd.copy(gradeClass = stu.gradeClass) else grd
+        }
+        _grades.value = alignedGrades
+        repo.saveGrades(alignedGrades)
+
+        val alignedTuitions = _tuitions.value.map { t ->
+            val stu = alignedStudents.firstOrNull { it.id == t.studentId }
+            if (stu != null) t.copy(gradeClass = stu.gradeClass, sectionName = stu.sectionName) else t
+        }
+        _tuitions.value = alignedTuitions
+        repo.saveTuitions(alignedTuitions)
+
         repo.saveSchedules(_schedules.value)
         repo.saveHomeworks(_homeworks.value)
         repo.saveExamSchedules(_examSchedules.value)
-        repo.saveGrades(_grades.value)
-        repo.saveTuitions(_tuitions.value)
         repo.saveReports(_reports.value)
         repo.saveChatMessages(_chatMessages.value)
         repo.saveEvents(_events.value)
         repo.saveNotifications(_notifications.value)
 
-        // Log in as the newly created General Director
         _currentUser.value = adminAccount
         _activeSection.value = AppSection.DASHBOARD
     }
@@ -215,12 +366,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         schoolName: String,
         address: String,
         schoolType: SchoolType,
-        logoBase64: String
+        logoBase64: String,
+        schoolStage: SchoolStage = _schoolConfig.value.schoolStage,
+        registeredClasses: List<String> = _schoolConfig.value.registeredClasses,
+        registeredSections: List<String> = _schoolConfig.value.registeredSections,
+        registeredSubjects: List<String> = _schoolConfig.value.registeredSubjects
     ) {
         val updated = _schoolConfig.value.copy(
             schoolName = schoolName.trim().ifBlank { _schoolConfig.value.schoolName },
             address = address.trim().ifBlank { "الموصل - زمار" },
             schoolType = schoolType,
+            schoolStage = schoolStage,
+            registeredClasses = registeredClasses.ifEmpty { schoolStage.defaultClasses },
+            registeredSections = registeredSections.ifEmpty { listOf("أ", "ب", "ج") },
+            registeredSubjects = registeredSubjects.ifEmpty { schoolStage.defaultSubjects },
             logoBase64 = logoBase64.ifBlank { _schoolConfig.value.logoBase64 }
         )
         repo.saveSchoolConfig(updated)
@@ -228,6 +387,45 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         if (schoolType == SchoolType.PUBLIC && _activeSection.value == AppSection.TUITION_FEES) {
             _activeSection.value = AppSection.DASHBOARD
         }
+    }
+
+    fun addCustomRegisteredClass(newClassName: String) {
+        val clean = newClassName.trim()
+        if (clean.isBlank() || clean in _schoolConfig.value.registeredClasses) return
+        val updated = _schoolConfig.value.copy(
+            registeredClasses = _schoolConfig.value.registeredClasses + clean
+        )
+        _schoolConfig.value = updated
+        repo.saveSchoolConfig(updated)
+    }
+
+    fun removeRegisteredClass(className: String) {
+        if (_schoolConfig.value.registeredClasses.size <= 1) return
+        val updated = _schoolConfig.value.copy(
+            registeredClasses = _schoolConfig.value.registeredClasses.filterNot { it == className }
+        )
+        _schoolConfig.value = updated
+        repo.saveSchoolConfig(updated)
+    }
+
+    fun addCustomRegisteredSection(newSection: String) {
+        val clean = newSection.trim()
+        if (clean.isBlank() || clean in _schoolConfig.value.registeredSections) return
+        val updated = _schoolConfig.value.copy(
+            registeredSections = _schoolConfig.value.registeredSections + clean
+        )
+        _schoolConfig.value = updated
+        repo.saveSchoolConfig(updated)
+    }
+
+    fun addCustomRegisteredSubject(newSubject: String) {
+        val clean = newSubject.trim()
+        if (clean.isBlank() || clean in _schoolConfig.value.registeredSubjects) return
+        val updated = _schoolConfig.value.copy(
+            registeredSubjects = _schoolConfig.value.registeredSubjects + clean
+        )
+        _schoolConfig.value = updated
+        repo.saveSchoolConfig(updated)
     }
 
     fun login(usernameInput: String, passwordInput: String): Result<UserAccount> {
@@ -266,12 +464,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         username: String,
         password: String
     ): UserAccount {
-        val cleanUsername = username.trim().ifBlank {
-            "tch_${(100..999).random()}"
-        }
-        val cleanPassword = password.trim().ifBlank {
-            (1000..9999).random().toString()
-        }
+        val cleanUsername = username.trim().ifBlank { "tch_${(100..999).random()}" }
+        val cleanPassword = password.trim().ifBlank { (1000..9999).random().toString() }
         val newTeacher = UserAccount(
             id = "tch_${UUID.randomUUID().toString().take(6)}",
             username = cleanUsername,
@@ -288,6 +482,31 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _accounts.value = updated
         repo.saveAccounts(updated)
         return newTeacher
+    }
+
+    fun updateTeacherAccount(
+        teacherId: String,
+        fullName: String,
+        specialty: String,
+        assignedClasses: String,
+        phone: String,
+        username: String,
+        password: String
+    ) {
+        val updated = _accounts.value.map { acc ->
+            if (acc.id == teacherId && acc.role == UserRole.TEACHER) {
+                acc.copy(
+                    fullName = fullName.trim().ifBlank { acc.fullName },
+                    specialty = specialty.trim(),
+                    assignedClasses = assignedClasses.trim(),
+                    phone = phone.trim().ifBlank { acc.phone },
+                    username = username.trim().ifBlank { acc.username },
+                    password = password.trim().ifBlank { acc.password }
+                )
+            } else acc
+        }
+        _accounts.value = updated
+        repo.saveAccounts(updated)
     }
 
     fun toggleAccountActive(accountId: String) {
@@ -393,6 +612,67 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveTuitions(updatedTuitions)
 
         return newStudent
+    }
+
+    fun updateStudentAndParentAccounts(
+        studentId: String,
+        studentName: String,
+        gradeClass: String,
+        sectionName: String,
+        parentName: String,
+        parentPhone: String,
+        address: String,
+        studentUsername: String,
+        studentPassword: String,
+        parentUsername: String,
+        parentPassword: String
+    ) {
+        val updatedStudents = _students.value.map { s ->
+            if (s.id == studentId) {
+                s.copy(
+                    studentName = studentName.trim().ifBlank { s.studentName },
+                    gradeClass = gradeClass,
+                    sectionName = sectionName,
+                    parentName = parentName.trim().ifBlank { s.parentName },
+                    parentPhone = parentPhone.trim().ifBlank { s.parentPhone },
+                    address = address.trim().ifBlank { "الموصل - زمار" },
+                    studentUsername = studentUsername.trim().ifBlank { s.studentUsername },
+                    studentPassword = studentPassword.trim().ifBlank { s.studentPassword },
+                    parentUsername = parentUsername.trim().ifBlank { s.parentUsername },
+                    parentPassword = parentPassword.trim().ifBlank { s.parentPassword }
+                )
+            } else s
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents)
+
+        val updatedAccounts = _accounts.value.map { acc ->
+            if (acc.linkedStudentId == studentId) {
+                if (acc.role == UserRole.PARENT) {
+                    acc.copy(
+                        fullName = parentName.trim().ifBlank { acc.fullName },
+                        username = parentUsername.trim().ifBlank { acc.username },
+                        password = parentPassword.trim().ifBlank { acc.password },
+                        phone = parentPhone.trim().ifBlank { acc.phone },
+                        gradeClass = gradeClass,
+                        sectionName = sectionName,
+                        address = address.trim().ifBlank { "الموصل - زمار" }
+                    )
+                } else {
+                    acc.copy(
+                        fullName = studentName.trim().ifBlank { acc.fullName },
+                        username = studentUsername.trim().ifBlank { acc.username },
+                        password = studentPassword.trim().ifBlank { acc.password },
+                        phone = parentPhone.trim().ifBlank { acc.phone },
+                        gradeClass = gradeClass,
+                        sectionName = sectionName,
+                        address = address.trim().ifBlank { "الموصل - زمار" }
+                    )
+                }
+            } else acc
+        }
+        _accounts.value = updatedAccounts
+        repo.saveAccounts(updatedAccounts)
     }
 
     fun toggleStudentAndParentActive(studentId: String) {

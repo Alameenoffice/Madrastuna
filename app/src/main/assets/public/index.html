@@ -3,42 +3,39 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>مدرستي | My School Platform - الموصل - زمار</title>
+  <title>منصة مدرستي المتكاملة</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --surface-2: #f1f5f9;
-      --text: #0f172a;
+      --bg: #F4F7FB;
+      --surface: #FFFFFF;
+      --surface-variant: #E8EEF7;
+      --text: #0F172A;
       --text-muted: #475569;
-      --primary: #059669;
-      --primary-dark: #064e3b;
-      --primary-soft: #d1fae5;
-      --secondary: #1e3a8a;
-      --gold: #f59e0b;
-      --gold-deep: #b45309;
-      --danger: #ef4444;
-      --whatsapp: #25d366;
-      --border: #e2e8f0;
-      --radius: 18px;
-      --shadow: 0 6px 24px rgba(15, 23, 42, 0.06);
+      --primary: #0F52BA;
+      --primary-light: #DBEAFE;
+      --secondary: #0D9488;
+      --gold: #D97706;
+      --gold-light: #FEF3C7;
+      --success: #10B981;
+      --danger: #EF4444;
+      --warning: #F59E0B;
+      --border: #CBD5E1;
+      --radius: 16px;
     }
     body.dark {
-      --bg: #0b1120;
-      --surface: #111827;
-      --surface-2: #1e293b;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --primary: #10b981;
-      --primary-dark: #065f46;
-      --primary-soft: rgba(16, 185, 129, 0.16);
-      --secondary: #60a5fa;
+      --bg: #0B1120;
+      --surface: #131C31;
+      --surface-variant: #1E293B;
+      --text: #F8FAFC;
+      --text-muted: #94A3B8;
+      --primary: #3B82F6;
+      --primary-light: #1E3A8A;
+      --secondary: #14B8A6;
+      --gold: #F59E0B;
       --border: #334155;
-      --shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
     }
     * {
       box-sizing: border-box;
@@ -49,90 +46,111 @@
     body {
       background: var(--bg);
       color: var(--text);
+      direction: rtl;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      transition: background 0.25s, color 0.25s;
     }
-    button, .btn, .badge, .pill-tab {
+    button, .badge, .pill, .nowrap {
       white-space: nowrap !important;
+    }
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-weight: 700;
+      font-size: 0.9rem;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      font-family: 'Cairo', sans-serif;
-      font-weight: 700;
-      cursor: pointer;
-      border: none;
+      gap: 8px;
       transition: all 0.2s ease;
-      text-decoration: none;
-    }
-    .btn {
-      padding: 10px 16px;
-      border-radius: 12px;
-      font-size: 0.9rem;
       background: var(--primary);
       color: #fff;
     }
-    .btn-secondary { background: var(--secondary); color: #fff; }
-    .btn-whatsapp { background: var(--whatsapp); color: #fff; }
-    .btn-danger { background: var(--danger); color: #fff; }
-    .btn-outline {
+    button:hover { opacity: 0.94; }
+    button.secondary { background: var(--secondary); color: #fff; }
+    button.danger { background: var(--danger); color: #fff; }
+    button.warning { background: var(--warning); color: #fff; }
+    button.outline {
       background: transparent;
       border: 1.5px solid var(--border);
       color: var(--text);
     }
-    .badge {
-      padding: 4px 12px;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      background: var(--primary-soft);
-      color: var(--primary);
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.92rem;
+      outline: none;
     }
-    .badge-gold {
-      background: rgba(245, 158, 11, 0.18);
-      color: var(--gold-deep);
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+    }
+    .container {
+      max-width: 1120px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 16px;
+      flex: 1;
     }
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 18px;
-      box-shadow: var(--shadow);
+      padding: 16px;
       margin-bottom: 14px;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
     }
-    .input-group {
-      margin-bottom: 12px;
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
-    .input-group label {
-      display: block;
-      font-size: 0.85rem;
-      font-weight: 700;
-      margin-bottom: 4px;
-      color: var(--text);
-    }
-    .input-group input, .input-group select, .input-group textarea {
-      width: 100%;
-      padding: 10px 14px;
-      border-radius: 12px;
-      border: 1.5px solid var(--border);
-      background: var(--surface-2);
-      color: var(--text);
-      font-size: 0.92rem;
-    }
-    .app-header {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 12px 16px;
-    }
-    .header-top {
+    .between {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
+      flex-wrap: wrap;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      background: var(--surface-variant);
+      color: var(--text);
+    }
+    .badge.primary { background: rgba(15, 82, 186, 0.14); color: var(--primary); }
+    .badge.success { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+    .badge.danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+    .badge.gold { background: rgba(217, 119, 6, 0.16); color: var(--gold); }
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
     }
     .nav-strip {
       display: flex;
@@ -141,364 +159,1352 @@
       padding-top: 10px;
       scrollbar-width: none;
     }
-    .pill-tab {
+    .pill {
       padding: 7px 14px;
       border-radius: 999px;
-      background: var(--surface-2);
+      background: var(--surface-variant);
       color: var(--text-muted);
-      font-size: 0.83rem;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
-    .pill-tab.active {
+    .pill.active {
       background: var(--primary);
       color: #fff;
     }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 12px;
-    }
-    .honor-card {
-      border: 2px solid var(--gold);
-      background: linear-gradient(135deg, var(--surface) 0%, rgba(245, 158, 11, 0.08) 100%);
-    }
     .dev-footer {
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 10px 14px;
+      background: var(--surface-variant);
+      border-top: 1px solid var(--border);
+      padding: 8px 14px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      margin-top: 16px;
-    }
-    .dev-footer-text {
+      gap: 8px;
+      font-size: 0.8rem;
       white-space: nowrap;
-      font-size: 0.82rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      overflow-x: auto;
     }
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      right: 0;
-      left: 0;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      display: flex;
-      justify-content: space-around;
-      padding: 8px 6px;
-      z-index: 40;
-    }
-    .container {
-      max-width: 960px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 16px 16px 90px;
-      flex: 1;
-    }
-    .lottie-box {
-      width: 190px;
-      height: 190px;
-      margin: 0 auto 14px;
-      border-radius: 28px;
-      background: var(--primary-soft);
-      display: flex;
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--primary);
+      background: var(--surface-variant);
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
+      flex-shrink: 0;
     }
-    .score-grid {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 6px;
-      text-align: center;
-      margin-top: 10px;
-    }
-    .score-box {
-      background: var(--surface-2);
-      padding: 8px 4px;
-      border-radius: 10px;
-      font-size: 0.78rem;
-    }
-    svg.icon {
+    .icon-svg {
       width: 18px;
       height: 18px;
       stroke: currentColor;
       stroke-width: 2;
-      fill: none;
       stroke-linecap: round;
       stroke-linejoin: round;
+      fill: none;
       flex-shrink: 0;
     }
+    .checkbox-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .check-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .check-chip.selected {
+      background: rgba(15, 82, 186, 0.14);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    table.grades-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.86rem;
+    }
+    table.grades-table th, table.grades-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 9px 6px;
+      text-align: center;
+    }
+    table.grades-table th {
+      background: var(--surface-variant);
+      font-weight: 800;
+    }
+    .score-input {
+      width: 66px !important;
+      padding: 6px !important;
+      text-align: center;
+      font-weight: 700;
+    }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
   <div id="app"></div>
 
   <script>
-    // Vector Lucide SVG Icons Helper
+    // Vector Lucide SVG Icons
     const ICONS = {
-      school: '<svg class="icon" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>',
-      bell: '<svg class="icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
-      check: '<svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
-      users: '<svg class="icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-      calendar: '<svg class="icon" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>',
-      book: '<svg class="icon" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>',
-      award: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>',
-      wallet: '<svg class="icon" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>',
-      chat: '<svg class="icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
-      image: '<svg class="icon" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
-      phone: '<svg class="icon" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
-      logout: '<svg class="icon" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>',
-      moon: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
-      settings: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+      school: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="m4 6 8-4 8 4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"/><path d="M18 5v17"/><path d="M6 5v17"/></svg>',
+      check: '<svg class="icon-svg" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+      userCheck: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>',
+      calendar: '<svg class="icon-svg" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>',
+      award: '<svg class="icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>',
+      wallet: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>',
+      bell: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+      users: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+      settings: '<svg class="icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+      logout: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>',
+      phone: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+      chat: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+      moon: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+      search: '<svg class="icon-svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+      plus: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+      trash: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>'
     };
 
-    // Automatic HTML5 Canvas Image Compression (Max Width 800px, Quality 0.7 JPEG Base64)
-    function compressImageViaCanvas(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const MAX_WIDTH = 800;
-            let width = img.width;
-            let height = img.height;
-            if (width > MAX_WIDTH) {
-              height = Math.round((height * MAX_WIDTH) / width);
-              width = MAX_WIDTH;
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
-            const base64Jpeg = canvas.toDataURL('image/jpeg', 0.7);
-            resolve(base64Jpeg);
-          };
-          img.onerror = reject;
-          img.src = e.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+    const STAGE_CONFIGS = {
+      PRIMARY: {
+        label: 'مدرسة ابتدائية',
+        classes: ['الأول الابتدائي', 'الثاني الابتدائي', 'الثالث الابتدائي', 'الرابع الابتدائي', 'الخامس الابتدائي', 'السادس الابتدائي'],
+        sections: ['أ', 'ب', 'ج'],
+        subjects: ['التربية الإسلامية', 'اللغة العربية', 'اللغة الإنكليزية', 'الرياضيات', 'العلوم', 'الاجتماعيات', 'التربية الفنية والرياضية']
+      },
+      MIDDLE: {
+        label: 'مدرسة متوسطة',
+        classes: ['الأول المتوسط', 'الثاني المتوسط', 'الثالث المتوسط'],
+        sections: ['أ', 'ب', 'ج'],
+        subjects: ['التربية الإسلامية', 'اللغة العربية', 'اللغة الإنكليزية', 'الرياضيات', 'الاجتماعيات', 'الأحياء', 'الكيمياء', 'الفيزياء', 'الحاسوب']
+      },
+      PREPARATORY: {
+        label: 'مدرسة إعدادية',
+        classes: ['الرابع العلمي', 'الرابع الأدبي', 'الخامس العلمي', 'الخامس الأدبي', 'السادس العلمي', 'السادس الأدبي'],
+        sections: ['أ', 'ب', 'ج'],
+        subjects: ['التربية الإسلامية', 'اللغة العربية', 'اللغة الإنكليزية', 'الرياضيات', 'الفيزياء', 'الكيمياء', 'الأحياء', 'التاريخ والجغرافية والاقتصاد']
+      },
+      SECONDARY: {
+        label: 'مدرسة ثانوية',
+        classes: ['الأول المتوسط', 'الثاني المتوسط', 'الثالث المتوسط', 'الرابع العلمي', 'الخامس العلمي', 'السادس العلمي'],
+        sections: ['أ', 'ب', 'ج'],
+        subjects: ['التربية الإسلامية', 'اللغة العربية', 'اللغة الإنكليزية', 'الرياضيات', 'الأحياء', 'الكيمياء', 'الفيزياء', 'الاجتماعيات', 'الحاسوب']
+      }
+    };
+
+    const STORAGE_KEY = 'madrasati_v2_dynamic_state';
+
+    const defaultState = {
+      darkMode: false,
+      onboardingSeen: false,
+      activeSection: 'DASHBOARD',
+      schoolConfig: {
+        isSetupCompleted: false,
+        schoolName: 'ثانوية زمار النموذجية',
+        address: 'الموصل - زمار',
+        schoolType: 'PRIVATE',
+        schoolStage: 'MIDDLE',
+        registeredClasses: [...STAGE_CONFIGS.MIDDLE.classes],
+        registeredSections: [...STAGE_CONFIGS.MIDDLE.sections],
+        registeredSubjects: [...STAGE_CONFIGS.MIDDLE.subjects],
+        logoBase64: ''
+      },
+      currentUser: null,
+      // Filter states
+      accountSearch: '',
+      accountRoleFilter: 'ALL',
+      accountClassFilter: 'ALL',
+      teacherSelectedSubjects: ['الرياضيات', 'الفيزياء'],
+      teacherSelectedClassSections: ['الأول المتوسط|أ', 'الثاني المتوسط|أ'],
+      attendanceClass: 'الأول المتوسط',
+      attendanceSection: 'أ',
+      scheduleClass: 'الأول المتوسط',
+      scheduleSection: 'أ',
+      gradesClass: 'الأول المتوسط',
+      gradesSection: 'أ',
+      gradesSubject: 'الرياضيات',
+      gradesSearch: '',
+      reportClass: 'الأول المتوسط',
+      reportSection: 'أ',
+      reportSearch: '',
+      reportStudentId: 'stu_1',
+      users: [
+        {
+          id: 'tch_1',
+          fullName: 'أ. محمود الجبوري',
+          username: 'teacher1',
+          password: '123',
+          role: 'TEACHER',
+          phone: '07512362567',
+          address: 'الموصل - زمار',
+          subjectSpecialty: 'الرياضيات، الفيزياء',
+          assignedClasses: 'الأول المتوسط|أ,الثاني المتوسط|أ'
+        },
+        {
+          id: 'stu_1',
+          fullName: 'يوسف خالد الحمداني',
+          username: 'student1',
+          password: '123',
+          role: 'STUDENT',
+          phone: '07512362567',
+          address: 'الموصل - زمار - حي الثقافة',
+          gradeName: 'الأول المتوسط',
+          sectionName: 'أ',
+          linkedStudentId: 'stu_1'
+        },
+        {
+          id: 'par_1',
+          fullName: 'خالد الحمداني (ولي أمر يوسف)',
+          username: 'parent1',
+          password: '123',
+          role: 'PARENT',
+          phone: '07512362567',
+          address: 'الموصل - زمار - حي الثقافة',
+          gradeName: 'الأول المتوسط',
+          sectionName: 'أ',
+          linkedStudentId: 'stu_1'
+        },
+        {
+          id: 'stu_2',
+          fullName: 'مريم طارق الزبيدي',
+          username: 'student2',
+          password: '123',
+          role: 'STUDENT',
+          phone: '07512362567',
+          address: 'الموصل - زمار - المركز',
+          gradeName: 'الثاني المتوسط',
+          sectionName: 'أ',
+          linkedStudentId: 'stu_2'
+        },
+        {
+          id: 'par_2',
+          fullName: 'طارق الزبيدي (ولي أمر مريم)',
+          username: 'parent2',
+          password: '123',
+          role: 'PARENT',
+          phone: '07512362567',
+          address: 'الموصل - زمار - المركز',
+          gradeName: 'الثاني المتوسط',
+          sectionName: 'أ',
+          linkedStudentId: 'stu_2'
+        }
+      ],
+      attendance: {
+        'stu_1': { status: 'PRESENT', totalAbsences: 1 },
+        'stu_2': { status: 'PRESENT', totalAbsences: 0 }
+      },
+      homeworks: [
+        { id: 'hw_1', gradeName: 'الأول المتوسط', sectionName: 'أ', subject: 'الرياضيات', title: 'حل تمارين المعادلات الخطية ص 42', dueDate: 'غداً صباحاً', teacherName: 'أ. محمود الجبوري' },
+        { id: 'hw_2', gradeName: 'الثاني المتوسط', sectionName: 'أ', subject: 'الفيزياء', title: 'مراجعة فصل الحركة المنتظمة', dueDate: 'الخميس القادم', teacherName: 'أ. محمود الجبوري' }
+      ],
+      grades: [
+        { id: 'gr_1', studentId: 'stu_1', studentName: 'يوسف خالد الحمداني', gradeName: 'الأول المتوسط', sectionName: 'أ', subject: 'الرياضيات', daily: 96, month1: 95, month2: 97, midYear: 96, saee: 96, finalExam: 98 },
+        { id: 'gr_2', studentId: 'stu_1', studentName: 'يوسف خالد الحمداني', gradeName: 'الأول المتوسط', sectionName: 'أ', subject: 'الفيزياء', daily: 92, month1: 94, month2: 95, midYear: 93, saee: 94, finalExam: 96 },
+        { id: 'gr_3', studentId: 'stu_2', studentName: 'مريم طارق الزبيدي', gradeName: 'الثاني المتوسط', sectionName: 'أ', subject: 'الرياضيات', daily: 99, month1: 98, month2: 100, midYear: 99, saee: 99, finalExam: 100 }
+      ],
+      honorRoll: [
+        { id: 'hn_1', studentName: 'مريم طارق الزبيدي', gradeName: 'الثاني المتوسط', sectionName: 'أ', average: '99.5%', badgeTitle: 'الأولى على المدرسة 🌟' },
+        { id: 'hn_2', studentName: 'يوسف خالد الحمداني', gradeName: 'الأول المتوسط', sectionName: 'أ', average: '96.8%', badgeTitle: 'متفوق الشهر الذهبي 🏅' }
+      ],
+      tuitions: [
+        { id: 'tu_1', studentId: 'stu_1', studentName: 'يوسف خالد الحمداني', gradeName: 'الأول المتوسط', totalAmount: 1500000, paidAmount: 1000000, dueDate: '2025-05-01' },
+        { id: 'tu_2', studentId: 'stu_2', studentName: 'مريم طارق الزبيدي', gradeName: 'الثاني المتوسط', totalAmount: 1500000, paidAmount: 1500000, dueDate: 'مسدد بالكامل' }
+      ],
+      reports: [
+        { id: 'rp_1', studentId: 'stu_1', studentName: 'يوسف خالد الحمداني', gradeName: 'الأول المتوسط', sectionName: 'أ', type: 'إشادة وتفوق', title: 'تميز علمي وأخلاقي', body: 'نشكر ولي أمر الطالب يوسف لالتزامه العالي وتفوقه في مادة الرياضيات.', sender: 'الإدارة المدرسية' }
+      ],
+      events: [
+        { id: 'ev_1', title: 'المهرجان العلمي السنوي في الموصل - زمار', category: 'مهرجان علمي', date: '2025-04-15', description: 'افتتاح معرض الابتكارات العلمية بمشاركة نخبة من طلبة المدرسة.' }
+      ],
+      notifications: [
+        { id: 'nf_1', title: 'مرحباً بكم في منصة مدرستي', body: 'تم تفعيل الهيكلة الديناميكية للصفوف والشعب وعزل الخصوصية بنجاح.', targetStudentId: '', targetGradeName: '', targetSectionName: '' }
+      ]
+    };
+
+    let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || defaultState;
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      document.body.classList.toggle('dark', !!state.darkMode);
+      render();
     }
 
-    // Developer Credit Footer HTML
-    function renderDeveloperFooter() {
+    // Helper functions for dynamic teacher & student/parent scoping
+    function getTeacherPairs(user) {
+      if (!user || user.role !== 'TEACHER') return [];
+      return (user.assignedClasses || '').split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    function getTeacherSubjects(user) {
+      if (!user || user.role !== 'TEACHER') return [];
+      return (user.subjectSpecialty || '').split(/[،,]/).map(s => s.trim()).filter(Boolean);
+    }
+
+    function getAllowedClassesForUser(user) {
+      const reg = state.schoolConfig.registeredClasses || [];
+      if (!user) return reg;
+      if (user.role === 'ADMIN') return reg;
+      if (user.role === 'TEACHER') {
+        const pairs = getTeacherPairs(user);
+        const cls = [...new Set(pairs.map(p => p.split('|')[0]).filter(Boolean))];
+        return cls.length ? cls : reg;
+      }
+      if (user.role === 'STUDENT' || user.role === 'PARENT') {
+        const student = getLinkedStudent(user);
+        return student && student.gradeName ? [student.gradeName] : reg;
+      }
+      return reg;
+    }
+
+    function getAllowedSectionsForClass(user, gradeName) {
+      const regSec = state.schoolConfig.registeredSections || ['أ', 'ب', 'ج'];
+      if (!user || user.role === 'ADMIN') return regSec;
+      if (user.role === 'TEACHER') {
+        const pairs = getTeacherPairs(user);
+        const secs = pairs.filter(p => p.startsWith(gradeName + '|')).map(p => p.split('|')[1]).filter(Boolean);
+        return secs.length ? [...new Set(secs)] : regSec;
+      }
+      if (user.role === 'STUDENT' || user.role === 'PARENT') {
+        const student = getLinkedStudent(user);
+        return student && student.sectionName ? [student.sectionName] : regSec;
+      }
+      return regSec;
+    }
+
+    function getAllowedSubjectsForUser(user) {
+      const regSub = state.schoolConfig.registeredSubjects || [];
+      if (!user || user.role !== 'TEACHER') return regSub;
+      const tSubs = getTeacherSubjects(user);
+      return tSubs.length ? tSubs : regSub;
+    }
+
+    function getLinkedStudent(user) {
+      if (!user) return null;
+      const students = state.users.filter(u => u.role === 'STUDENT');
+      if (user.role === 'STUDENT') return students.find(s => s.id === user.id) || user;
+      if (user.role === 'PARENT') return students.find(s => s.id === user.linkedStudentId) || null;
+      return null;
+    }
+
+    function getScopedStudentsForUser(user) {
+      const students = state.users.filter(u => u.role === 'STUDENT');
+      if (!user) return [];
+      if (user.role === 'ADMIN') return students;
+      if (user.role === 'TEACHER') {
+        const pairs = getTeacherPairs(user);
+        return students.filter(s => pairs.includes(s.gradeName + '|' + s.sectionName));
+      }
+      if (user.role === 'STUDENT' || user.role === 'PARENT') {
+        const st = getLinkedStudent(user);
+        return st ? [st] : [];
+      }
+      return [];
+    }
+
+    function getScopedNotificationsForUser(user) {
+      if (!user) return [];
+      if (user.role === 'ADMIN') return state.notifications;
+      if (user.role === 'TEACHER') {
+        const pairs = getTeacherPairs(user);
+        return state.notifications.filter(n => !n.targetGradeName || pairs.includes(n.targetGradeName + '|' + (n.targetSectionName || 'أ')));
+      }
+      const st = getLinkedStudent(user);
+      if (!st) return [];
+      return state.notifications.filter(n =>
+        (!n.targetStudentId && !n.targetGradeName) ||
+        n.targetStudentId === st.id ||
+        (!n.targetStudentId && n.targetGradeName === st.gradeName && (!n.targetSectionName || n.targetSectionName === st.sectionName))
+      );
+    }
+
+    function renderDeveloperBar() {
       return `
         <div class="dev-footer">
-          <div class="dev-footer-text">
-            ${ICONS.school}
-            <span>تصميم وتطوير: أحمد أبو رسلان | 07512362567</span>
-          </div>
-          <div style="display:flex;gap:6px;">
-            <a href="tel:07512362567" class="btn" style="padding:6px 12px;font-size:0.78rem;">
-              ${ICONS.phone} <span>اتصال</span>
-            </a>
-            <a href="https://wa.me/9647512362567" target="_blank" class="btn btn-whatsapp" style="padding:6px 12px;font-size:0.78rem;">
-              ${ICONS.chat} <span>واتساب</span>
-            </a>
+          <span>تصميم وتطوير: أحمد أبو رسلان | 07512362567</span>
+          <div class="row" style="gap:6px;flex-wrap:nowrap;">
+            <a href="tel:07512362567" class="badge primary" style="text-decoration:none;">${ICONS.phone} اتصال</a>
+            <a href="https://wa.me/9647512362567" target="_blank" class="badge success" style="text-decoration:none;">${ICONS.chat} واتساب</a>
           </div>
         </div>
       `;
     }
 
-    const STORAGE_KEY = 'madrasati_zummar_web_v1';
-    const defaultState = {
-      darkMode: false,
-      onboardingSeen: false,
-      onboardingSlide: 0,
-      school: {
-        isSetup: false,
-        name: 'مدرستي النموذجية',
-        address: 'الموصل - زمار',
-        type: 'PRIVATE',
-        logo: ''
-      },
-      currentUser: null,
-      activeTab: 'DASHBOARD',
-      accounts: [],
-      students: [
-        { id: 'stu_1', name: 'يوسف محمود الجبوري', grade: 'الأول المتوسط', section: 'أ', parentName: 'محمود صالح الجبوري', phone: '07512362567', address: 'الموصل - زمار', stuUser: 'yousif1', stuPass: '123', parUser: 'parent_yousif', parPass: '123', active: true, points: 98, honor: true, honorTitle: 'المركز الأول - وسام النخبة الذهبي', totalFee: 1500000, paidFee: 1000000, dueDate: '2026-11-15', absences: 0 },
-        { id: 'stu_2', name: 'مريم خالد الشمري', grade: 'الأول المتوسط', section: 'أ', parentName: 'خالد عبد الله الشمري', phone: '07512362567', address: 'الموصل - زمار', stuUser: 'maryam1', stuPass: '123', parUser: 'parent_maryam', parPass: '123', active: true, points: 96, honor: true, honorTitle: 'المركز الثاني - وسام الإبداع العلمي', totalFee: 1500000, paidFee: 750000, dueDate: '2026-11-10', absences: 1 }
-      ],
-      notifications: [
-        { id: 1, title: 'تنبيه الحضور اليومي', body: 'تم تحديث سجل الحضور والغياب في الموصل - زمار.', time: 'الآن' },
-        { id: 2, title: 'واجب الرياضيات', body: 'حل تمارين الفصل الثاني صفحة 39.', time: 'منذ ساعة' }
-      ]
-    };
-
-    let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || defaultState;
-    function saveState() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      document.body.classList.toggle('dark', !!state.darkMode);
-    }
-
-    function renderApp() {
-      saveState();
+    function render() {
       const root = document.getElementById('app');
       if (!state.onboardingSeen) {
-        const slides = [
-          { title: 'منصة مدرستي الذكية المتكاملة', desc: 'إدارة مدرسية رقمية حديثة تربط الإدارة والمعلمين وأولياء الأمور والطلبة في الموصل - زمار.' },
-          { title: 'المتابعة اليومية الفورية', desc: 'رصد الحضور والغياب، جدول الحصص، التحضير اليومي، وكشف الدرجات وحساب السعي تلقائياً.' },
-          { title: 'لوحة الشرف الذهبية والتواصل', desc: 'تكريم الطلبة الأوائل بأوسمة فيكتور ذهبية، مع نظام الأقساط والتواصل عبر واتساب.' }
-        ];
-        const s = slides[state.onboardingSlide];
         root.innerHTML = `
-          <div class="container">
-            <div class="card" style="text-align:center;margin-top:20px;">
-              <span class="badge">${ICONS.school} <span>الموصل - زمار • شريحة ${state.onboardingSlide + 1} من 3</span></span>
-              <div id="lottie-container" class="lottie-box" style="margin-top:16px;"></div>
-              <h2 style="margin-bottom:8px;">${s.title}</h2>
-              <p style="color:var(--text-muted);margin-bottom:18px;">${s.desc}</p>
-              <div style="display:flex;gap:10px;justify-content:center;">
-                <button class="btn" onclick="nextOnboarding()">${ICONS.check} <span>${state.onboardingSlide === 2 ? 'البدء الآن' : 'التالي'}</span></button>
-              </div>
+          <div class="container" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
+            <div class="card" style="max-width:540px;width:100%;padding:28px;">
+              <span class="badge primary">${ICONS.school} منصة مدرستي الذكية</span>
+              <h1 style="margin:14px 0 8px;">إدارة مدرسية متكاملة ومترابطة ديناميكياً</h1>
+              <p style="color:var(--text-muted);margin-bottom:20px;">
+                توليد تلقائي للصفوف والشعب حسب المرحلة الدراسية، تخصيص دقيق لصلاحيات المعلمين، وعزل صارم لخصوصية كل طالب وولي أمر.
+              </p>
+              <button style="width:100%;" onclick="state.onboardingSeen=true;saveState();">
+                ${ICONS.check} البدء الآن
+              </button>
             </div>
-            ${renderDeveloperFooter()}
           </div>
+          ${renderDeveloperBar()}
         `;
-        if (window.lottie) {
-          window.lottie.loadAnimation({
-            container: document.getElementById('lottie-container'),
-            renderer: 'svg',
-            loop: true,
-            autoplay: true,
-            animationData: {"v":"5.5.7","fr":30,"ip":0,"op":60,"w":200,"h":200,"nm":"SchoolPulse","ddd":0,"assets":[],"layers":[{"ddd":0,"ind":1,"ty":4,"nm":"Circle","sr":1,"ks":{"o":{"a":0,"k":100},"r":{"a":1,"k":[{"t":0,"s":[0]},{"t":60,"s":[360]}]},"p":{"a":0,"k":[100,100,0]},"a":{"a":0,"k":[0,0,0]},"s":{"a":1,"k":[{"t":0,"s":[90,90,100]},{"t":30,"s":[110,110,100]},{"t":60,"s":[90,90,100]}]}},"ao":0,"shapes":[{"ty":"el","d":1,"s":{"a":0,"k":[110,110]},"p":{"a":0,"k":[0,0]},"nm":"Ellipse"},{"ty":"fl","c":{"a":0,"k":[0.02,0.59,0.41,1]},"o":{"a":0,"k":100}}],"ip":0,"op":60,"st":0,"bm":0}]}
-          });
-        }
         return;
       }
 
-      if (!state.school.isSetup) {
+      if (!state.schoolConfig.isSetupCompleted) {
+        const currentStage = state.schoolConfig.schoolStage || 'MIDDLE';
+        const stageInfo = STAGE_CONFIGS[currentStage];
         root.innerHTML = `
           <div class="container">
-            <div class="card">
-              <span class="badge">${ICONS.school} <span>التأسيس لأول مرة</span></span>
-              <h2 style="margin:10px 0;">تأسيس منصة المدرسة وإنشاء حساب المدير العام</h2>
-              <div class="input-group">
-                <label>اسم المدرسة</label>
-                <input id="setup-name" value="${state.school.name}" placeholder="اسم المدرسة" />
+            <div class="card" style="max-width:640px;margin:20px auto;">
+              <h2 style="margin-bottom:6px;">تأسيس منصة المدرسة وإنشاء حساب المدير</h2>
+              <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:14px;">حدد نوع المدرسة والمرحلة الدراسية ليقوم النظام بتوليد الصفوف والشعب المسجلة تلقائياً</p>
+              <div style="display:grid;gap:10px;">
+                <input id="setup_school_name" placeholder="اسم المدرسة" value="${state.schoolConfig.schoolName}" />
+                <input id="setup_address" placeholder="العنوان الجغرافي" value="${state.schoolConfig.address || 'الموصل - زمار'}" />
+                <div class="grid-2">
+                  <div>
+                    <label style="font-size:0.82rem;font-weight:700;">نوع المدرسة</label>
+                    <select id="setup_type">
+                      <option value="PRIVATE" ${state.schoolConfig.schoolType==='PRIVATE'?'selected':''}>مدرسة أهلية (تفعيل الأقساط)</option>
+                      <option value="PUBLIC" ${state.schoolConfig.schoolType==='PUBLIC'?'selected':''}>مدرسة حكومية (إخفاء الأقساط)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size:0.82rem;font-weight:700;">المرحلة الدراسية</label>
+                    <select id="setup_stage" onchange="onSetupStageChange(this.value)">
+                      <option value="PRIMARY" ${currentStage==='PRIMARY'?'selected':''}>مدرسة ابتدائية</option>
+                      <option value="MIDDLE" ${currentStage==='MIDDLE'?'selected':''}>مدرسة متوسطة</option>
+                      <option value="PREPARATORY" ${currentStage==='PREPARATORY'?'selected':''}>مدرسة إعدادية</option>
+                      <option value="SECONDARY" ${currentStage==='SECONDARY'?'selected':''}>مدرسة ثانوية</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="card" style="background:var(--surface-variant);margin:4px 0;">
+                  <div style="font-size:0.84rem;font-weight:700;color:var(--primary);margin-bottom:4px;">الصفوف والشعب التي ستتولد تلقائياً (${stageInfo.label}):</div>
+                  <div style="font-size:0.82rem;"><strong>الصفوف:</strong> ${stageInfo.classes.join(' ، ')}</div>
+                  <div style="font-size:0.82rem;"><strong>الشعب:</strong> ${stageInfo.sections.join(' ، ')}</div>
+                </div>
+                <input id="setup_admin_name" placeholder="الاسم الكامل للمدير" value="أحمد أبو رسلان" />
+                <input id="setup_admin_user" placeholder="اسم مستخدم المدير" value="admin" />
+                <input id="setup_admin_pass" type="password" placeholder="كلمة مرور المدير" value="1234" />
+                <button onclick="completeSetup()">${ICONS.check} تأسيس المنصة واعتماد الصفوف المسجلة</button>
               </div>
-              <div class="input-group">
-                <label>العنوان الجغرافي</label>
-                <input id="setup-address" value="الموصل - زمار" placeholder="الموصل - زمار" />
-              </div>
-              <div class="input-group">
-                <label>نوع المدرسة</label>
-                <select id="setup-type">
-                  <option value="PRIVATE">مدرسة أهلية (تفعيل نظام الأقساط تلقائياً)</option>
-                  <option value="PUBLIC">مدرسة حكومية (إخفاء نظام الأقساط تلقائياً)</option>
-                </select>
-              </div>
-              <div class="input-group">
-                <label>اسم المستخدم للمدير العام</label>
-                <input id="setup-user" value="admin" />
-              </div>
-              <div class="input-group">
-                <label>كلمة المرور للمدير العام</label>
-                <input id="setup-pass" type="password" value="123456" />
-              </div>
-              <button class="btn" style="width:100%;" onclick="completeSetup()">${ICONS.check} <span>تأسيس المنصة واعتماد حساب المدير العام</span></button>
             </div>
-            ${renderDeveloperFooter()}
           </div>
+          ${renderDeveloperBar()}
         `;
         return;
       }
 
       if (!state.currentUser) {
         root.innerHTML = `
-          <div class="container">
-            <div class="card" style="max-width:480px;margin:24px auto;">
-              <span class="badge">${ICONS.school} <span>${state.school.name} • ${state.school.address}</span></span>
-              <h2 style="margin:10px 0;">شاشة تسجيل الدخول الموحدة</h2>
-              <div class="input-group">
-                <label>اسم المستخدم</label>
-                <input id="login-user" placeholder="أدخل اسم المستخدم المعتمد" />
+          <div class="container" style="display:flex;align-items:center;justify-content:center;">
+            <div class="card" style="max-width:440px;width:100%;padding:24px;">
+              <div class="between" style="margin-bottom:14px;">
+                <span class="badge primary">${ICONS.school} ${state.schoolConfig.schoolName}</span>
+                <button class="outline" onclick="state.darkMode=!state.darkMode;saveState();">${ICONS.moon}</button>
               </div>
-              <div class="input-group">
-                <label>كلمة المرور</label>
-                <input id="login-pass" type="password" placeholder="أدخل كلمة المرور" />
+              <h2 style="margin-bottom:6px;">تسجيل الدخول الموحد</h2>
+              <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:16px;">${state.schoolConfig.address} • ${STAGE_CONFIGS[state.schoolConfig.schoolStage || 'MIDDLE'].label}</p>
+              <div style="display:grid;gap:12px;">
+                <input id="login_user" placeholder="اسم المستخدم" />
+                <input id="login_pass" type="password" placeholder="كلمة المرور" />
+                <button onclick="login()">${ICONS.check} تسجيل الدخول</button>
               </div>
-              <button class="btn" style="width:100%;" onclick="doLogin()">${ICONS.check} <span>تسجيل الدخول</span></button>
             </div>
-            ${renderDeveloperFooter()}
           </div>
+          ${renderDeveloperBar()}
         `;
         return;
       }
 
+      const user = state.currentUser;
+      const scopedNotifs = getScopedNotificationsForUser(user);
+      const sections = [
+        { id: 'DASHBOARD', title: 'الرئيسية', icon: ICONS.school },
+        { id: 'ATTENDANCE', title: 'الغيابات', icon: ICONS.userCheck },
+        { id: 'SCHEDULE_HOMEWORK', title: 'الواجبات', icon: ICONS.calendar },
+        { id: 'EXAMS_GRADES', title: 'الدرجات', icon: ICONS.award },
+        { id: 'HONOR_ROLL', title: 'لوحة الشرف', icon: ICONS.award },
+        ...(state.schoolConfig.schoolType === 'PRIVATE' && user.role !== 'TEACHER' ? [{ id: 'TUITION_FEES', title: 'الأقساط', icon: ICONS.wallet }] : []),
+        { id: 'REPORTS_CHAT', title: 'البلاغات', icon: ICONS.chat },
+        { id: 'EVENTS_NEWS', title: 'الفعاليات', icon: ICONS.calendar },
+        ...(user.role === 'ADMIN' ? [{ id: 'ADMIN_ACCOUNTS', title: 'إدارة الحسابات', icon: ICONS.users }] : []),
+        { id: 'SETTINGS', title: 'الإعدادات', icon: ICONS.settings }
+      ];
+
       root.innerHTML = `
-        <header class="app-header">
-          <div class="header-top">
+        <header class="topbar">
+          <div class="between">
             <div>
-              <strong>${state.school.name}</strong>
-              <span class="badge">${ICONS.school} <span>${state.school.address}</span></span>
+              <div style="font-weight:800;font-size:1.05rem;">${state.schoolConfig.schoolName}</div>
+              <div style="font-size:0.78rem;color:var(--primary);">${getRoleLabel(user.role)} • ${user.fullName}</div>
             </div>
-            <div style="display:flex;gap:8px;">
-              <button class="btn btn-outline" onclick="toggleTheme()">${ICONS.moon} <span>المظهر</span></button>
-              <button class="btn btn-danger" onclick="doLogout()">${ICONS.logout} <span>تسجيل الخروج</span></button>
+            <div class="row">
+              <span class="badge primary">${ICONS.bell} ${scopedNotifs.length}</span>
+              <button class="outline" onclick="state.darkMode=!state.darkMode;saveState();">${ICONS.moon}</button>
+              <button class="danger" onclick="state.currentUser=null;saveState();">${ICONS.logout} خروج</button>
             </div>
+          </div>
+          <div class="nav-strip">
+            ${sections.map(s => `
+              <div class="pill ${state.activeSection===s.id?'active':''}" onclick="state.activeSection='${s.id}';saveState();">
+                ${s.icon} ${s.title}
+              </div>
+            `).join('')}
           </div>
         </header>
-        <div class="container">
-          <div class="card">
-            <h3>مرحباً بك في منصة مدرستي المتكاملة (${state.school.address})</h3>
-            <p style="color:var(--text-muted);margin-top:4px;">جميع الأقسام التعليمية والإدارية الثمانية مفعلة بالكامل.</p>
-          </div>
-          ${renderDeveloperFooter()}
-        </div>
+        <main class="container">
+          ${renderSectionContent()}
+        </main>
+        ${renderDeveloperBar()}
       `;
     }
 
-    window.nextOnboarding = function() {
-      if (state.onboardingSlide < 2) state.onboardingSlide++;
-      else state.onboardingSeen = true;
-      renderApp();
-    };
-    window.completeSetup = function() {
-      const name = document.getElementById('setup-name').value || 'مدرستي النموذجية';
-      const address = document.getElementById('setup-address').value || 'الموصل - زمار';
-      const type = document.getElementById('setup-type').value;
-      const user = document.getElementById('setup-user').value || 'admin';
-      const pass = document.getElementById('setup-pass').value || '123456';
-      state.school = { isSetup: true, name, address, type, logo: '' };
-      const adminAcc = { username: user, password: pass, role: 'ADMIN', fullName: 'المدير العام', active: true };
-      state.accounts = [adminAcc];
-      state.currentUser = adminAcc;
-      renderApp();
-    };
-    window.doLogin = function() {
-      const u = document.getElementById('login-user').value.trim();
-      const p = document.getElementById('login-pass').value.trim();
-      const found = state.accounts.find(a => a.username === u && a.password === p);
-      if (found && found.active) {
-        state.currentUser = found;
-        renderApp();
-      } else {
-        alert('بيانات الدخول غير صحيحة أو الحساب غير مفعل');
-      }
-    };
-    window.doLogout = function() {
-      state.currentUser = null;
-      renderApp();
-    };
-    window.toggleTheme = function() {
-      state.darkMode = !state.darkMode;
-      renderApp();
-    };
+    function getRoleLabel(role) {
+      return { ADMIN: 'مدير المدرسة', TEACHER: 'كادر تدريسي', PARENT: 'ولي أمر الطالب', STUDENT: 'طالب' }[role] || role;
+    }
 
-    renderApp();
+    function renderSectionContent() {
+      const user = state.currentUser;
+      const isAdmin = user.role === 'ADMIN';
+      const isTeacher = user.role === 'TEACHER';
+      const isParentOrStudent = user.role === 'PARENT' || user.role === 'STUDENT';
+
+      if (state.activeSection === 'DASHBOARD') {
+        if (isParentOrStudent) {
+          // Strict Privacy Isolation for Parent & Student
+          const myStudent = getLinkedStudent(user);
+          const myAtt = myStudent ? (state.attendance[myStudent.id] || { status: 'PRESENT', totalAbsences: 0 }) : { status: 'PRESENT', totalAbsences: 0 };
+          const myGrades = myStudent ? state.grades.filter(g => g.studentId === myStudent.id) : [];
+          const myHws = myStudent ? state.homeworks.filter(h => h.gradeName === myStudent.gradeName && h.sectionName === myStudent.sectionName) : [];
+          const myReports = myStudent ? state.reports.filter(r => r.studentId === myStudent.id) : [];
+          const statusLabel = { PRESENT: 'حاضر ✅', ABSENT: 'غائب ❌', LATE: 'متأخر ⏰', EXCUSED: 'مجاز 📝' }[myAtt.status] || 'حاضر ✅';
+
+          return `
+            <div class="card" style="border-right:4px solid var(--primary);">
+              <h3>بطاقة المتابعة الخاصة بالطالب: ${myStudent ? myStudent.fullName : user.fullName}</h3>
+              <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+                الصف المسجل: <strong>${myStudent ? myStudent.gradeName : ''} - شعبة ${myStudent ? myStudent.sectionName : ''}</strong> (بيانات خاصة ومعزولة بالكامل)
+              </p>
+            </div>
+            <div class="grid-4" style="margin-bottom:14px;">
+              <div class="card">
+                <div style="font-size:0.8rem;color:var(--text-muted);">حالة الدوام اليوم</div>
+                <div style="font-size:1.25rem;font-weight:800;color:var(--primary);">${statusLabel}</div>
+              </div>
+              <div class="card">
+                <div style="font-size:0.8rem;color:var(--text-muted);">مجموع أيام غياب الطالب</div>
+                <div style="font-size:1.4rem;font-weight:800;color:var(--danger);">${myAtt.totalAbsences} يوم</div>
+              </div>
+              <div class="card">
+                <div style="font-size:0.8rem;color:var(--text-muted);">واجبات الصف اليومية</div>
+                <div style="font-size:1.4rem;font-weight:800;color:var(--secondary);">${myHws.length} واجب</div>
+              </div>
+              <div class="card">
+                <div style="font-size:0.8rem;color:var(--text-muted);">البلاغات الخاصة</div>
+                <div style="font-size:1.4rem;font-weight:800;color:var(--gold);">${myReports.length} بلاغ</div>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-bottom:8px;">كشف درجات الطالب المختصر</h3>
+              ${myGrades.map(g => `<div class="between" style="padding:6px 0;border-bottom:1px solid var(--border);"><span><strong>${g.subject}</strong></span><span class="badge primary">السعي: ${g.saee} | النهائي: ${g.finalExam}</span></div>`).join('') || '<p>لا توجد درجات مسجلة بعد</p>'}
+            </div>
+          `;
+        }
+
+        // Admin or Scoped Teacher Dashboard
+        const scopedStudents = getScopedStudentsForUser(user);
+        const presentCount = scopedStudents.filter(s => (state.attendance[s.id]?.status || 'PRESENT') === 'PRESENT').length;
+        const absentCount = scopedStudents.filter(s => state.attendance[s.id]?.status === 'ABSENT').length;
+
+        return `
+          ${isTeacher ? `
+            <div class="card" style="border-right:4px solid var(--secondary);">
+              <h4>نطاق صلاحيات المعلم المسندة</h4>
+              <p style="font-size:0.84rem;color:var(--text-muted);">المواد: ${user.subjectSpecialty} | الصفوف والشعب: ${(user.assignedClasses||'').replace(/\|/g,' - شعبة ')}</p>
+            </div>
+          ` : ''}
+          <div class="grid-4" style="margin-bottom:14px;">
+            <div class="card">
+              <div style="font-size:0.8rem;color:var(--text-muted);">${isAdmin ? 'إجمالي طلاب المدرسة' : 'طلاب الصفوف المسندة'}</div>
+              <div style="font-size:1.5rem;font-weight:800;color:var(--primary);">${scopedStudents.length}</div>
+            </div>
+            <div class="card">
+              <div style="font-size:0.8rem;color:var(--text-muted);">الحضور اليوم</div>
+              <div style="font-size:1.5rem;font-weight:800;color:var(--success);">${presentCount}</div>
+            </div>
+            <div class="card">
+              <div style="font-size:0.8rem;color:var(--text-muted);">الغياب اليوم</div>
+              <div style="font-size:1.5rem;font-weight:800;color:var(--danger);">${absentCount}</div>
+            </div>
+            <div class="card">
+              <div style="font-size:0.8rem;color:var(--text-muted);">الصفوف المسجلة</div>
+              <div style="font-size:1.5rem;font-weight:800;color:var(--gold);">${state.schoolConfig.registeredClasses.length}</div>
+            </div>
+          </div>
+          <div class="card">
+            <h3 style="margin-bottom:10px;">آخر الإشعارات والنشاطات</h3>
+            ${getScopedNotificationsForUser(user).map(n => `
+              <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+                <strong>${n.title}</strong>
+                <div style="font-size:0.85rem;color:var(--text-muted);">${n.body}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'ATTENDANCE') {
+        if (isParentOrStudent) {
+          const myStudent = getLinkedStudent(user);
+          const myAtt = myStudent ? (state.attendance[myStudent.id] || { status: 'PRESENT', totalAbsences: 0 }) : { status: 'PRESENT', totalAbsences: 0 };
+          const statusLabel = { PRESENT: 'حاضر ✅', ABSENT: 'غائب ❌', LATE: 'متأخر ⏰', EXCUSED: 'مجاز 📝' }[myAtt.status] || 'حاضر ✅';
+          return `
+            <div class="card">
+              <h3>سجل المواظبة والدوام الخاص بالطالب</h3>
+              <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">${myStudent ? myStudent.fullName : ''} • ${myStudent ? myStudent.gradeName : ''} (${myStudent ? myStudent.sectionName : ''})</p>
+              <div class="between" style="padding:12px;background:var(--surface-variant);border-radius:12px;">
+                <span>حالة الحضور لهذا اليوم: <strong>${statusLabel}</strong></span>
+                <span class="badge danger">إجمالي أيام الغياب: ${myAtt.totalAbsences} يوم</span>
+              </div>
+            </div>
+          `;
+        }
+
+        const allowedClasses = getAllowedClassesForUser(user);
+        if (!allowedClasses.includes(state.attendanceClass)) state.attendanceClass = allowedClasses[0] || '';
+        const allowedSections = getAllowedSectionsForClass(user, state.attendanceClass);
+        if (!allowedSections.includes(state.attendanceSection)) state.attendanceSection = allowedSections[0] || 'أ';
+
+        const classStudents = getScopedStudentsForUser(user).filter(s => s.gradeName === state.attendanceClass && s.sectionName === state.attendanceSection);
+
+        return `
+          <div class="card">
+            <h3 style="margin-bottom:10px;">سجل الحضور والغياب اليومي الذكي</h3>
+            <div class="grid-2" style="margin-bottom:12px;">
+              <div>
+                <label style="font-size:0.8rem;font-weight:700;">الصف المسجل</label>
+                <select onchange="state.attendanceClass=this.value;saveState();">
+                  ${allowedClasses.map(c => `<option value="${c}" ${state.attendanceClass===c?'selected':''}>${c}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="font-size:0.8rem;font-weight:700;">الشعبة</label>
+                <select onchange="state.attendanceSection=this.value;saveState();">
+                  ${allowedSections.map(sec => `<option value="${sec}" ${state.attendanceSection===sec?'selected':''}>شعبة ${sec}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            ${classStudents.map(s => {
+              const att = state.attendance[s.id] || { status: 'PRESENT', totalAbsences: 0 };
+              return `
+                <div class="between" style="padding:10px 0;border-bottom:1px solid var(--border);">
+                  <div>
+                    <strong>${s.fullName}</strong>
+                    <div style="font-size:0.8rem;color:var(--text-muted);">${s.gradeName} - شعبة ${s.sectionName} | إجمالي الغياب: ${att.totalAbsences}</div>
+                  </div>
+                  <div class="row">
+                    <button onclick="setAttendance('${s.id}','PRESENT')">حاضر</button>
+                    <button class="danger" onclick="setAttendance('${s.id}','ABSENT')">غائب</button>
+                    <button class="warning" onclick="setAttendance('${s.id}','LATE')">متأخر</button>
+                  </div>
+                </div>
+              `;
+            }).join('') || '<p>لا يوجد طلاب مسجلون في هذا الصف والشعبة</p>'}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'SCHEDULE_HOMEWORK') {
+        const allowedClasses = getAllowedClassesForUser(user);
+        if (!allowedClasses.includes(state.scheduleClass)) state.scheduleClass = allowedClasses[0] || '';
+        const allowedSections = getAllowedSectionsForClass(user, state.scheduleClass);
+        if (!allowedSections.includes(state.scheduleSection)) state.scheduleSection = allowedSections[0] || 'أ';
+        const allowedSubjects = getAllowedSubjectsForUser(user);
+
+        const filteredHws = state.homeworks.filter(h => h.gradeName === state.scheduleClass && h.sectionName === state.scheduleSection);
+
+        return `
+          ${(isAdmin || isTeacher) ? `
+            <div class="card">
+              <h3 style="margin-bottom:10px;">إرسال واجب يومي للصف والشعبة</h3>
+              <div class="grid-2" style="margin-bottom:10px;">
+                <select id="hw_class" onchange="state.scheduleClass=this.value;saveState();">
+                  ${allowedClasses.map(c => `<option value="${c}" ${state.scheduleClass===c?'selected':''}>${c}</option>`).join('')}
+                </select>
+                <select id="hw_sec" onchange="state.scheduleSection=this.value;saveState();">
+                  ${allowedSections.map(s => `<option value="${s}" ${state.scheduleSection===s?'selected':''}>شعبة ${s}</option>`).join('')}
+                </select>
+                <select id="hw_sub">
+                  ${allowedSubjects.map(sub => `<option value="${sub}">${sub}</option>`).join('')}
+                </select>
+                <input id="hw_due" placeholder="موعد التسليم" value="غداً صباحاً" />
+              </div>
+              <input id="hw_title" placeholder="تفاصيل الواجب اليومي..." style="margin-bottom:10px;" />
+              <button onclick="addHomework()">${ICONS.plus} نشر الواجب وإشعار الطلاب</button>
+            </div>
+          ` : ''}
+          <div class="card">
+            <h3>الواجبات اليومية (${state.scheduleClass} - شعبة ${state.scheduleSection})</h3>
+            ${filteredHws.map(h => `
+              <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+                <span class="badge primary">${h.subject}</span>
+                <strong style="margin-right:8px;">${h.title}</strong>
+                <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">التسليم: ${h.dueDate} • المعلم: ${h.teacherName}</div>
+              </div>
+            `).join('') || '<p style="margin-top:8px;">لا توجد واجبات مسجلة لهذا الصف حالياً</p>'}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'EXAMS_GRADES') {
+        if (isParentOrStudent) {
+          // Step D: Student & Parent Organized Report Card Table
+          const myStudent = getLinkedStudent(user);
+          const myGrades = myStudent ? state.grades.filter(g => g.studentId === myStudent.id) : [];
+          return `
+            <div class="card">
+              <h3>جدول كشف الدرجات المدرسي المفصل</h3>
+              <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">
+                الطالب: <strong>${myStudent ? myStudent.fullName : user.fullName}</strong> • ${myStudent ? myStudent.gradeName : ''} (شعبة ${myStudent ? myStudent.sectionName : ''})
+              </p>
+              <div style="overflow-x:auto;">
+                <table class="grades-table">
+                  <thead>
+                    <tr>
+                      <th>المادة الدراسية</th>
+                      <th>يومي</th>
+                      <th>شهر 1</th>
+                      <th>شهر 2</th>
+                      <th>نصف السنة</th>
+                      <th>السعي</th>
+                      <th>النهائي</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${myGrades.map(g => `
+                      <tr>
+                        <td><strong>${g.subject}</strong></td>
+                        <td>${g.daily}</td>
+                        <td>${g.month1}</td>
+                        <td>${g.month2}</td>
+                        <td>${g.midYear}</td>
+                        <td><span class="badge primary">${g.saee}</span></td>
+                        <td><span class="badge success">${g.finalExam}</span></td>
+                      </tr>
+                    `).join('') || '<tr><td colspan="7">لا توجد درجات مرصودة بعد</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }
+
+        // Step A, B, C for Admin & Teacher: Select Class -> Section -> Subject -> Instant Search by Name -> Inline Score Fields
+        const allowedClasses = getAllowedClassesForUser(user);
+        if (!allowedClasses.includes(state.gradesClass)) state.gradesClass = allowedClasses[0] || '';
+        const allowedSections = getAllowedSectionsForClass(user, state.gradesClass);
+        if (!allowedSections.includes(state.gradesSection)) state.gradesSection = allowedSections[0] || 'أ';
+        const allowedSubjects = getAllowedSubjectsForUser(user);
+        if (!allowedSubjects.includes(state.gradesSubject)) state.gradesSubject = allowedSubjects[0] || '';
+
+        const studentsInClass = getScopedStudentsForUser(user).filter(s =>
+          s.gradeName === state.gradesClass &&
+          s.sectionName === state.gradesSection &&
+          (!state.gradesSearch || s.fullName.includes(state.gradesSearch))
+        );
+
+        return `
+          <div class="card">
+            <h3 style="margin-bottom:10px;">رصد الامتحانات والدرجات (حسب الصف ⬅️ الشعبة ⬅️ المادة ⬅️ البحث بالاسم)</h3>
+            <div class="grid-2" style="margin-bottom:10px;">
+              <div>
+                <label style="font-size:0.8rem;font-weight:700;">1. اختر الصف المسجل</label>
+                <select onchange="state.gradesClass=this.value;saveState();">
+                  ${allowedClasses.map(c => `<option value="${c}" ${state.gradesClass===c?'selected':''}>${c}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="font-size:0.8rem;font-weight:700;">2. اختر الشعبة</label>
+                <select onchange="state.gradesSection=this.value;saveState();">
+                  ${allowedSections.map(sec => `<option value="${sec}" ${state.gradesSection===sec?'selected':''}>شعبة ${sec}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="font-size:0.8rem;font-weight:700;">3. اختر المادة الدراسية</label>
+                <select onchange="state.gradesSubject=this.value;saveState();">
+                  ${allowedSubjects.map(sub => `<option value="${sub}" ${state.gradesSubject===sub?'selected':''}>${sub}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="font-size:0.8rem;font-weight:700;">4. بحث فوري باسم الطالب</label>
+                <input placeholder="ابحث بالاسم داخل الشعبة..." value="${state.gradesSearch}" oninput="state.gradesSearch=this.value;render();" />
+              </div>
+            </div>
+
+            ${studentsInClass.map(stu => {
+              const ex = state.grades.find(g => g.studentId === stu.id && g.subject === state.gradesSubject) || {
+                daily: 90, month1: 90, month2: 90, midYear: 90, saee: 90, finalExam: 92
+              };
+              return `
+                <div class="card" style="background:var(--surface-variant);margin-bottom:10px;">
+                  <div class="between" style="margin-bottom:8px;">
+                    <strong>${stu.fullName} (${stu.gradeName} - ${stu.sectionName})</strong>
+                    <span class="badge primary">المادة: ${state.gradesSubject}</span>
+                  </div>
+                  <div class="row" style="justify-content:space-between;">
+                    <label style="font-size:0.76rem;">يومي <input id="d_${stu.id}" class="score-input" type="number" value="${ex.daily}" /></label>
+                    <label style="font-size:0.76rem;">شهر1 <input id="m1_${stu.id}" class="score-input" type="number" value="${ex.month1}" /></label>
+                    <label style="font-size:0.76rem;">شهر2 <input id="m2_${stu.id}" class="score-input" type="number" value="${ex.month2}" /></label>
+                    <label style="font-size:0.76rem;">نصف السنة <input id="mid_${stu.id}" class="score-input" type="number" value="${ex.midYear}" /></label>
+                    <label style="font-size:0.76rem;">السعي <input id="sa_${stu.id}" class="score-input" type="number" value="${ex.saee}" /></label>
+                    <label style="font-size:0.76rem;">النهائي <input id="fn_${stu.id}" class="score-input" type="number" value="${ex.finalExam}" /></label>
+                    <button onclick="saveStudentSubjectGrade('${stu.id}')">${ICONS.check} حفظ</button>
+                  </div>
+                </div>
+              `;
+            }).join('') || '<p>لا يوجد طلاب مطابقون في هذا الصف والشعبة</p>'}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'HONOR_ROLL') {
+        return `
+          <div class="card">
+            <h3 style="margin-bottom:10px;">لوحة الشرف للمتفوقين وأبطال الشهر</h3>
+            ${state.honorRoll.map(h => `
+              <div class="between" style="padding:10px 0;border-bottom:1px solid var(--border);">
+                <div>
+                  <strong>${h.studentName}</strong>
+                  <div style="font-size:0.82rem;color:var(--text-muted);">${h.gradeName} - شعبة ${h.sectionName} • ${h.badgeTitle}</div>
+                </div>
+                <span class="badge gold">${ICONS.award} المعدل: ${h.average}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'TUITION_FEES') {
+        const myStudent = isParentOrStudent ? getLinkedStudent(user) : null;
+        const visibleTuitions = isParentOrStudent
+          ? state.tuitions.filter(t => myStudent && t.studentId === myStudent.id)
+          : state.tuitions;
+
+        return `
+          <div class="card">
+            <h3 style="margin-bottom:10px;">${isParentOrStudent ? 'بيان الأقساط المالية الخاص بالطالب' : 'إدارة الأقساط والرسوم المالية'}</h3>
+            ${visibleTuitions.map(t => {
+              const rem = Math.max(0, t.totalAmount - t.paidAmount);
+              return `
+                <div class="between" style="padding:10px 0;border-bottom:1px solid var(--border);">
+                  <div>
+                    <strong>${t.studentName} (${t.gradeName})</strong>
+                    <div style="font-size:0.82rem;color:var(--text-muted);">الكلي: ${t.totalAmount.toLocaleString()} د.ع | المدفوع: ${t.paidAmount.toLocaleString()} د.ع</div>
+                  </div>
+                  <span class="badge ${rem===0?'success':'danger'}">${rem===0?'مسدد بالكامل':'المتبقي: '+rem.toLocaleString()+' د.ع'}</span>
+                </div>
+              `;
+            }).join('') || '<p>لا توجد سجلات أقساط</p>'}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'REPORTS_CHAT') {
+        const allowedClasses = getAllowedClassesForUser(user);
+        if (!allowedClasses.includes(state.reportClass)) state.reportClass = allowedClasses[0] || '';
+        const allowedSections = getAllowedSectionsForClass(user, state.reportClass);
+        if (!allowedSections.includes(state.reportSection)) state.reportSection = allowedSections[0] || 'أ';
+
+        const studentsInReportClass = getScopedStudentsForUser(user).filter(s =>
+          s.gradeName === state.reportClass &&
+          s.sectionName === state.reportSection &&
+          (!state.reportSearch || s.fullName.includes(state.reportSearch))
+        );
+
+        const myStudent = isParentOrStudent ? getLinkedStudent(user) : null;
+        const visibleReports = isParentOrStudent
+          ? state.reports.filter(r => myStudent && r.studentId === myStudent.id)
+          : isTeacher
+            ? state.reports.filter(r => getTeacherPairs(user).includes(r.gradeName + '|' + r.sectionName))
+            : state.reports;
+
+        return `
+          ${(isAdmin || isTeacher) ? `
+            <div class="card">
+              <h3 style="margin-bottom:10px;">إرسال بلاغ رسمي لولي الأمر (اختيار الصف والشعبة ⬅️ البحث واختيار الطالب)</h3>
+              <div class="grid-2" style="margin-bottom:10px;">
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">1. اختر الصف</label>
+                  <select onchange="state.reportClass=this.value;saveState();">
+                    ${allowedClasses.map(c => `<option value="${c}" ${state.reportClass===c?'selected':''}>${c}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">2. اختر الشعبة</label>
+                  <select onchange="state.reportSection=this.value;saveState();">
+                    ${allowedSections.map(sec => `<option value="${sec}" ${state.reportSection===sec?'selected':''}>شعبة ${sec}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">3. بحث بالاسم داخل الشعبة</label>
+                  <input placeholder="ابحث عن اسم الطالب..." value="${state.reportSearch}" oninput="state.reportSearch=this.value;render();" />
+                </div>
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">4. اختر الطالب المستهدف</label>
+                  <select id="rep_student_id">
+                    ${studentsInReportClass.map(s => `<option value="${s.id}">${s.fullName}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+              <div class="grid-2" style="margin-bottom:10px;">
+                <input id="rep_title" placeholder="عنوان البلاغ الرسمي..." />
+                <input id="rep_body" placeholder="تفاصيل الملاحظة لولي الأمر..." />
+              </div>
+              <button onclick="sendScopedReport()">${ICONS.check} إرسال البلاغ لحساب ولي الأمر</button>
+            </div>
+          ` : ''}
+          <div class="card">
+            <h3 style="margin-bottom:10px;">البلاغات الرسمية والمراسلات</h3>
+            ${visibleReports.map(r => `
+              <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+                <div class="between">
+                  <strong>${r.title} (${r.studentName} - ${r.gradeName}/${r.sectionName})</strong>
+                  <span class="badge primary">${r.sender}</span>
+                </div>
+                <p style="font-size:0.86rem;color:var(--text-muted);margin-top:4px;">${r.body}</p>
+              </div>
+            `).join('') || '<p>لا توجد بلاغات مسجلة</p>'}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'EVENTS_NEWS') {
+        return `
+          <div class="card">
+            <h3 style="margin-bottom:10px;">معرض الفعاليات والأخبار المدرسية</h3>
+            ${state.events.map(ev => `
+              <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+                <span class="badge primary">${ev.category}</span>
+                <strong style="margin-right:8px;">${ev.title}</strong>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">${ev.description}</p>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'ADMIN_ACCOUNTS' && isAdmin) {
+        const regClasses = state.schoolConfig.registeredClasses || [];
+        const regSections = state.schoolConfig.registeredSections || ['أ', 'ب', 'ج'];
+        const regSubjects = state.schoolConfig.registeredSubjects || [];
+
+        const allClassSectionPairs = [];
+        regClasses.forEach(c => regSections.forEach(s => allClassSectionPairs.push(c + '|' + s)));
+
+        const filteredUsers = state.users.filter(u => {
+          const matchesSearch = !state.accountSearch || u.fullName.includes(state.accountSearch) || u.username.includes(state.accountSearch);
+          const matchesRole = state.accountRoleFilter === 'ALL' || u.role === state.accountRoleFilter;
+          const matchesClass = state.accountClassFilter === 'ALL' ||
+            u.gradeName === state.accountClassFilter ||
+            (u.assignedClasses && u.assignedClasses.includes(state.accountClassFilter));
+          return matchesSearch && matchesRole && matchesClass;
+        });
+
+        return `
+          <div class="card">
+            <h3 style="margin-bottom:10px;">إدارة الحسابات والمستخدمين (بحث فوري + ربط بالصفوف المسجلة)</h3>
+            <div class="grid-2" style="margin-bottom:10px;">
+              <div>
+                <label style="font-size:0.8rem;font-weight:700;">شريط البحث الفوري</label>
+                <input placeholder="ابحث بالاسم أو اسم المستخدم..." value="${state.accountSearch}" oninput="state.accountSearch=this.value;render();" />
+              </div>
+              <div class="grid-2">
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">فلتر الدور</label>
+                  <select onchange="state.accountRoleFilter=this.value;saveState();">
+                    <option value="ALL" ${state.accountRoleFilter==='ALL'?'selected':''}>الكل</option>
+                    <option value="TEACHER" ${state.accountRoleFilter==='TEACHER'?'selected':''}>معلم</option>
+                    <option value="PARENT" ${state.accountRoleFilter==='PARENT'?'selected':''}>ولي أمر</option>
+                    <option value="STUDENT" ${state.accountRoleFilter==='STUDENT'?'selected':''}>طالب</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">فلتر الصف المسجل</label>
+                  <select onchange="state.accountClassFilter=this.value;saveState();">
+                    <option value="ALL" ${state.accountClassFilter==='ALL'?'selected':''}>كل الصفوف</option>
+                    ${regClasses.map(c => `<option value="${c}" ${state.accountClassFilter===c?'selected':''}>${c}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h4 style="margin-bottom:8px;">إضافة حساب معلم (اختيار متعدد للمواد والصفوف والشعب)</h4>
+              <div style="display:grid;gap:8px;">
+                <input id="t_name" placeholder="اسم المعلم الكامل" />
+                <div class="grid-2">
+                  <input id="t_user" placeholder="اسم المستخدم" />
+                  <input id="t_pass" placeholder="كلمة المرور" value="123" />
+                </div>
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">المواد المسندة (اختيار متعدد Checkboxes):</label>
+                  <div class="checkbox-grid">
+                    ${regSubjects.map(sub => {
+                      const sel = state.teacherSelectedSubjects.includes(sub);
+                      return `<div class="check-chip ${sel?'selected':''}" onclick="toggleTeacherSub('${sub}')">${sel?'☑':'☐'} ${sub}</div>`;
+                    }).join('')}
+                  </div>
+                </div>
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">الصفوف والشعب المسندة (اختيار متعدد Checkboxes):</label>
+                  <div class="checkbox-grid" style="max-height:130px;overflow-y:auto;">
+                    ${allClassSectionPairs.map(pair => {
+                      const sel = state.teacherSelectedClassSections.includes(pair);
+                      const [c, s] = pair.split('|');
+                      return `<div class="check-chip ${sel?'selected':''}" onclick="toggleTeacherPair('${pair}')">${sel?'☑':'☐'} ${c} (${s})</div>`;
+                    }).join('')}
+                  </div>
+                </div>
+                <button onclick="addTeacher()">${ICONS.plus} اعتماد حساب المعلم</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <h4 style="margin-bottom:8px;">إضافة حساب طالب وولي أمر (من الصفوف المسجلة)</h4>
+              <div style="display:grid;gap:8px;">
+                <input id="s_name" placeholder="اسم الطالب الثلاثي" />
+                <div class="grid-2">
+                  <div>
+                    <label style="font-size:0.78rem;font-weight:700;">الصف المسجل</label>
+                    <select id="s_grade">
+                      ${regClasses.map(c => `<option value="${c}">${c}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size:0.78rem;font-weight:700;">الشعبة المسجلة</label>
+                    <select id="s_sec">
+                      ${regSections.map(s => `<option value="${s}">شعبة ${s}</option>`).join('')}
+                    </select>
+                  </div>
+                </div>
+                <div class="grid-2">
+                  <input id="s_user" placeholder="مستخدم الطالب" />
+                  <input id="s_pass" placeholder="مرور الطالب" value="123" />
+                </div>
+                <input id="p_name" placeholder="اسم ولي الأمر الكامل" />
+                <div class="grid-2">
+                  <input id="p_user" placeholder="مستخدم ولي الأمر" />
+                  <input id="p_pass" placeholder="مرور ولي الأمر" value="123" />
+                </div>
+                <button class="secondary" onclick="addStudentAndParent()">${ICONS.plus} إنشاء وربط حساب الطالب وولي الأمر</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4 style="margin-bottom:10px;">قائمة الحسابات المسجلة (${filteredUsers.length})</h4>
+            ${filteredUsers.map(u => `
+              <div class="between" style="padding:8px 0;border-bottom:1px solid var(--border);">
+                <div>
+                  <strong>${u.fullName}</strong> <span class="badge primary">${getRoleLabel(u.role)}</span>
+                  <div style="font-size:0.8rem;color:var(--text-muted);">
+                    المستخدم: ${u.username} | ${u.role==='TEACHER' ? 'المواد: '+u.subjectSpecialty+' | الصفوف: '+(u.assignedClasses||'').replace(/\|/g,'/') : 'الصف: '+(u.gradeName||'')+' ('+(u.sectionName||'')+')'}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      if (state.activeSection === 'SETTINGS') {
+        const stageKey = state.schoolConfig.schoolStage || 'MIDDLE';
+        return `
+          <div class="card">
+            <h3 style="margin-bottom:10px;">الإعدادات وإدارة المرحلة الدراسية والصفوف المسجلة</h3>
+            ${isAdmin ? `
+              <div class="grid-2" style="margin-bottom:10px;">
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">المرحلة الدراسية للمدرسة</label>
+                  <select onchange="changeSchoolStage(this.value)">
+                    <option value="PRIMARY" ${stageKey==='PRIMARY'?'selected':''}>مدرسة ابتدائية</option>
+                    <option value="MIDDLE" ${stageKey==='MIDDLE'?'selected':''}>مدرسة متوسطة</option>
+                    <option value="PREPARATORY" ${stageKey==='PREPARATORY'?'selected':''}>مدرسة إعدادية</option>
+                    <option value="SECONDARY" ${stageKey==='SECONDARY'?'selected':''}>مدرسة ثانوية</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.8rem;font-weight:700;">إضافة صف جديد لقائمة الصفوف المسجلة</label>
+                  <div class="row" style="flex-wrap:nowrap;">
+                    <input id="new_reg_class" placeholder="اسم الصف..." />
+                    <button onclick="addNewRegisteredClass()">${ICONS.plus} إضافة</button>
+                  </div>
+                </div>
+              </div>
+              <div style="font-size:0.84rem;margin-bottom:8px;">
+                <strong>الصفوف المسجلة حالياً:</strong> ${(state.schoolConfig.registeredClasses||[]).join(' ، ')}
+              </div>
+              <div style="font-size:0.84rem;">
+                <strong>الشعب المسجلة حالياً:</strong> ${(state.schoolConfig.registeredSections||[]).join(' ، ')}
+              </div>
+            ` : '<p>إعدادات الحساب والمظهر الليلي/النهاري</p>'}
+          </div>
+        `;
+      }
+
+      return '';
+    }
+
+    function onSetupStageChange(stageKey) {
+      state.schoolConfig.schoolStage = stageKey;
+      state.schoolConfig.registeredClasses = [...STAGE_CONFIGS[stageKey].classes];
+      state.schoolConfig.registeredSections = [...STAGE_CONFIGS[stageKey].sections];
+      state.schoolConfig.registeredSubjects = [...STAGE_CONFIGS[stageKey].subjects];
+      render();
+    }
+
+    function completeSetup() {
+      const name = document.getElementById('setup_school_name').value.trim() || 'مدرستي النموذجية';
+      const address = document.getElementById('setup_address').value.trim() || 'الموصل - زمار';
+      const type = document.getElementById('setup_type').value;
+      const stage = document.getElementById('setup_stage').value;
+      const adminName = document.getElementById('setup_admin_name').value.trim() || 'مدير المدرسة';
+      const adminUser = document.getElementById('setup_admin_user').value.trim() || 'admin';
+      const adminPass = document.getElementById('setup_admin_pass').value.trim() || '1234';
+
+      state.schoolConfig = {
+        isSetupCompleted: true,
+        schoolName: name,
+        address: address,
+        schoolType: type,
+        schoolStage: stage,
+        registeredClasses: [...STAGE_CONFIGS[stage].classes],
+        registeredSections: [...STAGE_CONFIGS[stage].sections],
+        registeredSubjects: [...STAGE_CONFIGS[stage].subjects],
+        logoBase64: ''
+      };
+      const adminAcc = {
+        id: 'admin_1',
+        fullName: adminName,
+        username: adminUser,
+        password: adminPass,
+        role: 'ADMIN',
+        phone: '07512362567',
+        address: address
+      };
+      state.users = [adminAcc, ...state.users.filter(u => u.role !== 'ADMIN')];
+      state.currentUser = adminAcc;
+      saveState();
+    }
+
+    function login() {
+      const u = document.getElementById('login_user').value.trim();
+      const p = document.getElementById('login_pass').value.trim();
+      const found = state.users.find(acc => acc.username.toLowerCase() === u.toLowerCase() && acc.password === p);
+      if (found) {
+        state.currentUser = found;
+        state.activeSection = 'DASHBOARD';
+        saveState();
+      } else {
+        alert('بيانات الدخول غير صحيحة');
+      }
+    }
+
+    function setAttendance(studentId, status) {
+      const prev = state.attendance[studentId] || { status: 'PRESENT', totalAbsences: 0 };
+      const absences = status === 'ABSENT' ? prev.totalAbsences + 1 : prev.totalAbsences;
+      state.attendance[studentId] = { status, totalAbsences: absences };
+      saveState();
+    }
+
+    function addHomework() {
+      const title = document.getElementById('hw_title').value.trim();
+      const sub = document.getElementById('hw_sub').value;
+      const due = document.getElementById('hw_due').value.trim() || 'غداً';
+      if (!title) return;
+      state.homeworks.unshift({
+        id: 'hw_' + Date.now(),
+        gradeName: state.scheduleClass,
+        sectionName: state.scheduleSection,
+        subject: sub,
+        title,
+        dueDate: due,
+        teacherName: state.currentUser.fullName
+      });
+      saveState();
+    }
+
+    function saveStudentSubjectGrade(studentId) {
+      const stu = state.users.find(u => u.id === studentId);
+      if (!stu) return;
+      const daily = parseInt(document.getElementById('d_' + studentId).value) || 0;
+      const month1 = parseInt(document.getElementById('m1_' + studentId).value) || 0;
+      const month2 = parseInt(document.getElementById('m2_' + studentId).value) || 0;
+      const midYear = parseInt(document.getElementById('mid_' + studentId).value) || 0;
+      const saee = parseInt(document.getElementById('sa_' + studentId).value) || 0;
+      const finalExam = parseInt(document.getElementById('fn_' + studentId).value) || 0;
+
+      const idx = state.grades.findIndex(g => g.studentId === studentId && g.subject === state.gradesSubject);
+      const record = {
+        id: idx >= 0 ? state.grades[idx].id : 'gr_' + Date.now(),
+        studentId,
+        studentName: stu.fullName,
+        gradeName: stu.gradeName,
+        sectionName: stu.sectionName,
+        subject: state.gradesSubject,
+        daily, month1, month2, midYear, saee, finalExam
+      };
+      if (idx >= 0) state.grades[idx] = record;
+      else state.grades.push(record);
+
+      state.notifications.unshift({
+        id: 'nf_' + Date.now(),
+        title: 'تحديث درجات ' + state.gradesSubject,
+        body: 'تم رصد درجات الطالب ' + stu.fullName + ' في مادة ' + state.gradesSubject,
+        targetStudentId: studentId,
+        targetGradeName: stu.gradeName,
+        targetSectionName: stu.sectionName
+      });
+      saveState();
+    }
+
+    function sendScopedReport() {
+      const stuId = document.getElementById('rep_student_id')?.value;
+      const title = document.getElementById('rep_title')?.value.trim();
+      const body = document.getElementById('rep_body')?.value.trim();
+      const stu = state.users.find(u => u.id === stuId);
+      if (!stu || !title || !body) return;
+      state.reports.unshift({
+        id: 'rp_' + Date.now(),
+        studentId: stu.id,
+        studentName: stu.fullName,
+        gradeName: stu.gradeName,
+        sectionName: stu.sectionName,
+        type: 'بلاغ رسمي',
+        title,
+        body,
+        sender: state.currentUser.fullName
+      });
+      state.notifications.unshift({
+        id: 'nf_' + Date.now(),
+        title: 'بلاغ خاص: ' + title,
+        body: 'بخصوص الطالب ' + stu.fullName + ': ' + body,
+        targetStudentId: stu.id,
+        targetGradeName: stu.gradeName,
+        targetSectionName: stu.sectionName
+      });
+      saveState();
+    }
+
+    function toggleTeacherSub(sub) {
+      const idx = state.teacherSelectedSubjects.indexOf(sub);
+      if (idx >= 0) state.teacherSelectedSubjects.splice(idx, 1);
+      else state.teacherSelectedSubjects.push(sub);
+      render();
+    }
+
+    function toggleTeacherPair(pair) {
+      const idx = state.teacherSelectedClassSections.indexOf(pair);
+      if (idx >= 0) state.teacherSelectedClassSections.splice(idx, 1);
+      else state.teacherSelectedClassSections.push(pair);
+      render();
+    }
+
+    function addTeacher() {
+      const name = document.getElementById('t_name').value.trim();
+      const user = document.getElementById('t_user').value.trim();
+      const pass = document.getElementById('t_pass').value.trim() || '123';
+      if (!name || !user) return;
+      state.users.push({
+        id: 'tch_' + Date.now(),
+        fullName: name,
+        username: user,
+        password: pass,
+        role: 'TEACHER',
+        phone: '07512362567',
+        address: 'الموصل - زمار',
+        subjectSpecialty: state.teacherSelectedSubjects.join('، '),
+        assignedClasses: state.teacherSelectedClassSections.join(',')
+      });
+      saveState();
+    }
+
+    function addStudentAndParent() {
+      const sName = document.getElementById('s_name').value.trim();
+      const sGrade = document.getElementById('s_grade').value;
+      const sSec = document.getElementById('s_sec').value;
+      const sUser = document.getElementById('s_user').value.trim();
+      const sPass = document.getElementById('s_pass').value.trim() || '123';
+      const pName = document.getElementById('p_name').value.trim();
+      const pUser = document.getElementById('p_user').value.trim();
+      const pPass = document.getElementById('p_pass').value.trim() || '123';
+      if (!sName || !sUser || !pName || !pUser) return;
+      const stuId = 'stu_' + Date.now();
+      state.users.push({
+        id: stuId,
+        fullName: sName,
+        username: sUser,
+        password: sPass,
+        role: 'STUDENT',
+        phone: '07512362567',
+        address: 'الموصل - زمار',
+        gradeName: sGrade,
+        sectionName: sSec,
+        linkedStudentId: stuId
+      });
+      state.users.push({
+        id: 'par_' + Date.now(),
+        fullName: pName,
+        username: pUser,
+        password: pPass,
+        role: 'PARENT',
+        phone: '07512362567',
+        address: 'الموصل - زمار',
+        gradeName: sGrade,
+        sectionName: sSec,
+        linkedStudentId: stuId
+      });
+      saveState();
+    }
+
+    function changeSchoolStage(stageKey) {
+      state.schoolConfig.schoolStage = stageKey;
+      state.schoolConfig.registeredClasses = [...STAGE_CONFIGS[stageKey].classes];
+      state.schoolConfig.registeredSections = [...STAGE_CONFIGS[stageKey].sections];
+      state.schoolConfig.registeredSubjects = [...STAGE_CONFIGS[stageKey].subjects];
+      saveState();
+    }
+
+    function addNewRegisteredClass() {
+      const val = document.getElementById('new_reg_class').value.trim();
+      if (val && !state.schoolConfig.registeredClasses.includes(val)) {
+        state.schoolConfig.registeredClasses.push(val);
+        saveState();
+      }
+    }
+
+    render();
   </script>
 </body>
 </html>

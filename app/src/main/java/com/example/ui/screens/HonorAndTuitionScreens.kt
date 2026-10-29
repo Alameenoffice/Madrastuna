@@ -30,6 +30,7 @@ import com.example.viewmodel.SchoolViewModel
 
 /**
  * Section 5: Celebratory Golden Honor Roll Screen (لوحة الشرف والطلبة المجتهدون)
+ * Publicly visible to all roles, with editing scoped to Admin and Teacher (for their assigned classes).
  */
 @Composable
 fun HonorRollScreen(
@@ -50,6 +51,10 @@ fun HonorRollScreen(
             .sortedByDescending { it.excellencePoints }
     }
 
+    val scopedEditableStudents = remember(students, currentUser) {
+        viewModel.getScopedStudentsForUser(currentUser)
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -57,7 +62,6 @@ fun HonorRollScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // Golden Celebratory Banner
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -123,10 +127,10 @@ fun HonorRollScreen(
             }
         }
 
-        // Class Filter Row
+        // Class Filter Row from Registered Classes
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val classesList = listOf("الكل") + viewModel.availableClasses
+                val classesList = listOf("الكل") + schoolConfig.registeredClasses
                 items(classesList) { cls ->
                     FilterChip(
                         selected = selectedClass == cls,
@@ -140,9 +144,10 @@ fun HonorRollScreen(
             }
         }
 
-        // Honor Roll Student Cards with Golden Vector Medals
         itemsIndexed(honorStudents, key = { _, s -> s.id }) { index, stu ->
             val rank = index + 1
+            val canEditThisStudent = canEdit && stu.id in scopedEditableStudents.map { it.id }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -202,7 +207,6 @@ fun HonorRollScreen(
                             }
                         }
 
-                        // Excellence Points Pill
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = Color(0xFFFEF3C7),
@@ -229,7 +233,7 @@ fun HonorRollScreen(
                         }
                     }
 
-                    if (canEdit) {
+                    if (canEditThisStudent) {
                         OutlinedButton(
                             onClick = { editingStudent = stu },
                             modifier = Modifier.fillMaxWidth(),
@@ -248,13 +252,12 @@ fun HonorRollScreen(
             }
         }
 
-        // Section for adding other students to the Honor Roll
         if (canEdit) {
             item {
-                val nonHonor = students.filter { !it.isOnHonorRoll }
+                val nonHonor = scopedEditableStudents.filter { !it.isOnHonorRoll }
                 if (nonHonor.isNotEmpty()) {
                     Text(
-                        text = "ترشيح طلبة إضافيين للوحة الشرف:",
+                        text = "ترشيح طلبة إضافيين للوحة الشرف (ضمن صلاحيتك):",
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -273,7 +276,7 @@ fun HonorRollScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("${s.studentName} (${s.gradeClass})", style = MaterialTheme.typography.bodyMedium)
+                                Text("${s.studentName} (${s.gradeClass} - ${s.sectionName})", style = MaterialTheme.typography.bodyMedium)
                                 TextButton(onClick = { editingStudent = s }) {
                                     Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = GoldAccent)
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -346,7 +349,7 @@ fun HonorRollScreen(
 
 /**
  * Section 6: Tuition Fees System Screen (نظام الأقساط الدراسية)
- * Automatically visible/enabled when schoolType == PRIVATE and hidden when PUBLIC.
+ * Strictly isolates Parent/Student so they see ONLY their own student's tuition record.
  */
 @Composable
 fun TuitionFeesScreen(
@@ -360,11 +363,12 @@ fun TuitionFeesScreen(
     var selectedTuitionForPayment by remember { mutableStateOf<TuitionRecord?>(null) }
 
     val canRecordPayment = currentUser?.role == UserRole.ADMIN
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
 
     val visibleTuitions = remember(tuitions, currentUser) {
         when (currentUser?.role) {
             UserRole.PARENT, UserRole.STUDENT -> tuitions.filter {
-                it.studentId == currentUser?.linkedStudentId || currentUser?.linkedStudentId.isNullOrBlank()
+                it.studentId == currentUser?.linkedStudentId
             }
             else -> tuitions
         }
@@ -381,7 +385,6 @@ fun TuitionFeesScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // Summary Financial Banner
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -407,13 +410,13 @@ fun TuitionFeesScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "نظام الأقساط الدراسية (${schoolConfig.schoolType.arabicLabel})",
+                                text = if (isParentOrStudent) "كشف الأقساط الخاص بالطالب" else "نظام الأقساط الدراسية (${schoolConfig.schoolType.arabicLabel})",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
                         NoWrapBadge(
-                            text = "مفعل تلقائياً",
+                            text = if (isParentOrStudent) "خاص" else "مفعل تلقائياً",
                             icon = Icons.Filled.Verified,
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = Color.White
@@ -447,7 +450,6 @@ fun TuitionFeesScreen(
             }
         }
 
-        // Student Tuition Cards
         items(visibleTuitions, key = { it.studentId }) { record ->
             val progress = if (record.totalFee > 0) {
                 (record.paidAmount.toFloat() / record.totalFee.toFloat()).coerceIn(0f, 1f)
@@ -518,7 +520,6 @@ fun TuitionFeesScreen(
                         )
                     }
 
-                    // Installments History List
                     if (record.installments.isNotEmpty()) {
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),

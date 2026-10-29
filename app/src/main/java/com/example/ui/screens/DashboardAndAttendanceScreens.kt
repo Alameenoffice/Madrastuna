@@ -40,14 +40,31 @@ fun DashboardScreen(
     val accounts by viewModel.accounts.collectAsState()
     val attendance by viewModel.attendance.collectAsState()
     val homeworks by viewModel.homeworks.collectAsState()
+    val grades by viewModel.grades.collectAsState()
+    val reports by viewModel.reports.collectAsState()
     val notifications by viewModel.notifications.collectAsState()
     val tuitions by viewModel.tuitions.collectAsState()
 
-    val teachersCount = remember(accounts) { accounts.count { it.role == UserRole.TEACHER } }
-    val honorCount = remember(students) { students.count { it.isOnHonorRoll } }
-    val presentCount = remember(attendance) { attendance.count { it.status == AttendanceStatus.PRESENT } }
-    val absentCount = remember(attendance) { attendance.count { it.status == AttendanceStatus.ABSENT } }
-    val unreadNotifications = remember(notifications) { notifications.count { !it.isRead } }
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
+    val isTeacher = currentUser?.role == UserRole.TEACHER
+    val isAdmin = currentUser?.role == UserRole.ADMIN
+
+    // Scoped data based on logged-in user role
+    val scopedStudents = remember(students, currentUser) {
+        viewModel.getScopedStudentsForUser(currentUser)
+    }
+    val myStudent = remember(scopedStudents, students, currentUser) {
+        if (isParentOrStudent) {
+            scopedStudents.firstOrNull() ?: students.firstOrNull { it.id == currentUser?.linkedStudentId }
+        } else null
+    }
+
+    val scopedNotifications = remember(notifications, currentUser) {
+        viewModel.getScopedNotificationsForUser(currentUser)
+    }
+    val unreadNotifications = remember(scopedNotifications) {
+        scopedNotifications.count { !it.isRead }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -84,8 +101,8 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             NoWrapBadge(
-                                text = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.address}",
-                                icon = Icons.Filled.LocationOn,
+                                text = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel}",
+                                icon = Icons.Filled.School,
                                 containerColor = Color.White.copy(alpha = 0.2f),
                                 contentColor = Color.White
                             )
@@ -115,14 +132,21 @@ fun DashboardScreen(
                                     color = Color.White
                                 )
                                 Text(
-                                    text = "${schoolConfig.schoolName} — العام الدراسي ${schoolConfig.academicYear}",
+                                    text = when {
+                                        isParentOrStudent && myStudent != null ->
+                                            "الطالب: ${myStudent.studentName} • الصف: ${myStudent.gradeClass} (شعبة ${myStudent.sectionName})"
+                                        isTeacher ->
+                                            "المواد: ${currentUser?.specialty ?: ""} • الصفوف: ${currentUser?.assignedClasses ?: ""}"
+                                        else ->
+                                            "${schoolConfig.schoolName} (${schoolConfig.address}) — ${schoolConfig.academicYear}"
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White.copy(alpha = 0.88f)
+                                    color = Color.White.copy(alpha = 0.9f)
                                 )
                             }
                         }
 
-                        if (currentUser?.role == UserRole.ADMIN) {
+                        if (isAdmin) {
                             Button(
                                 onClick = { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) },
                                 shape = RoundedCornerShape(12.dp),
@@ -150,84 +174,174 @@ fun DashboardScreen(
             }
         }
 
-        // Smart Stat Cards Grid (بطاقات إحصائية ذكية)
+        // Strict Privacy Isolation vs Admin/Teacher Stat Cards
         item {
-            Text(
-                text = "لوحة الإحصائيات الفورية",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    SmartStatCard(
-                        title = "إجمالي الطلبة",
-                        value = "${students.size} طالب",
-                        subtitle = "الكادر التدريسي: $teachersCount",
-                        icon = Icons.Filled.Groups,
-                        accentColor = PrimaryLight,
-                        modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateToSection(AppSection.ATTENDANCE) }
-                    )
-                    SmartStatCard(
-                        title = "سجل الحضور اليومي",
-                        value = "$presentCount حاضر",
-                        subtitle = "حالات الغياب: $absentCount",
-                        icon = Icons.Filled.FactCheck,
-                        accentColor = InfoBlue,
-                        modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateToSection(AppSection.ATTENDANCE) }
-                    )
+            if (isParentOrStudent && myStudent != null) {
+                // PRIVATE STUDENT-ONLY DASHBOARD STATS (Strictly NO general school stats!)
+                val myTodayStatus = attendance.firstOrNull { it.studentId == myStudent.id }?.status ?: AttendanceStatus.PRESENT
+                val myTotalAbsences = viewModel.getTotalAbsenceDays(myStudent.id)
+                val myClassHomeworks = homeworks.filter {
+                    it.gradeClass == myStudent.gradeClass && it.sectionName == myStudent.sectionName
                 }
+                val myGrades = grades.filter { it.studentId == myStudent.id }
+                val myAvg = if (myGrades.isEmpty()) 0 else myGrades.map { it.finalAverage }.average().toInt()
+                val myReportsCount = reports.count { it.studentId == myStudent.id }
+                val myTuition = tuitions.firstOrNull { it.studentId == myStudent.id }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    SmartStatCard(
-                        title = "الواجبات والتحضير",
-                        value = "${homeworks.size} واجب",
-                        subtitle = "محدث لجميع الشعب",
-                        icon = Icons.Filled.MenuBook,
-                        accentColor = SecondaryLight,
-                        modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateToSection(AppSection.SCHEDULE_HOMEWORK) }
-                    )
-                    SmartStatCard(
-                        title = "لوحة الشرف الذهبية",
-                        value = "$honorCount متفوق",
-                        subtitle = "أوائل الصفوف",
-                        icon = Icons.Filled.EmojiEvents,
-                        accentColor = GoldAccent,
-                        modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateToSection(AppSection.HONOR_ROLL) }
-                    )
-                }
+                Text(
+                    text = "المتابعة الخاصة بالطالب: ${myStudent.studentName}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(8.dp))
 
-                if (schoolConfig.schoolType == SchoolType.PRIVATE) {
-                    val totalPaid = tuitions.sumOf { it.paidAmount }
-                    val totalRemaining = tuitions.sumOf { it.remainingAmount }
-                    SmartStatCard(
-                        title = "ملخص نظام الأقساط الدراسية (مدرسة أهلية)",
-                        value = "الواصل: $totalPaid د.ع",
-                        subtitle = "المتبقي الكلي: $totalRemaining د.ع — اضغط لإدارة الدفعات والوصولات",
-                        icon = Icons.Filled.Payments,
-                        accentColor = Color(0xFF0D9488),
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = { viewModel.navigateToSection(AppSection.TUITION_FEES) }
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        SmartStatCard(
+                            title = "حالة الحضور اليوم",
+                            value = myTodayStatus.arabicLabel,
+                            subtitle = "إجمالي أيام غيابه: $myTotalAbsences يوم",
+                            icon = Icons.Filled.FactCheck,
+                            accentColor = if (myTodayStatus == AttendanceStatus.ABSENT) DangerRed else PrimaryLight,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.navigateToSection(AppSection.ATTENDANCE) }
+                        )
+                        SmartStatCard(
+                            title = "تحضير وواجبات صفه",
+                            value = "${myClassHomeworks.size} واجب",
+                            subtitle = "${myStudent.gradeClass} (${myStudent.sectionName})",
+                            icon = Icons.Filled.MenuBook,
+                            accentColor = SecondaryLight,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.navigateToSection(AppSection.SCHEDULE_HOMEWORK) }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        SmartStatCard(
+                            title = "معدل درجات الطالب",
+                            value = if (myGrades.isEmpty()) "قيد الرصد" else "$myAvg%",
+                            subtitle = "${myGrades.size} مواد مرصودة",
+                            icon = Icons.Filled.Assessment,
+                            accentColor = InfoBlue,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.navigateToSection(AppSection.EXAMS_GRADES) }
+                        )
+                        SmartStatCard(
+                            title = "البلاغات الخاصة",
+                            value = "$myReportsCount تبليغ",
+                            subtitle = "مراسلة الإدارة المباشرة",
+                            icon = Icons.Filled.Forum,
+                            accentColor = GoldAccent,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.navigateToSection(AppSection.REPORTS_CHAT) }
+                        )
+                    }
+
+                    if (schoolConfig.schoolType == SchoolType.PRIVATE && myTuition != null) {
+                        SmartStatCard(
+                            title = "الأقساط الدراسية الخاصة بالطالب (${myStudent.studentName})",
+                            value = "الواصل: ${myTuition.paidAmount} د.ع",
+                            subtitle = "المتبقي: ${myTuition.remainingAmount} د.ع • الاستحقاق القادم: ${myTuition.nextDueDate}",
+                            icon = Icons.Filled.Payments,
+                            accentColor = Color(0xFF0D9488),
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { viewModel.navigateToSection(AppSection.TUITION_FEES) }
+                        )
+                    }
+                }
+            } else {
+                // ADMIN OR SCOPED TEACHER DASHBOARD STATS
+                val scopedStudentIds = scopedStudents.map { it.id }.toSet()
+                val scopedAttendance = attendance.filter { it.studentId in scopedStudentIds }
+                val presentCount = scopedAttendance.count { it.status == AttendanceStatus.PRESENT }
+                val absentCount = scopedAttendance.count { it.status == AttendanceStatus.ABSENT }
+                val honorCount = students.count { it.isOnHonorRoll }
+                val teachersCount = accounts.count { it.role == UserRole.TEACHER }
+
+                Text(
+                    text = if (isTeacher) "إحصائيات صفوفك وطلابك المسندين" else "لوحة الإحصائيات العامة للمدرسة",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        SmartStatCard(
+                            title = if (isTeacher) "طلابي المسندون" else "إجمالي الطلبة",
+                            value = "${scopedStudents.size} طالب",
+                            subtitle = if (isTeacher) "ضمن شعبك المسندة" else "الكادر التدريسي: $teachersCount",
+                            icon = Icons.Filled.Groups,
+                            accentColor = PrimaryLight,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.navigateToSection(AppSection.ATTENDANCE) }
+                        )
+                        SmartStatCard(
+                            title = "سجل الحضور اليومي",
+                            value = "$presentCount حاضر",
+                            subtitle = "حالات الغياب: $absentCount",
+                            icon = Icons.Filled.FactCheck,
+                            accentColor = InfoBlue,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.navigateToSection(AppSection.ATTENDANCE) }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        SmartStatCard(
+                            title = "الواجبات والتحضير",
+                            value = "${homeworks.size} واجب",
+                            subtitle = "محدث للصفوف المسجلة",
+                            icon = Icons.Filled.MenuBook,
+                            accentColor = SecondaryLight,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.navigateToSection(AppSection.SCHEDULE_HOMEWORK) }
+                        )
+                        SmartStatCard(
+                            title = "لوحة الشرف الذهبية",
+                            value = "$honorCount متفوق",
+                            subtitle = "أوائل الصفوف",
+                            icon = Icons.Filled.EmojiEvents,
+                            accentColor = GoldAccent,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.navigateToSection(AppSection.HONOR_ROLL) }
+                        )
+                    }
+
+                    if (isAdmin && schoolConfig.schoolType == SchoolType.PRIVATE) {
+                        val totalPaid = tuitions.sumOf { it.paidAmount }
+                        val totalRemaining = tuitions.sumOf { it.remainingAmount }
+                        SmartStatCard(
+                            title = "ملخص نظام الأقساط الدراسية (مدرسة أهلية)",
+                            value = "الواصل: $totalPaid د.ع",
+                            subtitle = "المتبقي الكلي: $totalRemaining د.ع — اضغط لإدارة الدفعات والوصولات",
+                            icon = Icons.Filled.Payments,
+                            accentColor = Color(0xFF0D9488),
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { viewModel.navigateToSection(AppSection.TUITION_FEES) }
+                        )
+                    }
                 }
             }
         }
 
-        // All 8 Sections Quick Access Grid
+        // All Sections Quick Access Grid
         item {
             Text(
-                text = "الأقسام التعليمية والإدارية المتكاملة",
+                text = "الأقسام التعليمية والإدارية",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -235,16 +349,16 @@ fun DashboardScreen(
 
             val sectionsList = remember(schoolConfig.schoolType, currentUser) {
                 buildList {
-                    add(Triple(AppSection.ATTENDANCE, Icons.Filled.HowToReg, "رصد الحضور والغياب وتبليغ واتساب"))
+                    add(Triple(AppSection.ATTENDANCE, Icons.Filled.HowToReg, if (isParentOrStudent) "حالة الحضور وعداد الغياب الخاص" else "رصد الحضور والغياب وتبليغ واتساب"))
                     add(Triple(AppSection.SCHEDULE_HOMEWORK, Icons.Filled.CalendarMonth, "جدول الحصص والتحضير اليومي"))
-                    add(Triple(AppSection.EXAMS_GRADES, Icons.Filled.Assessment, "الامتحانات وكشف الدرجات والسعي"))
-                    add(Triple(AppSection.HONOR_ROLL, Icons.Filled.WorkspacePremium, "لوحة الشرف والأوسمة الذهبية"))
-                    if (schoolConfig.schoolType == SchoolType.PRIVATE) {
-                        add(Triple(AppSection.TUITION_FEES, Icons.Filled.AccountBalanceWallet, "الأقساط الدراسية ووصولات الدفع"))
+                    add(Triple(AppSection.EXAMS_GRADES, Icons.Filled.Assessment, if (isParentOrStudent) "جدول كشف درجات الطالب التفصيلي" else "الامتحانات ورصد الدرجات حسب المادة"))
+                    add(Triple(AppSection.HONOR_ROLL, Icons.Filled.WorkspacePremium, "لوحة الشرف للمتفوقين (عام)"))
+                    if (schoolConfig.schoolType == SchoolType.PRIVATE && !isTeacher) {
+                        add(Triple(AppSection.TUITION_FEES, Icons.Filled.AccountBalanceWallet, if (isParentOrStudent) "أقساط الطالب ووصولات الدفع" else "الأقساط الدراسية ووصولات الدفع"))
                     }
-                    add(Triple(AppSection.REPORTS_CHAT, Icons.Filled.Forum, "البلاغات الرسمية والمراسلة المباشرة"))
-                    add(Triple(AppSection.EVENTS_NEWS, Icons.Filled.Newspaper, "معرض الفعاليات والأخبار المدرسية"))
-                    if (currentUser?.role == UserRole.ADMIN) {
+                    add(Triple(AppSection.REPORTS_CHAT, Icons.Filled.Forum, if (isParentOrStudent) "بلاغات الطالب ومراسلة الإدارة" else "البلاغات الرسمية والمراسلة المباشرة"))
+                    add(Triple(AppSection.EVENTS_NEWS, Icons.Filled.Newspaper, "معرض الفعاليات والأخبار (عام)"))
+                    if (isAdmin) {
                         add(Triple(AppSection.ADMIN_ACCOUNTS, Icons.Filled.ManageAccounts, "إدارة وتفعيل حسابات المستخدمين"))
                     }
                 }
@@ -310,7 +424,7 @@ fun DashboardScreen(
             }
         }
 
-        // Instant Notification Center Summary Card
+        // Scoped Instant Notification Center Summary Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -357,7 +471,7 @@ fun DashboardScreen(
                         }
                     }
 
-                    notifications.take(3).forEach { notif ->
+                    scopedNotifications.take(3).forEach { notif ->
                         Surface(
                             color = if (!notif.isRead) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -487,11 +601,8 @@ private fun SmartStatCard(
 
 /**
  * Section 2: Daily Attendance Screen (سجل الحضور والغياب اليومي)
- * - Select Class, Section, Date
- * - Record status (حاضر، غائب، متأخر، إجازة)
- * - Instant parent notification on غائب or متأخر
- * - Direct WhatsApp absence notification button
- * - Total Absence Days counter (عداد إجمالي أيام الغياب)
+ * - Strictly isolates Parent/Student so they see ONLY their own student's attendance & total absence days.
+ * - Filters Teacher to ONLY their assigned classes & sections.
  */
 @Composable
 fun DailyAttendanceScreen(
@@ -503,21 +614,35 @@ fun DailyAttendanceScreen(
     val students by viewModel.students.collectAsState()
     val attendance by viewModel.attendance.collectAsState()
 
-    var selectedClass by remember { mutableStateOf("الكل") }
-    var selectedSection by remember { mutableStateOf("الكل") }
-    var selectedDate by remember { mutableStateOf("2026-10-29") }
-
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
-    val filteredStudents = remember(students, selectedClass, selectedSection, currentUser) {
-        students.filter { stu ->
-            val roleMatch = when (currentUser?.role) {
-                UserRole.PARENT, UserRole.STUDENT -> stu.id == currentUser?.linkedStudentId || currentUser?.linkedStudentId.isNullOrBlank()
-                else -> true
+    val allowedClasses = remember(schoolConfig, currentUser) {
+        viewModel.getAllowedClassesForUser(currentUser)
+    }
+    var selectedClass by remember(allowedClasses) {
+        mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
+    }
+    val allowedSections = remember(schoolConfig, currentUser, selectedClass) {
+        viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
+    }
+    var selectedSection by remember(allowedSections) {
+        mutableStateOf(allowedSections.firstOrNull() ?: "أ")
+    }
+
+    var selectedDate by remember { mutableStateOf("2026-10-29") }
+    var searchName by remember { mutableStateOf("") }
+
+    val scopedStudents = remember(students, currentUser, selectedClass, selectedSection, searchName) {
+        val base = viewModel.getScopedStudentsForUser(currentUser)
+        if (isParentOrStudent) {
+            base
+        } else {
+            base.filter { stu ->
+                stu.gradeClass == selectedClass &&
+                    stu.sectionName == selectedSection &&
+                    (searchName.isBlank() || stu.studentName.contains(searchName, ignoreCase = true))
             }
-            val classMatch = selectedClass == "الكل" || stu.gradeClass == selectedClass
-            val sectionMatch = selectedSection == "الكل" || stu.sectionName == selectedSection
-            roleMatch && classMatch && sectionMatch
         }
     }
 
@@ -528,228 +653,314 @@ fun DailyAttendanceScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // Filter Card (اختيار الصف والشعبة والتاريخ)
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
+        if (isParentOrStudent) {
+            // Strict Privacy View for Parent & Student: ONLY their own student's attendance!
+            val myStu = scopedStudents.firstOrNull()
+            if (myStu != null) {
+                val myTotalAbsences = viewModel.getTotalAbsenceDays(myStu.id)
+                val myRecords = attendance.filter { it.studentId == myStu.id }
+                val todayStatus = myRecords.firstOrNull { it.date == selectedDate }?.status ?: AttendanceStatus.PRESENT
+
+                item {
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "سجل الحضور الخاص: ${myStu.studentName}",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                NoWrapBadge(
+                                    text = "إجمالي أيام الغياب: $myTotalAbsences يوم",
+                                    icon = Icons.Filled.EventBusy,
+                                    containerColor = if (myTotalAbsences > 0) DangerRed else SuccessGreen,
+                                    contentColor = Color.White
+                                )
+                            }
+                            Text(
+                                text = "الصف: ${myStu.gradeClass} (شعبة ${myStu.sectionName}) • حالة اليوم ($selectedDate): ${todayStatus.arabicLabel}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+
+                items(myRecords, key = { it.id }) { rec ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.HowToReg,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "سجل الحضور والغياب اليومي",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                        }
-                        NoWrapBadge(
-                            text = "التاريخ: $selectedDate",
-                            icon = Icons.Filled.Today,
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = selectedDate,
-                        onValueChange = { selectedDate = it },
-                        label = { Text("تاريخ الرصد اليومي") },
-                        leadingIcon = { Icon(Icons.Filled.CalendarToday, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Text(
-                        text = "تصفية حسب الصف الدراسي:",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val classesWithAll = listOf("الكل") + viewModel.availableClasses
-                        items(classesWithAll) { cls ->
-                            FilterChip(
-                                selected = selectedClass == cls,
-                                onClick = { selectedClass = cls },
-                                label = {
-                                    Text(cls, maxLines = 1, softWrap = false)
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = if (selectedClass == cls) Icons.Filled.Check else Icons.Filled.Class,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                            Column {
+                                Text("التاريخ: ${rec.date}", style = MaterialTheme.typography.titleSmall)
+                                if (rec.note.isNotBlank()) {
+                                    Text(rec.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                            )
-                        }
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text("الشعبة:", style = MaterialTheme.typography.labelLarge)
-                        (listOf("الكل") + viewModel.availableSections).forEach { sec ->
-                            FilterChip(
-                                selected = selectedSection == sec,
-                                onClick = { selectedSection = sec },
-                                label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                            }
+                            NoWrapBadge(
+                                text = rec.status.arabicLabel,
+                                icon = Icons.Filled.FactCheck,
+                                containerColor = if (rec.status == AttendanceStatus.ABSENT) DangerRed.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f),
+                                contentColor = if (rec.status == AttendanceStatus.ABSENT) DangerRed else SuccessGreen
                             )
                         }
                     }
                 }
             }
-        }
-
-        // Student Attendance Cards
-        items(filteredStudents, key = { it.id }) { stu ->
-            val currentEntry = attendance.firstOrNull {
-                it.studentId == stu.id && it.date == selectedDate
-            }
-            val currentStatus = currentEntry?.status ?: AttendanceStatus.PRESENT
-            val totalAbsences = remember(attendance, stu.id) {
-                viewModel.getTotalAbsenceDays(stu.id)
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+        } else {
+            // Admin & Scoped Teacher Attendance Filter Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Base64AvatarImage(
-                                base64Data = stu.photoBase64,
-                                fallbackIcon = Icons.Filled.Person,
-                                contentDescription = stu.studentName,
-                                size = 46.dp
-                            )
-                            Column {
-                                Text(
-                                    text = stu.studentName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.HowToReg,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    text = "${stu.gradeClass} • شعبة (${stu.sectionName})",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "سجل الحضور والغياب اليومي",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                            NoWrapBadge(
+                                text = "التاريخ: $selectedDate",
+                                icon = Icons.Filled.Today,
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = selectedDate,
+                                onValueChange = { selectedDate = it },
+                                label = { Text("تاريخ الرصد") },
+                                leadingIcon = { Icon(Icons.Filled.CalendarToday, contentDescription = null) },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            OutlinedTextField(
+                                value = searchName,
+                                onValueChange = { searchName = it },
+                                label = { Text("بحث باسم الطالب...") },
+                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                                singleLine = true,
+                                modifier = Modifier.weight(1.2f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "اختر الصف الدراسي المسجل:",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(allowedClasses) { cls ->
+                                FilterChip(
+                                    selected = selectedClass == cls,
+                                    onClick = {
+                                        selectedClass = cls
+                                        val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                        if (selectedSection !in nextSecs) {
+                                            selectedSection = nextSecs.firstOrNull() ?: "أ"
+                                        }
+                                    },
+                                    label = { Text(cls, maxLines = 1, softWrap = false) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (selectedClass == cls) Icons.Filled.Check else Icons.Filled.Class,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 )
                             }
                         }
 
-                        // Total Absence Counter Badge (عداد إجمالي أيام الغياب)
-                        NoWrapBadge(
-                            text = "إجمالي الغياب: $totalAbsences يوم",
-                            icon = Icons.Filled.EventBusy,
-                            containerColor = if (totalAbsences > 0) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.14f),
-                            contentColor = if (totalAbsences > 0) DangerRed else SuccessGreen
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("الشعبة المسجلة:", style = MaterialTheme.typography.labelLarge)
+                            allowedSections.forEach { sec ->
+                                FilterChip(
+                                    selected = selectedSection == sec,
+                                    onClick = { selectedSection = sec },
+                                    label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                                )
+                            }
+                        }
                     }
+                }
+            }
 
-                    // 4 Attendance Status Buttons (حاضر، غائب، متأخر، إجازة)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // Student Attendance Cards for the selected Class & Section
+            items(scopedStudents, key = { it.id }) { stu ->
+                val currentEntry = attendance.firstOrNull {
+                    it.studentId == stu.id && it.date == selectedDate
+                }
+                val currentStatus = currentEntry?.status ?: AttendanceStatus.PRESENT
+                val totalAbsences = remember(attendance, stu.id) {
+                    viewModel.getTotalAbsenceDays(stu.id)
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        AttendanceStatus.entries.forEach { st ->
-                            val isSelected = currentStatus == st
-                            val statusColor = when (st) {
-                                AttendanceStatus.PRESENT -> SuccessGreen
-                                AttendanceStatus.ABSENT -> DangerRed
-                                AttendanceStatus.LATE -> WarningAmber
-                                AttendanceStatus.EXCUSED -> InfoBlue
-                            }
-                            val statusIcon = when (st) {
-                                AttendanceStatus.PRESENT -> Icons.Filled.CheckCircle
-                                AttendanceStatus.ABSENT -> Icons.Filled.Cancel
-                                AttendanceStatus.LATE -> Icons.Filled.Schedule
-                                AttendanceStatus.EXCUSED -> Icons.Filled.AssignmentLate
-                            }
-
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable(enabled = canEdit) {
-                                        viewModel.recordStudentAttendance(stu, selectedDate, st)
-                                    }
-                                    .testTag("att_btn_${stu.id}_${st.name}"),
-                                color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                shape = RoundedCornerShape(10.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = statusIcon,
-                                        contentDescription = st.arabicLabel,
-                                        tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                Base64AvatarImage(
+                                    base64Data = stu.photoBase64,
+                                    fallbackIcon = Icons.Filled.Person,
+                                    contentDescription = stu.studentName,
+                                    size = 46.dp
+                                )
+                                Column {
                                     Text(
-                                        text = st.arabicLabel,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        softWrap = false
+                                        text = stu.studentName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "${stu.gradeClass} • شعبة (${stu.sectionName})",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
-                        }
-                    }
 
-                    // Instant WhatsApp Alert Button for Absent / Late Students
-                    if (currentStatus == AttendanceStatus.ABSENT || currentStatus == AttendanceStatus.LATE) {
-                        VectorActionButton(
-                            text = "إرسال تبليغ ${currentStatus.arabicLabel} لولي الأمر عبر واتساب",
-                            icon = Icons.Filled.Chat,
-                            containerColor = WhatsAppGreen,
-                            onClick = {
-                                val msg = """
-                                    تبليغ رسمي من إدارة (${schoolConfig.schoolName} - ${schoolConfig.address}):
-                                    إلى السيد ولي أمر الطالب (${stu.studentName}) المحترم،
-                                    نود إعلامكم بتسجيل حالة (${currentStatus.arabicLabel}) لنجلكم في الصف (${stu.gradeClass} - شعبة ${stu.sectionName}) لهذا اليوم الموافق $selectedDate.
-                                    • إجمالي أيام الغياب المسجلة: $totalAbsences يوم.
-                                    يرجى التواصل مع إدارة المدرسة لبيان السبب.
-                                """.trimIndent()
-                                ExternalIntents.sendWhatsAppMessage(context, stu.parentPhone, msg)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                            NoWrapBadge(
+                                text = "إجمالي الغياب: $totalAbsences يوم",
+                                icon = Icons.Filled.EventBusy,
+                                containerColor = if (totalAbsences > 0) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.14f),
+                                contentColor = if (totalAbsences > 0) DangerRed else SuccessGreen
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            AttendanceStatus.entries.forEach { st ->
+                                val isSelected = currentStatus == st
+                                val statusColor = when (st) {
+                                    AttendanceStatus.PRESENT -> SuccessGreen
+                                    AttendanceStatus.ABSENT -> DangerRed
+                                    AttendanceStatus.LATE -> WarningAmber
+                                    AttendanceStatus.EXCUSED -> InfoBlue
+                                }
+                                val statusIcon = when (st) {
+                                    AttendanceStatus.PRESENT -> Icons.Filled.CheckCircle
+                                    AttendanceStatus.ABSENT -> Icons.Filled.Cancel
+                                    AttendanceStatus.LATE -> Icons.Filled.Schedule
+                                    AttendanceStatus.EXCUSED -> Icons.Filled.AssignmentLate
+                                }
+
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable(enabled = canEdit) {
+                                            viewModel.recordStudentAttendance(stu, selectedDate, st)
+                                        }
+                                        .testTag("att_btn_${stu.id}_${st.name}"),
+                                    color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = statusIcon,
+                                            contentDescription = st.arabicLabel,
+                                            tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = st.arabicLabel,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (currentStatus == AttendanceStatus.ABSENT || currentStatus == AttendanceStatus.LATE) {
+                            VectorActionButton(
+                                text = "إرسال تبليغ ${currentStatus.arabicLabel} لولي الأمر عبر واتساب",
+                                icon = Icons.Filled.Chat,
+                                containerColor = WhatsAppGreen,
+                                onClick = {
+                                    val msg = """
+                                        تبليغ رسمي من إدارة (${schoolConfig.schoolName} - ${schoolConfig.address}):
+                                        إلى السيد ولي أمر الطالب (${stu.studentName}) المحترم،
+                                        نود إعلامكم بتسجيل حالة (${currentStatus.arabicLabel}) لنجلكم في الصف (${stu.gradeClass} - شعبة ${stu.sectionName}) لهذا اليوم الموافق $selectedDate.
+                                        • إجمالي أيام الغياب المسجلة: $totalAbsences يوم.
+                                        يرجى التواصل مع إدارة المدرسة لبيان السبب.
+                                    """.trimIndent()
+                                    ExternalIntents.sendWhatsAppMessage(context, stu.parentPhone, msg)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }

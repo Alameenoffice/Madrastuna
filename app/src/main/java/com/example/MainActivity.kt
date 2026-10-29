@@ -74,7 +74,7 @@ fun MadrasatiRootApp(
             SchoolSetupScreen(
                 isDarkMode = isDarkMode,
                 onToggleDarkMode = { viewModel.toggleDarkMode() },
-                onCompleteSetup = { schoolName, address, schoolType, logoBase64, adminFullName, adminUsername, adminPassword ->
+                onCompleteSetup = { schoolName, address, schoolType, logoBase64, adminFullName, adminUsername, adminPassword, schoolStage ->
                     viewModel.setupSchoolAndAdmin(
                         schoolName = schoolName,
                         address = address,
@@ -82,7 +82,8 @@ fun MadrasatiRootApp(
                         logoBase64 = logoBase64,
                         adminFullName = adminFullName,
                         adminUsername = adminUsername,
-                        adminPassword = adminPassword
+                        adminPassword = adminPassword,
+                        schoolStage = schoolStage
                     )
                 }
             )
@@ -110,8 +111,12 @@ fun AuthenticatedMainPlatform(
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val activeSection by viewModel.activeSection.collectAsState()
-    val notifications by viewModel.notifications.collectAsState()
+    val allNotifications by viewModel.notifications.collectAsState()
     val latestBannerAlert by viewModel.latestBannerAlert.collectAsState()
+
+    val notifications = remember(allNotifications, currentUser) {
+        viewModel.getScopedNotificationsForUser(currentUser)
+    }
 
     var showNotificationsSheet by remember { mutableStateOf(false) }
 
@@ -129,7 +134,7 @@ fun AuthenticatedMainPlatform(
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
             add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
-            if (schoolConfig.schoolType == SchoolType.PRIVATE) {
+            if (schoolConfig.schoolType == SchoolType.PRIVATE && currentUser?.role != UserRole.TEACHER) {
                 add(AppSection.TUITION_FEES to Icons.Filled.AccountBalanceWallet)
             }
             add(AppSection.REPORTS_CHAT to Icons.Filled.Forum)

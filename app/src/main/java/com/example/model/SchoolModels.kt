@@ -5,6 +5,92 @@ enum class SchoolType(val arabicLabel: String) {
     PRIVATE("مدرسة أهلية")
 }
 
+enum class SchoolStage(
+    val arabicLabel: String,
+    val defaultClasses: List<String>,
+    val defaultSubjects: List<String>
+) {
+    PRIMARY(
+        arabicLabel = "مدرسة ابتدائية",
+        defaultClasses = listOf(
+            "الأول الابتدائي",
+            "الثاني الابتدائي",
+            "الثالث الابتدائي",
+            "الرابع الابتدائي",
+            "الخامس الابتدائي",
+            "السادس الابتدائي"
+        ),
+        defaultSubjects = listOf(
+            "التربية الإسلامية",
+            "اللغة العربية",
+            "اللغة الإنكليزية",
+            "الرياضيات",
+            "العلوم",
+            "الاجتماعيات",
+            "التربية الفنية والرياضية"
+        )
+    ),
+    MIDDLE(
+        arabicLabel = "مدرسة متوسطة",
+        defaultClasses = listOf(
+            "الأول المتوسط",
+            "الثاني المتوسط",
+            "الثالث المتوسط"
+        ),
+        defaultSubjects = listOf(
+            "التربية الإسلامية",
+            "اللغة العربية",
+            "اللغة الإنكليزية",
+            "الرياضيات",
+            "الاجتماعيات",
+            "الفيزياء",
+            "الكيمياء",
+            "الأحياء",
+            "الحاسوب"
+        )
+    ),
+    PREPARATORY(
+        arabicLabel = "مدرسة إعدادية",
+        defaultClasses = listOf(
+            "الرابع الإعدادي",
+            "الخامس الإعدادي",
+            "السادس الإعدادي"
+        ),
+        defaultSubjects = listOf(
+            "التربية الإسلامية",
+            "اللغة العربية",
+            "اللغة الإنكليزية",
+            "الرياضيات",
+            "الفيزياء",
+            "الكيمياء",
+            "الأحياء",
+            "الحاسوب"
+        )
+    ),
+    SECONDARY(
+        arabicLabel = "ثانوية",
+        defaultClasses = listOf(
+            "الأول المتوسط",
+            "الثاني المتوسط",
+            "الثالث المتوسط",
+            "الرابع الإعدادي",
+            "الخامس الإعدادي",
+            "السادس الإعدادي"
+        ),
+        defaultSubjects = listOf(
+            "التربية الإسلامية",
+            "اللغة العربية",
+            "اللغة الإنكليزية",
+            "الرياضيات",
+            "الاجتماعيات",
+            "الفيزياء",
+            "الكيمياء",
+            "الأحياء",
+            "الحاسوب"
+        )
+    )
+}
+
 enum class UserRole(val arabicTitle: String) {
     ADMIN("المدير العام"),
     TEACHER("كادر تدريسي"),
@@ -28,7 +114,7 @@ enum class ReportType(val arabicLabel: String) {
 
 enum class NotificationType(val arabicLabel: String) {
     ATTENDANCE("غياب وحضور"),
-    HOMEWORK("واجب وتحظير"),
+    HOMEWORK("واجب وتحضير"),
     GRADES("درجات وامتحانات"),
     REPORT("تبليغ إداري"),
     TUITION("قسط دراسي"),
@@ -53,6 +139,10 @@ data class SchoolConfig(
     val schoolName: String = "مدرستي النموذجية",
     val address: String = "الموصل - زمار",
     val schoolType: SchoolType = SchoolType.PRIVATE,
+    val schoolStage: SchoolStage = SchoolStage.SECONDARY,
+    val registeredClasses: List<String> = SchoolStage.SECONDARY.defaultClasses,
+    val registeredSections: List<String> = listOf("أ", "ب", "ج"),
+    val registeredSubjects: List<String> = SchoolStage.SECONDARY.defaultSubjects,
     val logoBase64: String = "",
     val academicYear: String = "2026 - 2027",
     val phone: String = "07512362567"
@@ -66,14 +156,49 @@ data class UserAccount(
     val role: UserRole,
     val isActive: Boolean = true,
     val phone: String = "",
-    val specialty: String = "",
-    val assignedClasses: String = "",
+    val specialty: String = "", // Comma-separated subjects for TEACHER
+    val assignedClasses: String = "", // Comma-separated "Class - Section" or "Class" for TEACHER
     val linkedStudentId: String = "",
     val gradeClass: String = "الأول المتوسط",
     val sectionName: String = "أ",
     val address: String = "الموصل - زمار",
     val photoBase64: String = ""
-)
+) {
+    val teacherSubjectsList: List<String>
+        get() = specialty.split("،", ",", "|")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+    val teacherClassSectionPairs: List<String>
+        get() = assignedClasses.split("،", ",", "|")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+    fun canTeacherAccessClassSection(gradeClass: String, sectionName: String? = null): Boolean {
+        if (role == UserRole.ADMIN) return true
+        if (role != UserRole.TEACHER) return false
+        val pairs = teacherClassSectionPairs
+        if (pairs.isEmpty()) return true
+        return pairs.any { item ->
+            if (item.contains("-")) {
+                val parts = item.split("-").map { it.trim() }
+                val cls = parts.getOrNull(0) ?: ""
+                val sec = parts.getOrNull(1)?.replace("شعبة", "")?.trim() ?: ""
+                cls == gradeClass && (sectionName == null || sec.isEmpty() || sec == sectionName)
+            } else {
+                item == gradeClass
+            }
+        }
+    }
+
+    fun canTeacherAccessSubject(subjectName: String): Boolean {
+        if (role == UserRole.ADMIN) return true
+        if (role != UserRole.TEACHER) return false
+        val subs = teacherSubjectsList
+        if (subs.isEmpty()) return true
+        return subs.any { it.equals(subjectName, ignoreCase = true) || subjectName.contains(it) || it.contains(subjectName) }
+    }
+}
 
 data class StudentRecord(
     val id: String,

@@ -21,15 +21,38 @@ class SchoolRepository(context: Context) {
         prefs.edit().putBoolean("dark_mode", dark).apply()
     }
 
+    private fun jsonArrayToList(arr: JSONArray?): List<String> {
+        if (arr == null) return emptyList()
+        val list = mutableListOf<String>()
+        for (i in 0 until arr.length()) {
+            val s = arr.optString(i).trim()
+            if (s.isNotEmpty()) list.add(s)
+        }
+        return list
+    }
+
     fun loadSchoolConfig(): SchoolConfig {
         val raw = prefs.getString("school_config", null) ?: return SchoolConfig()
         return try {
             val obj = JSONObject(raw)
+            val stage = try {
+                SchoolStage.valueOf(obj.optString("schoolStage", SchoolStage.SECONDARY.name))
+            } catch (e: Exception) {
+                SchoolStage.SECONDARY
+            }
+            val regClasses = jsonArrayToList(obj.optJSONArray("registeredClasses")).ifEmpty { stage.defaultClasses }
+            val regSections = jsonArrayToList(obj.optJSONArray("registeredSections")).ifEmpty { listOf("أ", "ب", "ج") }
+            val regSubjects = jsonArrayToList(obj.optJSONArray("registeredSubjects")).ifEmpty { stage.defaultSubjects }
+
             SchoolConfig(
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
                 schoolName = obj.optString("schoolName", "مدرستي النموذجية"),
                 address = obj.optString("address", "الموصل - زمار"),
                 schoolType = SchoolType.valueOf(obj.optString("schoolType", SchoolType.PRIVATE.name)),
+                schoolStage = stage,
+                registeredClasses = regClasses,
+                registeredSections = regSections,
+                registeredSubjects = regSubjects,
                 logoBase64 = obj.optString("logoBase64", ""),
                 academicYear = obj.optString("academicYear", "2026 - 2027"),
                 phone = obj.optString("phone", "07512362567")
@@ -45,6 +68,10 @@ class SchoolRepository(context: Context) {
             put("schoolName", config.schoolName)
             put("address", config.address.ifBlank { "الموصل - زمار" })
             put("schoolType", config.schoolType.name)
+            put("schoolStage", config.schoolStage.name)
+            put("registeredClasses", JSONArray(config.registeredClasses))
+            put("registeredSections", JSONArray(config.registeredSections))
+            put("registeredSubjects", JSONArray(config.registeredSubjects))
             put("logoBase64", config.logoBase64)
             put("academicYear", config.academicYear)
             put("phone", config.phone)
@@ -712,8 +739,8 @@ class SchoolRepository(context: Context) {
             role = UserRole.TEACHER,
             isActive = true,
             phone = "07512362567",
-            specialty = "الرياضيات والفيزياء",
-            assignedClasses = "الأول المتوسط، الثاني المتوسط",
+            specialty = "الرياضيات، الفيزياء",
+            assignedClasses = "الأول المتوسط - أ، الثاني المتوسط - أ",
             address = "الموصل - زمار"
         ),
         UserAccount(
@@ -724,8 +751,8 @@ class SchoolRepository(context: Context) {
             role = UserRole.TEACHER,
             isActive = true,
             phone = "07512362567",
-            specialty = "اللغة العربية والتربية الإسلامية",
-            assignedClasses = "الأول المتوسط، الثالث المتوسط",
+            specialty = "اللغة العربية، التربية الإسلامية",
+            assignedClasses = "الأول المتوسط - أ، الثالث المتوسط - ب",
             address = "الموصل - زمار"
         )
     )
@@ -777,12 +804,12 @@ class SchoolRepository(context: Context) {
         SchedulePeriod("sch_1", "الأول المتوسط", "أ", "الأحد", 1, "الرياضيات", "أ. عمر قاسم الحديثي", "08:00 - 08:45"),
         SchedulePeriod("sch_2", "الأول المتوسط", "أ", "الأحد", 2, "اللغة العربية", "أ. سارة نبيل الموصلي", "08:50 - 09:35"),
         SchedulePeriod("sch_3", "الأول المتوسط", "أ", "الأحد", 3, "اللغة الإنكليزية", "أ. زياد طلال", "09:40 - 10:25"),
-        SchedulePeriod("sch_4", "الأول المتوسط", "أ", "الأحد", 4, "العلوم العامة", "أ. عمر قاسم الحديثي", "10:40 - 11:25"),
+        SchedulePeriod("sch_4", "الأول المتوسط", "أ", "الأحد", 4, "الفيزياء", "أ. عمر قاسم الحديثي", "10:40 - 11:25"),
         SchedulePeriod("sch_5", "الأول المتوسط", "أ", "الاثنين", 1, "التربية الإسلامية", "أ. سارة نبيل الموصلي", "08:00 - 08:45"),
         SchedulePeriod("sch_6", "الأول المتوسط", "أ", "الاثنين", 2, "الرياضيات", "أ. عمر قاسم الحديثي", "08:50 - 09:35"),
         SchedulePeriod("sch_7", "الأول المتوسط", "أ", "الاثنين", 3, "الاجتماعيات", "أ. مهند الحمداني", "09:40 - 10:25"),
-        SchedulePeriod("sch_8", "الأول المتوسط", "أ", "الثلاثاء", 1, "الفيزياء", "أ. عمر قاسم الحديثي", "08:00 - 08:45"),
-        SchedulePeriod("sch_9", "الأول المتوسط", "أ", "الأربعاء", 1, "اللغة العربية", "أ. سارة نبيل الموصلي", "08:00 - 08:45"),
+        SchedulePeriod("sch_8", "الثاني المتوسط", "أ", "الأحد", 1, "الفيزياء", "أ. عمر قاسم الحديثي", "08:00 - 08:45"),
+        SchedulePeriod("sch_9", "الثالث المتوسط", "ب", "الأحد", 1, "اللغة العربية", "أ. سارة نبيل الموصلي", "08:00 - 08:45"),
         SchedulePeriod("sch_10", "الأول المتوسط", "أ", "الخميس", 1, "الحاسوب", "أ. أحمد أبو رسلان", "08:00 - 08:45")
     )
 
@@ -848,12 +875,12 @@ class SchoolRepository(context: Context) {
         ExamScheduleItem(
             id = "ex_3",
             gradeClass = "الثاني المتوسط",
-            subjectName = "اللغة الإنكليزية",
+            subjectName = "الفيزياء",
             examType = "امتحان الشهر الأول",
             examDate = "2026-11-04",
             dayName = "الأربعاء",
             timeSlot = "09:30 صباحاً",
-            topicsIncluded = "Unit 1 & Unit 2 Grammar and Reading",
+            topicsIncluded = "الفصل الأول والفصل الثاني",
             hallNumber = "قاعة ابن الهيثم (2)"
         )
     )
@@ -862,11 +889,11 @@ class SchoolRepository(context: Context) {
         SubjectGrade("grd_1", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "الرياضيات", 98, 96, 99, 97, 99),
         SubjectGrade("grd_2", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "اللغة العربية", 95, 94, 96, 95, 97),
         SubjectGrade("grd_3", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "اللغة الإنكليزية", 97, 95, 98, 96, 98),
-        SubjectGrade("grd_4", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "العلوم العامة", 99, 97, 98, 99, 100),
+        SubjectGrade("grd_4", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "الفيزياء", 99, 97, 98, 99, 100),
         SubjectGrade("grd_5", "stu_2", "مريم خالد الشمري", "الأول المتوسط", "الرياضيات", 95, 94, 97, 96, 96),
         SubjectGrade("grd_6", "stu_2", "مريم خالد الشمري", "الأول المتوسط", "اللغة العربية", 98, 96, 97, 98, 99),
         SubjectGrade("grd_7", "stu_3", "عبد الرحمن طارق الدليمي", "الثاني المتوسط", "الرياضيات", 92, 90, 94, 93, 95),
-        SubjectGrade("grd_8", "stu_4", "زهراء فراس العبيدي", "الثالث المتوسط", "الفيزياء", 97, 96, 98, 97, 98)
+        SubjectGrade("grd_8", "stu_4", "زهراء فراس العبيدي", "الثالث المتوسط", "اللغة العربية", 97, 96, 98, 97, 98)
     )
 
     fun defaultTuitions(): List<TuitionRecord> = listOf(

@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.model.SchoolConfig
+import com.example.model.SchoolStage
 import com.example.model.SchoolType
 import com.example.ui.components.*
 
@@ -52,7 +55,7 @@ fun OnboardingScreen(
                 description = "منصة رقمية شاملة تربط إدارة المدرسة، الكادر التدريسي، أولياء الأمور، والطلبة في بيئة تعليمية موحدة وآمنة في الموصل - زمار.",
                 highlights = listOf(
                     "هيكلة إدارية صارمة وصلاحيات مخصصة لكل حساب",
-                    "دعم المدارس الأهلية والحكومية بمرونة كاملة",
+                    "دعم المدارس الأهلية والحكومية وكافة المراحل الدراسية",
                     "إشعارات فورية وتكامل مباشر مع واتساب"
                 )
             ),
@@ -94,7 +97,6 @@ fun OnboardingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top bar with brand & theme toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -148,7 +150,6 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Animated Lottie-style Vector Scene
             AnimatedContent(
                 targetState = currentSlide,
                 label = "onboarding_slide_transition"
@@ -228,7 +229,6 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Slide indicators & Action Buttons
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
@@ -326,7 +326,8 @@ fun OnboardingScreen(
 /**
  * First-time Platform Initialization Screen:
  * "تأسيس منصة المدرسة وإنشاء حساب المدير العام"
- * Strictly NO exposed role switcher buttons.
+ * Includes SchoolType (أهلية / حكومية) AND SchoolStage (ابتدائية / متوسطة / إعدادية / ثانوية)
+ * with automatic generation of Registered Classes & Sections.
  */
 @Composable
 fun SchoolSetupScreen(
@@ -339,12 +340,14 @@ fun SchoolSetupScreen(
         logoBase64: String,
         adminFullName: String,
         adminUsername: String,
-        adminPassword: String
+        adminPassword: String,
+        schoolStage: SchoolStage
     ) -> Unit
 ) {
     var schoolName by remember { mutableStateOf("مدرستي النموذجية") }
     var address by remember { mutableStateOf("الموصل - زمار") }
     var selectedSchoolType by remember { mutableStateOf(SchoolType.PRIVATE) }
+    var selectedSchoolStage by remember { mutableStateOf(SchoolStage.SECONDARY) }
     var logoBase64 by remember { mutableStateOf("") }
     var adminFullName by remember { mutableStateOf("المدير العام") }
     var adminUsername by remember { mutableStateOf("admin") }
@@ -364,7 +367,6 @@ fun SchoolSetupScreen(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -410,7 +412,7 @@ fun SchoolSetupScreen(
             )
 
             Text(
-                text = "أدخل البيانات الرسمية للمدرسة وعيّن بيانات الدخول لحساب الإدارة العامة",
+                text = "أدخل البيانات الرسمية للمدرسة وحدد المرحلة الدراسية لتوليد الصفوف والشعب تلقائياً",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -512,6 +514,99 @@ fun SchoolSetupScreen(
                         }
                     }
 
+                    // School Stage Selector (مدرسة ابتدائية / متوسطة / إعدادية / ثانوية)
+                    Text(
+                        text = "المرحلة الدراسية (توليد الصفوف والشعب المسجلة تلقائياً):",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SchoolStage.entries.chunked(2).forEach { pair ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                pair.forEach { stage ->
+                                    val isSelected = selectedSchoolStage == stage
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .border(
+                                                width = if (isSelected) 2.dp else 1.dp,
+                                                color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
+                                                shape = RoundedCornerShape(14.dp)
+                                            )
+                                            .clickable { selectedSchoolStage = stage }
+                                            .testTag("school_stage_${stage.name}"),
+                                        color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Class,
+                                                contentDescription = stage.arabicLabel,
+                                                tint = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = stage.arabicLabel,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Preview of Auto-Generated Classes & Sections
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.AutoFixHigh,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "الصفوف المسجلة المتولدة تلقائياً (الشعب: أ، ب، ج):",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(selectedSchoolStage.defaultClasses) { clsName ->
+                                    NoWrapBadge(
+                                        text = clsName,
+                                        icon = Icons.Filled.CheckCircle,
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     CompressedPhotoPickerButton(
                         label = "رفع شعار المدرسة (ضغط تلقائي 800px)",
                         currentBase64 = logoBase64,
@@ -598,7 +693,7 @@ fun SchoolSetupScreen(
                     }
 
                     VectorActionButton(
-                        text = "تأسيس المنصة واعتماد حساب المدير العام",
+                        text = "تأسيس المنصة واعتماد الصفوف وحساب المدير",
                         icon = Icons.Filled.CheckCircle,
                         onClick = {
                             if (schoolName.isBlank() || adminUsername.isBlank() || adminPassword.isBlank()) {
@@ -611,7 +706,8 @@ fun SchoolSetupScreen(
                                     logoBase64,
                                     adminFullName,
                                     adminUsername,
-                                    adminPassword
+                                    adminPassword,
+                                    selectedSchoolStage
                                 )
                             }
                         },
@@ -629,9 +725,7 @@ fun SchoolSetupScreen(
 }
 
 /**
- * Unified Login Screen (شاشة تسجيل الدخول الموحدة):
- * Strictly NO exposed role-switching buttons.
- * Users (مدير، معلم، ولي أمر، طالب) log in exclusively with their credentials approved by Administration.
+ * Unified Login Screen (شاشة تسجيل الدخول الموحدة)
  */
 @Composable
 fun UnifiedLoginScreen(
@@ -658,14 +752,13 @@ fun UnifiedLoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NoWrapBadge(
-                    text = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.address}",
+                    text = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel} • ${schoolConfig.address}",
                     icon = Icons.Filled.LocationOn,
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -686,7 +779,6 @@ fun UnifiedLoginScreen(
                 }
             }
 
-            // Center Login Card
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()

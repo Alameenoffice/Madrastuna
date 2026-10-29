@@ -37,6 +37,9 @@ import com.example.viewmodel.SchoolViewModel
 
 /**
  * Section 7: Reports & Direct Messaging Screen (نظام البلاغات والتواصل المباشر)
+ * - Structured Report Creation: Step A (Select Class & Section) -> Step B (Search by Name & Select Student) -> Send Report
+ * - Strict Privacy Isolation for Parent/Student (sees only their own reports & chat)
+ * - Scoped to assigned classes/sections for Teacher
  */
 @Composable
 fun ReportsAndChatScreen(
@@ -53,30 +56,22 @@ fun ReportsAndChatScreen(
     var showCreateReportDialog by remember { mutableStateOf(false) }
 
     val canSendReport = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
 
-    val visibleStudents = remember(students, currentUser) {
-        when (currentUser?.role) {
-            UserRole.PARENT, UserRole.STUDENT -> students.filter {
-                it.id == currentUser?.linkedStudentId || currentUser?.linkedStudentId.isNullOrBlank()
-            }
-            else -> students
-        }
+    val scopedStudents = remember(students, currentUser) {
+        viewModel.getScopedStudentsForUser(currentUser)
     }
 
-    var selectedStudentId by remember(visibleStudents) {
-        mutableStateOf(visibleStudents.firstOrNull()?.id ?: "")
+    var selectedStudentId by remember(scopedStudents) {
+        mutableStateOf(scopedStudents.firstOrNull()?.id ?: "")
     }
-    val selectedStudent = remember(visibleStudents, selectedStudentId) {
-        visibleStudents.firstOrNull { it.id == selectedStudentId } ?: visibleStudents.firstOrNull()
+    val selectedStudent = remember(scopedStudents, selectedStudentId) {
+        scopedStudents.firstOrNull { it.id == selectedStudentId } ?: scopedStudents.firstOrNull()
     }
 
-    val visibleReports = remember(reports, currentUser) {
-        when (currentUser?.role) {
-            UserRole.PARENT, UserRole.STUDENT -> reports.filter {
-                it.studentId == currentUser?.linkedStudentId || currentUser?.linkedStudentId.isNullOrBlank()
-            }
-            else -> reports
-        }
+    val visibleReports = remember(reports, scopedStudents) {
+        val allowedIds = scopedStudents.map { it.id }.toSet()
+        reports.filter { it.studentId in allowedIds }
     }
 
     val studentChats = remember(chatMessages, selectedStudent) {
@@ -90,7 +85,6 @@ fun ReportsAndChatScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        // Sub-Tabs
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -109,7 +103,11 @@ fun ReportsAndChatScreen(
             ) {
                 Icon(Icons.Filled.Campaign, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("البلاغات والتبليغات", maxLines = 1, softWrap = false)
+                Text(
+                    text = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات والتبليغات",
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
 
             Button(
@@ -133,10 +131,9 @@ fun ReportsAndChatScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         if (selectedTab == 0) {
-            // Official Reports Section
             if (canSendReport) {
                 VectorActionButton(
-                    text = "إرسال بلاغ جديد لولي أمر طالب",
+                    text = "إرسال بلاغ رسمي (اختيار الصف والشعبة ⬅️ البحث واختيار الطالب)",
                     icon = Icons.Filled.MarkChatUnread,
                     onClick = { showCreateReportDialog = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -216,43 +213,46 @@ fun ReportsAndChatScreen(
                                 )
                             }
 
-                            VectorActionButton(
-                                text = "إرسال البلاغ لولي الأمر عبر واتساب",
-                                icon = Icons.Filled.Chat,
-                                containerColor = WhatsAppGreen,
-                                onClick = {
-                                    val msg = """
-                                        تبليغ رسمي (${rep.reportType.arabicLabel})
-                                        من: ${schoolConfig.schoolName} (${schoolConfig.address})
-                                        إلى السيد ولي أمر الطالب (${rep.studentName} - ${rep.gradeClass}) المحترم:
-                                        • الموضوع: ${rep.title}
-                                        • التفاصيل: ${rep.details}
-                                        • المرسل: ${rep.senderName}
-                                    """.trimIndent()
-                                    ExternalIntents.sendWhatsAppMessage(context, rep.parentPhone, msg)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            if (canSendReport) {
+                                VectorActionButton(
+                                    text = "إرسال البلاغ لولي الأمر عبر واتساب",
+                                    icon = Icons.Filled.Chat,
+                                    containerColor = WhatsAppGreen,
+                                    onClick = {
+                                        val msg = """
+                                            تبليغ رسمي (${rep.reportType.arabicLabel})
+                                            من: ${schoolConfig.schoolName} (${schoolConfig.address})
+                                            إلى السيد ولي أمر الطالب (${rep.studentName} - ${rep.gradeClass}) المحترم:
+                                            • الموضوع: ${rep.title}
+                                            • التفاصيل: ${rep.details}
+                                            • المرسل: ${rep.senderName}
+                                        """.trimIndent()
+                                        ExternalIntents.sendWhatsAppMessage(context, rep.parentPhone, msg)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }
             }
         } else {
             // Direct Messaging Inbox between Parent & Administration
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(visibleStudents, key = { it.id }) { stu ->
-                    FilterChip(
-                        selected = selectedStudent?.id == stu.id,
-                        onClick = { selectedStudentId = stu.id },
-                        label = { Text("محادثة: ${stu.studentName}", maxLines = 1, softWrap = false) },
-                        leadingIcon = {
-                            Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    )
+            if (!isParentOrStudent) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(scopedStudents, key = { it.id }) { stu ->
+                        FilterChip(
+                            selected = selectedStudent?.id == stu.id,
+                            onClick = { selectedStudentId = stu.id },
+                            label = { Text("محادثة: ${stu.studentName}", maxLines = 1, softWrap = false) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.height(8.dp))
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             if (selectedStudent != null) {
                 Card(
@@ -268,7 +268,6 @@ fun ReportsAndChatScreen(
                             .fillMaxSize()
                             .padding(14.dp)
                     ) {
-                        // Chat Header with Direct WhatsApp Button
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -280,7 +279,7 @@ fun ReportsAndChatScreen(
                                     style = MaterialTheme.typography.titleSmall
                                 )
                                 Text(
-                                    text = "ولي أمر الطالب: ${selectedStudent.studentName}",
+                                    text = "ولي أمر الطالب: ${selectedStudent.studentName} (${selectedStudent.gradeClass})",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -321,7 +320,6 @@ fun ReportsAndChatScreen(
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                        // Messages List
                         LazyColumn(
                             modifier = Modifier
                                 .weight(1f)
@@ -366,7 +364,6 @@ fun ReportsAndChatScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Input Bar
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -404,9 +401,36 @@ fun ReportsAndChatScreen(
         }
     }
 
-    // Create Official Parent Report Dialog
+    // =========================================================================
+    // REQUIREMENT 5: STRUCTURED OFFICIAL REPORT MODAL
+    // Step A: Select Class & Section -> Step B: Search by Name & Select Student -> Send Report
+    // =========================================================================
     if (showCreateReportDialog) {
-        var chosenStudent by remember { mutableStateOf(students.firstOrNull()) }
+        val allowedClasses = remember(schoolConfig, currentUser) {
+            viewModel.getAllowedClassesForUser(currentUser)
+        }
+        var reportClass by remember(allowedClasses) {
+            mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
+        }
+        val allowedSections = remember(schoolConfig, currentUser, reportClass) {
+            viewModel.getAllowedSectionsForClass(reportClass, currentUser)
+        }
+        var reportSection by remember(allowedSections) {
+            mutableStateOf(allowedSections.firstOrNull() ?: "أ")
+        }
+        var studentSearchQuery by remember { mutableStateOf("") }
+
+        val matchingStudents = remember(scopedStudents, reportClass, reportSection, studentSearchQuery) {
+            scopedStudents.filter { s ->
+                s.gradeClass == reportClass &&
+                    s.sectionName == reportSection &&
+                    (studentSearchQuery.isBlank() || s.studentName.contains(studentSearchQuery, ignoreCase = true))
+            }
+        }
+
+        var chosenStudent by remember(matchingStudents) {
+            mutableStateOf(matchingStudents.firstOrNull())
+        }
         var selectedType by remember { mutableStateOf(ReportType.APPRECIATION) }
         var title by remember { mutableStateOf("") }
         var details by remember { mutableStateOf("") }
@@ -415,43 +439,123 @@ fun ReportsAndChatScreen(
             onDismissRequest = { showCreateReportDialog = false },
             title = { Text("إرسال بلاغ رسمي لولي الأمر") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("اختر الطالب:", style = MaterialTheme.typography.labelLarge)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(students, key = { it.id }) { s ->
-                            FilterChip(
-                                selected = chosenStudent?.id == s.id,
-                                onClick = { chosenStudent = s },
-                                label = { Text(s.studentName, maxLines = 1, softWrap = false) }
-                            )
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.heightIn(max = 440.dp)
+                ) {
+                    item {
+                        Text(
+                            text = "أولاً: اختر الصف والشعبة:",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(allowedClasses) { cls ->
+                                FilterChip(
+                                    selected = reportClass == cls,
+                                    onClick = {
+                                        reportClass = cls
+                                        val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                        if (reportSection !in nextSecs) {
+                                            reportSection = nextSecs.firstOrNull() ?: "أ"
+                                        }
+                                    },
+                                    label = { Text(cls, maxLines = 1, softWrap = false) }
+                                )
+                            }
                         }
                     }
 
-                    Text("نوع البلاغ:", style = MaterialTheme.typography.labelLarge)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(ReportType.entries) { rt ->
-                            FilterChip(
-                                selected = selectedType == rt,
-                                onClick = { selectedType = rt },
-                                label = { Text(rt.arabicLabel, maxLines = 1, softWrap = false) }
-                            )
+                    item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("الشعبة:", style = MaterialTheme.typography.labelLarge)
+                            allowedSections.forEach { sec ->
+                                FilterChip(
+                                    selected = reportSection == sec,
+                                    onClick = { reportSection = sec },
+                                    label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                                )
+                            }
                         }
                     }
 
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = { Text("عنوان البلاغ") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    item {
+                        Text(
+                            text = "ثانياً: ابحث بالاسم واختر الطالب من ($reportClass - شعبة $reportSection):",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        OutlinedTextField(
+                            value = studentSearchQuery,
+                            onValueChange = { studentSearchQuery = it },
+                            label = { Text("بحث باسم الطالب...") },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
 
-                    OutlinedTextField(
-                        value = details,
-                        onValueChange = { details = it },
-                        label = { Text("نص البلاغ والتفاصيل") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    item {
+                        if (matchingStudents.isEmpty()) {
+                            Text(
+                                text = "لا يوجد طلاب في ($reportClass - شعبة $reportSection) بهذا الاسم",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(matchingStudents, key = { it.id }) { s ->
+                                    FilterChip(
+                                        selected = chosenStudent?.id == s.id,
+                                        onClick = { chosenStudent = s },
+                                        label = { Text(s.studentName, maxLines = 1, softWrap = false) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (chosenStudent?.id == s.id) Icons.Filled.CheckCircle else Icons.Filled.Person,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Text("ثالثاً: نوع البلاغ وتفاصيله:", style = MaterialTheme.typography.labelLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(ReportType.entries) { rt ->
+                                FilterChip(
+                                    selected = selectedType == rt,
+                                    onClick = { selectedType = rt },
+                                    label = { Text(rt.arabicLabel, maxLines = 1, softWrap = false) }
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        OutlinedTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            label = { Text("عنوان البلاغ") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    item {
+                        OutlinedTextField(
+                            value = details,
+                            onValueChange = { details = it },
+                            label = { Text("نص البلاغ والتفاصيل") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -482,7 +586,6 @@ fun ReportsAndChatScreen(
 
 /**
  * Section 8: Events & News Gallery with Automatic 800px / 0.7 JPEG Image Compression
- * (معرض الفعاليات والأخبار مع ضغط الصور التلقائي)
  */
 @Composable
 fun EventsAndNewsScreen(
@@ -569,7 +672,6 @@ fun EventsAndNewsScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // Event Image Banner (or Vector Decorative Banner)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -744,8 +846,8 @@ fun EventsAndNewsScreen(
 }
 
 /**
- * Settings Screen (صفحة الإعدادات) with School Configuration, Theme Toggle, Logout Button,
- * and the required Developer Credit Footer Bar.
+ * Settings Screen (صفحة الإعدادات) with School Type, School Stage (ابتدائية/متوسطة/إعدادية/ثانوية),
+ * dynamic Registered Classes & Sections management, Theme Toggle, Logout Button, and Developer Credit Footer Bar.
  */
 @Composable
 fun SettingsScreen(
@@ -758,7 +860,14 @@ fun SettingsScreen(
     var schoolName by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolName) }
     var address by remember(schoolConfig) { mutableStateOf(schoolConfig.address) }
     var selectedType by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolType) }
+    var selectedStage by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolStage) }
+    var registeredClasses by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredClasses) }
+    var registeredSections by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredSections) }
+    var registeredSubjects by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredSubjects) }
     var logoBase64 by remember(schoolConfig) { mutableStateOf(schoolConfig.logoBase64) }
+
+    var newCustomClass by remember { mutableStateOf("") }
+    var newCustomSection by remember { mutableStateOf("") }
     var savedMessage by remember { mutableStateOf<String?>(null) }
 
     val isAdmin = currentUser?.role == UserRole.ADMIN
@@ -876,7 +985,7 @@ fun SettingsScreen(
             }
         }
 
-        // School Settings (Editable by General Director)
+        // School Settings & Registered Classes Management (Editable by General Director)
         if (isAdmin) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -889,7 +998,7 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "إعدادات المدرسة ونوع النظام (خاص بالمدير العام)",
+                        text = "إعدادات المدرسة والمرحلة والصفوف المسجلة (خاص بالمدير العام)",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -958,6 +1067,108 @@ fun SettingsScreen(
                         }
                     }
 
+                    Text(
+                        text = "المرحلة الدراسية (توليد الصفوف المسجلة تلقائياً):",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(SchoolStage.entries) { stage ->
+                            FilterChip(
+                                selected = selectedStage == stage,
+                                onClick = {
+                                    selectedStage = stage
+                                    registeredClasses = stage.defaultClasses
+                                    registeredSubjects = stage.defaultSubjects
+                                },
+                                label = { Text(stage.arabicLabel, maxLines = 1, softWrap = false) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.School, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            )
+                        }
+                    }
+
+                    // Manage Registered Classes
+                    Text(
+                        text = "قائمة الصفوف المسجلة المعتمدة (${registeredClasses.size}):",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(registeredClasses) { cls ->
+                            InputChip(
+                                selected = true,
+                                onClick = {
+                                    if (registeredClasses.size > 1) {
+                                        registeredClasses = registeredClasses.filterNot { it == cls }
+                                    }
+                                },
+                                label = { Text(cls, maxLines = 1, softWrap = false) },
+                                trailingIcon = {
+                                    Icon(Icons.Filled.Close, contentDescription = "حذف الصف", modifier = Modifier.size(14.dp))
+                                }
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = newCustomClass,
+                            onValueChange = { newCustomClass = it },
+                            label = { Text("إضافة صف جديد للمدرسة") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                val clean = newCustomClass.trim()
+                                if (clean.isNotEmpty() && clean !in registeredClasses) {
+                                    registeredClasses = registeredClasses + clean
+                                    newCustomClass = ""
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("إضافة صف", maxLines = 1, softWrap = false)
+                        }
+                    }
+
+                    // Manage Registered Sections
+                    Text(
+                        text = "الشعب المسجلة (${registeredSections.joinToString("، ")}):",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = newCustomSection,
+                            onValueChange = { newCustomSection = it },
+                            label = { Text("إضافة شعبة (مثال: د)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                val clean = newCustomSection.trim()
+                                if (clean.isNotEmpty() && clean !in registeredSections) {
+                                    registeredSections = registeredSections + clean
+                                    newCustomSection = ""
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("إضافة شعبة", maxLines = 1, softWrap = false)
+                        }
+                    }
+
                     CompressedPhotoPickerButton(
                         label = "تحديث شعار المدرسة (ضغط تلقائي 800px)",
                         currentBase64 = logoBase64,
@@ -974,16 +1185,20 @@ fun SettingsScreen(
                     }
 
                     VectorActionButton(
-                        text = "حفظ إعدادات المدرسة",
+                        text = "حفظ إعدادات المدرسة والصفوف المسجلة",
                         icon = Icons.Filled.Save,
                         onClick = {
                             viewModel.updateSchoolInfo(
                                 schoolName = schoolName,
                                 address = address.ifBlank { "الموصل - زمار" },
                                 schoolType = selectedType,
-                                logoBase64 = logoBase64
+                                logoBase64 = logoBase64,
+                                schoolStage = selectedStage,
+                                registeredClasses = registeredClasses,
+                                registeredSections = registeredSections,
+                                registeredSubjects = registeredSubjects
                             )
-                            savedMessage = "تم حفظ إعدادات المدرسة وتحديث الأقسام بنجاح"
+                            savedMessage = "تم حفظ إعدادات المدرسة وتحديث الصفوف والشعب المسجلة بنجاح"
                         },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -991,7 +1206,6 @@ fun SettingsScreen(
             }
         }
 
-        // Developer Credit Bar at the bottom of Settings
         DeveloperCreditFooter()
 
         Spacer(modifier = Modifier.height(16.dp))
