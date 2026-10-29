@@ -325,7 +325,7 @@ fun OnboardingScreen(
 
 /**
  * First-time Platform Initialization Screen:
- * "تأسيس منصة المدرسة وإنشاء حساب المدير العام"
+ * "تأسيس منصة المدرسة وإنشاء حساب المدير"
  * Includes SchoolType (أهلية / حكومية) AND SchoolStage (ابتدائية / متوسطة / إعدادية / ثانوية)
  * with automatic generation of Registered Classes & Sections.
  */
@@ -349,7 +349,7 @@ fun SchoolSetupScreen(
     var selectedSchoolType by remember { mutableStateOf(SchoolType.PRIVATE) }
     var selectedSchoolStage by remember { mutableStateOf(SchoolStage.SECONDARY) }
     var logoBase64 by remember { mutableStateOf("") }
-    var adminFullName by remember { mutableStateOf("المدير العام") }
+    var adminFullName by remember { mutableStateOf("المدير") }
     var adminUsername by remember { mutableStateOf("admin") }
     var adminPassword by remember { mutableStateOf("123456") }
     var showPassword by remember { mutableStateOf(false) }
@@ -405,7 +405,7 @@ fun SchoolSetupScreen(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "تأسيس منصة المدرسة وإنشاء حساب المدير العام",
+                text = "تأسيس منصة المدرسة وإنشاء حساب المدير",
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center
@@ -617,7 +617,7 @@ fun SchoolSetupScreen(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                     Text(
-                        text = "2. بيانات حساب المدير العام",
+                        text = "2. بيانات حساب المدير",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -625,7 +625,7 @@ fun SchoolSetupScreen(
                     OutlinedTextField(
                         value = adminFullName,
                         onValueChange = { adminFullName = it },
-                        label = { Text("اسم المدير العام") },
+                        label = { Text("اسم المدير") },
                         placeholder = { Text("أدخل الاسم الثلاثي للمدير") },
                         leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
                         singleLine = true,
@@ -697,7 +697,7 @@ fun SchoolSetupScreen(
                         icon = Icons.Filled.CheckCircle,
                         onClick = {
                             if (schoolName.isBlank() || adminUsername.isBlank() || adminPassword.isBlank()) {
-                                errorMessage = "يرجى إدخال اسم المدرسة واسم المستخدم وكلمة المرور للمدير العام"
+                                errorMessage = "يرجى إدخال اسم المدرسة واسم المستخدم وكلمة المرور للمدير"
                             } else {
                                 onCompleteSetup(
                                     schoolName,
@@ -801,7 +801,7 @@ fun UnifiedLoginScreen(
                 )
 
                 Text(
-                    text = "بوابة تسجيل الدخول الموحدة (إدارة • معلمين • أولياء أمور • طلبة)",
+                    text = "بوابة تسجيل الدخول الموحدة",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center

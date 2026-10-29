@@ -2,12 +2,15 @@ package com.example.data
 
 import android.content.Context
 import com.example.model.*
+import com.example.util.InputSanitizer
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 class SchoolRepository(context: Context) {
 
-    private val prefs = context.getSharedPreferences("madrasati_zummar_db_v1", Context.MODE_PRIVATE)
+    // Using v2 clean multi-tenant storage so pre-existing demo records do not pollute newly founded schools
+    private val prefs = context.getSharedPreferences("madrasati_multitenant_v2", Context.MODE_PRIVATE)
 
     fun isOnboardingSeen(): Boolean = prefs.getBoolean("onboarding_seen", false)
 
@@ -21,6 +24,60 @@ class SchoolRepository(context: Context) {
         prefs.edit().putBoolean("dark_mode", dark).apply()
     }
 
+    fun getActiveSchoolId(): String {
+        return prefs.getString("active_school_id", "")?.trim().orEmpty()
+    }
+
+    fun setActiveSchoolId(schoolId: String) {
+        val clean = InputSanitizer.sanitizeSchoolId(schoolId)
+        prefs.edit().putString("active_school_id", clean).apply()
+    }
+
+    private fun scopedKey(schoolId: String, subCollection: String): String {
+        val sid = schoolId.ifBlank { getActiveSchoolId() }.ifBlank { "default_school" }
+        return FirebaseConfigConstants.schoolCollectionPath(sid, subCollection)
+    }
+
+    // =========================================================================
+    // SESSION MANAGEMENT & VALIDATION
+    // =========================================================================
+
+    fun saveSession(session: UserSession) {
+        val obj = JSONObject().apply {
+            put("userId", session.userId)
+            put("username", session.username)
+            put("role", session.role.name)
+            put("schoolId", session.schoolId)
+            put("sessionToken", session.sessionToken)
+            put("createdAt", session.createdAt)
+        }
+        prefs.edit().putString("active_user_session", obj.toString()).apply()
+    }
+
+    fun loadSession(): UserSession? {
+        val raw = prefs.getString("active_user_session", null) ?: return null
+        return try {
+            val o = JSONObject(raw)
+            val userId = o.optString("userId")
+            val schoolId = o.optString("schoolId")
+            if (userId.isBlank() || schoolId.isBlank()) return null
+            UserSession(
+                userId = userId,
+                username = o.optString("username"),
+                role = UserRole.valueOf(o.optString("role", UserRole.STUDENT.name)),
+                schoolId = schoolId,
+                sessionToken = o.optString("sessionToken"),
+                createdAt = o.optLong("createdAt", System.currentTimeMillis())
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun clearSession() {
+        prefs.edit().remove("active_user_session").apply()
+    }
+
     private fun jsonArrayToList(arr: JSONArray?): List<String> {
         if (arr == null) return emptyList()
         val list = mutableListOf<String>()
@@ -31,8 +88,18 @@ class SchoolRepository(context: Context) {
         return list
     }
 
-    fun loadSchoolConfig(): SchoolConfig {
-        val raw = prefs.getString("school_config", null) ?: return SchoolConfig()
+    // =========================================================================
+    // 1. schools/{schoolId}/settings & schools/{schoolId}/subjects
+    // =========================================================================
+
+    fun loadSchoolConfig(schoolId: String = getActiveSchoolId()): SchoolConfig {
+        if (schoolId.isBlank()) return SchoolConfig()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_SETTINGS), null)
+            ?: return SchoolConfig()
+        return parseSchoolConfigJson(raw, schoolId)
+    }
+
+    fun parseSchoolConfigJson(raw: String, fallbackSchoolId: String = ""): SchoolConfig {
         return try {
             val obj = JSONObject(raw)
             val stage = try {
@@ -43,8 +110,22 @@ class SchoolRepository(context: Context) {
             val regClasses = jsonArrayToList(obj.optJSONArray("registeredClasses")).ifEmpty { stage.defaultClasses }
             val regSections = jsonArrayToList(obj.optJSONArray("registeredSections")).ifEmpty { listOf("أ", "ب", "ج") }
             val regSubjects = jsonArrayToList(obj.optJSONArray("registeredSubjects")).ifEmpty { stage.defaultSubjects }
+            val resolvedSchoolId = obj.optString("schoolId", fallbackSchoolId).ifBlank { fallbackSchoolId }
+
+            val subjectConfigs = loadSubjectConfigs(resolvedSchoolId).ifEmpty {
+                regSubjects.mapIndexed { index, subName ->
+                    SubjectConfigItem(
+                        id = "sub_${index + 1}",
+                        name = subName,
+                        assignedClasses = regClasses,
+                        defaultMaxScore = 100,
+                        schoolId = resolvedSchoolId
+                    )
+                }
+            }
 
             SchoolConfig(
+                schoolId = resolvedSchoolId,
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
                 schoolName = obj.optString("schoolName", "مدرستي النموذجية"),
                 address = obj.optString("address", "الموصل - زمار"),
@@ -53,6 +134,7 @@ class SchoolRepository(context: Context) {
                 registeredClasses = regClasses,
                 registeredSections = regSections,
                 registeredSubjects = regSubjects,
+                subjectConfigs = subjectConfigs,
                 logoBase64 = obj.optString("logoBase64", ""),
                 academicYear = obj.optString("academicYear", "2026 - 2027"),
                 phone = obj.optString("phone", "07512362567")
@@ -63,10 +145,16 @@ class SchoolRepository(context: Context) {
     }
 
     fun saveSchoolConfig(config: SchoolConfig) {
+        val sid = config.schoolId.ifBlank { getActiveSchoolId() }.ifBlank {
+            "SCH-${(100000..999999).random()}"
+        }
+        setActiveSchoolId(sid)
+
         val obj = JSONObject().apply {
+            put("schoolId", sid)
             put("isSetupCompleted", config.isSetupCompleted)
-            put("schoolName", config.schoolName)
-            put("address", config.address.ifBlank { "الموصل - زمار" })
+            put("schoolName", InputSanitizer.sanitize(config.schoolName))
+            put("address", InputSanitizer.sanitize(config.address.ifBlank { "الموصل - زمار" }))
             put("schoolType", config.schoolType.name)
             put("schoolStage", config.schoolStage.name)
             put("registeredClasses", JSONArray(config.registeredClasses))
@@ -76,16 +164,80 @@ class SchoolRepository(context: Context) {
             put("academicYear", config.academicYear)
             put("phone", config.phone)
         }
-        prefs.edit().putString("school_config", obj.toString()).apply()
+        val jsonStr = obj.toString()
+        prefs.edit().putString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_SETTINGS, jsonStr)
+
+        if (config.subjectConfigs.isNotEmpty()) {
+            saveSubjectConfigs(config.subjectConfigs, sid)
+        }
     }
 
-    fun loadAccounts(): List<UserAccount> {
-        val raw = prefs.getString("user_accounts", null) ?: return emptyList()
+    fun loadSubjectConfigs(schoolId: String = getActiveSchoolId()): List<SubjectConfigItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_SUBJECTS), null)
+            ?: return emptyList()
+        return parseSubjectConfigsJson(raw, schoolId)
+    }
+
+    fun parseSubjectConfigsJson(raw: String, schoolId: String = getActiveSchoolId()): List<SubjectConfigItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<SubjectConfigItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(
+                    SubjectConfigItem(
+                        id = o.optString("id", "sub_${UUID.randomUUID().toString().take(5)}"),
+                        name = o.optString("name"),
+                        assignedClasses = jsonArrayToList(o.optJSONArray("assignedClasses")),
+                        defaultMaxScore = o.optInt("defaultMaxScore", 100),
+                        schoolId = o.optString("schoolId", schoolId)
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveSubjectConfigs(subjects: List<SubjectConfigItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        subjects.forEach { s ->
+            arr.put(JSONObject().apply {
+                put("id", s.id)
+                put("name", InputSanitizer.sanitize(s.name))
+                put("assignedClasses", JSONArray(s.assignedClasses))
+                put("defaultMaxScore", s.defaultMaxScore)
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_SUBJECTS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_SUBJECTS, jsonStr)
+    }
+
+    // =========================================================================
+    // 2. schools/{schoolId}/users (Accounts & Students)
+    // =========================================================================
+
+    fun loadAccounts(schoolId: String = getActiveSchoolId()): List<UserAccount> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_USERS), null)
+            ?: return emptyList()
+        return parseAccountsJson(raw, schoolId)
+    }
+
+    fun parseAccountsJson(raw: String, schoolId: String = getActiveSchoolId()): List<UserAccount> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<UserAccount>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSchoolId = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSchoolId != schoolId) continue
                 list.add(
                     UserAccount(
                         id = o.optString("id"),
@@ -101,7 +253,8 @@ class SchoolRepository(context: Context) {
                         gradeClass = o.optString("gradeClass", "الأول المتوسط"),
                         sectionName = o.optString("sectionName", "أ"),
                         address = o.optString("address", "الموصل - زمار"),
-                        photoBase64 = o.optString("photoBase64", "")
+                        photoBase64 = o.optString("photoBase64", ""),
+                        schoolId = itemSchoolId
                     )
                 )
             }
@@ -111,36 +264,48 @@ class SchoolRepository(context: Context) {
         }
     }
 
-    fun saveAccounts(accounts: List<UserAccount>) {
+    fun saveAccounts(accounts: List<UserAccount>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         accounts.forEach { acc ->
             arr.put(JSONObject().apply {
                 put("id", acc.id)
-                put("username", acc.username)
-                put("password", acc.password)
-                put("fullName", acc.fullName)
+                put("username", InputSanitizer.sanitizeUsername(acc.username))
+                put("password", InputSanitizer.sanitize(acc.password))
+                put("fullName", InputSanitizer.sanitize(acc.fullName))
                 put("role", acc.role.name)
                 put("isActive", acc.isActive)
-                put("phone", acc.phone)
-                put("specialty", acc.specialty)
-                put("assignedClasses", acc.assignedClasses)
+                put("phone", InputSanitizer.sanitize(acc.phone))
+                put("specialty", InputSanitizer.sanitize(acc.specialty))
+                put("assignedClasses", InputSanitizer.sanitize(acc.assignedClasses))
                 put("linkedStudentId", acc.linkedStudentId)
-                put("gradeClass", acc.gradeClass)
-                put("sectionName", acc.sectionName)
-                put("address", acc.address)
+                put("gradeClass", InputSanitizer.sanitize(acc.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(acc.sectionName))
+                put("address", InputSanitizer.sanitize(acc.address))
                 put("photoBase64", acc.photoBase64)
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("user_accounts", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_USERS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_USERS, jsonStr)
     }
 
-    fun loadStudents(): List<StudentRecord> {
-        val raw = prefs.getString("students", null) ?: return defaultStudents()
+    fun loadStudents(schoolId: String = getActiveSchoolId()): List<StudentRecord> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_HONOR_ROLL), null)
+            ?: return emptyList()
+        return parseStudentsJson(raw, schoolId)
+    }
+
+    fun parseStudentsJson(raw: String, schoolId: String = getActiveSchoolId()): List<StudentRecord> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<StudentRecord>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSchoolId = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSchoolId != schoolId) continue
                 list.add(
                     StudentRecord(
                         id = o.optString("id"),
@@ -158,43 +323,58 @@ class SchoolRepository(context: Context) {
                         photoBase64 = o.optString("photoBase64", ""),
                         excellencePoints = o.optInt("excellencePoints", 90),
                         isOnHonorRoll = o.optBoolean("isOnHonorRoll", false),
-                        honorTitle = o.optString("honorTitle", "وسام التفوق الذهبي")
+                        honorTitle = o.optString("honorTitle", "وسام التفوق الذهبي"),
+                        schoolId = itemSchoolId
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultStudents()
+            emptyList()
         }
     }
 
-    fun saveStudents(students: List<StudentRecord>) {
+    fun saveStudents(students: List<StudentRecord>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         students.forEach { s ->
             arr.put(JSONObject().apply {
                 put("id", s.id)
-                put("studentName", s.studentName)
-                put("gradeClass", s.gradeClass)
-                put("sectionName", s.sectionName)
-                put("parentName", s.parentName)
-                put("parentPhone", s.parentPhone)
-                put("address", s.address)
-                put("studentUsername", s.studentUsername)
-                put("studentPassword", s.studentPassword)
-                put("parentUsername", s.parentUsername)
-                put("parentPassword", s.parentPassword)
+                put("studentName", InputSanitizer.sanitize(s.studentName))
+                put("gradeClass", InputSanitizer.sanitize(s.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(s.sectionName))
+                put("parentName", InputSanitizer.sanitize(s.parentName))
+                put("parentPhone", InputSanitizer.sanitize(s.parentPhone))
+                put("address", InputSanitizer.sanitize(s.address))
+                put("studentUsername", InputSanitizer.sanitizeUsername(s.studentUsername))
+                put("studentPassword", InputSanitizer.sanitize(s.studentPassword))
+                put("parentUsername", InputSanitizer.sanitizeUsername(s.parentUsername))
+                put("parentPassword", InputSanitizer.sanitize(s.parentPassword))
                 put("isActive", s.isActive)
                 put("photoBase64", s.photoBase64)
                 put("excellencePoints", s.excellencePoints)
                 put("isOnHonorRoll", s.isOnHonorRoll)
-                put("honorTitle", s.honorTitle)
+                put("honorTitle", InputSanitizer.sanitize(s.honorTitle))
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("students", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_HONOR_ROLL), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_HONOR_ROLL, jsonStr)
     }
 
-    fun loadAttendance(): List<AttendanceEntry> {
-        val raw = prefs.getString("attendance", null) ?: return defaultAttendance()
+    // =========================================================================
+    // 3. schools/{schoolId}/attendance
+    // =========================================================================
+
+    fun loadAttendance(schoolId: String = getActiveSchoolId()): List<AttendanceEntry> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_ATTENDANCE), null)
+            ?: return emptyList()
+        return parseAttendanceJson(raw, schoolId)
+    }
+
+    fun parseAttendanceJson(raw: String, schoolId: String = getActiveSchoolId()): List<AttendanceEntry> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<AttendanceEntry>()
@@ -209,35 +389,46 @@ class SchoolRepository(context: Context) {
                         sectionName = o.optString("sectionName"),
                         date = o.optString("date"),
                         status = AttendanceStatus.valueOf(o.optString("status", AttendanceStatus.PRESENT.name)),
-                        note = o.optString("note")
+                        note = o.optString("note"),
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultAttendance()
+            emptyList()
         }
     }
 
-    fun saveAttendance(entries: List<AttendanceEntry>) {
+    fun saveAttendance(entries: List<AttendanceEntry>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         entries.forEach { e ->
             arr.put(JSONObject().apply {
                 put("id", e.id)
                 put("studentId", e.studentId)
-                put("studentName", e.studentName)
-                put("gradeClass", e.gradeClass)
-                put("sectionName", e.sectionName)
-                put("date", e.date)
+                put("studentName", InputSanitizer.sanitize(e.studentName))
+                put("gradeClass", InputSanitizer.sanitize(e.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(e.sectionName))
+                put("date", InputSanitizer.sanitize(e.date))
                 put("status", e.status.name)
-                put("note", e.note)
+                put("note", InputSanitizer.sanitize(e.note))
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("attendance", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_ATTENDANCE), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_ATTENDANCE, jsonStr)
     }
 
-    fun loadSchedules(): List<SchedulePeriod> {
-        val raw = prefs.getString("schedules", null) ?: return defaultSchedules()
+    // =========================================================================
+    // 4. schools/{schoolId}/schedules_homework
+    // =========================================================================
+
+    fun loadSchedules(schoolId: String = getActiveSchoolId()): List<SchedulePeriod> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString("${scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", null)
+            ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<SchedulePeriod>()
@@ -252,37 +443,51 @@ class SchoolRepository(context: Context) {
                         periodNumber = o.optInt("periodNumber", 1),
                         subjectName = o.optString("subjectName"),
                         teacherName = o.optString("teacherName"),
-                        timeSlot = o.optString("timeSlot")
+                        timeSlot = o.optString("timeSlot"),
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultSchedules()
+            emptyList()
         }
     }
 
-    fun saveSchedules(schedules: List<SchedulePeriod>) {
+    fun saveSchedules(schedules: List<SchedulePeriod>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         schedules.forEach { s ->
             arr.put(JSONObject().apply {
                 put("id", s.id)
-                put("gradeClass", s.gradeClass)
-                put("sectionName", s.sectionName)
-                put("dayOfWeek", s.dayOfWeek)
+                put("gradeClass", InputSanitizer.sanitize(s.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(s.sectionName))
+                put("dayOfWeek", InputSanitizer.sanitize(s.dayOfWeek))
                 put("periodNumber", s.periodNumber)
-                put("subjectName", s.subjectName)
-                put("teacherName", s.teacherName)
-                put("timeSlot", s.timeSlot)
+                put("subjectName", InputSanitizer.sanitize(s.subjectName))
+                put("teacherName", InputSanitizer.sanitize(s.teacherName))
+                put("timeSlot", InputSanitizer.sanitize(s.timeSlot))
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("schedules", arr.toString()).apply()
+        prefs.edit().putString("${scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", arr.toString()).apply()
+        syncSchedulesAndHomeworksBundle(schoolId)
     }
 
-    fun loadHomeworks(): List<HomeworkItem> {
-        val raw = prefs.getString("homeworks", null) ?: return defaultHomeworks()
+    fun loadHomeworks(schoolId: String = getActiveSchoolId()): List<HomeworkItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK), null)
+            ?: return emptyList()
+        return parseHomeworksJson(raw, schoolId)
+    }
+
+    fun parseHomeworksJson(raw: String, schoolId: String = getActiveSchoolId()): List<HomeworkItem> {
         return try {
-            val arr = JSONArray(raw)
+            val arr = if (raw.trim().startsWith("{")) {
+                JSONObject(raw).optJSONArray("homeworks") ?: JSONArray()
+            } else {
+                JSONArray(raw)
+            }
             val list = mutableListOf<HomeworkItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -296,36 +501,51 @@ class SchoolRepository(context: Context) {
                         dailyPreparation = o.optString("dailyPreparation"),
                         homeworkDetails = o.optString("homeworkDetails"),
                         dueDate = o.optString("dueDate"),
-                        createdAt = o.optString("createdAt")
+                        createdAt = o.optString("createdAt"),
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultHomeworks()
+            emptyList()
         }
     }
 
-    fun saveHomeworks(items: List<HomeworkItem>) {
+    fun saveHomeworks(items: List<HomeworkItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         items.forEach { h ->
             arr.put(JSONObject().apply {
                 put("id", h.id)
-                put("gradeClass", h.gradeClass)
-                put("sectionName", h.sectionName)
-                put("subjectName", h.subjectName)
-                put("teacherName", h.teacherName)
-                put("dailyPreparation", h.dailyPreparation)
-                put("homeworkDetails", h.homeworkDetails)
-                put("dueDate", h.dueDate)
-                put("createdAt", h.createdAt)
+                put("gradeClass", InputSanitizer.sanitize(h.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(h.sectionName))
+                put("subjectName", InputSanitizer.sanitize(h.subjectName))
+                put("teacherName", InputSanitizer.sanitize(h.teacherName))
+                put("dailyPreparation", InputSanitizer.sanitize(h.dailyPreparation))
+                put("homeworkDetails", InputSanitizer.sanitize(h.homeworkDetails))
+                put("dueDate", InputSanitizer.sanitize(h.dueDate))
+                put("createdAt", InputSanitizer.sanitize(h.createdAt))
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("homeworks", arr.toString()).apply()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK), arr.toString()).apply()
+        syncSchedulesAndHomeworksBundle(schoolId)
     }
 
-    fun loadExamSchedules(): List<ExamScheduleItem> {
-        val raw = prefs.getString("exam_schedules", null) ?: return defaultExamSchedules()
+    private fun syncSchedulesAndHomeworksBundle(schoolId: String) {
+        val hwStr = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK), "[]") ?: "[]"
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK, hwStr)
+    }
+
+    // =========================================================================
+    // 5. schools/{schoolId}/grades & Exam Schedules
+    // =========================================================================
+
+    fun loadExamSchedules(schoolId: String = getActiveSchoolId()): List<ExamScheduleItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString("${scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES)}_exams", null)
+            ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<ExamScheduleItem>()
@@ -341,83 +561,112 @@ class SchoolRepository(context: Context) {
                         dayName = o.optString("dayName"),
                         timeSlot = o.optString("timeSlot"),
                         topicsIncluded = o.optString("topicsIncluded"),
-                        hallNumber = o.optString("hallNumber")
+                        hallNumber = o.optString("hallNumber"),
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultExamSchedules()
+            emptyList()
         }
     }
 
-    fun saveExamSchedules(exams: List<ExamScheduleItem>) {
+    fun saveExamSchedules(exams: List<ExamScheduleItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         exams.forEach { e ->
             arr.put(JSONObject().apply {
                 put("id", e.id)
-                put("gradeClass", e.gradeClass)
-                put("subjectName", e.subjectName)
-                put("examType", e.examType)
-                put("examDate", e.examDate)
-                put("dayName", e.dayName)
-                put("timeSlot", e.timeSlot)
-                put("topicsIncluded", e.topicsIncluded)
-                put("hallNumber", e.hallNumber)
+                put("gradeClass", InputSanitizer.sanitize(e.gradeClass))
+                put("subjectName", InputSanitizer.sanitize(e.subjectName))
+                put("examType", InputSanitizer.sanitize(e.examType))
+                put("examDate", InputSanitizer.sanitize(e.examDate))
+                put("dayName", InputSanitizer.sanitize(e.dayName))
+                put("timeSlot", InputSanitizer.sanitize(e.timeSlot))
+                put("topicsIncluded", InputSanitizer.sanitize(e.topicsIncluded))
+                put("hallNumber", InputSanitizer.sanitize(e.hallNumber))
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("exam_schedules", arr.toString()).apply()
+        prefs.edit().putString("${scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES)}_exams", arr.toString()).apply()
     }
 
-    fun loadGrades(): List<SubjectGrade> {
-        val raw = prefs.getString("grades", null) ?: return defaultGrades()
+    fun loadGrades(schoolId: String = getActiveSchoolId()): List<SubjectGrade> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES), null)
+            ?: return emptyList()
+        return parseGradesJson(raw, schoolId)
+    }
+
+    fun parseGradesJson(raw: String, schoolId: String = getActiveSchoolId()): List<SubjectGrade> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<SubjectGrade>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val gCls = o.optString("gradeClass")
+                val defaultScale = GradingRules.defaultMaxScoreForClass(gCls)
+                val scale = o.optInt("maxScoreScale", defaultScale).let { if (it == 10) 10 else 100 }
                 list.add(
                     SubjectGrade(
                         id = o.optString("id"),
                         studentId = o.optString("studentId"),
                         studentName = o.optString("studentName"),
-                        gradeClass = o.optString("gradeClass"),
+                        gradeClass = gCls,
                         subjectName = o.optString("subjectName"),
-                        dailyScore = o.optInt("dailyScore", 90),
-                        month1Score = o.optInt("month1Score", 88),
-                        month2Score = o.optInt("month2Score", 92),
-                        midYearScore = o.optInt("midYearScore", 90),
-                        finalExamScore = o.optInt("finalExamScore", 94)
+                        dailyScore = o.optInt("dailyScore", 0),
+                        month1Score = o.optInt("month1Score", 0),
+                        month2Score = o.optInt("month2Score", 0),
+                        midYearScore = o.optInt("midYearScore", 0),
+                        finalExamScore = o.optInt("finalExamScore", 0),
+                        maxScoreScale = scale,
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultGrades()
+            emptyList()
         }
     }
 
-    fun saveGrades(grades: List<SubjectGrade>) {
+    fun saveGrades(grades: List<SubjectGrade>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         grades.forEach { g ->
             arr.put(JSONObject().apply {
                 put("id", g.id)
                 put("studentId", g.studentId)
-                put("studentName", g.studentName)
-                put("gradeClass", g.gradeClass)
-                put("subjectName", g.subjectName)
+                put("studentName", InputSanitizer.sanitize(g.studentName))
+                put("gradeClass", InputSanitizer.sanitize(g.gradeClass))
+                put("subjectName", InputSanitizer.sanitize(g.subjectName))
                 put("dailyScore", g.dailyScore)
                 put("month1Score", g.month1Score)
                 put("month2Score", g.month2Score)
                 put("midYearScore", g.midYearScore)
                 put("finalExamScore", g.finalExamScore)
+                put("maxScoreScale", g.maxScoreScale)
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("grades", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_GRADES, jsonStr)
     }
 
-    fun loadTuitions(): List<TuitionRecord> {
-        val raw = prefs.getString("tuitions", null) ?: return defaultTuitions()
+    // =========================================================================
+    // 6. schools/{schoolId}/tuition_fees
+    // =========================================================================
+
+    fun loadTuitions(schoolId: String = getActiveSchoolId()): List<TuitionRecord> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_TUITION_FEES), null)
+            ?: return emptyList()
+        return parseTuitionsJson(raw, schoolId)
+    }
+
+    fun parseTuitionsJson(raw: String, schoolId: String = getActiveSchoolId()): List<TuitionRecord> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<TuitionRecord>()
@@ -447,17 +696,19 @@ class SchoolRepository(context: Context) {
                         parentPhone = o.optString("parentPhone"),
                         totalFee = o.optLong("totalFee", 1500000L),
                         nextDueDate = o.optString("nextDueDate", "2026-11-15"),
-                        installments = installments
+                        installments = installments,
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultTuitions()
+            emptyList()
         }
     }
 
-    fun saveTuitions(records: List<TuitionRecord>) {
+    fun saveTuitions(records: List<TuitionRecord>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         records.forEach { r ->
             val instArr = JSONArray()
@@ -465,28 +716,41 @@ class SchoolRepository(context: Context) {
                 instArr.put(JSONObject().apply {
                     put("id", inst.id)
                     put("amount", inst.amount)
-                    put("paymentDate", inst.paymentDate)
-                    put("receiptNumber", inst.receiptNumber)
-                    put("note", inst.note)
+                    put("paymentDate", InputSanitizer.sanitize(inst.paymentDate))
+                    put("receiptNumber", InputSanitizer.sanitize(inst.receiptNumber))
+                    put("note", InputSanitizer.sanitize(inst.note))
                 })
             }
             arr.put(JSONObject().apply {
                 put("studentId", r.studentId)
-                put("studentName", r.studentName)
-                put("gradeClass", r.gradeClass)
-                put("sectionName", r.sectionName)
-                put("parentName", r.parentName)
-                put("parentPhone", r.parentPhone)
+                put("studentName", InputSanitizer.sanitize(r.studentName))
+                put("gradeClass", InputSanitizer.sanitize(r.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(r.sectionName))
+                put("parentName", InputSanitizer.sanitize(r.parentName))
+                put("parentPhone", InputSanitizer.sanitize(r.parentPhone))
                 put("totalFee", r.totalFee)
-                put("nextDueDate", r.nextDueDate)
+                put("nextDueDate", InputSanitizer.sanitize(r.nextDueDate))
                 put("installments", instArr)
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("tuitions", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_TUITION_FEES), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_TUITION_FEES, jsonStr)
     }
 
-    fun loadReports(): List<ParentReport> {
-        val raw = prefs.getString("reports", null) ?: return defaultReports()
+    // =========================================================================
+    // 7. schools/{schoolId}/reports & schools/{schoolId}/messages
+    // =========================================================================
+
+    fun loadReports(schoolId: String = getActiveSchoolId()): List<ParentReport> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_REPORTS), null)
+            ?: return emptyList()
+        return parseReportsJson(raw, schoolId)
+    }
+
+    fun parseReportsJson(raw: String, schoolId: String = getActiveSchoolId()): List<ParentReport> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<ParentReport>()
@@ -504,38 +768,49 @@ class SchoolRepository(context: Context) {
                         title = o.optString("title"),
                         details = o.optString("details"),
                         senderName = o.optString("senderName"),
-                        createdAt = o.optString("createdAt")
+                        createdAt = o.optString("createdAt"),
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultReports()
+            emptyList()
         }
     }
 
-    fun saveReports(reports: List<ParentReport>) {
+    fun saveReports(reports: List<ParentReport>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         reports.forEach { r ->
             arr.put(JSONObject().apply {
                 put("id", r.id)
                 put("studentId", r.studentId)
-                put("studentName", r.studentName)
-                put("gradeClass", r.gradeClass)
-                put("parentName", r.parentName)
-                put("parentPhone", r.parentPhone)
+                put("studentName", InputSanitizer.sanitize(r.studentName))
+                put("gradeClass", InputSanitizer.sanitize(r.gradeClass))
+                put("parentName", InputSanitizer.sanitize(r.parentName))
+                put("parentPhone", InputSanitizer.sanitize(r.parentPhone))
                 put("reportType", r.reportType.name)
-                put("title", r.title)
-                put("details", r.details)
-                put("senderName", r.senderName)
-                put("createdAt", r.createdAt)
+                put("title", InputSanitizer.sanitize(r.title))
+                put("details", InputSanitizer.sanitize(r.details))
+                put("senderName", InputSanitizer.sanitize(r.senderName))
+                put("createdAt", InputSanitizer.sanitize(r.createdAt))
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("reports", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_REPORTS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_REPORTS, jsonStr)
     }
 
-    fun loadChatMessages(): List<ChatMessage> {
-        val raw = prefs.getString("chat_messages", null) ?: return defaultChatMessages()
+    fun loadChatMessages(schoolId: String = getActiveSchoolId()): List<ChatMessage> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_MESSAGES), null)
+            ?: return emptyList()
+        return parseChatMessagesJson(raw, schoolId)
+    }
+
+    fun parseChatMessagesJson(raw: String, schoolId: String = getActiveSchoolId()): List<ChatMessage> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<ChatMessage>()
@@ -549,34 +824,51 @@ class SchoolRepository(context: Context) {
                         senderName = o.optString("senderName"),
                         senderRole = UserRole.valueOf(o.optString("senderRole", UserRole.ADMIN.name)),
                         messageText = o.optString("messageText"),
-                        timestamp = o.optString("timestamp")
+                        timestamp = o.optString("timestamp"),
+                        imageBase64 = o.optString("imageBase64", ""),
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultChatMessages()
+            emptyList()
         }
     }
 
-    fun saveChatMessages(messages: List<ChatMessage>) {
+    fun saveChatMessages(messages: List<ChatMessage>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         messages.forEach { m ->
             arr.put(JSONObject().apply {
                 put("id", m.id)
                 put("studentId", m.studentId)
-                put("studentName", m.studentName)
-                put("senderName", m.senderName)
+                put("studentName", InputSanitizer.sanitize(m.studentName))
+                put("senderName", InputSanitizer.sanitize(m.senderName))
                 put("senderRole", m.senderRole.name)
-                put("messageText", m.messageText)
-                put("timestamp", m.timestamp)
+                put("messageText", InputSanitizer.sanitize(m.messageText))
+                put("timestamp", InputSanitizer.sanitize(m.timestamp))
+                put("imageBase64", m.imageBase64)
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("chat_messages", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_MESSAGES), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_MESSAGES, jsonStr)
     }
 
-    fun loadEvents(): List<SchoolEvent> {
-        val raw = prefs.getString("events", null) ?: return defaultEvents()
+    // =========================================================================
+    // 8. schools/{schoolId}/events_gallery & schools/{schoolId}/notifications
+    // =========================================================================
+
+    fun loadEvents(schoolId: String = getActiveSchoolId()): List<SchoolEvent> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_EVENTS_GALLERY), null)
+            ?: return emptyList()
+        return parseEventsJson(raw, schoolId)
+    }
+
+    fun parseEventsJson(raw: String, schoolId: String = getActiveSchoolId()): List<SchoolEvent> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<SchoolEvent>()
@@ -591,35 +883,46 @@ class SchoolRepository(context: Context) {
                         date = o.optString("date"),
                         location = o.optString("location", "الموصل - زمار"),
                         imageBase64 = o.optString("imageBase64", ""),
-                        authorName = o.optString("authorName", "إدارة المدرسة")
+                        authorName = o.optString("authorName", "إدارة المدرسة"),
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultEvents()
+            emptyList()
         }
     }
 
-    fun saveEvents(events: List<SchoolEvent>) {
+    fun saveEvents(events: List<SchoolEvent>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         events.forEach { ev ->
             arr.put(JSONObject().apply {
                 put("id", ev.id)
-                put("title", ev.title)
-                put("category", ev.category)
-                put("description", ev.description)
-                put("date", ev.date)
-                put("location", ev.location)
+                put("title", InputSanitizer.sanitize(ev.title))
+                put("category", InputSanitizer.sanitize(ev.category))
+                put("description", InputSanitizer.sanitize(ev.description))
+                put("date", InputSanitizer.sanitize(ev.date))
+                put("location", InputSanitizer.sanitize(ev.location))
                 put("imageBase64", ev.imageBase64)
-                put("authorName", ev.authorName)
+                put("authorName", InputSanitizer.sanitize(ev.authorName))
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("events", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_EVENTS_GALLERY), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_EVENTS_GALLERY, jsonStr)
     }
 
-    fun loadNotifications(): List<AppNotification> {
-        val raw = prefs.getString("notifications", null) ?: return defaultNotifications()
+    fun loadNotifications(schoolId: String = getActiveSchoolId()): List<AppNotification> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_NOTIFICATIONS), null)
+            ?: return emptyList()
+        return parseNotificationsJson(raw, schoolId)
+    }
+
+    fun parseNotificationsJson(raw: String, schoolId: String = getActiveSchoolId()): List<AppNotification> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<AppNotification>()
@@ -633,441 +936,163 @@ class SchoolRepository(context: Context) {
                         type = NotificationType.valueOf(o.optString("type", NotificationType.GENERAL.name)),
                         targetStudentId = o.optString("targetStudentId"),
                         createdAt = o.optString("createdAt"),
-                        isRead = o.optBoolean("isRead", false)
+                        isRead = o.optBoolean("isRead", false),
+                        schoolId = o.optString("schoolId", schoolId)
                     )
                 )
             }
             list
         } catch (e: Exception) {
-            defaultNotifications()
+            emptyList()
         }
     }
 
-    fun saveNotifications(notifications: List<AppNotification>) {
+    fun saveNotifications(notifications: List<AppNotification>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
         val arr = JSONArray()
         notifications.forEach { n ->
             arr.put(JSONObject().apply {
                 put("id", n.id)
-                put("title", n.title)
-                put("body", n.body)
+                put("title", InputSanitizer.sanitize(n.title))
+                put("body", InputSanitizer.sanitize(n.body))
                 put("type", n.type.name)
                 put("targetStudentId", n.targetStudentId)
-                put("createdAt", n.createdAt)
+                put("createdAt", InputSanitizer.sanitize(n.createdAt))
                 put("isRead", n.isRead)
+                put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("notifications", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_NOTIFICATIONS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_NOTIFICATIONS, jsonStr)
     }
 
-    fun defaultStudents(): List<StudentRecord> = listOf(
-        StudentRecord(
-            id = "stu_1",
-            studentName = "يوسف محمود الجبوري",
-            gradeClass = "الأول المتوسط",
-            sectionName = "أ",
-            parentName = "محمود صالح الجبوري",
-            parentPhone = "07512362567",
-            address = "الموصل - زمار",
-            studentUsername = "yousif1",
-            studentPassword = "123",
-            parentUsername = "parent_yousif",
-            parentPassword = "123",
-            isActive = true,
-            excellencePoints = 98,
-            isOnHonorRoll = true,
-            honorTitle = "المركز الأول - وسام النخبة الذهبي"
-        ),
-        StudentRecord(
-            id = "stu_2",
-            studentName = "مريم خالد الشمري",
-            gradeClass = "الأول المتوسط",
-            sectionName = "أ",
-            parentName = "خالد عبد الله الشمري",
-            parentPhone = "07512362567",
-            address = "الموصل - زمار",
-            studentUsername = "maryam1",
-            studentPassword = "123",
-            parentUsername = "parent_maryam",
-            parentPassword = "123",
-            isActive = true,
-            excellencePoints = 96,
-            isOnHonorRoll = true,
-            honorTitle = "المركز الثاني - وسام الإبداع العلمي"
-        ),
-        StudentRecord(
-            id = "stu_3",
-            studentName = "عبد الرحمن طارق الدليمي",
-            gradeClass = "الثاني المتوسط",
-            sectionName = "أ",
-            parentName = "طارق ياسين الدليمي",
-            parentPhone = "07512362567",
-            address = "الموصل - زمار",
-            studentUsername = "abdulrahman2",
-            studentPassword = "123",
-            parentUsername = "parent_abdulrahman",
-            parentPassword = "123",
-            isActive = true,
-            excellencePoints = 95,
-            isOnHonorRoll = true,
-            honorTitle = "أول الصف الثاني المتوسط - وسام التميز"
-        ),
-        StudentRecord(
-            id = "stu_4",
-            studentName = "زهراء فراس العبيدي",
-            gradeClass = "الثالث المتوسط",
-            sectionName = "ب",
-            parentName = "فراس حامد العبيدي",
-            parentPhone = "07512362567",
-            address = "الموصل - زمار",
-            studentUsername = "zahraa3",
-            studentPassword = "123",
-            parentUsername = "parent_zahraa",
-            parentPassword = "123",
-            isActive = true,
-            excellencePoints = 97,
-            isOnHonorRoll = true,
-            honorTitle = "المركز الأول - درع التفوق الوزاري"
-        )
-    )
+    // =========================================================================
+    // 9. FULL SCHOOL BACKUP & RESTORE (JSON) FOR ADMIN ONLY
+    // =========================================================================
 
-    fun defaultTeachers(): List<UserAccount> = listOf(
-        UserAccount(
-            id = "tch_1",
-            username = "teacher_math",
-            password = "123",
-            fullName = "أ. عمر قاسم الحديثي",
-            role = UserRole.TEACHER,
-            isActive = true,
-            phone = "07512362567",
-            specialty = "الرياضيات، الفيزياء",
-            assignedClasses = "الأول المتوسط - أ، الثاني المتوسط - أ",
-            address = "الموصل - زمار"
-        ),
-        UserAccount(
-            id = "tch_2",
-            username = "teacher_arabic",
-            password = "123",
-            fullName = "أ. سارة نبيل الموصلي",
-            role = UserRole.TEACHER,
-            isActive = true,
-            phone = "07512362567",
-            specialty = "اللغة العربية، التربية الإسلامية",
-            assignedClasses = "الأول المتوسط - أ، الثالث المتوسط - ب",
-            address = "الموصل - زمار"
-        )
-    )
+    fun exportFullSchoolBackupJson(schoolId: String = getActiveSchoolId()): String {
+        val sid = schoolId.ifBlank { getActiveSchoolId() }
+        val root = JSONObject().apply {
+            put("backupVersion", 2)
+            put("schoolId", sid)
+            put("exportedAt", System.currentTimeMillis())
+            put("firebaseProjectId", FirebaseConfigConstants.PROJECT_ID)
+            put("settings", JSONObject(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), "{}") ?: "{}"))
+            put("subjects", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_SUBJECTS), "[]") ?: "[]"))
+            put("users", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_USERS), "[]") ?: "[]"))
+            put("honor_roll", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_HONOR_ROLL), "[]") ?: "[]"))
+            put("attendance", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_ATTENDANCE), "[]") ?: "[]"))
+            put("schedules_homework", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK), "[]") ?: "[]"))
+            put("schedules_periods", JSONArray(prefs.getString("${scopedKey(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", "[]") ?: "[]"))
+            put("grades", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_GRADES), "[]") ?: "[]"))
+            put("exams", JSONArray(prefs.getString("${scopedKey(sid, FirebaseConfigConstants.COL_GRADES)}_exams", "[]") ?: "[]"))
+            put("tuition_fees", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_TUITION_FEES), "[]") ?: "[]"))
+            put("reports", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_REPORTS), "[]") ?: "[]"))
+            put("messages", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_MESSAGES), "[]") ?: "[]"))
+            put("events_gallery", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_EVENTS_GALLERY), "[]") ?: "[]"))
+            put("notifications", JSONArray(prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_NOTIFICATIONS), "[]") ?: "[]"))
+        }
+        return root.toString(2)
+    }
 
-    fun defaultAttendance(): List<AttendanceEntry> = listOf(
-        AttendanceEntry(
-            id = "att_1",
-            studentId = "stu_1",
-            studentName = "يوسف محمود الجبوري",
-            gradeClass = "الأول المتوسط",
-            sectionName = "أ",
-            date = "2026-10-29",
-            status = AttendanceStatus.PRESENT,
-            note = "التزام مبكر وممتاز"
-        ),
-        AttendanceEntry(
-            id = "att_2",
-            studentId = "stu_2",
-            studentName = "مريم خالد الشمري",
-            gradeClass = "الأول المتوسط",
-            sectionName = "أ",
-            date = "2026-10-29",
-            status = AttendanceStatus.PRESENT,
-            note = "حضور منتظم"
-        ),
-        AttendanceEntry(
-            id = "att_3",
-            studentId = "stu_3",
-            studentName = "عبد الرحمن طارق الدليمي",
-            gradeClass = "الثاني المتوسط",
-            sectionName = "أ",
-            date = "2026-10-29",
-            status = AttendanceStatus.ABSENT,
-            note = "لم يحضر الحصة الأولى"
-        ),
-        AttendanceEntry(
-            id = "att_4",
-            studentId = "stu_4",
-            studentName = "زهراء فراس العبيدي",
-            gradeClass = "الثالث المتوسط",
-            sectionName = "ب",
-            date = "2026-10-29",
-            status = AttendanceStatus.LATE,
-            note = "تأخر 10 دقائق"
-        )
-    )
+    fun importFullSchoolBackupJson(rawBackupJson: String, currentSchoolId: String = getActiveSchoolId()): Result<String> {
+        return try {
+            val root = JSONObject(rawBackupJson.trim())
+            val sid = root.optString("schoolId", currentSchoolId).ifBlank { currentSchoolId }
+            if (sid.isBlank()) {
+                return Result.failure(IllegalArgumentException("ملف النسخة الاحتياطية لا يحتوي على معرّف مدرسة صالح (schoolId)"))
+            }
+            setActiveSchoolId(sid)
 
-    fun defaultSchedules(): List<SchedulePeriod> = listOf(
-        SchedulePeriod("sch_1", "الأول المتوسط", "أ", "الأحد", 1, "الرياضيات", "أ. عمر قاسم الحديثي", "08:00 - 08:45"),
-        SchedulePeriod("sch_2", "الأول المتوسط", "أ", "الأحد", 2, "اللغة العربية", "أ. سارة نبيل الموصلي", "08:50 - 09:35"),
-        SchedulePeriod("sch_3", "الأول المتوسط", "أ", "الأحد", 3, "اللغة الإنكليزية", "أ. زياد طلال", "09:40 - 10:25"),
-        SchedulePeriod("sch_4", "الأول المتوسط", "أ", "الأحد", 4, "الفيزياء", "أ. عمر قاسم الحديثي", "10:40 - 11:25"),
-        SchedulePeriod("sch_5", "الأول المتوسط", "أ", "الاثنين", 1, "التربية الإسلامية", "أ. سارة نبيل الموصلي", "08:00 - 08:45"),
-        SchedulePeriod("sch_6", "الأول المتوسط", "أ", "الاثنين", 2, "الرياضيات", "أ. عمر قاسم الحديثي", "08:50 - 09:35"),
-        SchedulePeriod("sch_7", "الأول المتوسط", "أ", "الاثنين", 3, "الاجتماعيات", "أ. مهند الحمداني", "09:40 - 10:25"),
-        SchedulePeriod("sch_8", "الثاني المتوسط", "أ", "الأحد", 1, "الفيزياء", "أ. عمر قاسم الحديثي", "08:00 - 08:45"),
-        SchedulePeriod("sch_9", "الثالث المتوسط", "ب", "الأحد", 1, "اللغة العربية", "أ. سارة نبيل الموصلي", "08:00 - 08:45"),
-        SchedulePeriod("sch_10", "الأول المتوسط", "أ", "الخميس", 1, "الحاسوب", "أ. أحمد أبو رسلان", "08:00 - 08:45")
-    )
+            val editor = prefs.edit()
+            root.optJSONObject("settings")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_SETTINGS, s)
+            }
+            root.optJSONArray("subjects")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_SUBJECTS), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_SUBJECTS, s)
+            }
+            root.optJSONArray("users")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_USERS), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_USERS, s)
+            }
+            root.optJSONArray("honor_roll")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_HONOR_ROLL), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_HONOR_ROLL, s)
+            }
+            root.optJSONArray("attendance")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_ATTENDANCE), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_ATTENDANCE, s)
+            }
+            root.optJSONArray("schedules_homework")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK, s)
+            }
+            root.optJSONArray("schedules_periods")?.let {
+                editor.putString("${scopedKey(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", it.toString())
+            }
+            root.optJSONArray("grades")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_GRADES), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_GRADES, s)
+            }
+            root.optJSONArray("exams")?.let {
+                editor.putString("${scopedKey(sid, FirebaseConfigConstants.COL_GRADES)}_exams", it.toString())
+            }
+            root.optJSONArray("tuition_fees")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_TUITION_FEES), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_TUITION_FEES, s)
+            }
+            root.optJSONArray("reports")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_REPORTS), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_REPORTS, s)
+            }
+            root.optJSONArray("messages")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_MESSAGES), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_MESSAGES, s)
+            }
+            root.optJSONArray("events_gallery")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_EVENTS_GALLERY), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_EVENTS_GALLERY, s)
+            }
+            root.optJSONArray("notifications")?.let {
+                val s = it.toString()
+                editor.putString(scopedKey(sid, FirebaseConfigConstants.COL_NOTIFICATIONS), s)
+                FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_NOTIFICATIONS, s)
+            }
+            editor.apply()
+            Result.success(sid)
+        } catch (e: Exception) {
+            Result.failure(IllegalArgumentException("فشل استعادة النسخة الاحتياطية: تأكد من صحة صيغة JSON"))
+        }
+    }
 
-    fun defaultHomeworks(): List<HomeworkItem> = listOf(
-        HomeworkItem(
-            id = "hw_1",
-            gradeClass = "الأول المتوسط",
-            sectionName = "أ",
-            subjectName = "الرياضيات",
-            teacherName = "أ. عمر قاسم الحديثي",
-            dailyPreparation = "الفصل الثاني: الأعداد النسبية والعمليات عليها (ص 34 - 38)",
-            homeworkDetails = "حل تمارين تأكد من فهمك صفحة 39 في الدفتر المدرسي (الأسئلة 1 إلى 8)",
-            dueDate = "2026-10-30",
-            createdAt = "اليوم 09:15 ص"
-        ),
-        HomeworkItem(
-            id = "hw_2",
-            gradeClass = "الأول المتوسط",
-            sectionName = "أ",
-            subjectName = "اللغة العربية",
-            teacherName = "أ. سارة نبيل الموصلي",
-            dailyPreparation = "قواعد اللغة العربية: أقسام الكلام وعلامات الفعل المضارع",
-            homeworkDetails = "كتابة خمس جمل مفيدة مع إعرابها إعراباً مفصلاً في دفتر القواعد",
-            dueDate = "2026-10-30",
-            createdAt = "اليوم 10:00 ص"
-        ),
-        HomeworkItem(
-            id = "hw_3",
-            gradeClass = "الثاني المتوسط",
-            sectionName = "أ",
-            subjectName = "الفيزياء",
-            teacherName = "أ. عمر قاسم الحديثي",
-            dailyPreparation = "الحركة الخطية والسرعة والتعجيل",
-            homeworkDetails = "مراجعة القوانين وحل المسائل الحسابية في نهاية الفصل الأول",
-            dueDate = "2026-10-31",
-            createdAt = "أمس 11:30 ص"
-        )
-    )
+    // =========================================================================
+    // CLEAN STATE DEFAULTS (Empty Lists - No pre-existing fake students/data)
+    // =========================================================================
 
-    fun defaultExamSchedules(): List<ExamScheduleItem> = listOf(
-        ExamScheduleItem(
-            id = "ex_1",
-            gradeClass = "الأول المتوسط",
-            subjectName = "الرياضيات",
-            examType = "امتحان الشهر الأول",
-            examDate = "2026-11-03",
-            dayName = "الثلاثاء",
-            timeSlot = "08:30 صباحاً",
-            topicsIncluded = "الفصل الأول والفصل الثاني بالكامل",
-            hallNumber = "قاعة الفراهيدي (1)"
-        ),
-        ExamScheduleItem(
-            id = "ex_2",
-            gradeClass = "الأول المتوسط",
-            subjectName = "اللغة العربية",
-            examType = "امتحان الشهر الأول",
-            examDate = "2026-11-05",
-            dayName = "الخميس",
-            timeSlot = "08:30 صباحاً",
-            topicsIncluded = "المبتدأ والخبر + كان وأخواتها + الإملاء",
-            hallNumber = "قاعة الفراهيدي (1)"
-        ),
-        ExamScheduleItem(
-            id = "ex_3",
-            gradeClass = "الثاني المتوسط",
-            subjectName = "الفيزياء",
-            examType = "امتحان الشهر الأول",
-            examDate = "2026-11-04",
-            dayName = "الأربعاء",
-            timeSlot = "09:30 صباحاً",
-            topicsIncluded = "الفصل الأول والفصل الثاني",
-            hallNumber = "قاعة ابن الهيثم (2)"
-        )
-    )
-
-    fun defaultGrades(): List<SubjectGrade> = listOf(
-        SubjectGrade("grd_1", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "الرياضيات", 98, 96, 99, 97, 99),
-        SubjectGrade("grd_2", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "اللغة العربية", 95, 94, 96, 95, 97),
-        SubjectGrade("grd_3", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "اللغة الإنكليزية", 97, 95, 98, 96, 98),
-        SubjectGrade("grd_4", "stu_1", "يوسف محمود الجبوري", "الأول المتوسط", "الفيزياء", 99, 97, 98, 99, 100),
-        SubjectGrade("grd_5", "stu_2", "مريم خالد الشمري", "الأول المتوسط", "الرياضيات", 95, 94, 97, 96, 96),
-        SubjectGrade("grd_6", "stu_2", "مريم خالد الشمري", "الأول المتوسط", "اللغة العربية", 98, 96, 97, 98, 99),
-        SubjectGrade("grd_7", "stu_3", "عبد الرحمن طارق الدليمي", "الثاني المتوسط", "الرياضيات", 92, 90, 94, 93, 95),
-        SubjectGrade("grd_8", "stu_4", "زهراء فراس العبيدي", "الثالث المتوسط", "اللغة العربية", 97, 96, 98, 97, 98)
-    )
-
-    fun defaultTuitions(): List<TuitionRecord> = listOf(
-        TuitionRecord(
-            studentId = "stu_1",
-            studentName = "يوسف محمود الجبوري",
-            gradeClass = "الأول المتوسط",
-            sectionName = "أ",
-            parentName = "محمود صالح الجبوري",
-            parentPhone = "07512362567",
-            totalFee = 1500000L,
-            nextDueDate = "2026-11-15",
-            installments = listOf(
-                TuitionInstallment("inst_1", 500000L, "2026-09-15", "REC-1001", "الدفعة الأولى عند التسجيل"),
-                TuitionInstallment("inst_2", 500000L, "2026-10-15", "REC-1042", "الدفعة الثانية لشهر تشرين الأول")
-            )
-        ),
-        TuitionRecord(
-            studentId = "stu_2",
-            studentName = "مريم خالد الشمري",
-            gradeClass = "الأول المتوسط",
-            sectionName = "أ",
-            parentName = "خالد عبد الله الشمري",
-            parentPhone = "07512362567",
-            totalFee = 1500000L,
-            nextDueDate = "2026-11-10",
-            installments = listOf(
-                TuitionInstallment("inst_3", 750000L, "2026-09-20", "REC-1015", "دفعة القسط الأول")
-            )
-        ),
-        TuitionRecord(
-            studentId = "stu_3",
-            studentName = "عبد الرحمن طارق الدليمي",
-            gradeClass = "الثاني المتوسط",
-            sectionName = "أ",
-            parentName = "طارق ياسين الدليمي",
-            parentPhone = "07512362567",
-            totalFee = 1600000L,
-            nextDueDate = "2026-11-05",
-            installments = listOf(
-                TuitionInstallment("inst_4", 600000L, "2026-09-18", "REC-1009", "دفعة القسط التأسيسي")
-            )
-        ),
-        TuitionRecord(
-            studentId = "stu_4",
-            studentName = "زهراء فراس العبيدي",
-            gradeClass = "الثالث المتوسط",
-            sectionName = "ب",
-            parentName = "فراس حامد العبيدي",
-            parentPhone = "07512362567",
-            totalFee = 1750000L,
-            nextDueDate = "2026-12-01",
-            installments = listOf(
-                TuitionInstallment("inst_5", 1750000L, "2026-09-10", "REC-1002", "تسديد كامل القسط السنوي مع خصم التفوق")
-            )
-        )
-    )
-
-    fun defaultReports(): List<ParentReport> = listOf(
-        ParentReport(
-            id = "rep_1",
-            studentId = "stu_1",
-            studentName = "يوسف محمود الجبوري",
-            gradeClass = "الأول المتوسط",
-            parentName = "محمود صالح الجبوري",
-            parentPhone = "07512362567",
-            reportType = ReportType.APPRECIATION,
-            title = "كتاب شكر وتقدير لتفوق الطالب العلمي",
-            details = "تتقدم إدارة المدرسة بجزيل الشكر لولي أمر الطالب يوسف محمود الجبوري لحصوله على الدرجة الكاملة في الاختبار الأسبوعي لمادة الرياضيات والعلوم.",
-            senderName = "الإدارة العامة",
-            createdAt = "اليوم 10:30 ص"
-        ),
-        ParentReport(
-            id = "rep_2",
-            studentId = "stu_3",
-            studentName = "عبد الرحمن طارق الدليمي",
-            gradeClass = "الثاني المتوسط",
-            parentName = "طارق ياسين الدليمي",
-            parentPhone = "07512362567",
-            reportType = ReportType.ACADEMIC_NOTE,
-            title = "متابعة تحضير مادة الفيزياء",
-            details = "نرجو من ولي الأمر الكريم متابعة حل الواجبات البيتية الخاصة بالفصل الأول وتحضير الدرس القادم.",
-            senderName = "أ. عمر قاسم الحديثي",
-            createdAt = "أمس 12:15 م"
-        )
-    )
-
-    fun defaultChatMessages(): List<ChatMessage> = listOf(
-        ChatMessage(
-            id = "msg_1",
-            studentId = "stu_1",
-            studentName = "يوسف محمود الجبوري",
-            senderName = "الإدارة العامة",
-            senderRole = UserRole.ADMIN,
-            messageText = "السلام عليكم ورحمة الله، نرحب بكم في نافذة التواصل المباشر لمنصة مدرستي في الموصل - زمار.",
-            timestamp = "09:00 ص"
-        ),
-        ChatMessage(
-            id = "msg_2",
-            studentId = "stu_1",
-            studentName = "يوسف محمود الجبوري",
-            senderName = "محمود صالح الجبوري (ولي أمر)",
-            senderRole = UserRole.PARENT,
-            messageText = "وعليكم السلام ورحمة الله، بارك الله بجهودكم الكريمة في متابعة أبنائنا الطلبة.",
-            timestamp = "09:12 ص"
-        )
-    )
-
-    fun defaultEvents(): List<SchoolEvent> = listOf(
-        SchoolEvent(
-            id = "ev_1",
-            title = "مهرجان التفوق السنوي وتكريم أوائل الطلبة في زمار",
-            category = "احتفالية وتكريم",
-            description = "أقامت إدارة المدرسة حفل تكريم الطلبة الأوائل والمجتهدين بحضور أولياء الأمور الكرام وتوزيع الأوسمة الذهبية وشهادات التقدير.",
-            date = "2026-10-28",
-            location = "الموصل - زمار (القاعة الكبرى)",
-            authorName = "الإدارة العامة"
-        ),
-        SchoolEvent(
-            id = "ev_2",
-            title = "انطلاق المسابقة العلمية والمنهجية بين الشعب الدراسية",
-            category = "نشاط علمي",
-            description = "انطلقت اليوم فعاليات المسابقة العلمية في مواد الرياضيات والعلوم واللغة العربية لتعزيز روح التنافس الإيجابي بين الطلبة.",
-            date = "2026-10-25",
-            location = "الموصل - زمار (مختبر العلوم)",
-            authorName = "اللجنة العلمية"
-        ),
-        SchoolEvent(
-            id = "ev_3",
-            title = "حملة التشجير البيئي وتجميل حدائق المدرسة",
-            category = "نشاط لا صفي",
-            description = "بمشاركة الكادر التدريسي والطلبة المتميزين تم غرس أكثر من 100 شجرة وزهرة في باحات المدرسة.",
-            date = "2026-10-20",
-            location = "الموصل - زمار",
-            authorName = "لجنة النشاط المدرسي"
-        )
-    )
-
-    fun defaultNotifications(): List<AppNotification> = listOf(
-        AppNotification(
-            id = "notif_1",
-            title = "تنبيه غياب يومي",
-            body = "تم تسجيل غياب الطالب عبد الرحمن طارق الدليمي لهذا اليوم 2026-10-29. يرجى مراجعة الإدارة.",
-            type = NotificationType.ATTENDANCE,
-            targetStudentId = "stu_3",
-            createdAt = "منذ 15 دقيقة",
-            isRead = false
-        ),
-        AppNotification(
-            id = "notif_2",
-            title = "واجب بيتي جديد في الرياضيات",
-            body = "نشر أ. عمر قاسم الحديثي تحضير وواجب مادة الرياضيات للصف الأول المتوسط (شعبة أ).",
-            type = NotificationType.HOMEWORK,
-            targetStudentId = "stu_1",
-            createdAt = "منذ ساعة",
-            isRead = false
-        ),
-        AppNotification(
-            id = "notif_3",
-            title = "تحديث كشف الدرجات الشهري",
-            body = "تم رصد درجات الشهر الأول والسعي السنوي وتحديث لوحة الشرف الذهبية.",
-            type = NotificationType.GRADES,
-            targetStudentId = "",
-            createdAt = "منذ ساعتين",
-            isRead = false
-        ),
-        AppNotification(
-            id = "notif_4",
-            title = "إشعار استحقاق القسط الدراسي",
-            body = "تذكير ودي بموعد القسط القادم بتاريخ 2026-11-15 مع إمكانية استلام وصل الدفع عبر واتساب.",
-            type = NotificationType.TUITION,
-            targetStudentId = "stu_1",
-            createdAt = "اليوم صباحاً",
-            isRead = false
-        )
-    )
+    fun defaultStudents(): List<StudentRecord> = emptyList()
+    fun defaultTeachers(): List<UserAccount> = emptyList()
+    fun defaultAttendance(): List<AttendanceEntry> = emptyList()
+    fun defaultSchedules(): List<SchedulePeriod> = emptyList()
+    fun defaultHomeworks(): List<HomeworkItem> = emptyList()
+    fun defaultExamSchedules(): List<ExamScheduleItem> = emptyList()
+    fun defaultGrades(): List<SubjectGrade> = emptyList()
+    fun defaultTuitions(): List<TuitionRecord> = emptyList()
+    fun defaultReports(): List<ParentReport> = emptyList()
+    fun defaultChatMessages(): List<ChatMessage> = emptyList()
+    fun defaultEvents(): List<SchoolEvent> = emptyList()
+    fun defaultNotifications(): List<AppNotification> = emptyList()
 }

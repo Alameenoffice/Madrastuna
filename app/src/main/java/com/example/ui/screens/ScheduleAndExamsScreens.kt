@@ -52,8 +52,8 @@ fun ScheduleAndHomeworkScreen(
     var selectedSection by remember(allowedSections) {
         mutableStateOf(allowedSections.firstOrNull() ?: "أ")
     }
-    val allowedSubjects = remember(schoolConfig, currentUser) {
-        viewModel.getAllowedSubjectsForUser(currentUser)
+    val allowedSubjects = remember(schoolConfig, selectedClass, currentUser) {
+        viewModel.getSubjectsForClass(selectedClass, currentUser)
     }
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = التحضير والواجبات, 1 = جدول الحصص الأسبوعي
@@ -571,11 +571,14 @@ fun ExamsAndGradesScreen(
     var selectedSection by remember(allowedSections) {
         mutableStateOf(allowedSections.firstOrNull() ?: "أ")
     }
-    val allowedSubjects = remember(schoolConfig, currentUser) {
-        viewModel.getAllowedSubjectsForUser(currentUser)
+    val allowedSubjects = remember(schoolConfig, selectedClass, currentUser) {
+        viewModel.getSubjectsForClass(selectedClass, currentUser)
     }
     var selectedSubject by remember(allowedSubjects) {
         mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات")
+    }
+    var selectedMaxScale by remember(selectedClass) {
+        mutableIntStateOf(GradingRules.defaultMaxScoreForClass(selectedClass))
     }
 
     var searchStudentName by remember { mutableStateOf("") }
@@ -640,28 +643,32 @@ fun ExamsAndGradesScreen(
                 val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
                 if (myStu != null) {
                     val myGrades = grades.filter { it.studentId == myStu.id }
-                    val allSubjectsReport = schoolConfig.registeredSubjects.map { subjName ->
+                    val studentSubjects = viewModel.getSubjectsForClass(myStu.gradeClass, null)
+                    val defaultScaleForStu = GradingRules.defaultMaxScoreForClass(myStu.gradeClass)
+                    val allSubjectsReport = studentSubjects.map { subjName ->
                         myGrades.firstOrNull { it.subjectName == subjName } ?: SubjectGrade(
                             id = "temp_$subjName",
+                            schoolId = schoolConfig.schoolId,
                             studentId = myStu.id,
                             studentName = myStu.studentName,
                             gradeClass = myStu.gradeClass,
                             subjectName = subjName,
-                            dailyScore = 92,
-                            month1Score = 90,
-                            month2Score = 94,
-                            midYearScore = 92,
-                            finalExamScore = 95
+                            maxScoreScale = defaultScaleForStu,
+                            dailyScore = 0,
+                            month1Score = 0,
+                            month2Score = 0,
+                            midYearScore = 0,
+                            finalExamScore = 0
                         )
                     }
-                    val overallAvg = if (allSubjectsReport.isEmpty()) 0 else allSubjectsReport.map { it.finalAverage }.average().toInt()
+                    val overallAvg = if (allSubjectsReport.isEmpty()) 0 else allSubjectsReport.map { it.normalizedPercentage }.average().toInt()
                     val overallRating = when {
                         overallAvg >= 90 -> "ممتاز"
                         overallAvg >= 80 -> "جيد جداً"
                         overallAvg >= 70 -> "جيد"
                         overallAvg >= 60 -> "متوسط"
                         overallAvg >= 50 -> "مقبول"
-                        else -> "راسب"
+                        else -> "غير مرصود / ضعيف"
                     }
 
                     Card(
@@ -735,10 +742,10 @@ fun ExamsAndGradesScreen(
                                             Text(g.subjectName, style = MaterialTheme.typography.titleMedium)
                                         }
                                         NoWrapBadge(
-                                            text = "المعدل: ${g.finalAverage} • ${g.ratingLabel}",
+                                            text = "المعدل: ${g.finalAverage}/${g.maxScoreScale} • ${g.ratingLabel}",
                                             icon = Icons.Filled.Stars,
-                                            containerColor = if (g.finalAverage >= 50) SuccessGreen.copy(alpha = 0.16f) else DangerRed.copy(alpha = 0.16f),
-                                            contentColor = if (g.finalAverage >= 50) SuccessGreen else DangerRed
+                                            containerColor = if (g.normalizedPercentage >= 50) SuccessGreen.copy(alpha = 0.16f) else DangerRed.copy(alpha = 0.16f),
+                                            contentColor = if (g.normalizedPercentage >= 50) SuccessGreen else DangerRed
                                         )
                                     }
 
@@ -829,9 +836,9 @@ fun ExamsAndGradesScreen(
                                     }
                                 }
 
-                                // 3. Subject Selector (المادة الدراسية)
+                                // 3. Subject Selector (المادة الدراسية المخصصة للصف المختار)
                                 Text(
-                                    text = "المادة الدراسية المختارة للرصد:",
+                                    text = "المادة الدراسية المختارة للرصد (${allowedSubjects.size}):",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.secondary
                                 )
@@ -849,6 +856,63 @@ fun ExamsAndGradesScreen(
                                                 )
                                             }
                                         )
+                                    }
+                                }
+
+                                // 3.B Flexible Grading Scale Toggle (نظام الدرجة: من 10 / من 100)
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Tune,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "نظام الدرجة (${if (GradingRules.defaultMaxScoreForClass(selectedClass) == 10) "تلقائي للأول-الرابع الابتدائي" else "قياسي"}):",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            FilterChip(
+                                                selected = selectedMaxScale == 10,
+                                                onClick = { selectedMaxScale = 10 },
+                                                label = { Text("من 10", maxLines = 1, softWrap = false) },
+                                                leadingIcon = {
+                                                    if (selectedMaxScale == 10) {
+                                                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                    }
+                                                },
+                                                modifier = Modifier.testTag("scale_toggle_10")
+                                            )
+                                            FilterChip(
+                                                selected = selectedMaxScale == 100,
+                                                onClick = { selectedMaxScale = 100 },
+                                                label = { Text("من 100", maxLines = 1, softWrap = false) },
+                                                leadingIcon = {
+                                                    if (selectedMaxScale == 100) {
+                                                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                    }
+                                                },
+                                                modifier = Modifier.testTag("scale_toggle_100")
+                                            )
+                                        }
                                     }
                                 }
 
@@ -890,40 +954,43 @@ fun ExamsAndGradesScreen(
                             }
                         }
                     } else {
-                        items(classSectionStudents, key = { "${it.id}_$selectedSubject" }) { stu ->
+                        items(classSectionStudents, key = { "${it.id}_${selectedSubject}_$selectedMaxScale" }) { stu ->
                             val existingGrade = grades.firstOrNull {
                                 it.studentId == stu.id && it.subjectName == selectedSubject
                             }
+                            val defaultVal = if (selectedMaxScale == 10) 9 else 90
 
-                            var dailyText by remember(existingGrade, selectedSubject) {
-                                mutableStateOf((existingGrade?.dailyScore ?: 92).toString())
+                            var dailyText by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.dailyScore ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
                             }
-                            var m1Text by remember(existingGrade, selectedSubject) {
-                                mutableStateOf((existingGrade?.month1Score ?: 90).toString())
+                            var m1Text by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.month1Score ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
                             }
-                            var m2Text by remember(existingGrade, selectedSubject) {
-                                mutableStateOf((existingGrade?.month2Score ?: 94).toString())
+                            var m2Text by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.month2Score ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
                             }
-                            var midText by remember(existingGrade, selectedSubject) {
-                                mutableStateOf((existingGrade?.midYearScore ?: 92).toString())
+                            var midText by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.midYearScore ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
                             }
-                            var finalText by remember(existingGrade, selectedSubject) {
-                                mutableStateOf((existingGrade?.finalExamScore ?: 95).toString())
+                            var finalText by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.finalExamScore ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
                             }
                             var savedToast by remember { mutableStateOf(false) }
 
-                            val dVal = (dailyText.toIntOrNull() ?: 0).coerceIn(0, 100)
-                            val m1Val = (m1Text.toIntOrNull() ?: 0).coerceIn(0, 100)
-                            val m2Val = (m2Text.toIntOrNull() ?: 0).coerceIn(0, 100)
-                            val midVal = (midText.toIntOrNull() ?: 0).coerceIn(0, 100)
-                            val finVal = (finalText.toIntOrNull() ?: 0).coerceIn(0, 100)
+                            val dVal = (dailyText.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            val m1Val = (m1Text.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            val m2Val = (m2Text.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            val midVal = (midText.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            val finVal = (finalText.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
 
                             val previewGrade = SubjectGrade(
                                 id = "prev",
+                                schoolId = schoolConfig.schoolId,
                                 studentId = stu.id,
                                 studentName = stu.studentName,
                                 gradeClass = stu.gradeClass,
                                 subjectName = selectedSubject,
+                                maxScoreScale = selectedMaxScale,
                                 dailyScore = dVal,
                                 month1Score = m1Val,
                                 month2Score = m2Val,
@@ -963,7 +1030,7 @@ fun ExamsAndGradesScreen(
                                                     style = MaterialTheme.typography.titleMedium
                                                 )
                                                 Text(
-                                                    text = "مادة: $selectedSubject • ${stu.gradeClass} (${stu.sectionName})",
+                                                    text = "مادة: $selectedSubject (من $selectedMaxScale) • ${stu.gradeClass} (${stu.sectionName})",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.primary
                                                 )
@@ -971,45 +1038,57 @@ fun ExamsAndGradesScreen(
                                         }
 
                                         NoWrapBadge(
-                                            text = "السعي: ${previewGrade.annualEffortScore} | المعدل: ${previewGrade.finalAverage} (${previewGrade.ratingLabel})",
+                                            text = "السعي: ${previewGrade.annualEffortScore}/$selectedMaxScale | المعدل: ${previewGrade.finalAverage}/$selectedMaxScale (${previewGrade.ratingLabel})",
                                             icon = Icons.Filled.Calculate,
-                                            containerColor = if (previewGrade.finalAverage >= 50) SuccessGreen.copy(alpha = 0.15f) else DangerRed.copy(alpha = 0.15f),
-                                            contentColor = if (previewGrade.finalAverage >= 50) SuccessGreen else DangerRed
+                                            containerColor = if (previewGrade.normalizedPercentage >= 50) SuccessGreen.copy(alpha = 0.15f) else DangerRed.copy(alpha = 0.15f),
+                                            contentColor = if (previewGrade.normalizedPercentage >= 50) SuccessGreen else DangerRed
                                         )
                                     }
 
-                                    // Inline Grade Input Fields for this Subject
+                                    // Inline Grade Input Fields for this Subject (strictly clamped to selectedMaxScale)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         OutlinedTextField(
                                             value = dailyText,
-                                            onValueChange = {
-                                                dailyText = it.filter { c -> c.isDigit() }.take(3)
-                                                savedToast = false
+                                            onValueChange = { raw ->
+                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
+                                                val num = digits.toIntOrNull()
+                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                                    dailyText = digits
+                                                    savedToast = false
+                                                }
                                             },
-                                            label = { Text("يومي") },
+                                            label = { Text("يومي (/$selectedMaxScale)") },
                                             singleLine = true,
                                             modifier = Modifier.weight(1f)
                                         )
                                         OutlinedTextField(
                                             value = m1Text,
-                                            onValueChange = {
-                                                m1Text = it.filter { c -> c.isDigit() }.take(3)
-                                                savedToast = false
+                                            onValueChange = { raw ->
+                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
+                                                val num = digits.toIntOrNull()
+                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                                    m1Text = digits
+                                                    savedToast = false
+                                                }
                                             },
-                                            label = { Text("شهر 1") },
+                                            label = { Text("شهر 1 (/$selectedMaxScale)") },
                                             singleLine = true,
                                             modifier = Modifier.weight(1f)
                                         )
                                         OutlinedTextField(
                                             value = m2Text,
-                                            onValueChange = {
-                                                m2Text = it.filter { c -> c.isDigit() }.take(3)
-                                                savedToast = false
+                                            onValueChange = { raw ->
+                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
+                                                val num = digits.toIntOrNull()
+                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                                    m2Text = digits
+                                                    savedToast = false
+                                                }
                                             },
-                                            label = { Text("شهر 2") },
+                                            label = { Text("شهر 2 (/$selectedMaxScale)") },
                                             singleLine = true,
                                             modifier = Modifier.weight(1f)
                                         )
@@ -1022,34 +1101,42 @@ fun ExamsAndGradesScreen(
                                     ) {
                                         OutlinedTextField(
                                             value = midText,
-                                            onValueChange = {
-                                                midText = it.filter { c -> c.isDigit() }.take(3)
-                                                savedToast = false
+                                            onValueChange = { raw ->
+                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
+                                                val num = digits.toIntOrNull()
+                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                                    midText = digits
+                                                    savedToast = false
+                                                }
                                             },
-                                            label = { Text("نصف السنة") },
+                                            label = { Text("نصف السنة (/$selectedMaxScale)") },
                                             singleLine = true,
                                             modifier = Modifier.weight(1f)
                                         )
                                         ScoreCell(
-                                            label = "السعي السنوي",
+                                            label = "السعي (/$selectedMaxScale)",
                                             score = previewGrade.annualEffortScore,
                                             modifier = Modifier.weight(1f),
                                             highlight = true
                                         )
                                         OutlinedTextField(
                                             value = finalText,
-                                            onValueChange = {
-                                                finalText = it.filter { c -> c.isDigit() }.take(3)
-                                                savedToast = false
+                                            onValueChange = { raw ->
+                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
+                                                val num = digits.toIntOrNull()
+                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                                    finalText = digits
+                                                    savedToast = false
+                                                }
                                             },
-                                            label = { Text("النهائي") },
+                                            label = { Text("النهائي (/$selectedMaxScale)") },
                                             singleLine = true,
                                             modifier = Modifier.weight(1f)
                                         )
                                     }
 
                                     VectorActionButton(
-                                        text = if (savedToast) "تم حفظ درجات ($selectedSubject) للطالب بنجاح" else "حفظ درجات ($selectedSubject) للطالب",
+                                        text = if (savedToast) "تم حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب بنجاح" else "حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب",
                                         icon = if (savedToast) Icons.Filled.CheckCircle else Icons.Filled.Save,
                                         containerColor = if (savedToast) SuccessGreen else MaterialTheme.colorScheme.primary,
                                         onClick = {
@@ -1060,7 +1147,8 @@ fun ExamsAndGradesScreen(
                                                 month1Score = m1Val,
                                                 month2Score = m2Val,
                                                 midYearScore = midVal,
-                                                finalExamScore = finVal
+                                                finalExamScore = finVal,
+                                                maxScoreScale = selectedMaxScale
                                             )
                                             savedToast = true
                                         },

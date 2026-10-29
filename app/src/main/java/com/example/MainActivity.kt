@@ -1,11 +1,20 @@
 package com.example
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,11 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.model.*
 import com.example.ui.components.Base64AvatarImage
@@ -36,7 +47,9 @@ import com.example.ui.screens.*
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.SuccessGreen
 import com.example.viewmodel.SchoolViewModel
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,47 +70,134 @@ class MainActivity : ComponentActivity() {
 fun MadrasatiRootApp(
     viewModel: SchoolViewModel
 ) {
+    val context = LocalContext.current
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val onboardingSeen by viewModel.onboardingSeen.collectAsState()
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val toastAlert by viewModel.toastAlert.collectAsState()
 
-    when {
-        !onboardingSeen -> {
-            OnboardingScreen(
-                isDarkMode = isDarkMode,
-                onToggleDarkMode = { viewModel.toggleDarkMode() },
-                onFinishOnboarding = { viewModel.completeOnboarding() }
-            )
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
-        !schoolConfig.isSetupCompleted -> {
-            SchoolSetupScreen(
-                isDarkMode = isDarkMode,
-                onToggleDarkMode = { viewModel.toggleDarkMode() },
-                onCompleteSetup = { schoolName, address, schoolType, logoBase64, adminFullName, adminUsername, adminPassword, schoolStage ->
-                    viewModel.setupSchoolAndAdmin(
-                        schoolName = schoolName,
-                        address = address,
-                        schoolType = schoolType,
-                        logoBase64 = logoBase64,
-                        adminFullName = adminFullName,
-                        adminUsername = adminUsername,
-                        adminPassword = adminPassword,
-                        schoolStage = schoolStage
-                    )
+    }
+
+    LaunchedEffect(toastAlert?.id) {
+        if (toastAlert != null) {
+            delay(3600)
+            viewModel.dismissToastAlert()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            !onboardingSeen -> {
+                OnboardingScreen(
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { viewModel.toggleDarkMode() },
+                    onFinishOnboarding = { viewModel.completeOnboarding() }
+                )
+            }
+            !schoolConfig.isSetupCompleted -> {
+                SchoolSetupScreen(
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { viewModel.toggleDarkMode() },
+                    onCompleteSetup = { schoolName, address, schoolType, logoBase64, adminFullName, adminUsername, adminPassword, schoolStage ->
+                        viewModel.setupSchoolAndAdmin(
+                            schoolName = schoolName,
+                            address = address,
+                            schoolType = schoolType,
+                            logoBase64 = logoBase64,
+                            adminFullName = adminFullName,
+                            adminUsername = adminUsername,
+                            adminPassword = adminPassword,
+                            schoolStage = schoolStage
+                        )
+                    }
+                )
+            }
+            currentUser == null -> {
+                UnifiedLoginScreen(
+                    schoolConfig = schoolConfig,
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { viewModel.toggleDarkMode() },
+                    onLoginAttempt = { u, p -> viewModel.login(u, p) }
+                )
+            }
+            else -> {
+                AuthenticatedMainPlatform(viewModel = viewModel)
+            }
+        }
+
+        // Global Toast / Snackbar Completion Alert Banner (Green on Success, Red with Reason on Error)
+        AnimatedVisibility(
+            visible = toastAlert != null,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .zIndex(99f)
+        ) {
+            val alert = toastAlert
+            if (alert != null) {
+                Surface(
+                    color = if (alert.isSuccess) SuccessGreen else DangerRed,
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 8.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("global_toast_alert_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.Error,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Text(
+                                text = alert.message,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.dismissToastAlert() },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "إغلاق التنبيه",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
-            )
-        }
-        currentUser == null -> {
-            UnifiedLoginScreen(
-                schoolConfig = schoolConfig,
-                isDarkMode = isDarkMode,
-                onToggleDarkMode = { viewModel.toggleDarkMode() },
-                onLoginAttempt = { u, p -> viewModel.login(u, p) }
-            )
-        }
-        else -> {
-            AuthenticatedMainPlatform(viewModel = viewModel)
+            }
         }
     }
 }

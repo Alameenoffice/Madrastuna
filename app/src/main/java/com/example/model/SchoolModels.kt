@@ -1,5 +1,38 @@
 package com.example.model
 
+import kotlin.math.roundToInt
+
+/**
+ * Official Firebase Configuration for Multi-Tenant School Isolation (schools/{schoolId}/...)
+ */
+object FirebaseConfigConstants {
+    const val API_KEY = "AIzaSyD0cqrHd0A4q1VPnzjQoN7IP6Qnf4aNtG0"
+    const val AUTH_DOMAIN = "madrasati-app-d51dd.firebaseapp.com"
+    const val DATABASE_URL = "https://madrasati-app-d51dd-default-rtdb.firebaseio.com"
+    const val PROJECT_ID = "madrasati-app-d51dd"
+    const val STORAGE_BUCKET = "madrasati-app-d51dd.firebasestorage.app"
+    const val MESSAGING_SENDER_ID = "125981370793"
+    const val APP_ID = "1:125981370793:web:3e78e653e43bfbc791fcb8"
+
+    // Sub-collections isolated under schools/{schoolId}/...
+    const val COL_SETTINGS = "settings"
+    const val COL_USERS = "users"
+    const val COL_SUBJECTS = "subjects"
+    const val COL_ATTENDANCE = "attendance"
+    const val COL_SCHEDULES_HOMEWORK = "schedules_homework"
+    const val COL_GRADES = "grades"
+    const val COL_HONOR_ROLL = "honor_roll"
+    const val COL_TUITION_FEES = "tuition_fees"
+    const val COL_REPORTS = "reports"
+    const val COL_MESSAGES = "messages"
+    const val COL_EVENTS_GALLERY = "events_gallery"
+    const val COL_NOTIFICATIONS = "notifications"
+
+    fun schoolCollectionPath(schoolId: String, subCollection: String): String {
+        return "schools/$schoolId/$subCollection"
+    }
+}
+
 enum class SchoolType(val arabicLabel: String) {
     PUBLIC("مدرسة حكومية"),
     PRIVATE("مدرسة أهلية")
@@ -91,8 +124,11 @@ enum class SchoolStage(
     )
 }
 
+/**
+ * Job title for the school administrator is exclusively "المدير".
+ */
 enum class UserRole(val arabicTitle: String) {
-    ADMIN("المدير العام"),
+    ADMIN("المدير"),
     TEACHER("كادر تدريسي"),
     PARENT("ولي أمر"),
     STUDENT("طالب")
@@ -134,7 +170,19 @@ enum class AppSection(val arabicTitle: String) {
     SETTINGS("الإعدادات")
 }
 
+/**
+ * Subject configuration item assignable to specific registered classes inside schools/{schoolId}/subjects
+ */
+data class SubjectConfigItem(
+    val id: String,
+    val name: String,
+    val assignedClasses: List<String>,
+    val defaultMaxScore: Int = 100,
+    val schoolId: String = ""
+)
+
 data class SchoolConfig(
+    val schoolId: String = "",
     val isSetupCompleted: Boolean = false,
     val schoolName: String = "مدرستي النموذجية",
     val address: String = "الموصل - زمار",
@@ -143,9 +191,26 @@ data class SchoolConfig(
     val registeredClasses: List<String> = SchoolStage.SECONDARY.defaultClasses,
     val registeredSections: List<String> = listOf("أ", "ب", "ج"),
     val registeredSubjects: List<String> = SchoolStage.SECONDARY.defaultSubjects,
+    val subjectConfigs: List<SubjectConfigItem> = emptyList(),
     val logoBase64: String = "",
     val academicYear: String = "2026 - 2027",
     val phone: String = "07512362567"
+)
+
+data class UserSession(
+    val userId: String,
+    val username: String,
+    val role: UserRole,
+    val schoolId: String,
+    val sessionToken: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+data class ToastAlertMessage(
+    val id: String,
+    val message: String,
+    val isSuccess: Boolean = true,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 data class UserAccount(
@@ -162,7 +227,8 @@ data class UserAccount(
     val gradeClass: String = "الأول المتوسط",
     val sectionName: String = "أ",
     val address: String = "الموصل - زمار",
-    val photoBase64: String = ""
+    val photoBase64: String = "",
+    val schoolId: String = ""
 ) {
     val teacherSubjectsList: List<String>
         get() = specialty.split("،", ",", "|")
@@ -216,7 +282,8 @@ data class StudentRecord(
     val photoBase64: String = "",
     val excellencePoints: Int = 95,
     val isOnHonorRoll: Boolean = false,
-    val honorTitle: String = "وسام التفوق الذهبي"
+    val honorTitle: String = "وسام التفوق الذهبي",
+    val schoolId: String = ""
 )
 
 data class AttendanceEntry(
@@ -227,7 +294,8 @@ data class AttendanceEntry(
     val sectionName: String,
     val date: String,
     val status: AttendanceStatus,
-    val note: String = ""
+    val note: String = "",
+    val schoolId: String = ""
 )
 
 data class SchedulePeriod(
@@ -238,7 +306,8 @@ data class SchedulePeriod(
     val periodNumber: Int,
     val subjectName: String,
     val teacherName: String,
-    val timeSlot: String
+    val timeSlot: String,
+    val schoolId: String = ""
 )
 
 data class HomeworkItem(
@@ -250,7 +319,8 @@ data class HomeworkItem(
     val dailyPreparation: String,
     val homeworkDetails: String,
     val dueDate: String,
-    val createdAt: String
+    val createdAt: String,
+    val schoolId: String = ""
 )
 
 data class ExamScheduleItem(
@@ -262,8 +332,22 @@ data class ExamScheduleItem(
     val dayName: String,
     val timeSlot: String = "08:30 صباحاً",
     val topicsIncluded: String = "",
-    val hallNumber: String = "قاعة 1"
+    val hallNumber: String = "قاعة 1",
+    val schoolId: String = ""
 )
+
+object GradingRules {
+    val tenPointPrimaryClasses = setOf(
+        "الأول الابتدائي",
+        "الثاني الابتدائي",
+        "الثالث الابتدائي",
+        "الرابع الابتدائي"
+    )
+
+    fun defaultMaxScoreForClass(gradeClass: String): Int {
+        return if (gradeClass.trim() in tenPointPrimaryClasses) 10 else 100
+    }
+}
 
 data class SubjectGrade(
     val id: String,
@@ -271,28 +355,38 @@ data class SubjectGrade(
     val studentName: String,
     val gradeClass: String,
     val subjectName: String,
-    val dailyScore: Int,       // يومي (out of 100)
-    val month1Score: Int,      // الشهر الأول (out of 100)
-    val month2Score: Int,      // الشهر الثاني (out of 100)
-    val midYearScore: Int,     // نصف السنة (out of 100)
-    val finalExamScore: Int    // الامتحان النهائي (out of 100)
+    val dailyScore: Int,
+    val month1Score: Int,
+    val month2Score: Int,
+    val midYearScore: Int,
+    val finalExamScore: Int,
+    val maxScoreScale: Int = GradingRules.defaultMaxScoreForClass(gradeClass),
+    val schoolId: String = ""
 ) {
-    // السعي السنوي
+    // السعي السنوي (calculated according to maxScoreScale: 10 or 100)
     val annualEffortScore: Int
-        get() = ((dailyScore + month1Score + month2Score) / 3.0 * 0.5 + midYearScore * 0.5).toInt()
+        get() = (((dailyScore + month1Score + month2Score) / 3.0 * 0.5) + (midYearScore * 0.5))
+            .roundToInt()
+            .coerceIn(0, maxScoreScale)
 
     // المعدل النهائي
     val finalAverage: Int
-        get() = ((annualEffortScore + finalExamScore) / 2.0).toInt()
+        get() = ((annualEffortScore + finalExamScore) / 2.0)
+            .roundToInt()
+            .coerceIn(0, maxScoreScale)
+
+    // النسبة المئوية المكافئة للتقدير (0 - 100)
+    val normalizedPercentage: Int
+        get() = if (maxScoreScale == 10) (finalAverage * 10).coerceIn(0, 100) else finalAverage.coerceIn(0, 100)
 
     // التقدير التلقائي
     val ratingLabel: String
         get() = when {
-            finalAverage >= 90 -> "ممتاز"
-            finalAverage >= 80 -> "جيد جداً"
-            finalAverage >= 70 -> "جيد"
-            finalAverage >= 60 -> "متوسط"
-            finalAverage >= 50 -> "مقبول"
+            normalizedPercentage >= 90 -> "ممتاز"
+            normalizedPercentage >= 80 -> "جيد جداً"
+            normalizedPercentage >= 70 -> "جيد"
+            normalizedPercentage >= 60 -> "متوسط"
+            normalizedPercentage >= 50 -> "مقبول"
             else -> "راسب"
         }
 }
@@ -314,7 +408,8 @@ data class TuitionRecord(
     val parentPhone: String,
     val totalFee: Long,
     val nextDueDate: String,
-    val installments: List<TuitionInstallment> = emptyList()
+    val installments: List<TuitionInstallment> = emptyList(),
+    val schoolId: String = ""
 ) {
     val paidAmount: Long
         get() = installments.sumOf { it.amount }
@@ -334,7 +429,8 @@ data class ParentReport(
     val title: String,
     val details: String,
     val senderName: String,
-    val createdAt: String
+    val createdAt: String,
+    val schoolId: String = ""
 )
 
 data class ChatMessage(
@@ -344,7 +440,9 @@ data class ChatMessage(
     val senderName: String,
     val senderRole: UserRole,
     val messageText: String,
-    val timestamp: String
+    val timestamp: String,
+    val imageBase64: String = "",
+    val schoolId: String = ""
 )
 
 data class SchoolEvent(
@@ -355,7 +453,8 @@ data class SchoolEvent(
     val date: String,
     val location: String = "الموصل - زمار",
     val imageBase64: String = "",
-    val authorName: String = "إدارة المدرسة"
+    val authorName: String = "إدارة المدرسة",
+    val schoolId: String = ""
 )
 
 data class AppNotification(
@@ -363,7 +462,8 @@ data class AppNotification(
     val title: String,
     val body: String,
     val type: NotificationType,
-    val targetStudentId: String = "", // empty means broadcast to all
+    val targetStudentId: String = "", // empty means broadcast to school
     val createdAt: String,
-    val isRead: Boolean = false
+    val isRead: Boolean = false,
+    val schoolId: String = ""
 )

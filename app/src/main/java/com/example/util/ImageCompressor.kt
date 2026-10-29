@@ -23,7 +23,7 @@ import kotlin.math.roundToInt
 object ImageCompressor {
 
     private const val MAX_WIDTH = 800
-    private const val JPEG_QUALITY = 70 // 0.7 quality
+    private const val JPEG_QUALITY = 65 // 0.65 quality Base64 JPEG for direct Firestore storage
 
     private val bitmapCache = object : LruCache<Int, ImageBitmap>(32) {}
 

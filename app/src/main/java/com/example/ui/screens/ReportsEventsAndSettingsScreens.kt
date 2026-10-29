@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,8 +26,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,6 +84,17 @@ fun ReportsAndChatScreen(
     }
 
     var draftMessage by remember { mutableStateOf("") }
+    var draftChatImageBase64 by remember { mutableStateOf("") }
+    val chatPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val encoded = ImageCompressor.compressUriToBase64Jpeg(context, uri)
+            if (encoded != null) {
+                draftChatImageBase64 = encoded
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -328,6 +344,9 @@ fun ReportsAndChatScreen(
                         ) {
                             items(studentChats, key = { it.id }) { msg ->
                                 val isFromAdminOrTeacher = msg.senderRole == UserRole.ADMIN || msg.senderRole == UserRole.TEACHER
+                                val msgBitmap = remember(msg.imageBase64) {
+                                    ImageCompressor.decodeBase64ToImageBitmap(msg.imageBase64)
+                                }
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalAlignment = if (isFromAdminOrTeacher) Alignment.Start else Alignment.End
@@ -345,11 +364,25 @@ fun ReportsAndChatScreen(
                                                 color = MaterialTheme.colorScheme.primary,
                                                 fontWeight = FontWeight.Bold
                                             )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = msg.messageText,
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
+                                            if (msgBitmap != null) {
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Image(
+                                                    bitmap = msgBitmap,
+                                                    contentDescription = "صورة مرفقة",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(150.dp)
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                )
+                                            }
+                                            if (msg.messageText.isNotBlank()) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = msg.messageText,
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
                                                 text = msg.timestamp,
@@ -364,11 +397,67 @@ fun ReportsAndChatScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        if (draftChatImageBase64.isNotBlank()) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Image,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "تم إرفاق صورة مضغوطة (800px • 0.65 JPEG) جاهزة للإرسال",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { draftChatImageBase64 = "" },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Close, contentDescription = "إزالة الصورة", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            IconButton(
+                                onClick = {
+                                    chatPhotoLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .testTag("chat_attach_photo_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AddPhotoAlternate,
+                                    contentDescription = "إرفاق صورة",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
                             OutlinedTextField(
                                 value = draftMessage,
                                 onValueChange = { draftMessage = it },
@@ -382,9 +471,10 @@ fun ReportsAndChatScreen(
 
                             Button(
                                 onClick = {
-                                    if (draftMessage.isNotBlank()) {
-                                        viewModel.sendChatMessage(selectedStudent, draftMessage)
+                                    if (draftMessage.isNotBlank() || draftChatImageBase64.isNotBlank()) {
+                                        viewModel.sendChatMessage(selectedStudent, draftMessage, draftChatImageBase64)
                                         draftMessage = ""
+                                        draftChatImageBase64 = ""
                                     }
                                 },
                                 modifier = Modifier
@@ -634,7 +724,7 @@ fun EventsAndNewsScreen(
                             )
                         }
                         NoWrapBadge(
-                            text = "ضغط تلقائي 800px • JPEG 0.7",
+                            text = "ضغط تلقائي 800px • JPEG 0.65",
                             icon = Icons.Filled.HighQuality,
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = Color.White
@@ -642,7 +732,7 @@ fun EventsAndNewsScreen(
                     }
 
                     Text(
-                        text = "يتم ضغط أي صورة مرفوعة من الهاتف تلقائياً عبر Canvas (بحد أقصى عرض 800px وجودة 0.7 بصيغة Base64 JPEG) لتعمل فوراً وبأعلى كفاءة.",
+                        text = "يتم ضغط أي صورة مرفوعة من الهاتف تلقائياً (بحد أقصى عرض 800px وجودة 0.65 بصيغة Base64 JPEG) لتعمل فوراً وبأعلى كفاءة.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -853,9 +943,11 @@ fun EventsAndNewsScreen(
 fun SettingsScreen(
     viewModel: SchoolViewModel
 ) {
+    val clipboardManager = LocalClipboardManager.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val customSubjects = schoolConfig.subjectConfigs
 
     var schoolName by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolName) }
     var address by remember(schoolConfig) { mutableStateOf(schoolConfig.address) }
@@ -869,6 +961,14 @@ fun SettingsScreen(
     var newCustomClass by remember { mutableStateOf("") }
     var newCustomSection by remember { mutableStateOf("") }
     var savedMessage by remember { mutableStateOf<String?>(null) }
+
+    // Subject Customization State
+    var newSubjectName by remember { mutableStateOf("") }
+    var newSubjectClasses by remember(registeredClasses) { mutableStateOf(registeredClasses) }
+
+    // Backup & Restore State
+    var backupJsonText by remember { mutableStateOf("") }
+    var showRestoreDialog by remember { mutableStateOf(false) }
 
     val isAdmin = currentUser?.role == UserRole.ADMIN
 
@@ -911,7 +1011,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "العنوان: ${currentUser?.address ?: "الموصل - زمار"}",
+                            text = "العنوان: ${currentUser?.address ?: "الموصل - زمار"} • كود المدرسة: ${schoolConfig.schoolId}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -985,7 +1085,7 @@ fun SettingsScreen(
             }
         }
 
-        // School Settings & Registered Classes Management (Editable by General Director)
+        // School Settings & Registered Classes Management (Editable by Director)
         if (isAdmin) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -998,10 +1098,29 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "إعدادات المدرسة والمرحلة والصفوف المسجلة (خاص بالمدير العام)",
+                        text = "إعدادات المدرسة والمرحلة والصفوف المسجلة (خاص بالمدير)",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
+
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Filled.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Text(
+                                text = "مسار المدرسة المعزول في Firebase: schools/${schoolConfig.schoolId}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
 
                     OutlinedTextField(
                         value = schoolName,
@@ -1204,10 +1323,274 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            // =========================================================================
+            // REQUIREMENT 6.A: SUBJECT MANAGEMENT & CLASS ASSIGNMENT (إدارة وتخصيص المواد الدراسية)
+            // =========================================================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.AutoStories, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "إدارة وتخصيص المواد الدراسية للصفوف",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Text(
+                        text = "أضف أو عدل المواد الدراسية وخصص كل مادة للصفوف المسجلة المعنية بها:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = newSubjectName,
+                        onValueChange = { newSubjectName = it },
+                        label = { Text("اسم المادة الدراسية (مثال: القراءة، العلوم، الفيزياء)") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("subject_name_input")
+                    )
+
+                    Text(
+                        text = "تخصيص المادة للصفوف المسجلة:",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(schoolConfig.registeredClasses) { cls ->
+                            val isSelected = cls in newSubjectClasses
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    newSubjectClasses = if (isSelected) {
+                                        newSubjectClasses.filterNot { it == cls }
+                                    } else {
+                                        newSubjectClasses + cls
+                                    }
+                                },
+                                label = { Text(cls, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+
+                    VectorActionButton(
+                        text = "إضافة / تحديث المادة وتخصيصها للصفوف المختارة",
+                        icon = Icons.Filled.BookmarkAdd,
+                        onClick = {
+                            viewModel.addOrUpdateSubjectConfig(
+                                subjectId = null,
+                                subjectName = newSubjectName,
+                                assignedClasses = newSubjectClasses.ifEmpty { schoolConfig.registeredClasses }
+                            )
+                            newSubjectName = ""
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "save_subject_config_button"
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    val displaySubjects = if (customSubjects.isNotEmpty()) {
+                        customSubjects
+                    } else {
+                        schoolConfig.registeredSubjects.map { sName ->
+                            SubjectConfigItem(
+                                id = sName,
+                                name = sName,
+                                assignedClasses = schoolConfig.registeredClasses,
+                                schoolId = schoolConfig.schoolId
+                            )
+                        }
+                    }
+
+                    displaySubjects.forEach { subjItem ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = subjItem.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "الصفوف: ${subjItem.assignedClasses.joinToString("، ").ifBlank { "جميع الصفوف" }}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            newSubjectName = subjItem.name
+                                            newSubjectClasses = subjItem.assignedClasses
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Edit,
+                                            contentDescription = "تعديل المادة",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.deleteSubjectConfig(subjItem.name) }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Delete,
+                                            contentDescription = "حذف المادة",
+                                            tint = DangerRed
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // =========================================================================
+            // REQUIREMENT 6.C: FULL JSON BACKUP & RESTORE (النسخ الاحتياطي والاستعادة)
+            // =========================================================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.SettingsBackupRestore, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "النسخ الاحتياطي والاستعادة الشاملة (JSON)",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Text(
+                        text = "يمكن للمدير تصدير نسخة احتياطية كاملة لقاعدة بيانات المدرسة (${schoolConfig.schoolId}) بصيغة JSON أو استعادتها بضغطة زر:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val exported = viewModel.exportSchoolBackupJson()
+                                if (!exported.isNullOrBlank()) {
+                                    backupJsonText = exported
+                                    clipboardManager.setText(AnnotatedString(exported))
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("export_backup_json_button"),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("تصدير ونسخ JSON", maxLines = 1, softWrap = false)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showRestoreDialog = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("open_restore_json_button"),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("استعادة من JSON", maxLines = 1, softWrap = false)
+                        }
+                    }
+
+                    if (backupJsonText.isNotBlank()) {
+                        OutlinedTextField(
+                            value = backupJsonText,
+                            onValueChange = { backupJsonText = it },
+                            label = { Text("بيانات النسخة الاحتياطية (JSON) - تم نسخها للحافظة") },
+                            maxLines = 5,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
         }
 
         DeveloperCreditFooter()
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    if (showRestoreDialog) {
+        var restoreInput by remember { mutableStateOf(backupJsonText) }
+        AlertDialog(
+            onDismissRequest = { showRestoreDialog = false },
+            title = { Text("استعادة النسخة الاحتياطية لقاعدة بيانات المدرسة") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "الصق محتوى ملف النسخة الاحتياطية (JSON) لاستعادة كافة الحسابات، الصفوف، المواد، الدرجات، والسجلات فوراً:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = restoreInput,
+                        onValueChange = { restoreInput = it },
+                        label = { Text("كود النسخة الاحتياطية JSON") },
+                        maxLines = 8,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "استعادة البيانات الآن",
+                    icon = Icons.Filled.Restore,
+                    onClick = {
+                        if (viewModel.importSchoolBackupJson(restoreInput)) {
+                            showRestoreDialog = false
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreDialog = false }) { Text("إلغاء") }
+            }
+        )
     }
 }
