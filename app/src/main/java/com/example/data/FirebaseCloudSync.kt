@@ -111,6 +111,134 @@ object FirebaseCloudSync {
         null
     }
 
+    /**
+     * Pushes a root-level collection payload (e.g. school_licenses or schools registry)
+     * to Firestore and Realtime Database.
+     */
+    fun pushGlobalCollectionAsync(
+        collectionName: String,
+        docName: String = "registry",
+        jsonPayload: String
+    ) {
+        val cleanCollection = InputSanitizer.sanitizeSchoolId(collectionName)
+        val cleanDoc = InputSanitizer.sanitizeSchoolId(docName)
+        if (cleanCollection.isBlank() || cleanDoc.isBlank()) return
+
+        syncScope.launch {
+            try {
+                val firestoreUrl =
+                    "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/$cleanCollection/$cleanDoc?key=${FirebaseConfigConstants.API_KEY}"
+
+                val firestoreBody = JSONObject().apply {
+                    put("fields", JSONObject().apply {
+                        put("collection", JSONObject().put("stringValue", cleanCollection))
+                        put("updatedAt", JSONObject().put("integerValue", System.currentTimeMillis().toString()))
+                        put("payloadJson", JSONObject().put("stringValue", jsonPayload))
+                    })
+                }.toString()
+
+                executeHttpWrite(firestoreUrl, "PATCH", firestoreBody)
+
+                val rtdbUrl =
+                    "${FirebaseConfigConstants.DATABASE_URL}/${cleanCollection}_$cleanDoc.json"
+                val rtdbBody = JSONObject().apply {
+                    put("collection", cleanCollection)
+                    put("updatedAt", System.currentTimeMillis())
+                    put("payloadJson", jsonPayload)
+                }.toString()
+
+                executeHttpWrite(rtdbUrl, "PUT", rtdbBody)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * Also writes each individual license document under school_licenses/{code} in Firestore & RTDB
+     * with explicit fields (code, used, createdAt, usedBySchoolId, usedBySchoolName).
+     */
+    fun pushSingleLicenseDocumentAsync(
+        code: String,
+        used: Boolean,
+        createdAt: String,
+        usedBySchoolId: String = "",
+        usedBySchoolName: String = "",
+        usedAt: String = ""
+    ) {
+        val cleanCode = InputSanitizer.sanitizeSchoolId(code)
+        if (cleanCode.isBlank()) return
+
+        syncScope.launch {
+            try {
+                val firestoreUrl =
+                    "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/${FirebaseConfigConstants.COL_SCHOOL_LICENSES}/$cleanCode?key=${FirebaseConfigConstants.API_KEY}"
+
+                val firestoreBody = JSONObject().apply {
+                    put("fields", JSONObject().apply {
+                        put("code", JSONObject().put("stringValue", cleanCode))
+                        put("used", JSONObject().put("booleanValue", used))
+                        put("createdAt", JSONObject().put("stringValue", createdAt))
+                        put("usedBySchoolId", JSONObject().put("stringValue", usedBySchoolId))
+                        put("usedBySchoolName", JSONObject().put("stringValue", usedBySchoolName))
+                        put("usedAt", JSONObject().put("stringValue", usedAt))
+                    })
+                }.toString()
+
+                executeHttpWrite(firestoreUrl, "PATCH", firestoreBody)
+
+                val rtdbUrl =
+                    "${FirebaseConfigConstants.DATABASE_URL}/${FirebaseConfigConstants.COL_SCHOOL_LICENSES}/$cleanCode.json"
+                val rtdbBody = JSONObject().apply {
+                    put("code", cleanCode)
+                    put("used", used)
+                    put("createdAt", createdAt)
+                    put("usedBySchoolId", usedBySchoolId)
+                    put("usedBySchoolName", usedBySchoolName)
+                    put("usedAt", usedAt)
+                }.toString()
+
+                executeHttpWrite(rtdbUrl, "PUT", rtdbBody)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    suspend fun fetchGlobalCollectionPayload(
+        collectionName: String,
+        docName: String = "registry"
+    ): String? = withContext(Dispatchers.IO) {
+        val cleanCollection = InputSanitizer.sanitizeSchoolId(collectionName)
+        val cleanDoc = InputSanitizer.sanitizeSchoolId(docName)
+        if (cleanCollection.isBlank() || cleanDoc.isBlank()) return@withContext null
+
+        try {
+            val firestoreUrl =
+                "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/$cleanCollection/$cleanDoc?key=${FirebaseConfigConstants.API_KEY}"
+            val response = executeHttpGet(firestoreUrl)
+            if (!response.isNullOrBlank()) {
+                val root = JSONObject(response)
+                val fields = root.optJSONObject("fields")
+                val payload = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
+                if (payload.isNotBlank()) return@withContext payload
+            }
+        } catch (_: Exception) {
+        }
+
+        try {
+            val rtdbUrl =
+                "${FirebaseConfigConstants.DATABASE_URL}/${cleanCollection}_$cleanDoc.json"
+            val response = executeHttpGet(rtdbUrl)
+            if (!response.isNullOrBlank() && response != "null") {
+                val root = JSONObject(response)
+                val payload = root.optString("payloadJson", "")
+                if (payload.isNotBlank()) return@withContext payload
+            }
+        } catch (_: Exception) {
+        }
+
+        null
+    }
+
     private fun executeHttpWrite(urlStr: String, method: String, jsonBody: String) {
         var conn: HttpURLConnection? = null
         try {

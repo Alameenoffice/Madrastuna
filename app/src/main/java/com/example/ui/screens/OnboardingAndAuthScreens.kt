@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -33,6 +40,10 @@ import com.example.model.SchoolConfig
 import com.example.model.SchoolStage
 import com.example.model.SchoolType
 import com.example.ui.components.*
+import com.example.ui.theme.DangerRed
+import com.example.ui.theme.SuccessGreen
+import com.example.util.ExternalIntents
+import com.example.viewmodel.SchoolViewModel
 
 data class OnboardingSlideData(
     val badge: String,
@@ -333,6 +344,7 @@ fun OnboardingScreen(
 fun SchoolSetupScreen(
     isDarkMode: Boolean,
     onToggleDarkMode: () -> Unit,
+    onCancelSetup: () -> Unit = {},
     onCompleteSetup: (
         schoolName: String,
         address: String,
@@ -344,6 +356,8 @@ fun SchoolSetupScreen(
         schoolStage: SchoolStage
     ) -> Unit
 ) {
+    BackHandler { onCancelSetup() }
+
     var schoolName by remember { mutableStateOf("مدرستي النموذجية") }
     var address by remember { mutableStateOf("الموصل - زمار") }
     var selectedSchoolType by remember { mutableStateOf(SchoolType.PRIVATE) }
@@ -372,12 +386,30 @@ fun SchoolSetupScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NoWrapBadge(
-                    text = "التأسيس لأول مرة • إعداد الإدارة",
-                    icon = Icons.Filled.AdminPanelSettings,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconButton(
+                        onClick = onCancelSetup,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .testTag("cancel_school_setup_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "رجوع",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    NoWrapBadge(
+                        text = "تأسيس مدرسة جديدة • إعداد المدير",
+                        icon = Icons.Filled.AdminPanelSettings,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
                 IconButton(
                     onClick = onToggleDarkMode,
                     modifier = Modifier
@@ -636,9 +668,16 @@ fun SchoolSetupScreen(
                     OutlinedTextField(
                         value = adminUsername,
                         onValueChange = { adminUsername = it },
-                        label = { Text("اسم المستخدم لحساب الإدارة") },
-                        placeholder = { Text("admin") },
+                        label = { Text("اسم المستخدم لحساب المدير (يُضاف كود المدرسة الثلاثي تلقائياً)") },
+                        placeholder = { Text("admin أو 1") },
                         leadingIcon = { Icon(Icons.Filled.VerifiedUser, contentDescription = null) },
+                        supportingText = {
+                            Text(
+                                text = "سيتم توليد كود مدرسة ثلاثي فريد (مثال: 105) ليصبح اسم المستخدم تلقائياً: 105-${adminUsername.ifBlank { "admin" }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        },
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -725,19 +764,90 @@ fun SchoolSetupScreen(
 }
 
 /**
- * Unified Login Screen (شاشة تسجيل الدخول الموحدة)
+ * Unified Login Screen (بوابة تسجيل الدخول الموحدة)
+ * - Default screen on any device installing the app.
+ * - Contains ONLY Username field, Password field, and Login button (no public "+ تأسيس مدرسة جديدة" button).
+ * - Tapping 5 times consecutively on the platform logo at the top opens the one-time Activation Code dialog.
  */
 @Composable
 fun UnifiedLoginScreen(
     schoolConfig: SchoolConfig,
     isDarkMode: Boolean,
     onToggleDarkMode: () -> Unit,
-    onLoginAttempt: (String, String) -> Result<*>
+    onLoginAttempt: (String, String) -> Result<*>,
+    onVerifyActivationCode: (String, (Boolean) -> Unit) -> Unit = { _, _ -> }
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var loginError by remember { mutableStateOf<String?>(null) }
+
+    // 5-Tap Consecutive Logo Gesture State for New School Activation Code
+    var logoTapCount by remember { mutableIntStateOf(0) }
+    var lastLogoTapTime by remember { mutableLongStateOf(0L) }
+    var showActivationCodeDialog by remember { mutableStateOf(false) }
+    var activationCodeInput by remember { mutableStateOf("") }
+
+    if (showActivationCodeDialog) {
+        AlertDialog(
+            onDismissRequest = { showActivationCodeDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.VpnKey,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    text = "أدخل كود تفعيل تأسيس المدرسة",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "أدخل كود التفعيل لمرة واحدة (مثال: MAD-XXXX) المرسل إليك من المطور أحمد أبو رسلان لفتح شاشة تأسيس مدرسة جديدة:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = activationCodeInput,
+                        onValueChange = { activationCodeInput = it.uppercase() },
+                        label = { Text("كود تفعيل تأسيس المدرسة") },
+                        placeholder = { Text("MAD-XXXX") },
+                        leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("activation_code_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "تحقق وفتح التأسيس",
+                    icon = Icons.Filled.Verified,
+                    onClick = {
+                        onVerifyActivationCode(activationCodeInput) { valid ->
+                            if (valid) {
+                                showActivationCodeDialog = false
+                                activationCodeInput = ""
+                            }
+                        }
+                    },
+                    testTag = "verify_activation_code_button"
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showActivationCodeDialog = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -758,7 +868,11 @@ fun UnifiedLoginScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NoWrapBadge(
-                    text = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel} • ${schoolConfig.address}",
+                    text = if (schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank()) {
+                        "كود المدرسة: ${schoolConfig.schoolId} • ${schoolConfig.schoolStage.arabicLabel}"
+                    } else {
+                        "منصة مدرستي الذكية • الموصل - زمار"
+                    },
                     icon = Icons.Filled.LocationOn,
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -783,18 +897,38 @@ fun UnifiedLoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Base64AvatarImage(
-                    base64Data = schoolConfig.logoBase64,
-                    fallbackIcon = Icons.Filled.School,
-                    contentDescription = schoolConfig.schoolName,
-                    size = 84.dp,
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                // Tapping 5 consecutive times on the top platform logo opens the Activation Code dialog
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable {
+                            val now = System.currentTimeMillis()
+                            if (now - lastLogoTapTime > 2200L) {
+                                logoTapCount = 1
+                            } else {
+                                logoTapCount++
+                            }
+                            lastLogoTapTime = now
+                            if (logoTapCount >= 5) {
+                                logoTapCount = 0
+                                showActivationCodeDialog = true
+                            }
+                        }
+                        .testTag("platform_logo_five_taps")
+                ) {
+                    Base64AvatarImage(
+                        base64Data = schoolConfig.logoBase64,
+                        fallbackIcon = Icons.Filled.School,
+                        contentDescription = schoolConfig.schoolName,
+                        size = 84.dp,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = schoolConfig.schoolName,
+                    text = if (schoolConfig.isSetupCompleted) schoolConfig.schoolName else "منصة مدرستي المتكاملة",
                     style = MaterialTheme.typography.headlineLarge,
                     color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center
@@ -842,7 +976,7 @@ fun UnifiedLoginScreen(
                                 loginError = null
                             },
                             label = { Text("اسم المستخدم") },
-                            placeholder = { Text("أدخل اسم المستخدم المعتمد من الإدارة") },
+                            placeholder = { Text("مثال: 105-1 أو 105-ali") },
                             leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
                             singleLine = true,
                             modifier = Modifier
@@ -902,7 +1036,7 @@ fun UnifiedLoginScreen(
                         }
 
                         VectorActionButton(
-                            text = "دخول إلى المنصة",
+                            text = "تسجيل الدخول",
                             icon = Icons.AutoMirrored.Filled.Login,
                             onClick = {
                                 val res = onLoginAttempt(username, password)
@@ -942,6 +1076,562 @@ fun UnifiedLoginScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            DeveloperCreditFooter()
+        }
+    }
+}
+
+/**
+ * Internal Developer Super-Admin Control Panel:
+ * "لوحة تحكم المطور - أحمد أبو رسلان"
+ * Opened exclusively when logging in with ABU-RASLAN / 07512362567.
+ */
+@Composable
+fun DeveloperControlPanelScreen(
+    viewModel: SchoolViewModel,
+    isDarkMode: Boolean,
+    onToggleDarkMode: () -> Unit
+) {
+    val context = LocalContext.current
+    val licenses by viewModel.schoolLicenses.collectAsState()
+    val registeredSchools by viewModel.registeredSchools.collectAsState()
+    var directorPhoneForWhatsApp by remember { mutableStateOf("") }
+
+    BackHandler {
+        viewModel.exitDeveloperPanel()
+    }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 18.dp, vertical = 14.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Top Header Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Terminal,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(30.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "لوحة تحكم المطور - أحمد أبو رسلان",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "إدارة التراخيص، تأسيس المدارس، واشتراكات السحابة (Firestore)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.88f)
+                                )
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.refreshDeveloperCloudData()
+                                    viewModel.showToastAlert("تمت مزامنة التراخيص والمدارس مع السحابة", isSuccess = true)
+                                },
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.18f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Sync,
+                                    contentDescription = "مزامنة السحابة",
+                                    tint = Color.White
+                                )
+                            }
+                            IconButton(
+                                onClick = onToggleDarkMode,
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.18f))
+                            ) {
+                                Icon(
+                                    imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                    contentDescription = "تبديل المظهر",
+                                    tint = Color.White
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.exitDeveloperPanel() },
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(DangerRed.copy(alpha = 0.85f))
+                                    .testTag("exit_developer_panel_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                                    contentDescription = "خروج",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        NoWrapBadge(
+                            text = "الأكواد المتاحة: ${licenses.count { !it.used }}",
+                            icon = Icons.Filled.VpnKey,
+                            containerColor = Color.White.copy(alpha = 0.18f),
+                            contentColor = Color.White
+                        )
+                        NoWrapBadge(
+                            text = "الأكواد المستخدمة: ${licenses.count { it.used }}",
+                            icon = Icons.Filled.Verified,
+                            containerColor = Color.White.copy(alpha = 0.18f),
+                            contentColor = Color.White
+                        )
+                        NoWrapBadge(
+                            text = "المدارس المشتركة: ${registeredSchools.size}",
+                            icon = Icons.Filled.School,
+                            containerColor = Color.White.copy(alpha = 0.18f),
+                            contentColor = Color.White
+                        )
+                    }
+                }
+            }
+
+            // 1 & 3: Generate License Code & Direct School Setup Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Key,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column {
+                            Text(
+                                text = "توليد أكواد التفعيل وتأسيس المدارس",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "حفظ فوري في مجموعة school_licenses على Firebase Firestore",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    VectorActionButton(
+                        text = "توليد كود تفعيل لمدرسة جديدة",
+                        icon = Icons.Filled.AddModerator,
+                        onClick = { viewModel.generateNewSchoolLicense() },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "dev_generate_license_button"
+                    )
+
+                    OutlinedButton(
+                        onClick = { viewModel.openSchoolSetupFromDeveloper() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("dev_direct_school_setup_button"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AddBusiness,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "+ تأسيس مدرسة جديدة الآن",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // 2: Activation Codes List (قائمة أكواد التفعيل)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.FactCheck,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column {
+                            Text(
+                                text = "قائمة أكواد التفعيل (school_licenses)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "أكواد التفعيل المتاحة والمستخدمة لتأسيس المدارس لمرة واحدة",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = directorPhoneForWhatsApp,
+                        onValueChange = { directorPhoneForWhatsApp = it },
+                        label = { Text("رقم واتساب مدير المدرسة الجديدة (اختياري قبل الإرسال)") },
+                        placeholder = { Text("مثال: 0751XXXXXXX") },
+                        leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    if (licenses.isEmpty()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.VpnKey,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Text(
+                                    text = "لا توجد أكواد تفعيل مولدة بعد",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "اضغط على زر (توليد كود تفعيل لمدرسة جديدة) أعلاه لإنشاء كود MAD-XXXX",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        licenses.forEach { lic ->
+                            Surface(
+                                color = if (lic.used) {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (lic.used) Icons.Filled.Lock else Icons.Filled.VpnKey,
+                                                contentDescription = null,
+                                                tint = if (lic.used) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = lic.code,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "تاريخ الإنشاء: ${lic.createdAt}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        NoWrapBadge(
+                                            text = if (lic.used) "مستخدم (Used)" else "متاح للتفعيل",
+                                            icon = if (lic.used) Icons.Filled.CheckCircle else Icons.Filled.FiberNew,
+                                            containerColor = if (lic.used) MaterialTheme.colorScheme.surfaceVariant else SuccessGreen.copy(alpha = 0.16f),
+                                            contentColor = if (lic.used) MaterialTheme.colorScheme.onSurfaceVariant else SuccessGreen
+                                        )
+                                    }
+
+                                    if (lic.used) {
+                                        Text(
+                                            text = "تم الاستخدام لتأسيس مدرسة: ${lic.usedBySchoolName.ifBlank { "مدرسة" }} (كود المدرسة: ${lic.usedBySchoolId})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    } else {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                                    clipboard?.setPrimaryClip(ClipData.newPlainText("Madrasati Activation Code", lic.code))
+                                                    viewModel.showToastAlert("تم نسخ كود التفعيل (${lic.code}) إلى الحافظة", isSuccess = true)
+                                                },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .heightIn(min = 48.dp),
+                                                shape = RoundedCornerShape(12.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.ContentCopy,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "نسخ الكود",
+                                                    style = MaterialTheme.typography.labelLarge
+                                                )
+                                            }
+
+                                            VectorActionButton(
+                                                text = "إرسال عبر واتساب",
+                                                icon = Icons.AutoMirrored.Filled.Send,
+                                                containerColor = Color(0xFF25D366),
+                                                onClick = {
+                                                    val msg = buildString {
+                                                        append("السلام عليكم ورحمة الله وبركاته\n")
+                                                        append("مرحباً بك في *منصة مدرستي الذكية* 🏫\n\n")
+                                                        append("🔑 *كود تفعيل تأسيس المدرسة لمرة واحدة:*\n")
+                                                        append("*${lic.code}*\n\n")
+                                                        append("📌 *طريقة تأسيس المدرسة:*\n")
+                                                        append("1. افتح تطبيق مدرستي على هاتفك.\n")
+                                                        append("2. في شاشة تسجيل الدخول، اضغط *5 ضغطات متتالية* على شعار المنصة في الأعلى.\n")
+                                                        append("3. أدخل كود التفعيل (*${lic.code}*) لتفتح لك شاشة تأسيس المدرسة وإنشاء حساب المدير.\n\n")
+                                                        append("مع تحيات المطور: *المهندس أحمد أبو رسلان*")
+                                                    }
+                                                    ExternalIntents.sendWhatsAppMessage(
+                                                        context = context,
+                                                        rawPhone = directorPhoneForWhatsApp.ifBlank { "07512362567" },
+                                                        message = msg
+                                                    )
+                                                },
+                                                modifier = Modifier.weight(1.3f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4: Subscribed Schools Management List (قائمة إدارة المدارس المشتركة - schools)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Domain,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column {
+                            Text(
+                                text = "قائمة إدارة المدارس المشتركة (schools)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "عرض جميع المدارس المسجلة مع التحكم بتفعيل أو إيقاف اشتراك كل مدرسة",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (registeredSchools.isEmpty()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.School,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Text(
+                                    text = "لا توجد مدارس مؤسسة بعد",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "عند تأسيس أي مدرسة عبر كود التفعيل أو مباشرة ستظهر هنا مع كودها الثلاثي",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        registeredSchools.forEach { school ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = school.schoolName,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "كود المدرسة المميز: ${school.schoolId} • تاريخ التأسيس: ${school.createdAt}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "${school.schoolType} • ${school.schoolStage} • ${school.address}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            if (school.adminUsername.isNotBlank()) {
+                                                Text(
+                                                    text = "حساب المدير: ${school.adminUsername}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.secondary
+                                                )
+                                            }
+                                        }
+
+                                        Switch(
+                                            checked = school.isActive,
+                                            onCheckedChange = {
+                                                viewModel.toggleSchoolSubscriptionActive(school.schoolId)
+                                            },
+                                            modifier = Modifier.testTag("toggle_school_active_${school.schoolId}")
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        NoWrapBadge(
+                                            text = if (school.isActive) "الاشتراك مفعّل (isActive: true)" else "الاشتراك متوقف (isActive: false)",
+                                            icon = if (school.isActive) Icons.Filled.CheckCircle else Icons.Filled.Block,
+                                            containerColor = if (school.isActive) SuccessGreen.copy(alpha = 0.16f) else DangerRed.copy(alpha = 0.16f),
+                                            contentColor = if (school.isActive) SuccessGreen else DangerRed
+                                        )
+
+                                        TextButton(
+                                            onClick = { viewModel.toggleSchoolSubscriptionActive(school.schoolId) }
+                                        ) {
+                                            Text(
+                                                text = if (school.isActive) "إيقاف اشتراك المدرسة" else "تفعيل اشتراك المدرسة",
+                                                color = if (school.isActive) DangerRed else SuccessGreen,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             DeveloperCreditFooter()
         }

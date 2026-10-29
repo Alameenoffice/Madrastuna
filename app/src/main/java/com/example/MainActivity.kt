@@ -75,6 +75,8 @@ fun MadrasatiRootApp(
     val onboardingSeen by viewModel.onboardingSeen.collectAsState()
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val isDeveloperAuthenticated by viewModel.isDeveloperAuthenticated.collectAsState()
+    val isSchoolSetupUnlocked by viewModel.isSchoolSetupUnlocked.collectAsState()
     val toastAlert by viewModel.toastAlert.collectAsState()
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -109,10 +111,18 @@ fun MadrasatiRootApp(
                     onFinishOnboarding = { viewModel.completeOnboarding() }
                 )
             }
-            !schoolConfig.isSetupCompleted -> {
+            isDeveloperAuthenticated -> {
+                DeveloperControlPanelScreen(
+                    viewModel = viewModel,
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { viewModel.toggleDarkMode() }
+                )
+            }
+            isSchoolSetupUnlocked -> {
                 SchoolSetupScreen(
                     isDarkMode = isDarkMode,
                     onToggleDarkMode = { viewModel.toggleDarkMode() },
+                    onCancelSetup = { viewModel.cancelSchoolSetupAndReturn() },
                     onCompleteSetup = { schoolName, address, schoolType, logoBase64, adminFullName, adminUsername, adminPassword, schoolStage ->
                         viewModel.setupSchoolAndAdmin(
                             schoolName = schoolName,
@@ -132,7 +142,10 @@ fun MadrasatiRootApp(
                     schoolConfig = schoolConfig,
                     isDarkMode = isDarkMode,
                     onToggleDarkMode = { viewModel.toggleDarkMode() },
-                    onLoginAttempt = { u, p -> viewModel.login(u, p) }
+                    onLoginAttempt = { u, p -> viewModel.login(u, p) },
+                    onVerifyActivationCode = { code, callback ->
+                        viewModel.verifyActivationCodeAndUnlockSetup(code, callback)
+                    }
                 )
             }
             else -> {

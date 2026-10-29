@@ -359,9 +359,10 @@ fun AdminAccountsScreen(
                                     السلام عليكم أستاذنا الفاضل ${teacher.fullName}
                                     إدارة (${schoolConfig.schoolName} - ${schoolConfig.address}) ترحب بكم في منصة مدرستي.
                                     بيانات الدخول الخاصة بحساب المعلم:
+                                    • كود المدرسة: ${schoolConfig.schoolId}
                                     • المواد المسندة: ${teacher.specialty}
                                     • الصفوف والشعب المسندة: ${teacher.assignedClasses}
-                                    • اسم المستخدم: ${teacher.username}
+                                    • اسم المستخدم الكامل: ${teacher.username}
                                     • كلمة المرور: ${teacher.password}
                                 """.trimIndent()
                                 ExternalIntents.sendWhatsAppMessage(context, teacher.phone, msg)
@@ -508,7 +509,7 @@ fun AdminAccountsScreen(
                                 val msg = """
                                     السلام عليكم السيد ولي أمر الطالب (${stu.studentName}) المحترم،
                                     تهديكم إدارة (${schoolConfig.schoolName} - ${schoolConfig.address}) أطيب التحيات.
-                                    تم تفعيل حسابات المتابعة اليومية في منصة مدرستي:
+                                    تم تفعيل حسابات المتابعة اليومية في منصة مدرستي (كود المدرسة: ${schoolConfig.schoolId}):
                                     • الصف والشعبة: ${stu.gradeClass} - شعبة (${stu.sectionName})
                                     • حساب ولي الأمر: المستخدم (${stu.parentUsername}) | الرمز (${stu.parentPassword})
                                     • حساب الطالب: المستخدم (${stu.studentUsername}) | الرمز (${stu.studentPassword})
@@ -528,7 +529,14 @@ fun AdminAccountsScreen(
         val currentEditing = editingTeacher
         var name by remember(currentEditing) { mutableStateOf(currentEditing?.fullName ?: "") }
         var phone by remember(currentEditing) { mutableStateOf(currentEditing?.phone ?: "07512362567") }
-        var username by remember(currentEditing) { mutableStateOf(currentEditing?.username ?: "tch_${(100..999).random()}") }
+        var username by remember(currentEditing) {
+            mutableStateOf(
+                currentEditing?.username ?: FirebaseConfigConstants.applySchoolPrefix(
+                    schoolConfig.schoolId,
+                    "t${teachers.size + 1}"
+                )
+            )
+        }
         var password by remember(currentEditing) { mutableStateOf(currentEditing?.password ?: (1000..9999).random().toString()) }
 
         // Multi-select subjects from registeredSubjects
@@ -657,6 +665,7 @@ fun AdminAccountsScreen(
                                 value = username,
                                 onValueChange = { username = it },
                                 label = { Text("اسم المستخدم") },
+                                placeholder = { Text("مثال: 1 أو ali") },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
@@ -668,6 +677,13 @@ fun AdminAccountsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                        Text(
+                            text = "اسم المستخدم المعتمد مع كود المدرسة: ${FirebaseConfigConstants.applySchoolPrefix(schoolConfig.schoolId, username)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
                     }
                 }
             },
@@ -710,9 +726,23 @@ fun AdminAccountsScreen(
         var address by remember(currentStu) { mutableStateOf(currentStu?.address ?: "الموصل - زمار") }
         var totalFeeText by remember { mutableStateOf("1500000") }
         var photoBase64 by remember(currentStu) { mutableStateOf(currentStu?.photoBase64 ?: "") }
-        var sUser by remember(currentStu) { mutableStateOf(currentStu?.studentUsername ?: "stu_${(100..999).random()}") }
+        var sUser by remember(currentStu) {
+            mutableStateOf(
+                currentStu?.studentUsername ?: FirebaseConfigConstants.applySchoolPrefix(
+                    schoolConfig.schoolId,
+                    "${students.size + 1}"
+                )
+            )
+        }
         var sPass by remember(currentStu) { mutableStateOf(currentStu?.studentPassword ?: (1000..9999).random().toString()) }
-        var pUser by remember(currentStu) { mutableStateOf(currentStu?.parentUsername ?: "par_${(100..999).random()}") }
+        var pUser by remember(currentStu) {
+            mutableStateOf(
+                currentStu?.parentUsername ?: FirebaseConfigConstants.applySchoolPrefix(
+                    schoolConfig.schoolId,
+                    "p${students.size + 1}"
+                )
+            )
+        }
         var pPass by remember(currentStu) { mutableStateOf(currentStu?.parentPassword ?: (1000..9999).random().toString()) }
 
         var classDropdownExpanded by remember { mutableStateOf(false) }
@@ -894,6 +924,13 @@ fun AdminAccountsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                        Text(
+                            text = "البادئة التلقائية: ولي الأمر (${FirebaseConfigConstants.applySchoolPrefix(schoolConfig.schoolId, pUser)}) • الطالب (${FirebaseConfigConstants.applySchoolPrefix(schoolConfig.schoolId, sUser)})",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
                     }
                 }
             },

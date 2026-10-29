@@ -84,6 +84,22 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _toastAlert = MutableStateFlow<ToastAlertMessage?>(null)
     val toastAlert: StateFlow<ToastAlertMessage?> = _toastAlert.asStateFlow()
 
+    // Developer Super-Admin & Activation Code States
+    private val _isDeveloperAuthenticated = MutableStateFlow(false)
+    val isDeveloperAuthenticated: StateFlow<Boolean> = _isDeveloperAuthenticated.asStateFlow()
+
+    private val _isSchoolSetupUnlocked = MutableStateFlow(false)
+    val isSchoolSetupUnlocked: StateFlow<Boolean> = _isSchoolSetupUnlocked.asStateFlow()
+
+    private val _pendingActivationCode = MutableStateFlow<String?>(null)
+    val pendingActivationCode: StateFlow<String?> = _pendingActivationCode.asStateFlow()
+
+    private val _schoolLicenses = MutableStateFlow(repo.loadSchoolLicenses())
+    val schoolLicenses: StateFlow<List<SchoolLicense>> = _schoolLicenses.asStateFlow()
+
+    private val _registeredSchools = MutableStateFlow(repo.loadRegisteredSchools())
+    val registeredSchools: StateFlow<List<RegisteredSchoolSummary>> = _registeredSchools.asStateFlow()
+
     val availableClasses: List<String>
         get() = _schoolConfig.value.registeredClasses.ifEmpty { SchoolStage.SECONDARY.defaultClasses }
 
@@ -97,6 +113,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         SystemNotificationHelper.ensureChannelCreated(appContext)
+        refreshDeveloperCloudData()
         restoreSavedSessionIfValid()
         startRealtimeCloudMonitor()
     }
@@ -109,6 +126,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val savedSession = repo.loadSession() ?: return
         val currentSchoolId = _schoolConfig.value.schoolId
         if (currentSchoolId.isNotEmpty() && savedSession.schoolId == currentSchoolId) {
+            if (!isSchoolSubscriptionActive(currentSchoolId)) {
+                repo.clearSession()
+                _activeSession.value = null
+                _currentUser.value = null
+                showToastAlert("اشتراك المدرسة متوقف، يرجى مراجعة المطور أحمد أبو رسلان", isSuccess = false)
+                return
+            }
             val matchedUser = _accounts.value.firstOrNull {
                 it.id == savedSession.userId && it.isActive && (it.schoolId.isEmpty() || it.schoolId == currentSchoolId)
             }
@@ -118,6 +142,197 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 repo.clearSession()
                 _activeSession.value = null
             }
+        }
+    }
+
+    private fun isSchoolSubscriptionActive(schoolId: String): Boolean {
+        if (schoolId.isBlank()) return true
+        val regEntry = _registeredSchools.value.firstOrNull { it.schoolId.equals(schoolId, ignoreCase = true) }
+        if (regEntry != null && !regEntry.isActive) return false
+        val localCfg = repo.loadSchoolConfig(schoolId)
+        if (localCfg.isSetupCompleted && !localCfg.isActive) return false
+        return true
+    }
+
+    private fun reloadSchoolDataIntoMemory(schoolId: String) {
+        if (schoolId.isBlank()) return
+        repo.setActiveSchoolId(schoolId)
+        _schoolConfig.value = repo.loadSchoolConfig(schoolId)
+        _accounts.value = repo.loadAccounts(schoolId)
+        _students.value = repo.loadStudents(schoolId)
+        _attendance.value = repo.loadAttendance(schoolId)
+        _schedules.value = repo.loadSchedules(schoolId)
+        _homeworks.value = repo.loadHomeworks(schoolId)
+        _examSchedules.value = repo.loadExamSchedules(schoolId)
+        _grades.value = repo.loadGrades(schoolId)
+        _tuitions.value = repo.loadTuitions(schoolId)
+        _reports.value = repo.loadReports(schoolId)
+        _chatMessages.value = repo.loadChatMessages(schoolId)
+        _events.value = repo.loadEvents(schoolId)
+        _notifications.value = repo.loadNotifications(schoolId)
+    }
+
+    // =========================================================================
+    // DEVELOPER SUPER-ADMIN PANEL & 5-TAP ACTIVATION CODE FLOW
+    // =========================================================================
+
+    fun refreshDeveloperCloudData() {
+        viewModelScope.launch {
+            try {
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOL_LICENSES,
+                    docName = "registry"
+                )?.let { remoteJson ->
+                    val remoteList = repo.parseSchoolLicensesJson(remoteJson)
+                    if (remoteList.isNotEmpty()) {
+                        val merged = (remoteList + _schoolLicenses.value)
+                            .groupBy { it.code.uppercase() }
+                            .map { (_, items) ->
+                                items.firstOrNull { it.used } ?: items.first()
+                            }
+                        _schoolLicenses.value = merged
+                        repo.saveSchoolLicenses(merged)
+                    }
+                }
+
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+                    docName = "registry"
+                )?.let { remoteJson ->
+                    val remoteSchools = repo.parseRegisteredSchoolsJson(remoteJson)
+                    if (remoteSchools.isNotEmpty()) {
+                        val merged = (remoteSchools + _registeredSchools.value)
+                            .distinctBy { it.schoolId }
+                        _registeredSchools.value = merged
+                        repo.saveRegisteredSchools(merged)
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun generateNewSchoolLicense(): SchoolLicense {
+        val existingCodes = _schoolLicenses.value.map { it.code.uppercase() }.toSet()
+        var newCode = "MAD-${(1000..9999).random()}"
+        while (newCode in existingCodes) {
+            newCode = "MAD-${(1000..9999).random()}"
+        }
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val license = SchoolLicense(
+            code = newCode,
+            used = false,
+            createdAt = today
+        )
+        val updated = listOf(license) + _schoolLicenses.value
+        _schoolLicenses.value = updated
+        repo.saveSchoolLicenses(updated)
+        showToastAlert("تم توليد كود التفعيل ($newCode) وحفظه في السحابة بنجاح", isSuccess = true)
+        return license
+    }
+
+    fun openSchoolSetupFromDeveloper() {
+        _pendingActivationCode.value = "DEV-DIRECT"
+        _isSchoolSetupUnlocked.value = true
+        _isDeveloperAuthenticated.value = false
+    }
+
+    fun cancelSchoolSetupAndReturn() {
+        val wasFromDev = _pendingActivationCode.value == "DEV-DIRECT"
+        _isSchoolSetupUnlocked.value = false
+        _pendingActivationCode.value = null
+        if (wasFromDev) {
+            _isDeveloperAuthenticated.value = true
+        }
+    }
+
+    fun exitDeveloperPanel() {
+        _isDeveloperAuthenticated.value = false
+        showToastAlert("تم الخروج من لوحة تحكم المطور", isSuccess = true)
+    }
+
+    fun toggleSchoolSubscriptionActive(schoolId: String) {
+        val updatedList = _registeredSchools.value.map { s ->
+            if (s.schoolId == schoolId) s.copy(isActive = !s.isActive) else s
+        }
+        _registeredSchools.value = updatedList
+        repo.saveRegisteredSchools(updatedList)
+
+        val targetSummary = updatedList.firstOrNull { it.schoolId == schoolId }
+        val nextActive = targetSummary?.isActive ?: true
+
+        // Update the school's own settings document in local storage & Firebase
+        val cfg = repo.loadSchoolConfig(schoolId)
+        if (cfg.schoolId.isNotBlank() || schoolId == _schoolConfig.value.schoolId) {
+            val prevActiveId = repo.getActiveSchoolId()
+            val updatedCfg = (if (cfg.schoolId.isNotBlank()) cfg else _schoolConfig.value).copy(
+                schoolId = schoolId,
+                isActive = nextActive
+            )
+            repo.saveSchoolConfig(updatedCfg)
+            if (prevActiveId.isNotBlank() && prevActiveId != schoolId) {
+                repo.setActiveSchoolId(prevActiveId)
+            }
+            if (_schoolConfig.value.schoolId == schoolId) {
+                _schoolConfig.value = updatedCfg
+            }
+        }
+
+        val statusLabel = if (nextActive) "مفعّل" else "متوقف"
+        showToastAlert("تم تحديث اشتراك مدرسة (${targetSummary?.schoolName ?: schoolId}) إلى: $statusLabel", isSuccess = nextActive)
+    }
+
+    fun verifyActivationCodeAndUnlockSetup(
+        rawCode: String,
+        onResult: (Boolean) -> Unit = {}
+    ) {
+        val cleanCode = InputSanitizer.sanitizeSchoolId(rawCode).uppercase()
+        if (cleanCode.isBlank()) {
+            showToastAlert("يرجى إدخال كود تفعيل تأسيس المدرسة", isSuccess = false)
+            onResult(false)
+            return
+        }
+
+        viewModelScope.launch {
+            // Pull latest licenses from cloud first if online
+            try {
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOL_LICENSES,
+                    docName = "registry"
+                )?.let { remoteJson ->
+                    val remoteList = repo.parseSchoolLicensesJson(remoteJson)
+                    if (remoteList.isNotEmpty()) {
+                        val merged = (remoteList + _schoolLicenses.value)
+                            .groupBy { it.code.uppercase() }
+                            .map { (_, items) -> items.firstOrNull { it.used } ?: items.first() }
+                        _schoolLicenses.value = merged
+                        repo.saveSchoolLicenses(merged)
+                    }
+                }
+            } catch (_: Exception) {
+            }
+
+            val matched = _schoolLicenses.value.firstOrNull {
+                it.code.equals(cleanCode, ignoreCase = true)
+            }
+
+            if (matched == null) {
+                showToastAlert("كود التفعيل ($cleanCode) غير صحيح، يرجى مراجعة المطور أحمد أبو رسلان", isSuccess = false)
+                onResult(false)
+                return@launch
+            }
+
+            if (matched.used) {
+                val usedSchoolLabel = matched.usedBySchoolName.ifBlank { matched.usedBySchoolId }
+                showToastAlert("هذا الكود مستخدم مسبقاً لتأسيس مدرسة ($usedSchoolLabel) ولا يصلح للاستخدام مرة أخرى", isSuccess = false)
+                onResult(false)
+                return@launch
+            }
+
+            _pendingActivationCode.value = matched.code
+            _isSchoolSetupUnlocked.value = true
+            showToastAlert("تم التحقق من كود التفعيل (${matched.code}) بنجاح! يمكنك الآن تأسيس المدرسة", isSuccess = true)
+            onResult(true)
         }
     }
 
@@ -430,8 +645,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val generatedSchoolId = InputSanitizer.sanitizeSchoolId(customSchoolId).ifBlank {
-            "SCH-${(100000..999999).random()}"
+            repo.generateUniqueThreeDigitSchoolCode()
         }
+        val prefixedAdminUsername = FirebaseConfigConstants.applySchoolPrefix(generatedSchoolId, cleanUser)
+        val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val finalAddress = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" }
         val generatedClasses = schoolStage.defaultClasses
         val generatedSubjects = schoolStage.defaultSubjects
@@ -450,6 +667,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val config = SchoolConfig(
             schoolId = generatedSchoolId,
             isSetupCompleted = true,
+            isActive = true,
+            createdAt = todayDate,
             schoolName = cleanName,
             address = finalAddress,
             schoolType = schoolType,
@@ -466,10 +685,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveSchoolConfig(config)
         _schoolConfig.value = config
 
-        // Job title for administration is exclusively "المدير"
+        // Job title for administration is exclusively "المدير" with Auto School-Code Prefix
         val adminAccount = UserAccount(
             id = "admin_${generatedSchoolId.lowercase()}",
-            username = cleanUser,
+            username = prefixedAdminUsername,
             password = cleanPass,
             fullName = InputSanitizer.sanitize(adminFullName).ifBlank { "المدير" },
             role = UserRole.ADMIN,
@@ -481,6 +700,30 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             photoBase64 = logoBase64,
             schoolId = generatedSchoolId
         )
+
+        // Register school in global schools registry for Developer Super-Admin Panel
+        repo.upsertRegisteredSchool(config, prefixedAdminUsername)
+        _registeredSchools.value = repo.loadRegisteredSchools()
+
+        // Mark activation code as used = true in school_licenses so it can never be reused
+        val usedCode = _pendingActivationCode.value
+        if (!usedCode.isNullOrBlank() && usedCode != "DEV-DIRECT") {
+            val updatedLicenses = _schoolLicenses.value.map { lic ->
+                if (lic.code.equals(usedCode, ignoreCase = true)) {
+                    lic.copy(
+                        used = true,
+                        usedBySchoolId = generatedSchoolId,
+                        usedBySchoolName = cleanName,
+                        usedAt = todayDate
+                    )
+                } else lic
+            }
+            _schoolLicenses.value = updatedLicenses
+            repo.saveSchoolLicenses(updatedLicenses)
+        }
+        _pendingActivationCode.value = null
+        _isSchoolSetupUnlocked.value = false
+        _isDeveloperAuthenticated.value = false
 
         // Clean State: Start completely empty without any pre-existing demo students or teachers
         val cleanAccounts = listOf(adminAccount)
@@ -532,7 +775,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _currentUser.value = adminAccount
         _activeSection.value = AppSection.DASHBOARD
 
-        showToastAlert("تم تأسيس منصة المدرسة ($cleanName) بنجاح • كود المدرسة: $generatedSchoolId", isSuccess = true)
+        showToastAlert("تم تأسيس المدرسة ($cleanName) • كود المدرسة: $generatedSchoolId • حساب المدير: $prefixedAdminUsername", isSuccess = true)
     }
 
     fun updateSchoolInfo(
@@ -585,6 +828,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
         repo.saveSchoolConfig(updated)
         _schoolConfig.value = updated
+        repo.upsertRegisteredSchool(updated)
+        _registeredSchools.value = repo.loadRegisteredSchools()
         if (schoolType == SchoolType.PUBLIC && _activeSection.value == AppSection.TUITION_FEES) {
             _activeSection.value = AppSection.DASHBOARD
         }
@@ -719,25 +964,94 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // =========================================================================
-    // LOGIN & LOGOUT WITH SESSION VALIDATION
+    // LOGIN & LOGOUT WITH DEVELOPER SUPER-ADMIN & AUTO SCHOOL-CODE PREFIX
     // =========================================================================
 
     fun login(usernameInput: String, passwordInput: String): Result<UserAccount> {
-        val cleanUser = InputSanitizer.sanitizeUsername(usernameInput)
-        val cleanPass = InputSanitizer.sanitize(passwordInput)
-        if (cleanUser.isEmpty() || cleanPass.isEmpty()) {
+        val rawUser = usernameInput.trim()
+        val rawPass = passwordInput.trim()
+        if (rawUser.isEmpty() || rawPass.isEmpty()) {
             showToastAlert("يرجى إدخال اسم المستخدم وكلمة المرور", isSuccess = false)
             return Result.failure(IllegalArgumentException("يرجى إدخال اسم المستخدم وكلمة المرور"))
         }
 
-        val currentSchoolId = _schoolConfig.value.schoolId
-        val matched = _accounts.value.firstOrNull {
-            it.username.equals(cleanUser, ignoreCase = true) &&
-                it.password == cleanPass &&
-                (currentSchoolId.isEmpty() || it.schoolId.isEmpty() || it.schoolId == currentSchoolId)
+        // 1. Check Developer Super-Admin Credentials ("ABU-RASLAN" / "07512362567")
+        if (rawUser.equals(FirebaseConfigConstants.DEV_USERNAME, ignoreCase = true) &&
+            rawPass == FirebaseConfigConstants.DEV_PASSWORD
+        ) {
+            _isDeveloperAuthenticated.value = true
+            _isSchoolSetupUnlocked.value = false
+            refreshDeveloperCloudData()
+            showToastAlert("مرحباً بك في لوحة تحكم المطور - أحمد أبو رسلان", isSuccess = true)
+            val devDummy = UserAccount(
+                id = "dev_super_admin",
+                username = FirebaseConfigConstants.DEV_USERNAME,
+                password = "",
+                fullName = "المطور أحمد أبو رسلان",
+                role = UserRole.ADMIN,
+                isActive = true
+            )
+            return Result.success(devDummy)
+        }
+
+        val cleanUser = InputSanitizer.sanitizeUsername(rawUser)
+        val cleanPass = InputSanitizer.sanitize(rawPass)
+
+        // 2. Extract school code prefix (e.g. "105" from "105-1" or "105-ali")
+        val extractedPrefix = FirebaseConfigConstants.extractSchoolPrefix(cleanUser)
+        if (!extractedPrefix.isNullOrBlank()) {
+            // Check if this school is already cached locally; if not, switch to it
+            val localAccountsForSchool = repo.loadAccounts(extractedPrefix)
+            if (localAccountsForSchool.isNotEmpty() && _schoolConfig.value.schoolId != extractedPrefix) {
+                reloadSchoolDataIntoMemory(extractedPrefix)
+            } else if (localAccountsForSchool.isEmpty()) {
+                // Attempt immediate cloud fetch for cross-device login (e.g. logging into 105-1 on a new phone)
+                viewModelScope.launch {
+                    showToastAlert("جاري الاتصال بمدرسة رقم ($extractedPrefix) عبر السحابة...", isSuccess = true)
+                    refreshDeveloperCloudData()
+                    val pulled = repo.syncFullSchoolFromCloud(extractedPrefix)
+                    if (pulled) {
+                        reloadSchoolDataIntoMemory(extractedPrefix)
+                        completeMemberLogin(cleanUser, cleanPass, extractedPrefix)
+                    } else {
+                        showToastAlert("بيانات الدخول غير صحيحة أو لم يتم العثور على مدرسة برقم ($extractedPrefix)", isSuccess = false)
+                    }
+                }
+                return Result.failure(IllegalStateException("جاري الاتصال بمدرسة رقم ($extractedPrefix)..."))
+            }
+        }
+
+        return completeMemberLogin(cleanUser, cleanPass, extractedPrefix ?: _schoolConfig.value.schoolId)
+    }
+
+    private fun completeMemberLogin(
+        cleanUser: String,
+        cleanPass: String,
+        targetSchoolId: String
+    ): Result<UserAccount> {
+        val currentSchoolId = targetSchoolId.ifBlank { _schoolConfig.value.schoolId }
+
+        val matched = _accounts.value.firstOrNull { acc ->
+            val exactMatch = acc.username.equals(cleanUser, ignoreCase = true)
+            val prefixedCandidate = if (currentSchoolId.isNotBlank()) {
+                FirebaseConfigConstants.applySchoolPrefix(currentSchoolId, cleanUser)
+            } else cleanUser
+            val prefixedMatch = acc.username.equals(prefixedCandidate, ignoreCase = true)
+
+            (exactMatch || prefixedMatch) &&
+                acc.password == cleanPass &&
+                (currentSchoolId.isEmpty() || acc.schoolId.isEmpty() || acc.schoolId == currentSchoolId)
         } ?: run {
-            showToastAlert("بيانات الدخول غير صحيحة، تأكد من اسم المستخدم وكلمة المرور", isSuccess = false)
+            showToastAlert("بيانات الدخول غير صحيحة، تأكد من اسم المستخدم (مثال: 105-1) وكلمة المرور", isSuccess = false)
             return Result.failure(IllegalArgumentException("بيانات الدخول غير صحيحة، تأكد من اسم المستخدم وكلمة المرور"))
+        }
+
+        val resolvedSchoolId = matched.schoolId.ifBlank { currentSchoolId }
+
+        // Check if the school subscription is active (isActive)
+        if (!isSchoolSubscriptionActive(resolvedSchoolId)) {
+            showToastAlert("اشتراك المدرسة متوقف، يرجى مراجعة المطور أحمد أبو رسلان", isSuccess = false)
+            return Result.failure(IllegalStateException("اشتراك المدرسة متوقف، يرجى مراجعة المطور أحمد أبو رسلان"))
         }
 
         if (!matched.isActive) {
@@ -745,7 +1059,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return Result.failure(IllegalStateException("هذا الحساب موقوف حالياً من قبل إدارة المدرسة"))
         }
 
-        val resolvedSchoolId = matched.schoolId.ifBlank { currentSchoolId }
         val session = UserSession(
             userId = matched.id,
             username = matched.username,
@@ -756,6 +1069,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveSession(session)
         _activeSession.value = session
         _currentUser.value = matched
+        _isDeveloperAuthenticated.value = false
+        _isSchoolSetupUnlocked.value = false
         _activeSection.value = AppSection.DASHBOARD
 
         showToastAlert("مرحباً بك ${matched.fullName} (${matched.role.arabicTitle})", isSuccess = true)
@@ -766,12 +1081,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.clearSession()
         _activeSession.value = null
         _currentUser.value = null
+        _isDeveloperAuthenticated.value = false
+        _isSchoolSetupUnlocked.value = false
         _activeSection.value = AppSection.DASHBOARD
         showToastAlert("تم تسجيل الخروج من الجلسة بأمان", isSuccess = true)
     }
 
     // =========================================================================
-    // ADMIN ACCOUNT MANAGEMENT (Teachers, Parents & Students)
+    // ADMIN ACCOUNT MANAGEMENT (Teachers, Parents & Students) WITH AUTO SCHOOL-CODE PREFIX
     // =========================================================================
 
     fun addTeacherAccount(
@@ -790,7 +1107,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val sid = _schoolConfig.value.schoolId
-        val cleanUsername = InputSanitizer.sanitizeUsername(username).ifBlank { "tch_${(100..999).random()}" }
+        val rawUsername = InputSanitizer.sanitizeUsername(username).ifBlank { "tch${(10..99).random()}" }
+        val cleanUsername = FirebaseConfigConstants.applySchoolPrefix(sid, rawUsername)
         val cleanPassword = InputSanitizer.sanitize(password).ifBlank { (1000..9999).random().toString() }
 
         if (_accounts.value.any { it.username.equals(cleanUsername, ignoreCase = true) }) {
@@ -814,7 +1132,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val updated = listOf(newTeacher) + _accounts.value
         _accounts.value = updated
         repo.saveAccounts(updated, sid)
-        showToastAlert("تم إنشاء حساب المعلم ($cleanName) وربطه بالمدرسة بنجاح", isSuccess = true)
+        showToastAlert("تم إنشاء حساب المعلم ($cleanName) باسم مستخدم ($cleanUsername)", isSuccess = true)
         return newTeacher
     }
 
@@ -829,6 +1147,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
+        val rawUser = InputSanitizer.sanitizeUsername(username)
+        val prefixedUser = if (rawUser.isNotBlank()) FirebaseConfigConstants.applySchoolPrefix(sid, rawUser) else ""
         val updated = _accounts.value.map { acc ->
             if (acc.id == teacherId && acc.role == UserRole.TEACHER) {
                 acc.copy(
@@ -836,7 +1156,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     specialty = InputSanitizer.sanitize(specialty),
                     assignedClasses = InputSanitizer.sanitize(assignedClasses),
                     phone = InputSanitizer.sanitize(phone).ifBlank { acc.phone },
-                    username = InputSanitizer.sanitizeUsername(username).ifBlank { acc.username },
+                    username = prefixedUser.ifBlank { acc.username },
                     password = InputSanitizer.sanitize(password).ifBlank { acc.password },
                     schoolId = sid
                 )
@@ -886,9 +1206,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val stuId = "stu_${UUID.randomUUID().toString().take(6)}"
         val finalAddress = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" }
         val finalPhone = InputSanitizer.sanitize(parentPhone).ifBlank { "07512362567" }
-        val sUser = InputSanitizer.sanitizeUsername(studentUsername).ifBlank { "stu_${(100..999).random()}" }
+        val rawSUser = InputSanitizer.sanitizeUsername(studentUsername).ifBlank { "stu${(10..99).random()}" }
+        val sUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawSUser)
         val sPass = InputSanitizer.sanitize(studentPassword).ifBlank { (1000..9999).random().toString() }
-        val pUser = InputSanitizer.sanitizeUsername(parentUsername).ifBlank { "par_${(100..999).random()}" }
+        val rawPUser = InputSanitizer.sanitizeUsername(parentUsername).ifBlank { "par${(10..99).random()}" }
+        val pUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawPUser)
         val pPass = InputSanitizer.sanitize(parentPassword).ifBlank { (1000..9999).random().toString() }
 
         val newStudent = StudentRecord(
@@ -965,7 +1287,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _tuitions.value = updatedTuitions
         repo.saveTuitions(updatedTuitions, sid)
 
-        showToastAlert("تمت إضافة الطالب ($cleanStuName) وحساب ولي أمره في ($gradeClass - $sectionName)", isSuccess = true)
+        showToastAlert("تمت إضافة الطالب ($cleanStuName) • المستخدم: ($sUser) وولي الأمر: ($pUser)", isSuccess = true)
         return newStudent
     }
 
@@ -984,6 +1306,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
+        val rawStuUser = InputSanitizer.sanitizeUsername(studentUsername)
+        val prefixedStuUser = if (rawStuUser.isNotBlank()) FirebaseConfigConstants.applySchoolPrefix(sid, rawStuUser) else ""
+        val rawParUser = InputSanitizer.sanitizeUsername(parentUsername)
+        val prefixedParUser = if (rawParUser.isNotBlank()) FirebaseConfigConstants.applySchoolPrefix(sid, rawParUser) else ""
+
         val updatedStudents = _students.value.map { s ->
             if (s.id == studentId) {
                 s.copy(
@@ -993,9 +1320,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     parentName = InputSanitizer.sanitize(parentName).ifBlank { s.parentName },
                     parentPhone = InputSanitizer.sanitize(parentPhone).ifBlank { s.parentPhone },
                     address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
-                    studentUsername = InputSanitizer.sanitizeUsername(studentUsername).ifBlank { s.studentUsername },
+                    studentUsername = prefixedStuUser.ifBlank { s.studentUsername },
                     studentPassword = InputSanitizer.sanitize(studentPassword).ifBlank { s.studentPassword },
-                    parentUsername = InputSanitizer.sanitizeUsername(parentUsername).ifBlank { s.parentUsername },
+                    parentUsername = prefixedParUser.ifBlank { s.parentUsername },
                     parentPassword = InputSanitizer.sanitize(parentPassword).ifBlank { s.parentPassword },
                     schoolId = sid
                 )
@@ -1009,7 +1336,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 if (acc.role == UserRole.PARENT) {
                     acc.copy(
                         fullName = InputSanitizer.sanitize(parentName).ifBlank { acc.fullName },
-                        username = InputSanitizer.sanitizeUsername(parentUsername).ifBlank { acc.username },
+                        username = prefixedParUser.ifBlank { acc.username },
                         password = InputSanitizer.sanitize(parentPassword).ifBlank { acc.password },
                         phone = InputSanitizer.sanitize(parentPhone).ifBlank { acc.phone },
                         gradeClass = gradeClass,
@@ -1020,7 +1347,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 } else {
                     acc.copy(
                         fullName = InputSanitizer.sanitize(studentName).ifBlank { acc.fullName },
-                        username = InputSanitizer.sanitizeUsername(studentUsername).ifBlank { acc.username },
+                        username = prefixedStuUser.ifBlank { acc.username },
                         password = InputSanitizer.sanitize(studentPassword).ifBlank { acc.password },
                         phone = InputSanitizer.sanitize(parentPhone).ifBlank { acc.phone },
                         gradeClass = gradeClass,

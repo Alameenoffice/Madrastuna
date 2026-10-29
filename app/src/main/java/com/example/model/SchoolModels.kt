@@ -28,8 +28,43 @@ object FirebaseConfigConstants {
     const val COL_EVENTS_GALLERY = "events_gallery"
     const val COL_NOTIFICATIONS = "notifications"
 
+    // Root collections for Developer Super-Admin Panel
+    const val COL_SCHOOL_LICENSES = "school_licenses"
+    const val COL_SCHOOLS_REGISTRY = "schools"
+
+    // Developer Super-Admin Credentials
+    const val DEV_USERNAME = "ABU-RASLAN"
+    const val DEV_PASSWORD = "07512362567"
+
     fun schoolCollectionPath(schoolId: String, subCollection: String): String {
         return "schools/$schoolId/$subCollection"
+    }
+
+    /**
+     * Automatically prepends the 3-digit school code (e.g. "105") to a username (e.g. "1" -> "105-1")
+     * without duplicating the prefix if it is already present.
+     */
+    fun applySchoolPrefix(schoolCode: String, rawUsername: String): String {
+        val cleanCode = schoolCode.trim()
+        val cleanUser = rawUsername.trim()
+        if (cleanUser.isEmpty()) return ""
+        if (cleanCode.isEmpty()) return cleanUser
+        val prefix = "$cleanCode-"
+        return if (cleanUser.startsWith(prefix, ignoreCase = true)) {
+            prefix + cleanUser.substring(prefix.length)
+        } else {
+            "$prefix$cleanUser"
+        }
+    }
+
+    /**
+     * Extracts the school code prefix (e.g. "105" from "105-1" or "105-ali") when logging in.
+     */
+    fun extractSchoolPrefix(username: String): String? {
+        val trimmed = username.trim()
+        if (!trimmed.contains("-")) return null
+        val prefix = trimmed.substringBefore("-").trim()
+        return if (prefix.length in 2..12 && prefix.all { it.isLetterOrDigit() }) prefix else null
     }
 }
 
@@ -181,9 +216,31 @@ data class SubjectConfigItem(
     val schoolId: String = ""
 )
 
+data class SchoolLicense(
+    val code: String,
+    val used: Boolean = false,
+    val createdAt: String = "2026-10-29",
+    val usedBySchoolId: String = "",
+    val usedBySchoolName: String = "",
+    val usedAt: String = ""
+)
+
+data class RegisteredSchoolSummary(
+    val schoolId: String,
+    val schoolName: String,
+    val address: String = "الموصل - زمار",
+    val schoolStage: String = "ثانوية",
+    val schoolType: String = "مدرسة أهلية",
+    val createdAt: String = "2026-10-29",
+    val isActive: Boolean = true,
+    val adminUsername: String = ""
+)
+
 data class SchoolConfig(
     val schoolId: String = "",
     val isSetupCompleted: Boolean = false,
+    val isActive: Boolean = true,
+    val createdAt: String = "2026-10-29",
     val schoolName: String = "مدرستي النموذجية",
     val address: String = "الموصل - زمار",
     val schoolType: SchoolType = SchoolType.PRIVATE,

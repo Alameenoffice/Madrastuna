@@ -127,6 +127,8 @@ class SchoolRepository(context: Context) {
             SchoolConfig(
                 schoolId = resolvedSchoolId,
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
+                isActive = obj.optBoolean("isActive", true),
+                createdAt = obj.optString("createdAt", "2026-10-29"),
                 schoolName = obj.optString("schoolName", "مدرستي النموذجية"),
                 address = obj.optString("address", "الموصل - زمار"),
                 schoolType = SchoolType.valueOf(obj.optString("schoolType", SchoolType.PRIVATE.name)),
@@ -146,13 +148,15 @@ class SchoolRepository(context: Context) {
 
     fun saveSchoolConfig(config: SchoolConfig) {
         val sid = config.schoolId.ifBlank { getActiveSchoolId() }.ifBlank {
-            "SCH-${(100000..999999).random()}"
+            generateUniqueThreeDigitSchoolCode()
         }
         setActiveSchoolId(sid)
 
         val obj = JSONObject().apply {
             put("schoolId", sid)
             put("isSetupCompleted", config.isSetupCompleted)
+            put("isActive", config.isActive)
+            put("createdAt", config.createdAt.ifBlank { "2026-10-29" })
             put("schoolName", InputSanitizer.sanitize(config.schoolName))
             put("address", InputSanitizer.sanitize(config.address.ifBlank { "الموصل - زمار" }))
             put("schoolType", config.schoolType.name)
@@ -1077,6 +1081,242 @@ class SchoolRepository(context: Context) {
         } catch (e: Exception) {
             Result.failure(IllegalArgumentException("فشل استعادة النسخة الاحتياطية: تأكد من صحة صيغة JSON"))
         }
+    }
+
+    // =========================================================================
+    // 10. DEVELOPER SUPER-ADMIN PANEL: LICENSES (school_licenses) & SCHOOLS REGISTRY
+    // =========================================================================
+
+    fun generateUniqueThreeDigitSchoolCode(): String {
+        val existingIds = loadRegisteredSchools().map { it.schoolId }.toSet()
+        for (attempt in 0 until 200) {
+            val candidate = (101..999).random().toString()
+            if (candidate !in existingIds) return candidate
+        }
+        return (101..999).random().toString()
+    }
+
+    fun loadSchoolLicenses(): List<SchoolLicense> {
+        val raw = prefs.getString("global_school_licenses", null) ?: return emptyList()
+        return parseSchoolLicensesJson(raw)
+    }
+
+    fun parseSchoolLicensesJson(raw: String): List<SchoolLicense> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<SchoolLicense>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val code = o.optString("code").trim()
+                if (code.isNotEmpty()) {
+                    list.add(
+                        SchoolLicense(
+                            code = code,
+                            used = o.optBoolean("used", false),
+                            createdAt = o.optString("createdAt", "2026-10-29"),
+                            usedBySchoolId = o.optString("usedBySchoolId", ""),
+                            usedBySchoolName = o.optString("usedBySchoolName", ""),
+                            usedAt = o.optString("usedAt", "")
+                        )
+                    )
+                }
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveSchoolLicenses(licenses: List<SchoolLicense>) {
+        val arr = JSONArray()
+        licenses.forEach { lic ->
+            arr.put(JSONObject().apply {
+                put("code", lic.code)
+                put("used", lic.used)
+                put("createdAt", lic.createdAt)
+                put("usedBySchoolId", lic.usedBySchoolId)
+                put("usedBySchoolName", lic.usedBySchoolName)
+                put("usedAt", lic.usedAt)
+            })
+            FirebaseCloudSync.pushSingleLicenseDocumentAsync(
+                code = lic.code,
+                used = lic.used,
+                createdAt = lic.createdAt,
+                usedBySchoolId = lic.usedBySchoolId,
+                usedBySchoolName = lic.usedBySchoolName,
+                usedAt = lic.usedAt
+            )
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString("global_school_licenses", jsonStr).apply()
+        FirebaseCloudSync.pushGlobalCollectionAsync(
+            collectionName = FirebaseConfigConstants.COL_SCHOOL_LICENSES,
+            docName = "registry",
+            jsonPayload = jsonStr
+        )
+    }
+
+    fun loadRegisteredSchools(): List<RegisteredSchoolSummary> {
+        val raw = prefs.getString("global_registered_schools", null) ?: return emptyList()
+        return parseRegisteredSchoolsJson(raw)
+    }
+
+    fun parseRegisteredSchoolsJson(raw: String): List<RegisteredSchoolSummary> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<RegisteredSchoolSummary>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val sid = o.optString("schoolId").trim()
+                if (sid.isNotEmpty()) {
+                    list.add(
+                        RegisteredSchoolSummary(
+                            schoolId = sid,
+                            schoolName = o.optString("schoolName", "مدرستي النموذجية"),
+                            address = o.optString("address", "الموصل - زمار"),
+                            schoolStage = o.optString("schoolStage", "ثانوية"),
+                            schoolType = o.optString("schoolType", "مدرسة أهلية"),
+                            createdAt = o.optString("createdAt", "2026-10-29"),
+                            isActive = o.optBoolean("isActive", true),
+                            adminUsername = o.optString("adminUsername", "")
+                        )
+                    )
+                }
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveRegisteredSchools(schools: List<RegisteredSchoolSummary>) {
+        val arr = JSONArray()
+        schools.forEach { s ->
+            arr.put(JSONObject().apply {
+                put("schoolId", s.schoolId)
+                put("schoolName", InputSanitizer.sanitize(s.schoolName))
+                put("address", InputSanitizer.sanitize(s.address))
+                put("schoolStage", s.schoolStage)
+                put("schoolType", s.schoolType)
+                put("createdAt", s.createdAt)
+                put("isActive", s.isActive)
+                put("adminUsername", s.adminUsername)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString("global_registered_schools", jsonStr).apply()
+        FirebaseCloudSync.pushGlobalCollectionAsync(
+            collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+            docName = "registry",
+            jsonPayload = jsonStr
+        )
+    }
+
+    fun upsertRegisteredSchool(config: SchoolConfig, adminUsername: String = "") {
+        val current = loadRegisteredSchools().toMutableList()
+        val existingIdx = current.indexOfFirst { it.schoolId == config.schoolId }
+        val resolvedAdminUser = if (adminUsername.isNotBlank()) {
+            adminUsername
+        } else if (existingIdx >= 0) {
+            current[existingIdx].adminUsername
+        } else {
+            ""
+        }
+        val summary = RegisteredSchoolSummary(
+            schoolId = config.schoolId,
+            schoolName = config.schoolName,
+            address = config.address,
+            schoolStage = config.schoolStage.arabicLabel,
+            schoolType = config.schoolType.arabicLabel,
+            createdAt = config.createdAt.ifBlank { "2026-10-29" },
+            isActive = config.isActive,
+            adminUsername = resolvedAdminUser
+        )
+        if (existingIdx >= 0) {
+            current[existingIdx] = summary
+        } else {
+            current.add(0, summary)
+        }
+        saveRegisteredSchools(current)
+    }
+
+    /**
+     * Pulls a school's sub-collections from Firebase (Firestore/RTDB) into local storage
+     * so that logging in with a prefixed username (e.g. 105-1) from any phone works immediately.
+     */
+    suspend fun syncFullSchoolFromCloud(schoolId: String): Boolean {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return false
+
+        var foundAny = false
+        val editor = prefs.edit()
+
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SETTINGS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), it)
+                foundAny = true
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SUBJECTS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SUBJECTS), it)
+                foundAny = true
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_USERS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_USERS), it)
+                foundAny = true
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_HONOR_ROLL)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_HONOR_ROLL), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_ATTENDANCE)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_ATTENDANCE), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_GRADES)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_TUITION_FEES)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_TUITION_FEES), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_REPORTS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_REPORTS), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_MESSAGES)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_MESSAGES), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_EVENTS_GALLERY)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_EVENTS_GALLERY), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_NOTIFICATIONS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_NOTIFICATIONS), it)
+            }
+        }
+
+        editor.apply()
+        return foundAny
     }
 
     // =========================================================================
