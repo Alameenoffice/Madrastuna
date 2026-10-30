@@ -155,7 +155,8 @@ class SchoolRepository(context: Context) {
                 subjectConfigs = subjectConfigs,
                 logoBase64 = obj.optString("logoBase64", ""),
                 academicYear = obj.optString("academicYear", "2026 - 2027"),
-                phone = obj.optString("phone", "07512362567")
+                phone = obj.optString("phone", "07512362567"),
+                subscriptionExpiryDate = obj.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" }
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -183,6 +184,7 @@ class SchoolRepository(context: Context) {
             put("logoBase64", config.logoBase64)
             put("academicYear", config.academicYear)
             put("phone", config.phone)
+            put("subscriptionExpiryDate", config.subscriptionExpiryDate.ifBlank { "2027-10-29" })
         }
         val jsonStr = obj.toString()
         prefs.edit().putString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), jsonStr).apply()
@@ -349,6 +351,8 @@ class SchoolRepository(context: Context) {
                             if (likedList.isNotEmpty()) likedList.size else o.optInt("heartCount", 0)
                         },
                         likedByUserIds = jsonArrayToList(o.optJSONArray("likedBy") ?: o.optJSONArray("likedByUserIds")).distinct(),
+                        isBusSubscribed = o.optBoolean("isBusSubscribed", false),
+                        busRouteName = o.optString("busRouteName", "الخط الصباحي والمسائي"),
                         schoolId = itemSchoolId
                     )
                 )
@@ -385,6 +389,8 @@ class SchoolRepository(context: Context) {
                 put("heartCount", finalHeartCount)
                 put("likedBy", JSONArray(cleanLikedBy))
                 put("likedByUserIds", JSONArray(cleanLikedBy))
+                put("isBusSubscribed", s.isBusSubscribed)
+                put("busRouteName", InputSanitizer.sanitize(s.busRouteName))
                 put("schoolId", schoolId)
             })
         }
@@ -1010,6 +1016,7 @@ class SchoolRepository(context: Context) {
                         targetUserId = o.optString("targetUserId", ""),
                         targetGradeClass = o.optString("targetGradeClass", ""),
                         targetSectionName = o.optString("targetSectionName", ""),
+                        targetRole = o.optString("targetRole", ""),
                         senderUserId = o.optString("senderUserId", ""),
                         createdAt = o.optString("createdAt"),
                         isRead = o.optBoolean("isRead", false),
@@ -1036,6 +1043,7 @@ class SchoolRepository(context: Context) {
                 put("targetUserId", n.targetUserId)
                 put("targetGradeClass", InputSanitizer.sanitize(n.targetGradeClass))
                 put("targetSectionName", InputSanitizer.sanitize(n.targetSectionName))
+                put("targetRole", n.targetRole)
                 put("senderUserId", n.senderUserId)
                 put("createdAt", InputSanitizer.sanitize(n.createdAt))
                 put("isRead", n.isRead)
@@ -1045,6 +1053,140 @@ class SchoolRepository(context: Context) {
         val jsonStr = arr.toString()
         prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_NOTIFICATIONS), jsonStr).apply()
         FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_NOTIFICATIONS, jsonStr)
+    }
+
+    // =========================================================================
+    // 8b. schools/{schoolId}/leave_requests & schools/{schoolId}/study_materials
+    // =========================================================================
+
+    fun loadLeaveRequests(schoolId: String = getActiveSchoolId()): List<LeaveRequestItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_LEAVE_REQUESTS), null)
+            ?: return emptyList()
+        return parseLeaveRequestsJson(raw, schoolId)
+    }
+
+    fun parseLeaveRequestsJson(raw: String, schoolId: String = getActiveSchoolId()): List<LeaveRequestItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<LeaveRequestItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(
+                    LeaveRequestItem(
+                        id = o.optString("id"),
+                        studentId = o.optString("studentId"),
+                        studentName = o.optString("studentName"),
+                        gradeClass = o.optString("gradeClass"),
+                        sectionName = o.optString("sectionName"),
+                        parentName = o.optString("parentName"),
+                        parentPhone = o.optString("parentPhone"),
+                        leaveType = runCatching {
+                            LeaveType.valueOf(o.optString("leaveType", LeaveType.SICK.name))
+                        }.getOrDefault(LeaveType.SICK),
+                        leaveDate = o.optString("leaveDate"),
+                        durationDays = o.optInt("durationDays", 1).coerceAtLeast(1),
+                        reason = o.optString("reason"),
+                        status = runCatching {
+                            LeaveRequestStatus.valueOf(o.optString("status", LeaveRequestStatus.PENDING.name))
+                        }.getOrDefault(LeaveRequestStatus.PENDING),
+                        adminResponseNote = o.optString("adminResponseNote", ""),
+                        createdAt = o.optString("createdAt"),
+                        schoolId = o.optString("schoolId", schoolId)
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveLeaveRequests(items: List<LeaveRequestItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        items.forEach { item ->
+            arr.put(JSONObject().apply {
+                put("id", item.id)
+                put("studentId", item.studentId)
+                put("studentName", InputSanitizer.sanitize(item.studentName))
+                put("gradeClass", InputSanitizer.sanitize(item.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(item.sectionName))
+                put("parentName", InputSanitizer.sanitize(item.parentName))
+                put("parentPhone", InputSanitizer.sanitize(item.parentPhone))
+                put("leaveType", item.leaveType.name)
+                put("leaveDate", InputSanitizer.sanitize(item.leaveDate))
+                put("durationDays", item.durationDays)
+                put("reason", InputSanitizer.sanitize(item.reason))
+                put("status", item.status.name)
+                put("adminResponseNote", InputSanitizer.sanitize(item.adminResponseNote))
+                put("createdAt", InputSanitizer.sanitize(item.createdAt))
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_LEAVE_REQUESTS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_LEAVE_REQUESTS, jsonStr)
+    }
+
+    fun loadStudyMaterials(schoolId: String = getActiveSchoolId()): List<StudyMaterialItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDY_MATERIALS), null)
+            ?: return emptyList()
+        return parseStudyMaterialsJson(raw, schoolId)
+    }
+
+    fun parseStudyMaterialsJson(raw: String, schoolId: String = getActiveSchoolId()): List<StudyMaterialItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<StudyMaterialItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(
+                    StudyMaterialItem(
+                        id = o.optString("id"),
+                        title = o.optString("title"),
+                        subjectName = o.optString("subjectName"),
+                        gradeClass = o.optString("gradeClass"),
+                        sectionName = o.optString("sectionName", ""),
+                        teacherName = o.optString("teacherName"),
+                        description = o.optString("description"),
+                        fileUrl = o.optString("fileUrl", ""),
+                        imageBase64 = o.optString("imageBase64", ""),
+                        materialType = o.optString("materialType", "ملخص دراسي / ملزمة PDF"),
+                        createdAt = o.optString("createdAt"),
+                        schoolId = o.optString("schoolId", schoolId)
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveStudyMaterials(items: List<StudyMaterialItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        items.forEach { m ->
+            arr.put(JSONObject().apply {
+                put("id", m.id)
+                put("title", InputSanitizer.sanitize(m.title))
+                put("subjectName", InputSanitizer.sanitize(m.subjectName))
+                put("gradeClass", InputSanitizer.sanitize(m.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(m.sectionName))
+                put("teacherName", InputSanitizer.sanitize(m.teacherName))
+                put("description", InputSanitizer.sanitize(m.description))
+                put("fileUrl", m.fileUrl.trim())
+                put("imageBase64", m.imageBase64)
+                put("materialType", InputSanitizer.sanitize(m.materialType))
+                put("createdAt", InputSanitizer.sanitize(m.createdAt))
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDY_MATERIALS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_STUDY_MATERIALS, jsonStr)
     }
 
     // =========================================================================
@@ -1254,7 +1396,8 @@ class SchoolRepository(context: Context) {
                             schoolType = o.optString("schoolType", "مدرسة أهلية"),
                             createdAt = o.optString("createdAt", "2026-10-29"),
                             isActive = o.optBoolean("isActive", true),
-                            adminUsername = o.optString("adminUsername", "")
+                            adminUsername = o.optString("adminUsername", ""),
+                            subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" }
                         )
                     )
                 }
@@ -1277,6 +1420,7 @@ class SchoolRepository(context: Context) {
                 put("createdAt", s.createdAt)
                 put("isActive", s.isActive)
                 put("adminUsername", s.adminUsername)
+                put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
             })
         }
         val jsonStr = arr.toString()
@@ -1298,6 +1442,9 @@ class SchoolRepository(context: Context) {
         } else {
             ""
         }
+        val resolvedExpiry = config.subscriptionExpiryDate.ifBlank {
+            if (existingIdx >= 0) current[existingIdx].subscriptionExpiryDate else "2027-10-29"
+        }
         val summary = RegisteredSchoolSummary(
             schoolId = config.schoolId,
             schoolName = config.schoolName,
@@ -1306,7 +1453,8 @@ class SchoolRepository(context: Context) {
             schoolType = config.schoolType.arabicLabel,
             createdAt = config.createdAt.ifBlank { "2026-10-29" },
             isActive = config.isActive,
-            adminUsername = resolvedAdminUser
+            adminUsername = resolvedAdminUser,
+            subscriptionExpiryDate = resolvedExpiry
         )
         if (existingIdx >= 0) {
             current[existingIdx] = summary
@@ -1314,6 +1462,55 @@ class SchoolRepository(context: Context) {
             current.add(0, summary)
         }
         saveRegisteredSchools(current)
+    }
+
+    fun loadDeveloperBroadcasts(): List<DeveloperBroadcastItem> {
+        val raw = prefs.getString("global_developer_broadcasts", null) ?: return emptyList()
+        return parseDeveloperBroadcastsJson(raw)
+    }
+
+    fun parseDeveloperBroadcastsJson(raw: String): List<DeveloperBroadcastItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<DeveloperBroadcastItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(
+                    DeveloperBroadcastItem(
+                        id = o.optString("id"),
+                        title = o.optString("title"),
+                        message = o.optString("message"),
+                        senderName = o.optString("senderName", "المطور أحمد أبو رسلان"),
+                        createdAt = o.optString("createdAt"),
+                        targetSchoolId = o.optString("targetSchoolId", "ALL")
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveDeveloperBroadcasts(items: List<DeveloperBroadcastItem>) {
+        val arr = JSONArray()
+        items.forEach { b ->
+            arr.put(JSONObject().apply {
+                put("id", b.id)
+                put("title", InputSanitizer.sanitize(b.title))
+                put("message", InputSanitizer.sanitize(b.message))
+                put("senderName", InputSanitizer.sanitize(b.senderName))
+                put("createdAt", InputSanitizer.sanitize(b.createdAt))
+                put("targetSchoolId", b.targetSchoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString("global_developer_broadcasts", jsonStr).apply()
+        FirebaseCloudSync.pushGlobalCollectionAsync(
+            collectionName = FirebaseConfigConstants.COL_DEV_BROADCASTS,
+            docName = "registry",
+            jsonPayload = jsonStr
+        )
     }
 
     /**
@@ -1461,6 +1658,16 @@ class SchoolRepository(context: Context) {
         FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_NOTIFICATIONS)?.let {
             if (it.isNotBlank()) {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_NOTIFICATIONS), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_LEAVE_REQUESTS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_LEAVE_REQUESTS), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_STUDY_MATERIALS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_STUDY_MATERIALS), it)
             }
         }
 

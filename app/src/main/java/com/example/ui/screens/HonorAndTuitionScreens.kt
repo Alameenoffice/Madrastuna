@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
+import com.example.util.DocumentAndIdExporter
 import com.example.util.ExternalIntents
 import com.example.viewmodel.SchoolViewModel
 
@@ -411,6 +412,11 @@ fun HonorRollScreen(
                         }
                     }
 
+                    val autoBadges = viewModel.getStudentAutoBadges(stu.id)
+                    if (autoBadges.isNotEmpty()) {
+                        StudentAutoBadgesRow(badges = autoBadges)
+                    }
+
                     HorizontalDivider(color = GoldAccent.copy(alpha = 0.22f))
 
                     Row(
@@ -532,6 +538,8 @@ fun TuitionFeesScreen(
     val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val students by viewModel.students.collectAsState()
     val tuitions by viewModel.tuitions.collectAsState()
 
     var selectedTuitionForPayment by remember { mutableStateOf<TuitionRecord?>(null) }
@@ -539,10 +547,11 @@ fun TuitionFeesScreen(
     val canRecordPayment = currentUser?.role == UserRole.ADMIN
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
 
-    val visibleTuitions = remember(tuitions, currentUser) {
+    val visibleTuitions = remember(tuitions, currentUser, selectedParentChildId, students) {
         when (currentUser?.role) {
-            UserRole.PARENT, UserRole.STUDENT -> tuitions.filter {
-                it.studentId == currentUser?.linkedStudentId
+            UserRole.PARENT, UserRole.STUDENT -> {
+                val activeStuIds = viewModel.getScopedStudentsForUser(currentUser).map { it.id }.toSet()
+                tuitions.filter { it.studentId in activeStuIds }
             }
             else -> tuitions
         }
@@ -619,6 +628,27 @@ fun TuitionFeesScreen(
                             color = DangerRed,
                             modifier = Modifier.weight(1f)
                         )
+                    }
+
+                    if (canRecordPayment) {
+                        OutlinedButton(
+                            onClick = {
+                                val msg = DocumentAndIdExporter.exportTuitionStatementPdf(
+                                    context = context,
+                                    tuitions = visibleTuitions,
+                                    schoolConfig = schoolConfig
+                                )
+                                viewModel.showBannerMessage(msg)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("export_tuition_report_pdf_button"),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("تصدير كشف الأقساط المالي الرسمي (PDF / طباعة)")
+                        }
                     }
                 }
             }

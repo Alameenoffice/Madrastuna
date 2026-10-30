@@ -29,10 +29,14 @@ object FirebaseConfigConstants {
     const val COL_NOTIFICATIONS = "notifications"
     const val COL_SCHEDULES_PERIODS = "schedules_periods"
     const val COL_EXAMS = "exams"
+    const val COL_LEAVE_REQUESTS = "leave_requests"
+    const val COL_BUS_TRACKING = "bus_tracking"
+    const val COL_STUDY_MATERIALS = "study_materials"
 
     // Root collections for Developer Super-Admin Panel
     const val COL_SCHOOL_LICENSES = "school_licenses"
     const val COL_SCHOOLS_REGISTRY = "schools"
+    const val COL_DEV_BROADCASTS = "developer_broadcasts"
 
     // Developer Super-Admin Credentials
     const val DEV_USERNAME = "ABU-RASLAN"
@@ -175,7 +179,7 @@ enum class AttendanceStatus(val arabicLabel: String) {
     PRESENT("حاضر"),
     ABSENT("غائب"),
     LATE("متأخر"),
-    EXCUSED("إجازة")
+    EXCUSED("مجاز (غائب بعذر)")
 }
 
 enum class ReportType(val arabicLabel: String) {
@@ -235,8 +239,12 @@ data class RegisteredSchoolSummary(
     val schoolType: String = "مدرسة أهلية",
     val createdAt: String = "2026-10-29",
     val isActive: Boolean = true,
-    val adminUsername: String = ""
-)
+    val adminUsername: String = "",
+    val subscriptionExpiryDate: String = "2027-10-29"
+) {
+    fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
+    fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
+}
 
 data class SchoolConfig(
     val schoolId: String = "",
@@ -253,8 +261,12 @@ data class SchoolConfig(
     val subjectConfigs: List<SubjectConfigItem> = emptyList(),
     val logoBase64: String = "",
     val academicYear: String = "2026 - 2027",
-    val phone: String = "07512362567"
-)
+    val phone: String = "07512362567",
+    val subscriptionExpiryDate: String = "2027-10-29"
+) {
+    fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
+    fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
+}
 
 data class UserSession(
     val userId: String,
@@ -344,8 +356,13 @@ data class StudentRecord(
     val honorTitle: String = "وسام التفوق الذهبي",
     val heartCount: Int = 0,
     val likedByUserIds: List<String> = emptyList(),
+    val isBusSubscribed: Boolean = false,
+    val busRouteName: String = "الخط الصباحي والمسائي",
     val schoolId: String = ""
 ) {
+    val qrCodeValue: String
+        get() = "MADRASATI-STU-${schoolId.ifBlank { "100" }}-$id"
+
     /**
      * Returns the student's full compound name including their father's name (الاسم الثنائي/الكامل)
      * without duplicating the father's name if it is already part of studentName.
@@ -419,7 +436,9 @@ data class ExamScheduleItem(
     val topicsIncluded: String = "",
     val hallNumber: String = "قاعة 1",
     val schoolId: String = ""
-)
+) {
+    fun daysRemainingUntilExam(): Long? = DateCountdownHelper.daysUntilDate(examDate)
+}
 
 object GradingRules {
     val tenPointPrimaryClasses = setOf(
@@ -596,6 +615,7 @@ data class AppNotification(
     val targetUserId: String = "",    // Specific account ID only
     val targetGradeClass: String = "", // Specific class (e.g. for Homework / Exam)
     val targetSectionName: String = "", // Specific section (e.g. for Homework)
+    val targetRole: String = "",       // Optional role filter (e.g. "ADMIN" or "PARENT")
     val senderUserId: String = "",    // Sender user ID (never notify the sender himself)
     val createdAt: String,
     val isRead: Boolean = false,
@@ -605,23 +625,34 @@ data class AppNotification(
      * Strict Notification Targeting Rule:
      * - Never notify the sender who triggered the action.
      * - If targetUserId is set: ONLY that exact user receives it.
-     * - If targetStudentId is set (grades, absence/lateness, report, tuition, private message):
-     *   ONLY that student and that student's parent receive it (never other parents, other students, or teachers).
-     * - If targetGradeClass is set (homework/daily preparation or class exam):
+     * - If targetRole is set (e.g. "ADMIN" or "PARENT"): user role must match.
+     * - If targetStudentId is set (grades, absence/lateness, report, tuition, private message, QR arrival, bus):
+     *   ONLY that student (unless targetRole == "PARENT") and that student's parent receive it.
+     * - If targetGradeClass is set (homework/daily preparation, study material, or class exam):
      *   ONLY students and parents belonging to that exact gradeClass (and targetSectionName if specified) receive it.
      * - Otherwise (general school announcement with no specific student/class target):
      *   visible to members of the school.
      */
-    fun isTargetedForUser(user: UserAccount, linkedStudent: StudentRecord?): Boolean {
+    fun isTargetedForUser(
+        user: UserAccount,
+        linkedStudent: StudentRecord?,
+        allParentChildIds: Set<String> = emptySet()
+    ): Boolean {
         if (senderUserId.isNotEmpty() && senderUserId == user.id) return false
 
         if (targetUserId.isNotEmpty()) {
             return user.id == targetUserId
         }
 
+        if (targetRole.isNotEmpty() && !user.role.name.equals(targetRole.trim(), ignoreCase = true)) {
+            return false
+        }
+
         if (targetStudentId.isNotEmpty()) {
-            return (user.role == UserRole.STUDENT || user.role == UserRole.PARENT) &&
-                user.linkedStudentId == targetStudentId
+            if (user.role != UserRole.STUDENT && user.role != UserRole.PARENT) return false
+            val matchesPrimaryLink = user.linkedStudentId == targetStudentId
+            val matchesAnyParentChild = user.role == UserRole.PARENT && targetStudentId in allParentChildIds
+            return matchesPrimaryLink || matchesAnyParentChild
         }
 
         if (targetGradeClass.isNotEmpty()) {
@@ -640,3 +671,124 @@ data class AppNotification(
         return true
     }
 }
+
+enum class LeaveType(val arabicLabel: String) {
+    SICK("إجازة مرضية"),
+    TIME("إجازة زمنية"),
+    FAMILY("عذر عائلي")
+}
+
+enum class LeaveRequestStatus(val arabicLabel: String) {
+    PENDING("قيد المراجعة"),
+    APPROVED("تمت الموافقة"),
+    REJECTED("مرفوضة")
+}
+
+data class LeaveRequestItem(
+    val id: String,
+    val studentId: String,
+    val studentName: String,
+    val gradeClass: String,
+    val sectionName: String,
+    val parentName: String,
+    val parentPhone: String,
+    val leaveType: LeaveType = LeaveType.SICK,
+    val leaveDate: String,
+    val durationDays: Int = 1,
+    val reason: String,
+    val status: LeaveRequestStatus = LeaveRequestStatus.PENDING,
+    val adminResponseNote: String = "",
+    val createdAt: String,
+    val schoolId: String = ""
+)
+
+data class StudyMaterialItem(
+    val id: String,
+    val title: String,
+    val subjectName: String,
+    val gradeClass: String,
+    val sectionName: String = "",
+    val teacherName: String,
+    val description: String,
+    val fileUrl: String = "",
+    val imageBase64: String = "",
+    val materialType: String = "ملخص دراسي / ملزمة PDF",
+    val createdAt: String,
+    val schoolId: String = ""
+)
+
+enum class BusEventType(
+    val arabicLabel: String,
+    val notificationTitle: String,
+    val notificationBodyTemplate: String
+) {
+    MORNING_DEPARTURE(
+        arabicLabel = "انطلاق الخط صباحاً",
+        notificationTitle = "انطلاق خط النقل المدرسي صباحاً",
+        notificationBodyTemplate = "انطلق خط النقل المدرسي صباحاً باتجاه منازل الطلبة لنقل ابنكم (%s) إلى المدرسة."
+    ),
+    ARRIVED_AT_SCHOOL(
+        arabicLabel = "وصول للمدرسة",
+        notificationTitle = "وصول الخط المدرسي إلى المدرسة",
+        notificationBodyTemplate = "وصل خط النقل المدرسي بسلامة الله إلى المدرسة وعلى متنه ابنكم (%s)."
+    ),
+    RETURN_HOME_DEPARTURE(
+        arabicLabel = "انطلاق العودة للمنزل",
+        notificationTitle = "انطلاق خط العودة إلى المنزل",
+        notificationBodyTemplate = "انطلق خط النقل المدرسي الآن للعودة إلى المنزل وعلى متنه ابنكم (%s)."
+    )
+}
+
+data class DeveloperBroadcastItem(
+    val id: String,
+    val title: String,
+    val message: String,
+    val senderName: String = "المطور أحمد أبو رسلان",
+    val createdAt: String,
+    val targetSchoolId: String = "ALL"
+)
+
+data class StudentAutoBadge(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val isGoldAttendance: Boolean
+)
+
+object DateCountdownHelper {
+    fun daysUntilDate(dateStr: String): Long? {
+        return try {
+            val clean = dateStr.trim().take(10)
+            if (clean.length < 8) return null
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            sdf.isLenient = false
+            val targetDate = sdf.parse(clean) ?: return null
+            val todayCal = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val targetCal = java.util.Calendar.getInstance().apply {
+                time = targetDate
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val diffMillis = targetCal.timeInMillis - todayCal.timeInMillis
+            java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diffMillis)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun defaultExpiryDatePlusDays(daysToAdd: Int = 365): String {
+        val cal = java.util.Calendar.getInstance().apply {
+            add(java.util.Calendar.DAY_OF_YEAR, daysToAdd)
+        }
+        return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(cal.time)
+    }
+}
+
+

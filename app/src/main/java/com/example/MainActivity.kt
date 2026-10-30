@@ -41,13 +41,17 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.model.*
+import com.example.ui.components.AdminSubscriptionAndBroadcastBanner
 import com.example.ui.components.Base64AvatarImage
+import com.example.ui.components.DigitalStudentIdDialog
+import com.example.ui.components.ParentMultiChildSwitcherBar
 import com.example.ui.components.VectorActionButton
 import com.example.ui.screens.*
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.SuccessGreen
+import com.example.util.DocumentAndIdExporter
 import com.example.viewmodel.SchoolViewModel
 import kotlinx.coroutines.delay
 
@@ -225,16 +229,31 @@ fun MadrasatiRootApp(
 fun AuthenticatedMainPlatform(
     viewModel: SchoolViewModel
 ) {
+    val context = LocalContext.current
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val activeSection by viewModel.activeSection.collectAsState()
     val allNotifications by viewModel.notifications.collectAsState()
     val latestBannerAlert by viewModel.latestBannerAlert.collectAsState()
+    val allStudents by viewModel.students.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
 
-    val notifications = remember(allNotifications, currentUser) {
+    val notifications = remember(allNotifications, currentUser, allStudents) {
         viewModel.getScopedNotificationsForUser(currentUser)
     }
+
+    val parentChildren = remember(allStudents, currentUser) {
+        viewModel.getChildrenForParent(currentUser)
+    }
+    val selectedParentChild = remember(parentChildren, selectedParentChildId, currentUser) {
+        parentChildren.firstOrNull { it.id == selectedParentChildId }
+            ?: parentChildren.firstOrNull { it.id == currentUser?.linkedStudentId }
+            ?: parentChildren.firstOrNull()
+    }
+
+    var idCardDialogStudent by remember { mutableStateOf<StudentRecord?>(null) }
 
     var showNotificationsSheet by remember { mutableStateOf(false) }
 
@@ -492,6 +511,24 @@ fun AuthenticatedMainPlatform(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Admin 14-day Subscription Expiry Warning & Developer Broadcasts Banner
+            if (currentUser?.role == UserRole.ADMIN) {
+                AdminSubscriptionAndBroadcastBanner(
+                    schoolConfig = schoolConfig,
+                    developerBroadcasts = developerBroadcasts
+                )
+            }
+
+            // Parent Multi-Child Switcher Bar + Quick Student ID Card Button
+            if (currentUser?.role == UserRole.PARENT && parentChildren.isNotEmpty()) {
+                ParentMultiChildSwitcherBar(
+                    children = parentChildren,
+                    selectedStudent = selectedParentChild,
+                    onSelectStudent = { stuId -> viewModel.selectParentChild(stuId) },
+                    onOpenStudentIdCard = { stu -> idCardDialogStudent = stu }
+                )
+            }
+
             // Instant Alert Banner when a new notification arrives
             AnimatedVisibility(visible = latestBannerAlert != null) {
                 val alert = latestBannerAlert
@@ -637,6 +674,50 @@ fun AuthenticatedMainPlatform(
                     onClick = { showNotificationsSheet = false }
                 )
             }
+        )
+    }
+
+    idCardDialogStudent?.let { targetStu ->
+        val stuBadges = remember(targetStu.id, allStudents) {
+            viewModel.getStudentAutoBadges(targetStu.id)
+        }
+        DigitalStudentIdDialog(
+            student = targetStu,
+            schoolConfig = schoolConfig,
+            badges = stuBadges,
+            onSavePng = {
+                val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
+                    context = context,
+                    student = targetStu,
+                    schoolConfig = schoolConfig,
+                    badges = stuBadges
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert(
+                        "تم حفظ الهوية المدرسية بدقة عالية (PNG) في المعرض جاهزة للطباعة أو الكبس الحراري",
+                        isSuccess = true
+                    )
+                } else {
+                    viewModel.showToastAlert("تعذر حفظ الصورة: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                }
+            },
+            onExportPdf = {
+                val res = DocumentAndIdExporter.exportStudentIdCardPdf(
+                    context = context,
+                    student = targetStu,
+                    schoolConfig = schoolConfig,
+                    badges = stuBadges
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert(
+                        "تم تصدير وفتح نافذة طباعة الهوية المدرسية بصيغة PDF بنجاح",
+                        isSuccess = true
+                    )
+                } else {
+                    viewModel.showToastAlert("تعذر تصدير PDF: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                }
+            },
+            onDismiss = { idCardDialogStudent = null }
         )
     }
 }

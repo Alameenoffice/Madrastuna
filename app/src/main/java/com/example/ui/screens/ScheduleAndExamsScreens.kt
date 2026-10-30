@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,7 +15,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -21,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
+import com.example.util.DocumentAndIdExporter
+import com.example.util.ImageCompressor
 import com.example.viewmodel.SchoolViewModel
 
 /**
@@ -32,21 +40,24 @@ import com.example.viewmodel.SchoolViewModel
 fun ScheduleAndHomeworkScreen(
     viewModel: SchoolViewModel
 ) {
+    val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val schedules by viewModel.schedules.collectAsState()
     val homeworks by viewModel.homeworks.collectAsState()
+    val studyMaterials by viewModel.studyMaterials.collectAsState()
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val canPublish = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
-    val allowedClasses = remember(schoolConfig, currentUser) {
+    val allowedClasses = remember(schoolConfig, currentUser, selectedParentChildId) {
         viewModel.getAllowedClassesForUser(currentUser)
     }
     var selectedClass by remember(allowedClasses) {
         mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
     }
-    val allowedSections = remember(schoolConfig, currentUser, selectedClass) {
+    val allowedSections = remember(schoolConfig, currentUser, selectedClass, selectedParentChildId) {
         viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
     }
     var selectedSection by remember(allowedSections) {
@@ -56,11 +67,12 @@ fun ScheduleAndHomeworkScreen(
         viewModel.getSubjectsForClass(selectedClass, currentUser)
     }
 
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = التحضير والواجبات, 1 = جدول الحصص الأسبوعي
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = التحضير والواجبات, 1 = جدول الحصص الأسبوعي, 2 = المكتبة والملخصات
     var selectedDay by remember { mutableStateOf("الأحد") }
 
     var showPublishHomeworkDialog by remember { mutableStateOf(false) }
     var showAddPeriodDialog by remember { mutableStateOf(false) }
+    var showPublishStudyMaterialDialog by remember { mutableStateOf(false) }
 
     val filteredHomeworks = remember(homeworks, selectedClass, selectedSection, currentUser) {
         homeworks.filter { hw ->
@@ -80,6 +92,13 @@ fun ScheduleAndHomeworkScreen(
         }.sortedBy { it.periodNumber }
     }
 
+    val filteredStudyMaterials = remember(studyMaterials, selectedClass, selectedSection) {
+        studyMaterials.filter { mat ->
+            mat.gradeClass == selectedClass &&
+                (mat.sectionName == "الكل" || mat.sectionName == selectedSection)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -87,40 +106,60 @@ fun ScheduleAndHomeworkScreen(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Button(
                 onClick = { selectedTab = 0 },
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = 46.dp)
                     .testTag("tab_daily_homework"),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             ) {
-                Icon(Icons.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("التحضير والواجبات", maxLines = 1, softWrap = false)
+                Icon(Icons.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("الواجبات", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
             }
 
             Button(
                 onClick = { selectedTab = 1 },
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = 46.dp)
                     .testTag("tab_weekly_schedule"),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             ) {
-                Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("جدول الحصص الأسبوعي", maxLines = 1, softWrap = false)
+                Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("جدول الحصص", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+            }
+
+            Button(
+                onClick = { selectedTab = 2 },
+                modifier = Modifier
+                    .weight(1.1f)
+                    .heightIn(min = 46.dp)
+                    .testTag("tab_study_materials"),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (selectedTab == 2) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
+                Icon(Icons.Filled.LocalLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("المكتبة والملخصات", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
             }
         }
 
@@ -290,7 +329,7 @@ fun ScheduleAndHomeworkScreen(
                     }
                 }
             }
-        } else {
+        } else if (selectedTab == 1) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(viewModel.weekDays) { day ->
                     FilterChip(
@@ -372,6 +411,157 @@ fun ScheduleAndHomeworkScreen(
                                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                             )
+                        }
+                    }
+                }
+            }
+        } else {
+            // =========================================================================
+            // TAB 2: المكتبة الرقمية والملخصات الدراسية (study_materials)
+            // =========================================================================
+            if (canPublish) {
+                VectorActionButton(
+                    text = "نشر ملخص دراسي / ملزمة / ورقة عمل لـ ($selectedClass - $selectedSection)",
+                    icon = Icons.Filled.LibraryAdd,
+                    onClick = { showPublishStudyMaterialDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "publish_study_material_button"
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                if (filteredStudyMaterials.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.LocalLibrary,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "لا توجد ملخصات أو ملازم منشورة لـ $selectedClass ($selectedSection) حالياً",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(filteredStudyMaterials, key = { it.id }) { mat ->
+                        val bitmap = remember(mat.imageBase64) {
+                            ImageCompressor.decodeBase64ToImageBitmap(mat.imageBase64)
+                        }
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    NoWrapBadge(
+                                        text = "مادة ${mat.subjectName}",
+                                        icon = Icons.Filled.MenuBook,
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        NoWrapBadge(
+                                            text = mat.createdAt,
+                                            icon = Icons.Filled.CalendarToday,
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                        if (canPublish) {
+                                            IconButton(
+                                                onClick = { viewModel.deleteStudyMaterial(mat.id) },
+                                                modifier = Modifier.size(30.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.DeleteOutline,
+                                                    contentDescription = "حذف الملخص",
+                                                    tint = DangerRed
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text(
+                                    text = mat.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                Text(
+                                    text = "الصف: ${mat.gradeClass} (${mat.sectionName}) • الناشر: ${mat.teacherName}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Text(
+                                    text = mat.description,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = mat.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(190.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                    )
+                                }
+
+                                if (mat.fileUrl.isNotBlank()) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            try {
+                                                val url = if (mat.fileUrl.startsWith("http")) mat.fileUrl else "https://${mat.fileUrl}"
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                            } catch (_: Exception) {}
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Filled.PictureAsPdf, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("فتح / تحميل ملف الملزمة أو الملخص (PDF)")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -534,6 +724,82 @@ fun ScheduleAndHomeworkScreen(
             }
         )
     }
+
+    if (showPublishStudyMaterialDialog) {
+        var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }
+        var title by remember { mutableStateOf("") }
+        var description by remember { mutableStateOf("") }
+        var docLink by remember { mutableStateOf("") }
+        var imageBase64 by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showPublishStudyMaterialDialog = false },
+            title = { Text("نشر ملخص أو ملزمة لـ ($selectedClass - $selectedSection)") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("المادة الدراسية:", style = MaterialTheme.typography.labelMedium)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedSubjects) { sOpt ->
+                            FilterChip(
+                                selected = subject == sOpt,
+                                onClick = { subject = sOpt },
+                                label = { Text(sOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("عنوان الملخص / الملزمة / ورقة العمل") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("شرح ومحتوى الملخص الدراسي") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = docLink,
+                        onValueChange = { docLink = it },
+                        label = { Text("رابط ملف PDF أو الملزمة (اختياري)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    CompressedPhotoPickerButton(
+                        label = "إرفاق صورة توضيحية أو ورقة عمل",
+                        currentBase64 = imageBase64,
+                        onImageCompressed = { imageBase64 = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "نشر في المكتبة الرقمية",
+                    icon = Icons.Filled.CloudUpload,
+                    onClick = {
+                        if (title.isNotBlank()) {
+                            viewModel.publishStudyMaterial(
+                                gradeClass = selectedClass,
+                                sectionName = selectedSection,
+                                subjectName = subject,
+                                title = title,
+                                description = description.ifBlank { "ملخص دراسي شامل للمراجعة" },
+                                fileUrl = docLink,
+                                imageBase64 = imageBase64
+                            )
+                            showPublishStudyMaterialDialog = false
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishStudyMaterialDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
 }
 
 /**
@@ -550,8 +816,10 @@ fun ScheduleAndHomeworkScreen(
 fun ExamsAndGradesScreen(
     viewModel: SchoolViewModel
 ) {
+    val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val students by viewModel.students.collectAsState()
     val grades by viewModel.grades.collectAsState()
     val examSchedules by viewModel.examSchedules.collectAsState()
@@ -559,13 +827,13 @@ fun ExamsAndGradesScreen(
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
-    val allowedClasses = remember(schoolConfig, currentUser) {
+    val allowedClasses = remember(schoolConfig, currentUser, selectedParentChildId) {
         viewModel.getAllowedClassesForUser(currentUser)
     }
     var selectedClass by remember(allowedClasses) {
         mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
     }
-    val allowedSections = remember(schoolConfig, currentUser, selectedClass) {
+    val allowedSections = remember(schoolConfig, currentUser, selectedClass, selectedParentChildId) {
         viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
     }
     var selectedSection by remember(allowedSections) {
@@ -643,6 +911,7 @@ fun ExamsAndGradesScreen(
                 val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
                 if (myStu != null) {
                     val myGrades = grades.filter { it.studentId == myStu.id }
+                    val myBadges = viewModel.getStudentAutoBadges(myStu.id)
                     val studentSubjects = viewModel.getSubjectsForClass(myStu.gradeClass, null)
                     val defaultScaleForStu = GradingRules.defaultMaxScoreForClass(myStu.gradeClass)
                     val allSubjectsReport = studentSubjects.map { subjName ->
@@ -678,37 +947,63 @@ fun ExamsAndGradesScreen(
                             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
                         )
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "كشف درجات الطالب: ${myStu.studentName}",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    text = "الصف: ${myStu.gradeClass} • شعبة (${myStu.sectionName})",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "كشف درجات الطالب: ${myStu.fullNameWithFather}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "الصف: ${myStu.gradeClass} • شعبة (${myStu.sectionName})",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    NoWrapBadge(
+                                        text = "المعدل العام: $overallAvg%",
+                                        icon = Icons.Filled.AutoGraph,
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    NoWrapBadge(
+                                        text = "التقدير: $overallRating",
+                                        icon = Icons.Filled.WorkspacePremium,
+                                        containerColor = GoldAccent,
+                                        contentColor = Color(0xFF451A03)
+                                    )
+                                }
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                NoWrapBadge(
-                                    text = "المعدل العام: $overallAvg%",
-                                    icon = Icons.Filled.AutoGraph,
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = Color.White
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                NoWrapBadge(
-                                    text = "التقدير: $overallRating",
-                                    icon = Icons.Filled.WorkspacePremium,
-                                    containerColor = GoldAccent,
-                                    contentColor = Color(0xFF451A03)
-                                )
+                            if (myBadges.isNotEmpty()) {
+                                StudentAutoBadgesRow(badges = myBadges)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                        context = context,
+                                        student = myStu,
+                                        grades = allSubjectsReport,
+                                        schoolConfig = schoolConfig
+                                    )
+                                    viewModel.showBannerMessage(msg)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("تصدير / طباعة بطاقة الدرجات الرسمية (PDF)")
                             }
                         }
                     }
@@ -1154,6 +1449,34 @@ fun ExamsAndGradesScreen(
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     )
+
+                                    val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
+                                    if (stuAutoBadges.isNotEmpty()) {
+                                        StudentAutoBadgesRow(badges = stuAutoBadges)
+                                    }
+
+                                    if (currentUser?.role == UserRole.ADMIN) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val stuGrades = grades.filter { it.studentId == stu.id }
+                                                val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                                    context = context,
+                                                    student = stu,
+                                                    grades = stuGrades,
+                                                    schoolConfig = schoolConfig
+                                                )
+                                                viewModel.showBannerMessage(msg)
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("export_report_card_${stu.id}"),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("تصدير بطاقة الدرجات (الشهادة المدرسية PDF)")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1161,7 +1484,7 @@ fun ExamsAndGradesScreen(
                 }
             }
         } else {
-            // Exam Schedule Tab
+            // Exam Schedule Tab with Live Countdown Badge
             if (canEdit) {
                 VectorActionButton(
                     text = "إضافة موعد امتحان جديد للجدول",
@@ -1182,6 +1505,19 @@ fun ExamsAndGradesScreen(
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 items(scopedExams, key = { it.id }) { ex ->
+                    val daysRemaining = ex.daysRemainingUntilExam() ?: -1L
+                    val countdownText = when {
+                        daysRemaining > 1L -> "باقي $daysRemaining يوم"
+                        daysRemaining == 1L -> "غداً (باقي يوم واحد)"
+                        daysRemaining == 0L -> "الامتحان اليوم!"
+                        else -> "منتهي"
+                    }
+                    val countdownColor = when {
+                        daysRemaining in 0L..3L -> DangerRed
+                        daysRemaining > 3L -> GoldDeep
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
@@ -1203,12 +1539,20 @@ fun ExamsAndGradesScreen(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
-                                NoWrapBadge(
-                                    text = "${ex.dayName} ${ex.examDate}",
-                                    icon = Icons.Filled.Event,
-                                    containerColor = GoldAccent.copy(alpha = 0.2f),
-                                    contentColor = GoldDeep
-                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    NoWrapBadge(
+                                        text = countdownText,
+                                        icon = Icons.Filled.Timer,
+                                        containerColor = countdownColor.copy(alpha = 0.16f),
+                                        contentColor = countdownColor
+                                    )
+                                    NoWrapBadge(
+                                        text = "${ex.dayName} ${ex.examDate}",
+                                        icon = Icons.Filled.Event,
+                                        containerColor = GoldAccent.copy(alpha = 0.2f),
+                                        contentColor = GoldDeep
+                                    )
+                                }
                             }
                             Text(
                                 text = "${ex.examType} — الوقت: ${ex.timeSlot} — ${ex.hallNumber}",

@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
+import com.example.util.DocumentAndIdExporter
 import com.example.util.ExternalIntents
 import com.example.viewmodel.SchoolViewModel
 
@@ -34,6 +35,7 @@ fun DashboardScreen(
     viewModel: SchoolViewModel,
     onOpenNotificationsDialog: () -> Unit
 ) {
+    val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val students by viewModel.students.collectAsState()
@@ -44,22 +46,25 @@ fun DashboardScreen(
     val reports by viewModel.reports.collectAsState()
     val notifications by viewModel.notifications.collectAsState()
     val tuitions by viewModel.tuitions.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isTeacher = currentUser?.role == UserRole.TEACHER
     val isAdmin = currentUser?.role == UserRole.ADMIN
 
-    // Scoped data based on logged-in user role
-    val scopedStudents = remember(students, currentUser) {
+    // Scoped data based on logged-in user role (and active child for Parent)
+    val scopedStudents = remember(students, currentUser, selectedParentChildId) {
         viewModel.getScopedStudentsForUser(currentUser)
     }
-    val myStudent = remember(scopedStudents, students, currentUser) {
+    val myStudent = remember(scopedStudents, students, currentUser, selectedParentChildId) {
         if (isParentOrStudent) {
             scopedStudents.firstOrNull() ?: students.firstOrNull { it.id == currentUser?.linkedStudentId }
         } else null
     }
 
-    val scopedNotifications = remember(notifications, currentUser) {
+    var showDigitalIdCard by remember { mutableStateOf(false) }
+
+    val scopedNotifications = remember(notifications, currentUser, students) {
         viewModel.getScopedNotificationsForUser(currentUser)
     }
     val unreadNotifications = remember(scopedNotifications) {
@@ -187,13 +192,90 @@ fun DashboardScreen(
                 val myAvg = if (myGrades.isEmpty()) 0 else myGrades.map { it.finalAverage }.average().toInt()
                 val myReportsCount = reports.count { it.studentId == myStudent.id }
                 val myTuition = tuitions.firstOrNull { it.studentId == myStudent.id }
+                val myBadges = remember(attendance, grades, myStudent.id) {
+                    viewModel.getStudentAutoBadges(myStudent.id)
+                }
 
                 Text(
-                    text = "المتابعة الخاصة بالطالب: ${myStudent.studentName}",
+                    text = "المتابعة الخاصة بالطالب: ${myStudent.fullNameWithFather}",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Automatic Motivational Badges (وسام الالتزام الذهبي + وسام نجم المادة)
+                if (myBadges.isNotEmpty()) {
+                    StudentAutoBadgesRow(
+                        badges = myBadges,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                }
+
+                // Quick Digital Student ID Badge Toggle / Display
+                Button(
+                    onClick = { showDigitalIdCard = !showDigitalIdCard },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .testTag("dashboard_toggle_student_id_card"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DeepEmerald,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.Filled.Badge, contentDescription = null, tint = GoldFoil)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (showDigitalIdCard) {
+                            "إخفاء بطاقة الهوية المدرسية الرقمية (QR)"
+                        } else {
+                            "عرض وتحميل بطاقة الهوية المدرسية والـ QR (${myStudent.fullNameWithFather})"
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (showDigitalIdCard) {
+                    DigitalStudentIdCardView(
+                        student = myStudent,
+                        schoolConfig = schoolConfig,
+                        badges = myBadges,
+                        onSavePng = {
+                            val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
+                                context = context,
+                                student = myStudent,
+                                schoolConfig = schoolConfig,
+                                badges = myBadges
+                            )
+                            if (res.isSuccess) {
+                                viewModel.showToastAlert(
+                                    "تم حفظ الهوية المدرسية بدقة عالية (PNG) في المعرض جاهزة للطباعة أو الكبس الحراري",
+                                    isSuccess = true
+                                )
+                            } else {
+                                viewModel.showToastAlert("تعذر حفظ الصورة: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                            }
+                        },
+                        onExportPdf = {
+                            val res = DocumentAndIdExporter.exportStudentIdCardPdf(
+                                context = context,
+                                student = myStudent,
+                                schoolConfig = schoolConfig,
+                                badges = myBadges
+                            )
+                            if (res.isSuccess) {
+                                viewModel.showToastAlert(
+                                    "تم تصدير وفتح نافذة طباعة الهوية المدرسية بصيغة PDF بنجاح",
+                                    isSuccess = true
+                                )
+                            } else {
+                                viewModel.showToastAlert("تعذر تصدير PDF: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                            }
+                        },
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
@@ -332,6 +414,15 @@ fun DashboardScreen(
                             accentColor = Color(0xFF0D9488),
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { viewModel.navigateToSection(AppSection.TUITION_FEES) }
+                        )
+                    }
+
+                    // School Bus & Transport Quick Notifications Card (for Private Schools)
+                    if (schoolConfig.schoolType == SchoolType.PRIVATE && (isAdmin || isTeacher)) {
+                        val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
+                        SchoolBusQuickAlertsCard(
+                            busSubscribersCount = busSubscribersCount,
+                            onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) }
                         )
                     }
                 }
@@ -613,17 +704,20 @@ fun DailyAttendanceScreen(
     val currentUser by viewModel.currentUser.collectAsState()
     val students by viewModel.students.collectAsState()
     val attendance by viewModel.attendance.collectAsState()
+    val leaveRequests by viewModel.leaveRequests.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
+    val isAdmin = currentUser?.role == UserRole.ADMIN
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
-    val allowedClasses = remember(schoolConfig, currentUser) {
+    val allowedClasses = remember(schoolConfig, currentUser, selectedParentChildId) {
         viewModel.getAllowedClassesForUser(currentUser)
     }
     var selectedClass by remember(allowedClasses) {
         mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
     }
-    val allowedSections = remember(schoolConfig, currentUser, selectedClass) {
+    val allowedSections = remember(schoolConfig, currentUser, selectedClass, selectedParentChildId) {
         viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
     }
     var selectedSection by remember(allowedSections) {
@@ -632,8 +726,11 @@ fun DailyAttendanceScreen(
 
     var selectedDate by remember { mutableStateOf("2026-10-29") }
     var searchName by remember { mutableStateOf("") }
+    var showQrScannerDialog by remember { mutableStateOf(false) }
+    var showLeaveRequestDialog by remember { mutableStateOf(false) }
+    var selectedStudentForIdCard by remember { mutableStateOf<StudentRecord?>(null) }
 
-    val scopedStudents = remember(students, currentUser, selectedClass, selectedSection, searchName) {
+    val scopedStudents = remember(students, currentUser, selectedClass, selectedSection, searchName, selectedParentChildId) {
         val base = viewModel.getScopedStudentsForUser(currentUser)
         if (isParentOrStudent) {
             base
@@ -641,7 +738,9 @@ fun DailyAttendanceScreen(
             base.filter { stu ->
                 stu.gradeClass == selectedClass &&
                     stu.sectionName == selectedSection &&
-                    (searchName.isBlank() || stu.studentName.contains(searchName, ignoreCase = true))
+                    (searchName.isBlank() ||
+                        stu.studentName.contains(searchName, ignoreCase = true) ||
+                        stu.fullNameWithFather.contains(searchName, ignoreCase = true))
             }
         }
     }
@@ -654,12 +753,14 @@ fun DailyAttendanceScreen(
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
         if (isParentOrStudent) {
-            // Strict Privacy View for Parent & Student: ONLY their own student's attendance!
+            // Strict Privacy View for Parent & Student: ONLY their own student's attendance & leave requests!
             val myStu = scopedStudents.firstOrNull()
             if (myStu != null) {
                 val myTotalAbsences = viewModel.getTotalAbsenceDays(myStu.id)
                 val myRecords = attendance.filter { it.studentId == myStu.id }
                 val todayStatus = myRecords.firstOrNull { it.date == selectedDate }?.status ?: AttendanceStatus.PRESENT
+                val myLeaveRequests = leaveRequests.filter { it.studentId == myStu.id }
+                val myBadges = viewModel.getStudentAutoBadges(myStu.id)
 
                 item {
                     Card(
@@ -679,8 +780,9 @@ fun DailyAttendanceScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "سجل الحضور الخاص: ${myStu.studentName}",
-                                    style = MaterialTheme.typography.titleMedium
+                                    text = "سجل الحضور الخاص: ${myStu.fullNameWithFather}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 NoWrapBadge(
                                     text = "إجمالي أيام الغياب: $myTotalAbsences يوم",
@@ -693,7 +795,62 @@ fun DailyAttendanceScreen(
                                 text = "الصف: ${myStu.gradeClass} (شعبة ${myStu.sectionName}) • حالة اليوم ($selectedDate): ${todayStatus.arabicLabel}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
+
+                            if (myBadges.isNotEmpty()) {
+                                StudentAutoBadgesRow(badges = myBadges)
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { showLeaveRequestDialog = true },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("open_leave_request_dialog_btn"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = DeepEmerald,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(Icons.Filled.EventNote, contentDescription = null, tint = GoldFoil, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("طلب إجازة للطالب", fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { selectedStudentForIdCard = myStu },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("open_student_qr_id_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Filled.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("بطاقة الهوية QR", fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
+                    }
+                }
+
+                if (myLeaveRequests.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "سجل طلبات الإجازة الإلكترونية (${myLeaveRequests.size}):",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    items(myLeaveRequests, key = { it.id }) { req ->
+                        LeaveRequestCardItem(
+                            req = req,
+                            isAdmin = false,
+                            onApprove = {},
+                            onReject = {}
+                        )
                     }
                 }
 
@@ -710,7 +867,7 @@ fun DailyAttendanceScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text("التاريخ: ${rec.date}", style = MaterialTheme.typography.titleSmall)
                                 if (rec.note.isNotBlank()) {
                                     Text(rec.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -719,15 +876,23 @@ fun DailyAttendanceScreen(
                             NoWrapBadge(
                                 text = rec.status.arabicLabel,
                                 icon = Icons.Filled.FactCheck,
-                                containerColor = if (rec.status == AttendanceStatus.ABSENT) DangerRed.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f),
-                                contentColor = if (rec.status == AttendanceStatus.ABSENT) DangerRed else SuccessGreen
+                                containerColor = when (rec.status) {
+                                    AttendanceStatus.ABSENT -> DangerRed.copy(alpha = 0.15f)
+                                    AttendanceStatus.EXCUSED -> InfoBlue.copy(alpha = 0.15f)
+                                    else -> SuccessGreen.copy(alpha = 0.15f)
+                                },
+                                contentColor = when (rec.status) {
+                                    AttendanceStatus.ABSENT -> DangerRed
+                                    AttendanceStatus.EXCUSED -> InfoBlue
+                                    else -> SuccessGreen
+                                }
                             )
                         }
                     }
                 }
             }
         } else {
-            // Admin & Scoped Teacher Attendance Filter Card
+            // Admin & Scoped Teacher Attendance Filter Card + QR Scanner + Monthly PDF Export
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -764,6 +929,78 @@ fun DailyAttendanceScreen(
                                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             )
+                        }
+
+                        // Action Buttons: QR Code Attendance Scan + Monthly Attendance PDF Export
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { showQrScannerDialog = true },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("open_qr_attendance_scanner_btn"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = DeepEmerald,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.QrCodeScanner,
+                                    contentDescription = null,
+                                    tint = GoldFoil,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("مسح الهوية بالـ QR", fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+
+                            if (isAdmin) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val monthPrefix = selectedDate.take(7)
+                                        val classStudents = students.filter {
+                                            it.gradeClass == selectedClass && it.sectionName == selectedSection
+                                        }
+                                        val res = DocumentAndIdExporter.exportMonthlyAttendanceReportPdf(
+                                            context = context,
+                                            schoolConfig = schoolConfig,
+                                            gradeClass = selectedClass,
+                                            sectionName = selectedSection,
+                                            monthPrefix = monthPrefix,
+                                            students = classStudents,
+                                            attendanceList = attendance,
+                                            principalName = currentUser?.fullName ?: "المدير"
+                                        )
+                                        if (res.isSuccess) {
+                                            viewModel.showToastAlert(
+                                                "تم تصدير كشف الغياب الشهري بصيغة PDF وفتح نافذة الطباعة بنجاح",
+                                                isSuccess = true
+                                            )
+                                        } else {
+                                            viewModel.showToastAlert(
+                                                "تعذر تصدير كشف الغياب الشهري: ${res.exceptionOrNull()?.message}",
+                                                isSuccess = false
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("export_monthly_attendance_pdf_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PictureAsPdf,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("تصدير كشف الغياب الشهري", fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                            }
                         }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -831,6 +1068,78 @@ fun DailyAttendanceScreen(
                 }
             }
 
+            // School Bus Quick Alert Buttons in Attendance section for Private Schools
+            if (schoolConfig.schoolType == SchoolType.PRIVATE && canEdit) {
+                item {
+                    val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
+                    SchoolBusQuickAlertsCard(
+                        busSubscribersCount = busSubscribersCount,
+                        onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) }
+                    )
+                }
+            }
+
+            // Electronic Leave Requests Section for Admin (with Approve / Reject buttons)
+            if (isAdmin && leaveRequests.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.EventNote,
+                                        contentDescription = null,
+                                        tint = DeepEmerald
+                                    )
+                                    Text(
+                                        text = "طلبات الإجازات الإلكترونية من أولياء الأمور",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                                val pendingCount = leaveRequests.count { it.status == LeaveRequestStatus.PENDING }
+                                if (pendingCount > 0) {
+                                    NoWrapBadge(
+                                        text = "$pendingCount قيد المراجعة",
+                                        icon = Icons.Filled.PendingActions,
+                                        containerColor = WarningAmber,
+                                        contentColor = Color.White
+                                    )
+                                }
+                            }
+
+                            leaveRequests.take(6).forEach { req ->
+                                LeaveRequestCardItem(
+                                    req = req,
+                                    isAdmin = true,
+                                    onApprove = {
+                                        viewModel.respondToLeaveRequest(req.id, approve = true)
+                                    },
+                                    onReject = {
+                                        viewModel.respondToLeaveRequest(req.id, approve = false)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Student Attendance Cards for the selected Class & Section
             items(scopedStudents, key = { it.id }) { stu ->
                 val currentEntry = attendance.firstOrNull {
@@ -839,6 +1148,9 @@ fun DailyAttendanceScreen(
                 val currentStatus = currentEntry?.status ?: AttendanceStatus.PRESENT
                 val totalAbsences = remember(attendance, stu.id) {
                     viewModel.getTotalAbsenceDays(stu.id)
+                }
+                val stuBadges = remember(attendance, stu.id) {
+                    viewModel.getStudentAutoBadges(stu.id)
                 }
 
                 Card(
@@ -864,12 +1176,12 @@ fun DailyAttendanceScreen(
                                 Base64AvatarImage(
                                     base64Data = stu.photoBase64,
                                     fallbackIcon = Icons.Filled.Person,
-                                    contentDescription = stu.studentName,
+                                    contentDescription = stu.fullNameWithFather,
                                     size = 46.dp
                                 )
                                 Column {
                                     Text(
-                                        text = stu.studentName,
+                                        text = stu.fullNameWithFather,
                                         style = MaterialTheme.typography.titleMedium,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
@@ -881,12 +1193,31 @@ fun DailyAttendanceScreen(
                                 }
                             }
 
-                            NoWrapBadge(
-                                text = "إجمالي الغياب: $totalAbsences يوم",
-                                icon = Icons.Filled.EventBusy,
-                                containerColor = if (totalAbsences > 0) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.14f),
-                                contentColor = if (totalAbsences > 0) DangerRed else SuccessGreen
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { selectedStudentForIdCard = stu },
+                                    modifier = Modifier.testTag("att_open_student_id_${stu.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Badge,
+                                        contentDescription = "بطاقة الهوية والـ QR",
+                                        tint = DeepEmerald
+                                    )
+                                }
+                                NoWrapBadge(
+                                    text = "إجمالي الغياب: $totalAbsences يوم",
+                                    icon = Icons.Filled.EventBusy,
+                                    containerColor = if (totalAbsences > 0) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.14f),
+                                    contentColor = if (totalAbsences > 0) DangerRed else SuccessGreen
+                                )
+                            }
+                        }
+
+                        if (stuBadges.isNotEmpty()) {
+                            StudentAutoBadgesRow(badges = stuBadges)
                         }
 
                         Row(
@@ -951,7 +1282,7 @@ fun DailyAttendanceScreen(
                                 onClick = {
                                     val msg = """
                                         تبليغ رسمي من إدارة (${schoolConfig.schoolName} - ${schoolConfig.address}):
-                                        إلى السيد ولي أمر الطالب (${stu.studentName}) المحترم،
+                                        إلى السيد ولي أمر الطالب (${stu.fullNameWithFather}) المحترم،
                                         نود إعلامكم بتسجيل حالة (${currentStatus.arabicLabel}) لنجلكم في الصف (${stu.gradeClass} - شعبة ${stu.sectionName}) لهذا اليوم الموافق $selectedDate.
                                         • إجمالي أيام الغياب المسجلة: $totalAbsences يوم.
                                         يرجى التواصل مع إدارة المدرسة لبيان السبب.
@@ -966,4 +1297,350 @@ fun DailyAttendanceScreen(
             }
         }
     }
+
+    if (showQrScannerDialog) {
+        val allSchoolStudents = remember(students, schoolConfig.schoolId) {
+            students.filter { it.schoolId.isEmpty() || it.schoolId == schoolConfig.schoolId }
+        }
+        QrAttendanceScannerDialog(
+            students = allSchoolStudents,
+            selectedDate = selectedDate,
+            onScanQrCode = { qrValue ->
+                val ok = viewModel.recordAttendanceByQrCode(qrValue, selectedDate)
+                if (ok) {
+                    showQrScannerDialog = false
+                }
+            },
+            onDismiss = { showQrScannerDialog = false }
+        )
+    }
+
+    if (showLeaveRequestDialog) {
+        val targetStudent = scopedStudents.firstOrNull()
+        if (targetStudent != null) {
+            SubmitLeaveRequestDialog(
+                student = targetStudent,
+                defaultDate = selectedDate,
+                onSubmit = { leaveType, leaveDate, durationDays, reason ->
+                    viewModel.submitLeaveRequest(
+                        student = targetStudent,
+                        leaveType = leaveType,
+                        leaveDate = leaveDate,
+                        durationDays = durationDays,
+                        reason = reason
+                    )
+                    showLeaveRequestDialog = false
+                },
+                onDismiss = { showLeaveRequestDialog = false }
+            )
+        }
+    }
+
+    selectedStudentForIdCard?.let { stu ->
+        val badges = viewModel.getStudentAutoBadges(stu.id)
+        DigitalStudentIdDialog(
+            student = stu,
+            schoolConfig = schoolConfig,
+            badges = badges,
+            onSavePng = {
+                val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
+                    context = context,
+                    student = stu,
+                    schoolConfig = schoolConfig,
+                    badges = badges
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert(
+                        "تم حفظ الهوية المدرسية بدقة عالية (PNG) في المعرض جاهزة للطباعة أو الكبس الحراري",
+                        isSuccess = true
+                    )
+                } else {
+                    viewModel.showToastAlert("تعذر حفظ الصورة: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                }
+            },
+            onExportPdf = {
+                val res = DocumentAndIdExporter.exportStudentIdCardPdf(
+                    context = context,
+                    student = stu,
+                    schoolConfig = schoolConfig,
+                    badges = badges
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert(
+                        "تم تصدير وفتح نافذة طباعة الهوية المدرسية بصيغة PDF بنجاح",
+                        isSuccess = true
+                    )
+                } else {
+                    viewModel.showToastAlert("تعذر تصدير PDF: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                }
+            },
+            onDismiss = { selectedStudentForIdCard = null }
+        )
+    }
 }
+
+@Composable
+private fun SchoolBusQuickAlertsCard(
+    busSubscribersCount: Int,
+    onSendBusAlert: (BusEventType) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.DirectionsBus,
+                        contentDescription = null,
+                        tint = DeepEmerald
+                    )
+                    Column {
+                        Text(
+                            text = "إشعارات الخطوط والنقل المدرسي الفورية",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = "ترسل إشعاراً فورياً حصرياً لأولياء أمور الطلبة المشتركين بالخط ($busSubscribersCount طالب)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                BusEventType.entries.forEach { busEvent ->
+                    Button(
+                        onClick = { onSendBusAlert(busEvent) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("bus_alert_btn_${busEvent.name}"),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeepEmerald,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text(
+                            text = busEvent.arabicLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LeaveRequestCardItem(
+    req: LeaveRequestItem,
+    isAdmin: Boolean,
+    onApprove: () -> Unit,
+    onReject: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${req.studentName} • ${req.gradeClass} (${req.sectionName})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${req.leaveType.arabicLabel} • التاريخ: ${req.leaveDate} (${req.durationDays} يوم)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                NoWrapBadge(
+                    text = req.status.arabicLabel,
+                    icon = when (req.status) {
+                        LeaveRequestStatus.APPROVED -> Icons.Filled.CheckCircle
+                        LeaveRequestStatus.REJECTED -> Icons.Filled.Cancel
+                        LeaveRequestStatus.PENDING -> Icons.Filled.HourglassTop
+                    },
+                    containerColor = when (req.status) {
+                        LeaveRequestStatus.APPROVED -> SuccessGreen.copy(alpha = 0.16f)
+                        LeaveRequestStatus.REJECTED -> DangerRed.copy(alpha = 0.16f)
+                        LeaveRequestStatus.PENDING -> WarningAmber.copy(alpha = 0.18f)
+                    },
+                    contentColor = when (req.status) {
+                        LeaveRequestStatus.APPROVED -> SuccessGreen
+                        LeaveRequestStatus.REJECTED -> DangerRed
+                        LeaveRequestStatus.PENDING -> WarningAmber
+                    }
+                )
+            }
+
+            Text(
+                text = "السبب: ${req.reason}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (isAdmin && req.status == LeaveRequestStatus.PENDING) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onApprove,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("approve_leave_btn_${req.id}"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SuccessGreen,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("موافقة (تسجيل مجاز بعذر)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = onReject,
+                        modifier = Modifier
+                            .weight(0.7f)
+                            .testTag("reject_leave_btn_${req.id}"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed)
+                    ) {
+                        Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("رفض", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubmitLeaveRequestDialog(
+    student: StudentRecord,
+    defaultDate: String,
+    onSubmit: (LeaveType, String, Int, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedType by remember { mutableStateOf(LeaveType.SICK) }
+    var leaveDate by remember { mutableStateOf(defaultDate) }
+    var durationStr by remember { mutableStateOf("1") }
+    var reason by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "طلب إجازة إلكتروني للطالب: ${student.fullNameWithFather}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "نوع الإجازة المطلوبة:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    LeaveType.entries.forEach { lt ->
+                        FilterChip(
+                            selected = selectedType == lt,
+                            onClick = { selectedType = lt },
+                            label = { Text(lt.arabicLabel, maxLines = 1) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = leaveDate,
+                        onValueChange = { leaveDate = it },
+                        label = { Text("تاريخ الإجازة (YYYY-MM-DD)") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1.3f)
+                    )
+                    OutlinedTextField(
+                        value = durationStr,
+                        onValueChange = { durationStr = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("المدة (أيام)") },
+                        singleLine = true,
+                        modifier = Modifier.weight(0.7f)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = reason,
+                    onValueChange = { reason = it },
+                    label = { Text("سبب الإجازة والتفاصيل لمدير المدرسة") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("leave_request_reason_input"),
+                    minLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val days = durationStr.toIntOrNull()?.coerceIn(1, 30) ?: 1
+                    onSubmit(selectedType, leaveDate, days, reason)
+                },
+                enabled = reason.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                modifier = Modifier.testTag("confirm_submit_leave_request_btn")
+            ) {
+                Text("إرسال الطلب للمدير", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
+}
+

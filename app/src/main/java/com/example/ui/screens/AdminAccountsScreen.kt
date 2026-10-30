@@ -51,6 +51,7 @@ fun AdminAccountsScreen(
 
     var showStudentDialog by remember { mutableStateOf(false) }
     var editingStudent by remember { mutableStateOf<StudentRecord?>(null) }
+    var studentForDigitalIdCard by remember { mutableStateOf<StudentRecord?>(null) }
 
     val teachers = remember(accounts, searchQuery, selectedClassFilter) {
         accounts.filter { acc ->
@@ -501,6 +502,50 @@ fun AdminAccountsScreen(
                             }
                         }
 
+                        val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
+                        if (stuAutoBadges.isNotEmpty()) {
+                            StudentAutoBadgesRow(badges = stuAutoBadges)
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = { studentForDigitalIdCard = stu },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("admin_open_student_id_${stu.id}"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("بطاقة الهوية والـ QR", maxLines = 1, softWrap = false)
+                            }
+
+                            if (schoolConfig.schoolType == SchoolType.PRIVATE) {
+                                FilterChip(
+                                    selected = stu.isBusSubscribed,
+                                    onClick = { viewModel.toggleStudentBusSubscription(stu.id) },
+                                    label = {
+                                        Text(
+                                            text = if (stu.isBusSubscribed) "مشترك بالخط" else "غير مشترك بالخط",
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Filled.DirectionsBus,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+
                         VectorActionButton(
                             text = "إرسال بيانات الحساب لولي الأمر عبر واتساب",
                             icon = Icons.Filled.Chat,
@@ -522,6 +567,33 @@ fun AdminAccountsScreen(
                 }
             }
         }
+    }
+
+    studentForDigitalIdCard?.let { stu ->
+        DigitalStudentIdDialog(
+            student = stu,
+            schoolConfig = schoolConfig,
+            badges = viewModel.getStudentAutoBadges(stu.id),
+            onSavePng = {
+                val res = com.example.util.DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
+                    context = context,
+                    student = stu,
+                    schoolConfig = schoolConfig,
+                    badges = viewModel.getStudentAutoBadges(stu.id)
+                )
+                viewModel.showBannerMessage(res.fold({ it }, { it.message ?: "تعذر حفظ الهوية" }))
+            },
+            onExportPdf = {
+                val msg = com.example.util.DocumentAndIdExporter.exportStudentIdCardPdf(
+                    context = context,
+                    student = stu,
+                    schoolConfig = schoolConfig,
+                    badges = viewModel.getStudentAutoBadges(stu.id)
+                )
+                viewModel.showBannerMessage(msg)
+            },
+            onDismiss = { studentForDigitalIdCard = null }
+        )
     }
 
     // Add / Edit Teacher Dialog with Multi-Select Checkboxes for Registered Classes/Sections & Subjects

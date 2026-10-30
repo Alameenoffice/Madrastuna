@@ -36,12 +36,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.model.SchoolConfig
-import com.example.model.SchoolStage
-import com.example.model.SchoolType
+import com.example.model.*
 import com.example.ui.components.*
-import com.example.ui.theme.DangerRed
-import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.*
 import com.example.util.ExternalIntents
 import com.example.viewmodel.SchoolViewModel
 
@@ -1165,7 +1162,10 @@ fun DeveloperControlPanelScreen(
     val context = LocalContext.current
     val licenses by viewModel.schoolLicenses.collectAsState()
     val registeredSchools by viewModel.registeredSchools.collectAsState()
+    val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
     var directorPhoneForWhatsApp by remember { mutableStateOf("") }
+    var showBroadcastToPrincipalsDialog by remember { mutableStateOf(false) }
+    var editingExpirySchool by remember { mutableStateOf<RegisteredSchoolSummary?>(null) }
 
     BackHandler {
         viewModel.exitDeveloperPanel()
@@ -1297,7 +1297,7 @@ fun DeveloperControlPanelScreen(
                 }
             }
 
-            // 1 & 3: Generate License Code & Direct School Setup Card
+            // 1 & 3: Generate License Code, Direct School Setup & Broadcast to School Principals Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -1319,12 +1319,12 @@ fun DeveloperControlPanelScreen(
                         )
                         Column {
                             Text(
-                                text = "توليد أكواد التفعيل وتأسيس المدارس",
+                                text = "توليد أكواد التفعيل، تأسيس المدارس، والتعميم للمدراء",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "حفظ فوري في مجموعة school_licenses على Firebase Firestore",
+                                text = "حفظ فوري في مجموعة school_licenses و developer_broadcasts على Firebase Firestore",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1337,6 +1337,15 @@ fun DeveloperControlPanelScreen(
                         onClick = { viewModel.generateNewSchoolLicense() },
                         modifier = Modifier.fillMaxWidth(),
                         testTag = "dev_generate_license_button"
+                    )
+
+                    VectorActionButton(
+                        text = "إرسال تعميم لمدراء المدارس (إشعار خاص للمدراء فقط)",
+                        icon = Icons.Filled.Campaign,
+                        containerColor = GoldDeep,
+                        onClick = { showBroadcastToPrincipalsDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "dev_broadcast_to_principals_button"
                     )
 
                     OutlinedButton(
@@ -1358,6 +1367,32 @@ fun DeveloperControlPanelScreen(
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    if (developerBroadcasts.isNotEmpty()) {
+                        val latest = developerBroadcasts.first()
+                        Surface(
+                            color = WarmGoldLight,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "آخر تعميم مرسل للمدراء: ${latest.title} (${latest.createdAt})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = latest.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = DeepEmerald
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1579,12 +1614,12 @@ fun DeveloperControlPanelScreen(
                         )
                         Column {
                             Text(
-                                text = "قائمة إدارة المدارس المشتركة (schools)",
+                                text = "قائمة إدارة المدارس المشتركة واشتراكاتها (schools)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "عرض جميع المدارس المسجلة مع التحكم بتفعيل أو إيقاف اشتراك كل مدرسة",
+                                text = "التحكم بتفعيل الاشتراك، تحديد تاريخ الانتهاء، وعداد الأيام المتبقية",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1623,6 +1658,18 @@ fun DeveloperControlPanelScreen(
                         }
                     } else {
                         registeredSchools.forEach { school ->
+                            val daysLeft = school.daysUntilExpiry() ?: 365L
+                            val expiryBadgeColor = when {
+                                daysLeft <= 0L -> DangerRed
+                                daysLeft <= 14L -> WarningAmber
+                                else -> SuccessGreen
+                            }
+                            val expiryBadgeText = when {
+                                daysLeft < 0L -> "منتهي منذ ${-daysLeft} يوم"
+                                daysLeft == 0L -> "ينتهي اليوم!"
+                                else -> "متبقي $daysLeft يوم"
+                            }
+
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
                                 shape = RoundedCornerShape(14.dp),
@@ -1673,6 +1720,46 @@ fun DeveloperControlPanelScreen(
                                         )
                                     }
 
+                                    // Subscription Expiry Row with Remaining Days Badge & Edit Button
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surface,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "تاريخ انتهاء الاشتراك: ${school.subscriptionExpiryDate}",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                NoWrapBadge(
+                                                    text = expiryBadgeText,
+                                                    icon = Icons.Filled.EventBusy,
+                                                    containerColor = expiryBadgeColor.copy(alpha = 0.16f),
+                                                    contentColor = expiryBadgeColor
+                                                )
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = { editingExpirySchool = school },
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.testTag("edit_school_expiry_${school.schoolId}")
+                                            ) {
+                                                Icon(Icons.Filled.EditCalendar, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("تحديد الانتهاء", style = MaterialTheme.typography.labelMedium)
+                                            }
+                                        }
+                                    }
+
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1705,4 +1792,115 @@ fun DeveloperControlPanelScreen(
             DeveloperCreditFooter()
         }
     }
+
+    if (showBroadcastToPrincipalsDialog) {
+        var broadcastTitle by remember { mutableStateOf("تعميم وتحديث إداري هام لمدراء المدارس") }
+        var broadcastMessage by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showBroadcastToPrincipalsDialog = false },
+            title = { Text("إرسال تعميم لمدراء المدارس المشتركة") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "سيصل هذا التعميم كإشعار فوري يظهر لحسابات (المدير ADMIN) فقط في جميع المدارس المشتركة.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = broadcastTitle,
+                        onValueChange = { broadcastTitle = it },
+                        label = { Text("عنوان التعميم أو التحديث") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = broadcastMessage,
+                        onValueChange = { broadcastMessage = it },
+                        label = { Text("نص التعميم الموجه لمدراء المدارس") },
+                        placeholder = { Text("اكتب تفاصيل التحديث أو التنبيه الإداري هنا...") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "إرسال التعميم لجميع المدراء",
+                    icon = Icons.Filled.Send,
+                    onClick = {
+                        if (broadcastMessage.isNotBlank()) {
+                            viewModel.sendDeveloperBroadcastToPrincipals(
+                                title = broadcastTitle,
+                                message = broadcastMessage
+                            )
+                            showBroadcastToPrincipalsDialog = false
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showBroadcastToPrincipalsDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    editingExpirySchool?.let { school ->
+        var expiryDateInput by remember(school) { mutableStateOf(school.subscriptionExpiryDate) }
+        AlertDialog(
+            onDismissRequest = { editingExpirySchool = null },
+            title = { Text("تحديد تاريخ انتهاء اشتراك: ${school.schoolName}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "أدخل تاريخ انتهاء الاشتراك بصيغة YYYY-MM-DD (يظهر تنبيه التجديد لمدير المدرسة تلقائياً قبل 14 يوماً من الانتهاء):",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = expiryDateInput,
+                        onValueChange = { expiryDateInput = it },
+                        label = { Text("تاريخ انتهاء الاشتراك (YYYY-MM-DD)") },
+                        placeholder = { Text("2027-06-01") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { expiryDateInput = DateCountdownHelper.defaultExpiryDatePlusDays(10) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("تجربة (بعد 10 أيام)", style = MaterialTheme.typography.labelSmall)
+                        }
+                        OutlinedButton(
+                            onClick = { expiryDateInput = DateCountdownHelper.defaultExpiryDatePlusDays(365) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("سنة كاملة (+365 يوم)", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "حفظ ومزامنة تاريخ الانتهاء",
+                    icon = Icons.Filled.Save,
+                    onClick = {
+                        if (expiryDateInput.isNotBlank()) {
+                            viewModel.updateSchoolSubscriptionExpiryDate(
+                                schoolId = school.schoolId,
+                                newExpiryDate = expiryDateInput.trim()
+                            )
+                            editingExpirySchool = null
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { editingExpirySchool = null }) { Text("إلغاء") }
+            }
+        )
+    }
 }
+

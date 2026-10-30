@@ -59,3 +59,14 @@ val DangerRed = Color(0xFFEF4444)
 val WarningAmber = Color(0xFFF59E0B)
 val InfoBlue = Color(0xFF3B82F6)
 val SuccessGreen = Color(0xFF10B981)
+
+// Luxury Green & Gold Identity Aliases
+val DeepForestGreen = Color(0xFF064E3B)
+val DeepEmerald = Color(0xFF047857)
+val RoyalGreen = Color(0xFF059669)
+val EmeraldAccent = Color(0xFF10B981)
+val GoldFoil = Color(0xFFD97706)
+val WarmGoldLight = Color(0xFFFEF3C7)
+val CardSurfaceWhite = Color(0xFFFFFFFF)
+val TextMutedGreen = Color(0xFF334155)
+
