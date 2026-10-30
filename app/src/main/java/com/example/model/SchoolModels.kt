@@ -1073,30 +1073,63 @@ enum class OccasionThemeType(
     val arabicLabel: String,
     val badgeTitle: String,
     val bannerGreeting: String,
+    val launcherAliasName: String = ".MainActivityDefault",
+    val defaultPrimaryHex: String = "#064E3B",
+    val defaultGradientHex: String = "#059669",
     val emojiSymbol: String = ""
 ) {
     OFFICIAL(
-        arabicLabel = "الوضع الرسمي",
+        arabicLabel = "الوضع الرسمي الفخم",
         badgeTitle = "الهوية الزمردية الملكية الرسمية",
         bannerGreeting = "أهلاً بكم في منصة مدرستي الذكية للتعليم الحديث",
-        emojiSymbol = ""
-    ),
-    NEW_YEAR(
-        arabicLabel = "رأس السنة",
-        badgeTitle = "احتفالية العام الميلادي الجديد",
-        bannerGreeting = "كل عام وأنتم بخير • عام دراسي مليء بالتفوق والنجاح",
+        launcherAliasName = ".MainActivityDefault",
+        defaultPrimaryHex = "#064E3B",
+        defaultGradientHex = "#059669",
         emojiSymbol = ""
     ),
     RAMADAN_EID(
-        arabicLabel = "رمضان والعيد",
+        arabicLabel = "رمضان المبارك والعيد",
         badgeTitle = "نفحات شهر رمضان المبارك والعيد السعيد",
         bannerGreeting = "رمضان كريم وكل عام وأسرتنا التربوية والطلابية بألف خير",
+        launcherAliasName = ".MainActivityRamadan",
+        defaultPrimaryHex = "#064E3B",
+        defaultGradientHex = "#B45309",
+        emojiSymbol = ""
+    ),
+    NEW_YEAR(
+        arabicLabel = "رأس السنة والعام الجديد",
+        badgeTitle = "احتفالية العام الميلادي والدراسي الجديد",
+        bannerGreeting = "كل عام وأنتم بخير • عام دراسي مليء بالتفوق والنجاح",
+        launcherAliasName = ".MainActivityNewYear",
+        defaultPrimaryHex = "#1E1B4B",
+        defaultGradientHex = "#B45309",
         emojiSymbol = ""
     ),
     ACADEMIC_EXCELLENCE(
-        arabicLabel = "تفوق العام الدراسي",
+        arabicLabel = "موسم التفوق والامتحانات",
         badgeTitle = "موسم الحصاد والتفوق العلمي الذهبي",
         bannerGreeting = "نبارك لطلبتنا الأعزاء موسم التميز والتفوق الدراسي",
+        launcherAliasName = ".MainActivityHonor",
+        defaultPrimaryHex = "#065F46",
+        defaultGradientHex = "#D97706",
+        emojiSymbol = ""
+    ),
+    NATIONAL_DAY(
+        arabicLabel = "العيد الوطني / مناسبة وطنية",
+        badgeTitle = "احتفالية العيد الوطني والمناسبة الوطنية",
+        bannerGreeting = "دام عز الوطن شامخاً بالعلم والمعرفة والبناء",
+        launcherAliasName = ".MainActivityNational",
+        defaultPrimaryHex = "#047857",
+        defaultGradientHex = "#0F766E",
+        emojiSymbol = ""
+    ),
+    CUSTOM_MANUAL(
+        arabicLabel = "ثيم يدوي مخصص",
+        badgeTitle = "مناسبة خاصة مخصصة",
+        bannerGreeting = "تهنئة خاصة لجميع إدارات ومعلمي وطلاب المنصة",
+        launcherAliasName = ".MainActivityDefault",
+        defaultPrimaryHex = "#064E3B",
+        defaultGradientHex = "#D97706",
         emojiSymbol = ""
     );
 
@@ -1122,8 +1155,13 @@ enum class OccasionThemeType(
 
 data class OccasionThemeConfig(
     val themeType: OccasionThemeType = OccasionThemeType.OFFICIAL,
+    val customTitle: String = "",
     val customBannerText: String = "",
     val customIconBase64: String = "",
+    val customIconUrl: String = "",
+    val primaryColorHex: String = "#064E3B",
+    val gradientColorHex: String = "#059669",
+    val launcherAliasName: String = ".MainActivityDefault",
     val updatedAt: String = "2026-10-29"
 ) {
     val occasionTheme: OccasionThemeType
@@ -1134,7 +1172,23 @@ data class OccasionThemeConfig(
 
     val customIconEmoji: String
         get() = themeType.emojiSymbol
+
+    val effectiveTitle: String
+        get() = customTitle.ifBlank { themeType.badgeTitle }
+
+    val effectiveBannerText: String
+        get() = customBannerText.ifBlank { themeType.bannerGreeting }
+
+    val effectivePrimaryHex: String
+        get() = primaryColorHex.ifBlank { themeType.defaultPrimaryHex }
+
+    val effectiveGradientHex: String
+        get() = gradientColorHex.ifBlank { themeType.defaultGradientHex }
+
+    val effectiveAliasName: String
+        get() = launcherAliasName.ifBlank { themeType.launcherAliasName }
 }
+
 
 
 

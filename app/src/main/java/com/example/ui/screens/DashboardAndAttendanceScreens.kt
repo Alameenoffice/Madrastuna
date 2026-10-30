@@ -83,53 +83,15 @@ fun DashboardScreen(
         contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
         // Live Occasion Theme Greeting Banner (Managed by Developer ABU-RASLAN)
-        if (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL) {
+        if (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL ||
+            occasionThemeConfig.customBannerText.isNotBlank() ||
+            occasionThemeConfig.customIconBase64.isNotBlank()
+        ) {
             item {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("dashboard_occasion_theme_banner"),
-                    shape = RoundedCornerShape(18.dp),
-                    color = DeepForestGreen,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.55f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = DeepEmerald.copy(alpha = 0.45f),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Icon(
-                                    imageVector = Icons.Filled.Celebration,
-                                    contentDescription = null,
-                                    tint = Color(0xFFA7F3D0),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = occasionThemeConfig.themeType.arabicTitle,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color(0xFFA7F3D0),
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                text = occasionThemeConfig.customBannerText.ifBlank { occasionThemeConfig.themeType.defaultBanner },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
+                LiveOccasionBannerCard(
+                    config = occasionThemeConfig,
+                    modifier = Modifier.testTag("dashboard_occasion_theme_banner")
+                )
             }
         }
 

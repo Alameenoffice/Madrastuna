@@ -159,34 +159,11 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFFECFDF5),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.55f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Celebration,
-                            contentDescription = null,
-                            tint = DeepEmerald,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = occasionThemeConfig.customGreeting.ifBlank { occasionThemeConfig.occasionTheme.greetingBanner },
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = DeepEmerald,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
+            if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT ||
+                occasionThemeConfig.customBannerText.isNotBlank() ||
+                occasionThemeConfig.customIconBase64.isNotBlank()
+            ) {
+                LiveOccasionBannerCard(config = occasionThemeConfig)
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
@@ -961,15 +938,33 @@ fun UnifiedLoginScreen(
                                 showActivationCodeDialog = true
                             }
                         }
-                        .testTag("platform_logo_five_taps")
+                        .testTag("platform_logo_five_taps"),
+                    contentAlignment = Alignment.BottomEnd
                 ) {
-                    Base64AvatarImage(
-                        base64Data = schoolConfig.logoBase64,
-                        fallbackIcon = Icons.Filled.School,
-                        contentDescription = discoveredSchoolName ?: schoolConfig.schoolName,
-                        size = 84.dp,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    if (schoolConfig.logoBase64.isBlank() &&
+                        (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL || occasionThemeConfig.customIconBase64.isNotBlank())
+                    ) {
+                        OccasionVectorEmblem(
+                            themeType = occasionThemeConfig.themeType,
+                            customIconBase64 = occasionThemeConfig.customIconBase64,
+                            size = 84.dp
+                        )
+                    } else {
+                        Base64AvatarImage(
+                            base64Data = schoolConfig.logoBase64.ifBlank { occasionThemeConfig.customIconBase64 },
+                            fallbackIcon = Icons.Filled.School,
+                            contentDescription = discoveredSchoolName ?: schoolConfig.schoolName,
+                            size = 84.dp,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        if (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL) {
+                            OccasionVectorEmblem(
+                                themeType = occasionThemeConfig.themeType,
+                                customIconBase64 = occasionThemeConfig.customIconBase64,
+                                size = 30.dp
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -992,25 +987,12 @@ fun UnifiedLoginScreen(
                     textAlign = TextAlign.Center
                 )
 
-                if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT) {
+                if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT ||
+                    occasionThemeConfig.customBannerText.isNotBlank() ||
+                    occasionThemeConfig.customIconBase64.isNotBlank()
+                ) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = GoldAccent.copy(alpha = 0.18f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "${occasionThemeConfig.occasionTheme.badgeEmoji} ${
-                                occasionThemeConfig.customGreeting.ifBlank { occasionThemeConfig.occasionTheme.greetingBanner }
-                            }",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = DeepEmerald,
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                    LiveOccasionBannerCard(config = occasionThemeConfig)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1269,7 +1251,13 @@ fun DeveloperControlPanelScreen(
     var isForceUpdate by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.isForceUpdate) }
 
     var selectedOccasionTheme by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.occasionTheme) }
-    var customOccasionGreeting by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customGreeting) }
+    var customOccasionTitle by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customTitle.ifBlank { occasionThemeConfig.occasionTheme.badgeTitle }) }
+    var customOccasionGreeting by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customGreeting.ifBlank { occasionThemeConfig.occasionTheme.greetingBanner }) }
+    var customOccasionIconBase64 by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customIconBase64) }
+    var customOccasionIconUrl by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customIconUrl) }
+    var customPrimaryHex by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.effectivePrimaryHex) }
+    var customGradientHex by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.effectiveGradientHex) }
+    var selectedLauncherAlias by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.effectiveAliasName) }
 
     BackHandler {
         viewModel.exitDeveloperPanel()
@@ -1596,7 +1584,7 @@ fun DeveloperControlPanelScreen(
                 }
             }
 
-            // Developer Upgrade A: Remote App Update Control Card (إدارة تحديثات التطبيق المباشرة)
+            // Developer Upgrade A: Remote App Update Control Card (إدارة تحديثات التطبيق المباشرة + إيقاف وسحب التحديث)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -1608,20 +1596,84 @@ fun DeveloperControlPanelScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(Icons.Filled.SystemUpdate, contentDescription = null, tint = DeepEmerald)
-                        Column {
-                            Text(
-                                text = "إدارة تحديثات التطبيق عن بُعد (Remote App Update)",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                text = "أرسل إشعار تحديث مع رابط تحميل الـ APK الجديد لجميع الهواتف فورياً",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.SystemUpdate, contentDescription = null, tint = DeepEmerald)
+                            Column {
+                                Text(
+                                    text = "إدارة تحديثات التطبيق عن بُعد (Remote App Update)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "نشر التحديث لجميع الهواتف أو إيقافه وسحبه فوراً بضغطة زر",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Live Active / Stopped Status Indicator & Instant Toggle Switch
+                    val isCurrentlyActive = appUpdateConfig.isUpdateBroadcastActive
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isCurrentlyActive) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isCurrentlyActive) EmeraldAccent else DangerRed.copy(alpha = 0.45f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = if (isCurrentlyActive) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
+                                    contentDescription = null,
+                                    tint = if (isCurrentlyActive) DeepEmerald else DangerRed,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = if (isCurrentlyActive) {
+                                            "حالة التحديث الحالية: مفعّل ويظهر للمستخدمين (${appUpdateConfig.latestVersionName})"
+                                        } else {
+                                            "حالة التحديث الحالية: متوقف / مسحوب عن المستخدمين"
+                                        },
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (isCurrentlyActive) DeepEmerald else DangerRed,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Text(
+                                        text = "تفعيل أو إيقاف ظهور نافذة التحديث للمستخدمين لحظياً",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF334155)
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = isCurrentlyActive,
+                                onCheckedChange = { nextActive ->
+                                    viewModel.toggleGlobalAppUpdateActive(nextActive)
+                                },
+                                modifier = Modifier.testTag("dev_toggle_update_active_switch")
                             )
                         }
                     }
@@ -1637,7 +1689,7 @@ fun DeveloperControlPanelScreen(
                         OutlinedTextField(
                             value = updateVersionName,
                             onValueChange = { updateVersionName = it },
-                            label = { Text("اسم الإصدار (2.0.0)") },
+                            label = { Text("اسم الإصدار (2.5.0)") },
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
@@ -1663,30 +1715,52 @@ fun DeveloperControlPanelScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("تحديث إجباري (Force Update - يمنع الإغلاق)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "تحديث إجباري (Force Update - يمنع الإغلاق)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         Switch(checked = isForceUpdate, onCheckedChange = { isForceUpdate = it })
                     }
 
-                    VectorActionButton(
-                        text = "نشر التحديث فوراً لجميع المستخدمين",
-                        icon = Icons.Filled.CloudUpload,
-                        containerColor = DeepEmerald,
-                        onClick = {
-                            viewModel.updateGlobalAppUpdateConfig(
-                                latestVersionCode = updateVersionCodeStr.toIntOrNull() ?: 1,
-                                latestVersionName = updateVersionName.ifBlank { "1.0.0" },
-                                updateNotes = updateNotes,
-                                downloadUrl = updateDownloadUrl,
-                                isForceUpdate = isForceUpdate
-                            )
-                        },
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        testTag = "dev_publish_app_update_btn"
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        VectorActionButton(
+                            text = "نشر التحديث فوراً لجميع المستخدمين",
+                            icon = Icons.Filled.CloudUpload,
+                            containerColor = DeepEmerald,
+                            onClick = {
+                                viewModel.updateGlobalAppUpdateConfig(
+                                    latestVersionCode = updateVersionCodeStr.toIntOrNull() ?: 2,
+                                    latestVersionName = updateVersionName.ifBlank { "2.5.0" },
+                                    updateNotes = updateNotes,
+                                    downloadUrl = updateDownloadUrl,
+                                    isForceUpdate = isForceUpdate,
+                                    isUpdateBroadcastActive = true
+                                )
+                            },
+                            modifier = Modifier.weight(1.15f),
+                            testTag = "dev_publish_app_update_btn"
+                        )
+
+                        VectorActionButton(
+                            text = "إيقاف / سحب التحديث الحالي",
+                            icon = Icons.Filled.Block,
+                            containerColor = DangerRed,
+                            onClick = {
+                                isForceUpdate = false
+                                viewModel.stopAndWithdrawGlobalAppUpdate()
+                            },
+                            modifier = Modifier.weight(1f),
+                            testTag = "dev_stop_app_update_btn"
+                        )
+                    }
                 }
             }
 
-            // Developer Upgrade B: Live Occasion Theme & Greeting Card (ثيم وأيقونة المناسبات المباشر)
+            // Developer Upgrade B: Royal Occasion Theme & Dynamic Launcher Icon + Custom Manual Theme Builder
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -1695,7 +1769,7 @@ fun DeveloperControlPanelScreen(
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1704,62 +1778,225 @@ fun DeveloperControlPanelScreen(
                         Icon(Icons.Filled.Celebration, contentDescription = null, tint = DeepEmerald)
                         Column {
                             Text(
-                                text = "ثيم وأيقونة المناسبات المباشر (Occasion Theme)",
+                                text = "ثيم وأيقونة المناسبات الملكية المباشرة (Occasion Theme & Icon)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold
                             )
                             Text(
-                                text = "تغيير الشريط الاحتفالي والتهنئة في جميع المدارس بضغطة زر",
+                                text = "اختر بطاقة المناسبة لتغيير الشريط الاحتفالي وأيقونة التطبيق في كل المدارس وعلى شاشة الهاتف",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(OccasionThemeType.entries) { occ ->
-                            FilterChip(
-                                selected = selectedOccasionTheme == occ,
+                    // Luxury Visual Theme Cards List
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OccasionThemeType.entries.forEach { occ ->
+                            LuxuryOccasionThemeCard(
+                                themeType = occ,
+                                isSelected = selectedOccasionTheme == occ,
+                                customIconBase64 = customOccasionIconBase64,
                                 onClick = {
                                     selectedOccasionTheme = occ
-                                    if (customOccasionGreeting.isBlank()) {
-                                        customOccasionGreeting = occ.greetingBanner
+                                    if (occ != OccasionThemeType.CUSTOM_MANUAL) {
+                                        customOccasionTitle = occ.badgeTitle
+                                        customOccasionGreeting = occ.bannerGreeting
+                                        customPrimaryHex = occ.defaultPrimaryHex
+                                        customGradientHex = occ.defaultGradientHex
+                                        selectedLauncherAlias = occ.launcherAliasName
+                                        if (occ == OccasionThemeType.OFFICIAL) {
+                                            customOccasionIconBase64 = ""
+                                            customOccasionIconUrl = ""
+                                        }
                                     }
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.AutoAwesome,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                label = { Text(occ.arabicLabel) }
+                                }
                             )
                         }
                     }
 
+                    HorizontalDivider()
+
+                    // Custom Manual Theme & Live Customization Section (إنشاء وتخصيص ثيم يدوي مخصص)
+                    Text(
+                        text = if (selectedOccasionTheme == OccasionThemeType.CUSTOM_MANUAL) {
+                            "إنشاء ثيم يدوي مخصص (Custom Manual Theme)"
+                        } else {
+                            "تخصيص عنوان وتهنئة وألوان وأيقونة المناسبة المحددة"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepEmerald
+                    )
+
+                    // Live Banner Preview inside Developer Panel
+                    val previewConfig = OccasionThemeConfig(
+                        themeType = selectedOccasionTheme,
+                        customTitle = customOccasionTitle.ifBlank { selectedOccasionTheme.badgeTitle },
+                        customBannerText = customOccasionGreeting.ifBlank { selectedOccasionTheme.bannerGreeting },
+                        customIconBase64 = customOccasionIconBase64,
+                        customIconUrl = customOccasionIconUrl,
+                        primaryColorHex = customPrimaryHex,
+                        gradientColorHex = customGradientHex,
+                        launcherAliasName = selectedLauncherAlias
+                    )
+                    if (selectedOccasionTheme != OccasionThemeType.OFFICIAL ||
+                        customOccasionGreeting.isNotBlank() ||
+                        customOccasionIconBase64.isNotBlank()
+                    ) {
+                        LiveOccasionBannerCard(
+                            config = previewConfig.copy(
+                                themeType = if (selectedOccasionTheme == OccasionThemeType.OFFICIAL) OccasionThemeType.CUSTOM_MANUAL else selectedOccasionTheme
+                            )
+                        )
+                    }
+
                     OutlinedTextField(
-                        value = customOccasionGreeting,
-                        onValueChange = { customOccasionGreeting = it },
-                        label = { Text("عبارة التهنئة المخصصة (اختياري)") },
-                        placeholder = { Text(selectedOccasionTheme.greetingBanner) },
+                        value = customOccasionTitle,
+                        onValueChange = { customOccasionTitle = it },
+                        label = { Text("عنوان المناسبة (مثال: يوم المعلم / ذكرى التأسيس)") },
+                        placeholder = { Text(selectedOccasionTheme.badgeTitle) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    VectorActionButton(
-                        text = "تفعيل ثيم المناسبة في جميع المدارس",
-                        icon = Icons.Filled.AutoAwesome,
-                        containerColor = DeepEmerald,
-                        onClick = {
-                            viewModel.updateGlobalOccasionTheme(
-                                occasionTheme = selectedOccasionTheme,
-                                customGreeting = customOccasionGreeting
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        testTag = "dev_apply_occasion_theme_btn"
+                    OutlinedTextField(
+                        value = customOccasionGreeting,
+                        onValueChange = { customOccasionGreeting = it },
+                        label = { Text("عبارة التهنئة الترحيبية لجميع المدارس") },
+                        placeholder = { Text(selectedOccasionTheme.bannerGreeting) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
+
+                    // Royal Color Palette Presets
+                    val royalColorPresets = remember {
+                        listOf(
+                            Triple("الزمردي الملكي", "#064E3B", "#059669"),
+                            Triple("الذهبي الرمضاني", "#064E3B", "#B45309"),
+                            Triple("الكحلي الاحتفالي", "#1E1B4B", "#B45309"),
+                            Triple("الفيروزي السيادي", "#047857", "#0F766E"),
+                            Triple("العنابي الملكي", "#4C0519", "#B45309"),
+                            Triple("البنفسجي الفخم", "#2E1065", "#047857")
+                        )
+                    }
+
+                    Text(
+                        text = "اختر تدرج الألوان الملكي للشريط والهوية:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(royalColorPresets) { (presetLabel, pHex, gHex) ->
+                            val isPresetSelected = customPrimaryHex.equals(pHex, ignoreCase = true) &&
+                                customGradientHex.equals(gHex, ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.Transparent,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (isPresetSelected) 2.dp else 1.dp,
+                                    if (isPresetSelected) Color(0xFFFBBF24) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        customPrimaryHex = pHex
+                                        customGradientHex = gHex
+                                    }
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(occasionThemeBrush(pHex, gHex))
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = presetLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Custom Image / Icon Upload from Device or URL
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CompressedPhotoPickerButton(
+                            label = if (customOccasionIconBase64.isBlank()) {
+                                "رفع أيقونة/صورة للمناسبة من الجهاز"
+                            } else {
+                                "تغيير أيقونة المناسبة المرفوعة"
+                            },
+                            currentBase64 = customOccasionIconBase64,
+                            isAvatar = true,
+                            onImageCompressed = { b64: String ->
+                                customOccasionIconBase64 = b64
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (customOccasionIconBase64.isNotBlank()) {
+                            OutlinedButton(
+                                onClick = { customOccasionIconBase64 = "" },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed)
+                            ) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("مسح الأيقونة")
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        VectorActionButton(
+                            text = "تفعيل الثيم والأيقونة في جميع المدارس",
+                            icon = Icons.Filled.AutoAwesome,
+                            containerColor = DeepEmerald,
+                            onClick = {
+                                viewModel.updateGlobalOccasionTheme(
+                                    themeType = selectedOccasionTheme,
+                                    customTitle = customOccasionTitle,
+                                    customBannerText = customOccasionGreeting,
+                                    customIconBase64 = customOccasionIconBase64,
+                                    customIconUrl = customOccasionIconUrl,
+                                    primaryColorHex = customPrimaryHex,
+                                    gradientColorHex = customGradientHex,
+                                    launcherAliasName = selectedLauncherAlias
+                                )
+                            },
+                            modifier = Modifier.weight(1.15f),
+                            testTag = "dev_apply_occasion_theme_btn"
+                        )
+
+                        VectorActionButton(
+                            text = "إلغاء الثيم والعودة للوضع الرسمي",
+                            icon = Icons.Filled.Restore,
+                            containerColor = DangerRed,
+                            onClick = {
+                                selectedOccasionTheme = OccasionThemeType.OFFICIAL
+                                customOccasionTitle = OccasionThemeType.OFFICIAL.badgeTitle
+                                customOccasionGreeting = OccasionThemeType.OFFICIAL.bannerGreeting
+                                customOccasionIconBase64 = ""
+                                customOccasionIconUrl = ""
+                                customPrimaryHex = OccasionThemeType.OFFICIAL.defaultPrimaryHex
+                                customGradientHex = OccasionThemeType.OFFICIAL.defaultGradientHex
+                                selectedLauncherAlias = OccasionThemeType.OFFICIAL.launcherAliasName
+                                viewModel.resetGlobalOccasionThemeToOfficial()
+                            },
+                            modifier = Modifier.weight(1f),
+                            testTag = "dev_reset_occasion_theme_btn"
+                        )
+                    }
                 }
             }
 

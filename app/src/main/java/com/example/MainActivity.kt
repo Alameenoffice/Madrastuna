@@ -63,6 +63,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    @android.webkit.JavascriptInterface
+    fun setAppIcon(aliasName: String) {
+        com.example.util.AppIconSwitcherHelper.setAppIcon(this, aliasName)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -118,6 +124,10 @@ fun MadrasatiRootApp(
             delay(3600)
             viewModel.dismissToastAlert()
         }
+    }
+
+    LaunchedEffect(occasionThemeConfig.themeType, occasionThemeConfig.launcherAliasName) {
+        com.example.util.AppIconSwitcherHelper.setAppIcon(context, occasionThemeConfig.effectiveAliasName)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -339,6 +349,7 @@ fun AuthenticatedMainPlatform(
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
     val dismissedBroadcastIds by viewModel.dismissedBroadcastIds.collectAsState()
+    val occasionThemeConfig by viewModel.occasionThemeConfig.collectAsState()
 
     val featureSettings by viewModel.featureSettings.collectAsState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -610,12 +621,29 @@ fun AuthenticatedMainPlatform(
                                 }
                             }
 
-                            Base64AvatarImage(
-                                base64Data = schoolConfig.logoBase64,
-                                fallbackIcon = Icons.Filled.School,
-                                contentDescription = schoolConfig.schoolName,
-                                size = 42.dp
-                            )
+                            if (schoolConfig.logoBase64.isBlank() &&
+                                (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL || occasionThemeConfig.customIconBase64.isNotBlank())
+                            ) {
+                                com.example.ui.components.OccasionVectorEmblem(
+                                    themeType = occasionThemeConfig.themeType,
+                                    customIconBase64 = occasionThemeConfig.customIconBase64,
+                                    size = 42.dp
+                                )
+                            } else {
+                                Base64AvatarImage(
+                                    base64Data = schoolConfig.logoBase64.ifBlank { occasionThemeConfig.customIconBase64 },
+                                    fallbackIcon = Icons.Filled.School,
+                                    contentDescription = schoolConfig.schoolName,
+                                    size = 42.dp
+                                )
+                                if (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL) {
+                                    com.example.ui.components.OccasionVectorEmblem(
+                                        themeType = occasionThemeConfig.themeType,
+                                        customIconBase64 = occasionThemeConfig.customIconBase64,
+                                        size = 30.dp
+                                    )
+                                }
+                            }
                             Column {
                                 Text(
                                     text = schoolConfig.schoolName,

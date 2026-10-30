@@ -983,27 +983,32 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
 
-                        // 16. Global App Update & Occasion Theme live sync
-                        FirebaseCloudSync.fetchGlobalCollectionPayload(
-                            collectionName = FirebaseConfigConstants.COL_APP_UPDATE_CONFIG,
-                            docName = "registry"
-                        )?.let { remoteUpd ->
-                            val parsedUpd = repo.parseAppUpdateConfigJson(remoteUpd)
-                            if (parsedUpd != _appUpdateConfig.value) {
-                                _appUpdateConfig.value = parsedUpd
-                            }
-                        }
-                        FirebaseCloudSync.fetchGlobalCollectionPayload(
-                            collectionName = FirebaseConfigConstants.COL_OCCASION_THEME,
-                            docName = "registry"
-                        )?.let { remoteThm ->
-                            val parsedThm = repo.parseOccasionThemeConfigJson(remoteThm)
-                            if (parsedThm != _occasionThemeConfig.value) {
-                                _occasionThemeConfig.value = parsedThm
-                            }
-                        }
                     } catch (_: Exception) {
                     }
+                }
+
+                // 16. Global App Update & Occasion Theme live sync (active for all users including Login/Onboarding)
+                try {
+                    FirebaseCloudSync.fetchGlobalCollectionPayload(
+                        collectionName = FirebaseConfigConstants.COL_APP_UPDATE_CONFIG,
+                        docName = "registry"
+                    )?.let { remoteUpd ->
+                        val parsedUpd = repo.parseAppUpdateConfigJson(remoteUpd)
+                        if (parsedUpd != _appUpdateConfig.value) {
+                            _appUpdateConfig.value = parsedUpd
+                        }
+                    }
+                    FirebaseCloudSync.fetchGlobalCollectionPayload(
+                        collectionName = FirebaseConfigConstants.COL_OCCASION_THEME,
+                        docName = "registry"
+                    )?.let { remoteThm ->
+                        val parsedThm = repo.parseOccasionThemeConfigJson(remoteThm)
+                        if (parsedThm != _occasionThemeConfig.value) {
+                            _occasionThemeConfig.value = parsedThm
+                            com.example.util.AppIconSwitcherHelper.setAppIcon(appContext, parsedThm.effectiveAliasName)
+                        }
+                    }
+                } catch (_: Exception) {
                 }
             }
         }
@@ -3969,7 +3974,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         latestVersionName: String,
         updateNotes: String,
         downloadUrl: String,
-        isForceUpdate: Boolean
+        isForceUpdate: Boolean,
+        isUpdateBroadcastActive: Boolean = true
     ) {
         val updated = AppUpdateConfig(
             latestVersionCode = latestVersionCode,
@@ -3977,12 +3983,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             apkDownloadUrl = downloadUrl.trim().ifBlank { "https://github.com/madrasati-smart/releases/latest/download/app-debug.apk" },
             releaseNotes = InputSanitizer.sanitize(updateNotes),
             isForceUpdate = isForceUpdate,
-            isUpdateBroadcastActive = true,
+            isUpdateBroadcastActive = isUpdateBroadcastActive,
             updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         )
         _appUpdateConfig.value = updated
+        _dismissedUpdateVersion.value = ""
         repo.saveAppUpdateConfig(updated)
-        showToastAlert("تم حفظ وبث إعدادات تحديث التطبيق (الإصدار ${updated.latestVersionName}) لجميع المستخدمين فوراً", isSuccess = true)
+        val statusMsg = if (isUpdateBroadcastActive) {
+            "تم نشر وتفعيل التحديث (الإصدار ${updated.latestVersionName}) لجميع المستخدمين فوراً"
+        } else {
+            "تم حفظ بيانات التحديث (الإصدار ${updated.latestVersionName}) مع إيقاف ظهوره حالياً"
+        }
+        showToastAlert(statusMsg, isSuccess = true)
     }
 
     fun updateGlobalAppUpdateConfig(
@@ -3993,6 +4005,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         isBroadcastActive: Boolean
     ) {
         val updated = AppUpdateConfig(
+            latestVersionCode = _appUpdateConfig.value.latestVersionCode,
             latestVersionName = InputSanitizer.sanitize(versionName).ifBlank { "2.5.0" },
             apkDownloadUrl = apkUrl.trim().ifBlank { "https://github.com/madrasati-smart/releases/latest/download/app-debug.apk" },
             releaseNotes = InputSanitizer.sanitize(releaseNotes),
@@ -4001,8 +4014,38 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         )
         _appUpdateConfig.value = updated
+        if (isBroadcastActive) {
+            _dismissedUpdateVersion.value = ""
+        }
         repo.saveAppUpdateConfig(updated)
         showToastAlert("تم حفظ وبث إعدادات تحديث التطبيق (الإصدار ${updated.latestVersionName}) لجميع المستخدمين فوراً", isSuccess = true)
+    }
+
+    fun toggleGlobalAppUpdateActive(isActive: Boolean) {
+        val updated = _appUpdateConfig.value.copy(
+            isUpdateBroadcastActive = isActive,
+            updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        )
+        _appUpdateConfig.value = updated
+        if (isActive) {
+            _dismissedUpdateVersion.value = ""
+        }
+        repo.saveAppUpdateConfig(updated)
+        showToastAlert(
+            if (isActive) "تم تفعيل ظهور إشعار التحديث لجميع المستخدمين" else "تم إيقاف ظهور إشعار التحديث عن المستخدمين",
+            isSuccess = isActive
+        )
+    }
+
+    fun stopAndWithdrawGlobalAppUpdate() {
+        val updated = _appUpdateConfig.value.copy(
+            isUpdateBroadcastActive = false,
+            isForceUpdate = false,
+            updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        )
+        _appUpdateConfig.value = updated
+        repo.saveAppUpdateConfig(updated)
+        showToastAlert("تم إيقاف وسحب التحديث الحالي فوراً وإخفاؤه من شاشات جميع المستخدمين", isSuccess = true)
     }
 
     fun dismissAppUpdateBannerLocally() {
@@ -4018,23 +4061,60 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         updateGlobalOccasionTheme(
             themeType = occasionTheme,
-            customBannerText = customGreeting
+            customTitle = occasionTheme.badgeTitle,
+            customBannerText = customGreeting,
+            customIconBase64 = if (occasionTheme == OccasionThemeType.OFFICIAL) "" else _occasionThemeConfig.value.customIconBase64,
+            customIconUrl = if (occasionTheme == OccasionThemeType.OFFICIAL) "" else _occasionThemeConfig.value.customIconUrl,
+            primaryColorHex = occasionTheme.defaultPrimaryHex,
+            gradientColorHex = occasionTheme.defaultGradientHex,
+            launcherAliasName = occasionTheme.launcherAliasName
         )
     }
 
     fun updateGlobalOccasionTheme(
         themeType: OccasionThemeType,
+        customTitle: String = "",
         customBannerText: String = "",
-        customIconBase64: String = _occasionThemeConfig.value.customIconBase64
+        customIconBase64: String = _occasionThemeConfig.value.customIconBase64,
+        customIconUrl: String = _occasionThemeConfig.value.customIconUrl,
+        primaryColorHex: String = themeType.defaultPrimaryHex,
+        gradientColorHex: String = themeType.defaultGradientHex,
+        launcherAliasName: String = themeType.launcherAliasName
     ) {
+        val cleanTitle = InputSanitizer.sanitize(customTitle).ifBlank { themeType.badgeTitle }
+        val cleanGreeting = InputSanitizer.sanitize(customBannerText).ifBlank { themeType.bannerGreeting }
         val updated = OccasionThemeConfig(
             themeType = themeType,
-            customBannerText = InputSanitizer.sanitize(customBannerText),
+            customTitle = cleanTitle,
+            customBannerText = cleanGreeting,
             customIconBase64 = customIconBase64,
+            customIconUrl = customIconUrl.trim(),
+            primaryColorHex = primaryColorHex.ifBlank { themeType.defaultPrimaryHex },
+            gradientColorHex = gradientColorHex.ifBlank { themeType.defaultGradientHex },
+            launcherAliasName = launcherAliasName.ifBlank { themeType.launcherAliasName },
             updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         )
         _occasionThemeConfig.value = updated
         repo.saveOccasionThemeConfig(updated)
-        showToastAlert("تم تفعيل ثيم وأيقونة المناسبة (${themeType.arabicLabel}) في جميع المدارس فوراً", isSuccess = true)
+        com.example.util.AppIconSwitcherHelper.setAppIcon(appContext, updated.effectiveAliasName)
+        showToastAlert("تم تفعيل ثيم وأيقونة (${cleanTitle}) في جميع المدارس وعلى شاشة الهاتف فوراً", isSuccess = true)
+    }
+
+    fun resetGlobalOccasionThemeToOfficial() {
+        val official = OccasionThemeConfig(
+            themeType = OccasionThemeType.OFFICIAL,
+            customTitle = OccasionThemeType.OFFICIAL.badgeTitle,
+            customBannerText = OccasionThemeType.OFFICIAL.bannerGreeting,
+            customIconBase64 = "",
+            customIconUrl = "",
+            primaryColorHex = OccasionThemeType.OFFICIAL.defaultPrimaryHex,
+            gradientColorHex = OccasionThemeType.OFFICIAL.defaultGradientHex,
+            launcherAliasName = OccasionThemeType.OFFICIAL.launcherAliasName,
+            updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        )
+        _occasionThemeConfig.value = official
+        repo.saveOccasionThemeConfig(official)
+        com.example.util.AppIconSwitcherHelper.setAppIcon(appContext, ".MainActivityDefault")
+        showToastAlert("تم إلغاء ثيم المناسبة والعودة للوضع الرسمي الزمردي والأيقونة الافتراضية فوراً", isSuccess = true)
     }
 }

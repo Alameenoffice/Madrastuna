@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Royal Emerald Background -->
+    <path
+        android:fillColor="#064E3B"
+        android:pathData="M0,0h108v108h-108z" />
+    <!-- Inner Luxury Circle -->
+    <path
+        android:fillColor="#047857"
+        android:pathData="M54,14A40,40 0,1 1,14 54A40,40 0,0 1,54 14Z" />
+    <!-- Golden Ring Border -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FBBF24"
+        android:strokeWidth="2.5"
+        android:pathData="M54,17A37,37 0,1 1,17 54A37,37 0,0 1,54 17Z" />
+    <!-- Golden Crescent Moon (Hilal) -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M62,28C47.6,28 36,39.6 36,54C36,68.4 47.6,80 62,80C67.5,80 72.6,78.3 76.8,75.4C66.2,76.8 56,68.5 56,54C56,39.5 66.2,31.2 76.8,32.6C72.6,29.7 67.5,28 62,28Z" />
+    <!-- Hanging Ornate Lantern (Fanoos) -->
+    <path
+        android:fillColor="#FDE68A"
+        android:pathData="M43,22L45,22L45,35L43,35Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M44,34L51,41L37,41Z" />
+    <path
+        android:fillColor="#FEF3C7"
+        android:pathData="M38,41L50,41L48,55L40,55Z" />
+    <path
+        android:fillColor="#D97706"
+        android:pathData="M40,55L48,55L44,61Z" />
+    <!-- Sparkling Stars -->
+    <path
+        android:fillColor="#FEF08A"
+        android:pathData="M72,42L74,47L79,49L74,51L72,56L70,51L65,49L70,47Z" />
+</vector>

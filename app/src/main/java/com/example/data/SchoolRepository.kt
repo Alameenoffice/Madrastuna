@@ -2288,12 +2288,18 @@ class SchoolRepository(context: Context) {
     fun parseAppUpdateConfigJson(raw: String): AppUpdateConfig {
         return try {
             val o = JSONObject(raw)
+            val isBroadcast = if (o.has("isUpdateBroadcastActive")) {
+                o.optBoolean("isUpdateBroadcastActive", false)
+            } else {
+                o.optBoolean("isUpdateActive", false)
+            }
             AppUpdateConfig(
+                latestVersionCode = o.optInt("latestVersionCode", 2),
                 latestVersionName = o.optString("latestVersionName", "2.5.0"),
                 apkDownloadUrl = o.optString("apkDownloadUrl", "https://github.com/madrasati-smart/releases/latest/download/app-debug.apk"),
                 releaseNotes = o.optString("releaseNotes", ""),
                 isForceUpdate = o.optBoolean("isForceUpdate", false),
-                isUpdateBroadcastActive = o.optBoolean("isUpdateBroadcastActive", false),
+                isUpdateBroadcastActive = isBroadcast,
                 updatedAt = o.optString("updatedAt", "2026-10-29")
             )
         } catch (_: Exception) {
@@ -2303,11 +2309,13 @@ class SchoolRepository(context: Context) {
 
     fun saveAppUpdateConfig(config: AppUpdateConfig) {
         val obj = JSONObject().apply {
+            put("latestVersionCode", config.latestVersionCode)
             put("latestVersionName", InputSanitizer.sanitize(config.latestVersionName))
             put("apkDownloadUrl", config.apkDownloadUrl.trim())
             put("releaseNotes", InputSanitizer.sanitize(config.releaseNotes))
             put("isForceUpdate", config.isForceUpdate)
             put("isUpdateBroadcastActive", config.isUpdateBroadcastActive)
+            put("isUpdateActive", config.isUpdateBroadcastActive)
             put("updatedAt", config.updatedAt)
         }
         val jsonStr = obj.toString()
@@ -2330,8 +2338,13 @@ class SchoolRepository(context: Context) {
             }
             OccasionThemeConfig(
                 themeType = tType,
+                customTitle = o.optString("customTitle", ""),
                 customBannerText = o.optString("customBannerText", ""),
                 customIconBase64 = o.optString("customIconBase64", ""),
+                customIconUrl = o.optString("customIconUrl", ""),
+                primaryColorHex = o.optString("primaryColorHex", tType.defaultPrimaryHex),
+                gradientColorHex = o.optString("gradientColorHex", tType.defaultGradientHex),
+                launcherAliasName = o.optString("launcherAliasName", tType.launcherAliasName),
                 updatedAt = o.optString("updatedAt", "2026-10-29")
             )
         } catch (_: Exception) {
@@ -2342,8 +2355,13 @@ class SchoolRepository(context: Context) {
     fun saveOccasionThemeConfig(config: OccasionThemeConfig) {
         val obj = JSONObject().apply {
             put("themeType", config.themeType.name)
+            put("customTitle", InputSanitizer.sanitize(config.customTitle))
             put("customBannerText", InputSanitizer.sanitize(config.customBannerText))
             put("customIconBase64", config.customIconBase64)
+            put("customIconUrl", config.customIconUrl.trim())
+            put("primaryColorHex", config.primaryColorHex.ifBlank { config.themeType.defaultPrimaryHex })
+            put("gradientColorHex", config.gradientColorHex.ifBlank { config.themeType.defaultGradientHex })
+            put("launcherAliasName", config.launcherAliasName.ifBlank { config.themeType.launcherAliasName })
             put("updatedAt", config.updatedAt)
         }
         val jsonStr = obj.toString()

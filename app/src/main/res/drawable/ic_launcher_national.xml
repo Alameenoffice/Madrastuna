@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Sovereign Emerald-Teal Background -->
+    <path
+        android:fillColor="#047857"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#0F766E"
+        android:pathData="M54,14A40,40 0,1 1,14 54A40,40 0,0 1,54 14Z" />
+    <!-- Golden Sovereign Shield Border -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FBBF24"
+        android:strokeWidth="2.5"
+        android:pathData="M54,17A37,37 0,1 1,17 54A37,37 0,0 1,54 17Z" />
+    <!-- Flag Pole -->
+    <path
+        android:fillColor="#FDE68A"
+        android:pathData="M35,26h4v56h-4z" />
+    <!-- Waving Royal Banner Flag -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M39,28C49,25 59,33 73,29L73,55C59,59 49,51 39,54Z" />
+    <!-- Emerald Star inside Flag -->
+    <path
+        android:fillColor="#064E3B"
+        android:pathData="M56,34L58,39L63,39L59,42L61,47L56,44L51,47L53,42L49,39L54,39Z" />
+</vector>

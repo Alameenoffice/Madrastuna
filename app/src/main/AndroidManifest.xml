@@ -30,6 +30,77 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Dynamic Occasion Launcher Icon Aliases (Activity-Alias) -->
+        <activity-alias
+            android:name=".MainActivityDefault"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityRamadan"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_ramadan"
+            android:roundIcon="@drawable/ic_launcher_ramadan"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityNewYear"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_newyear"
+            android:roundIcon="@drawable/ic_launcher_newyear"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityHonor"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_honor"
+            android:roundIcon="@drawable/ic_launcher_honor"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityNational"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_national"
+            android:roundIcon="@drawable/ic_launcher_national"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
     </application>
 
 </manifest>
