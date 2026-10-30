@@ -1820,6 +1820,26 @@ fun SettingsScreen(
             }
         }
 
+        // Biometric Fingerprint Login Settings Card (متاح لجميع الأدوار: مدير، معلم، طالب، ولي أمر)
+        val biometricCredentials by viewModel.biometricCredentials.collectAsState()
+        if (currentUser != null) {
+            BiometricSettingsSectionCard(
+                currentAccountUsername = currentUser?.username ?: "",
+                currentAccountFullName = currentUser?.fullName ?: "",
+                currentAccountRoleLabel = currentUser?.role?.arabicTitle ?: "",
+                savedBiometricCredentials = biometricCredentials,
+                onEnableBiometricVerified = {
+                    viewModel.enableBiometricForCurrentUser()
+                },
+                onDisableBiometric = {
+                    viewModel.disableBiometricLogin()
+                },
+                onErrorToast = { err ->
+                    viewModel.showToastAlert(err, isSuccess = false)
+                }
+            )
+        }
+
         // Theme & Display Preferences Card (includes Side Navigation Drawer toggle)
         Card(
             modifier = Modifier.fillMaxWidth(),

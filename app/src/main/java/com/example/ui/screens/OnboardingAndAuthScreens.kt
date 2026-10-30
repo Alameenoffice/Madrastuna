@@ -787,7 +787,9 @@ fun UnifiedLoginScreen(
     onUsernameChanged: (String) -> Unit = {},
     occasionThemeConfig: OccasionThemeConfig = OccasionThemeConfig(),
     loginLockoutUntilMs: Long = 0L,
-    failedLoginAttemptsCount: Int = 0
+    failedLoginAttemptsCount: Int = 0,
+    biometricCredentials: BiometricSavedCredentials? = null,
+    onBiometricLogin: () -> Result<*> = { Result.success(null) }
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -1189,6 +1191,21 @@ fun UnifiedLoginScreen(
                             testTag = "login_submit_button"
                         )
 
+                        if (biometricCredentials != null && biometricCredentials.isValid && remainingLockoutSec == 0L) {
+                            BiometricQuickLoginButton(
+                                savedCredentials = biometricCredentials,
+                                onBiometricAuthenticated = {
+                                    val res = onBiometricLogin()
+                                    if (res.isFailure) {
+                                        loginError = res.exceptionOrNull()?.message ?: "تعذر تسجيل الدخول بالبصمة المحفوظة"
+                                    }
+                                },
+                                onBiometricError = { errMsg ->
+                                    loginError = errMsg
+                                }
+                            )
+                        }
+
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                             shape = RoundedCornerShape(12.dp),
@@ -1240,6 +1257,7 @@ fun DeveloperControlPanelScreen(
     val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
     val appUpdateConfig by viewModel.appUpdateConfig.collectAsState()
     val occasionThemeConfig by viewModel.occasionThemeConfig.collectAsState()
+    val biometricCredentials by viewModel.biometricCredentials.collectAsState()
     var directorPhoneForWhatsApp by remember { mutableStateOf("") }
     var showBroadcastToPrincipalsDialog by remember { mutableStateOf(false) }
     var editingExpirySchool by remember { mutableStateOf<RegisteredSchoolSummary?>(null) }
@@ -1388,6 +1406,23 @@ fun DeveloperControlPanelScreen(
                     }
                 }
             }
+
+            // Biometric Fingerprint Quick Login Toggle for Developer Account
+            BiometricSettingsSectionCard(
+                currentAccountUsername = "ABU-RASLAN",
+                currentAccountFullName = "المطور أحمد أبو رسلان",
+                currentAccountRoleLabel = "مطور النظام العام",
+                savedBiometricCredentials = biometricCredentials,
+                onEnableBiometricVerified = {
+                    viewModel.enableBiometricForDeveloper()
+                },
+                onDisableBiometric = {
+                    viewModel.disableBiometricLogin()
+                },
+                onErrorToast = { err ->
+                    viewModel.showToastAlert(err, isSuccess = false)
+                }
+            )
 
             // 1 & 3: Generate License Code, Direct School Setup & Broadcast to School Principals Card
             Card(

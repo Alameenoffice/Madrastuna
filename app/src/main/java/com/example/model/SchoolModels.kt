@@ -1189,6 +1189,24 @@ data class OccasionThemeConfig(
         get() = launcherAliasName.ifBlank { themeType.launcherAliasName }
 }
 
+/**
+ * 8.b Biometric Fingerprint Saved Credentials (الدخول البايومتري السريع ببصمة الإصبع)
+ */
+data class BiometricSavedCredentials(
+    val username: String = "",
+    val password: String = "",
+    val fullName: String = "",
+    val roleArabic: String = "",
+    val schoolId: String = "",
+    val schoolName: String = "",
+    val isDeveloper: Boolean = false,
+    val enabledAt: String = ""
+) {
+    val isValid: Boolean
+        get() = username.isNotBlank() && password.isNotBlank()
+}
+
+
 
 
 

@@ -2370,6 +2370,80 @@ class SchoolRepository(context: Context) {
     }
 
     // =========================================================================
+    // BIOMETRIC FINGERPRINT SAVED CREDENTIALS (Encrypted Local Session Storage)
+    // =========================================================================
+
+    private val BIOMETRIC_CIPHER_KEY = "MADRASATI_BIOMETRIC_SHIELD_2026_ABU_RASLAN"
+
+    private fun encryptBiometricPayload(plainText: String): String {
+        return try {
+            val keyBytes = BIOMETRIC_CIPHER_KEY.toByteArray(Charsets.UTF_8)
+            val inputBytes = plainText.toByteArray(Charsets.UTF_8)
+            val xored = ByteArray(inputBytes.size) { i ->
+                (inputBytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+            }
+            android.util.Base64.encodeToString(xored, android.util.Base64.NO_WRAP)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun decryptBiometricPayload(cipherBase64: String): String {
+        return try {
+            val keyBytes = BIOMETRIC_CIPHER_KEY.toByteArray(Charsets.UTF_8)
+            val decoded = android.util.Base64.decode(cipherBase64, android.util.Base64.NO_WRAP)
+            val plain = ByteArray(decoded.size) { i ->
+                (decoded[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+            }
+            String(plain, Charsets.UTF_8)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    fun loadBiometricCredentials(): BiometricSavedCredentials? {
+        val rawCipher = prefs.getString("biometric_saved_credentials", null) ?: return null
+        if (rawCipher.isBlank()) return null
+        return try {
+            val jsonStr = if (rawCipher.trim().startsWith("{")) rawCipher else decryptBiometricPayload(rawCipher)
+            if (jsonStr.isBlank()) return null
+            val o = JSONObject(jsonStr)
+            val creds = BiometricSavedCredentials(
+                username = o.optString("username", ""),
+                password = o.optString("password", ""),
+                fullName = o.optString("fullName", ""),
+                roleArabic = o.optString("roleArabic", ""),
+                schoolId = o.optString("schoolId", ""),
+                schoolName = o.optString("schoolName", ""),
+                isDeveloper = o.optBoolean("isDeveloper", false),
+                enabledAt = o.optString("enabledAt", "")
+            )
+            if (creds.isValid) creds else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun saveBiometricCredentials(creds: BiometricSavedCredentials) {
+        val obj = JSONObject().apply {
+            put("username", creds.username.trim())
+            put("password", creds.password)
+            put("fullName", InputSanitizer.sanitize(creds.fullName))
+            put("roleArabic", InputSanitizer.sanitize(creds.roleArabic))
+            put("schoolId", creds.schoolId.trim())
+            put("schoolName", InputSanitizer.sanitize(creds.schoolName))
+            put("isDeveloper", creds.isDeveloper)
+            put("enabledAt", creds.enabledAt)
+        }
+        val encrypted = encryptBiometricPayload(obj.toString())
+        prefs.edit().putString("biometric_saved_credentials", encrypted).apply()
+    }
+
+    fun clearBiometricCredentials() {
+        prefs.edit().remove("biometric_saved_credentials").apply()
+    }
+
+    // =========================================================================
     // CLEAN STATE DEFAULTS (Empty Lists - No pre-existing fake students/data)
     // =========================================================================
 

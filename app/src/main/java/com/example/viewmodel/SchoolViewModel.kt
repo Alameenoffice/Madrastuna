@@ -117,6 +117,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _occasionThemeConfig = MutableStateFlow(repo.loadOccasionThemeConfig())
     val occasionThemeConfig: StateFlow<OccasionThemeConfig> = _occasionThemeConfig.asStateFlow()
 
+    private val _biometricCredentials = MutableStateFlow(repo.loadBiometricCredentials())
+    val biometricCredentials: StateFlow<BiometricSavedCredentials?> = _biometricCredentials.asStateFlow()
+
     // Security Shield Brute-Force Lockout States
     private val _failedLoginAttempts = MutableStateFlow(0)
     val failedLoginAttempts: StateFlow<Int> = _failedLoginAttempts.asStateFlow()
@@ -4116,5 +4119,60 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveOccasionThemeConfig(official)
         com.example.util.AppIconSwitcherHelper.setAppIcon(appContext, ".MainActivityDefault")
         showToastAlert("تم إلغاء ثيم المناسبة والعودة للوضع الرسمي الزمردي والأيقونة الافتراضية فوراً", isSuccess = true)
+    }
+
+    // =========================================================================
+    // BIOMETRIC FINGERPRINT AUTHENTICATION & SAVED CREDENTIALS FLOW
+    // =========================================================================
+
+    fun enableBiometricForCurrentUser() {
+        val user = _currentUser.value ?: return
+        val cfg = _schoolConfig.value
+        val today = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val creds = BiometricSavedCredentials(
+            username = user.username,
+            password = user.password,
+            fullName = user.fullName,
+            roleArabic = user.role.arabicTitle,
+            schoolId = cfg.schoolId,
+            schoolName = cfg.schoolName,
+            isDeveloper = false,
+            enabledAt = today
+        )
+        repo.saveBiometricCredentials(creds)
+        _biometricCredentials.value = creds
+        showToastAlert("تم تفعيل الدخول السريع ببصمة الإصبع لحساب (${user.fullName}) بنجاح", isSuccess = true)
+    }
+
+    fun enableBiometricForDeveloper() {
+        val today = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val creds = BiometricSavedCredentials(
+            username = "ABU-RASLAN",
+            password = "202699",
+            fullName = "المطور أحمد أبو رسلان",
+            roleArabic = "مطور النظام العام",
+            schoolId = "DEV",
+            schoolName = "لوحة تحكم المطور",
+            isDeveloper = true,
+            enabledAt = today
+        )
+        repo.saveBiometricCredentials(creds)
+        _biometricCredentials.value = creds
+        showToastAlert("تم تفعيل الدخول السريع ببصمة الإصبع لحساب المطور (أحمد أبو رسلان) بنجاح", isSuccess = true)
+    }
+
+    fun disableBiometricLogin() {
+        repo.clearBiometricCredentials()
+        _biometricCredentials.value = null
+        showToastAlert("تم إلغاء تفعيل الدخول ببصمة الإصبع ومسح الجلسة المحفوظة", isSuccess = true)
+    }
+
+    fun loginWithSavedBiometrics(): Result<UserAccount?> {
+        val creds = _biometricCredentials.value ?: repo.loadBiometricCredentials()
+        if (creds == null || !creds.isValid) {
+            showToastAlert("لا توجد بيانات بصمة محفوظة على هذا الجهاز", isSuccess = false)
+            return Result.failure(IllegalStateException("لا توجد بصمة محفوظة"))
+        }
+        return login(creds.username, creds.password)
     }
 }

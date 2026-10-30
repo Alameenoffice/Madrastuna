@@ -69,6 +69,24 @@ class MainActivity : ComponentActivity() {
         com.example.util.AppIconSwitcherHelper.setAppIcon(this, aliasName)
     }
 
+    @android.webkit.JavascriptInterface
+    fun isBiometricAvailable(): Boolean {
+        return com.example.util.BiometricAuthHelper.isBiometricAvailable(this)
+    }
+
+    @android.webkit.JavascriptInterface
+    fun authenticateBiometric() {
+        runOnUiThread {
+            com.example.util.BiometricAuthHelper.authenticateBiometric(
+                context = this,
+                title = com.example.util.BiometricAuthHelper.DEFAULT_PROMPT_TITLE,
+                subtitle = com.example.util.BiometricAuthHelper.DEFAULT_PROMPT_SUBTITLE,
+                onSuccess = {},
+                onError = {}
+            )
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -100,6 +118,7 @@ fun MadrasatiRootApp(
     val appUpdateConfig by viewModel.appUpdateConfig.collectAsState()
     val dismissedUpdateVersion by viewModel.dismissedUpdateVersion.collectAsState()
     val occasionThemeConfig by viewModel.occasionThemeConfig.collectAsState()
+    val biometricCredentials by viewModel.biometricCredentials.collectAsState()
     val loginLockoutUntilMs by viewModel.loginLockoutUntilMs.collectAsState()
     val failedLoginAttemptsCount by viewModel.failedLoginAttemptsCount.collectAsState()
 
@@ -180,7 +199,9 @@ fun MadrasatiRootApp(
                     onUsernameChanged = { u -> viewModel.previewSchoolNameByUsername(u) },
                     occasionThemeConfig = occasionThemeConfig,
                     loginLockoutUntilMs = loginLockoutUntilMs,
-                    failedLoginAttemptsCount = failedLoginAttemptsCount
+                    failedLoginAttemptsCount = failedLoginAttemptsCount,
+                    biometricCredentials = biometricCredentials,
+                    onBiometricLogin = { viewModel.loginWithSavedBiometrics() }
                 )
             }
             else -> {
