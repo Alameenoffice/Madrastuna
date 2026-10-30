@@ -830,19 +830,11 @@ fun ReportsAndChatScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Text(
-                    text = "اختر الشخص لفتح نافذة المحادثة المباشرة بكامل الشاشة (${filteredChatContacts.size}):",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = DeepEmerald,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
                 if (filteredChatContacts.isEmpty()) {
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.12f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -853,7 +845,7 @@ fun ReportsAndChatScreen(
                             Icon(
                                 imageVector = Icons.Filled.Info,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = DeepEmerald
                             )
                             Text(
                                 text = "لا توجد جهات اتصال مطابقة للبحث ضمن صلاحيات حسابك.",
@@ -867,16 +859,15 @@ fun ReportsAndChatScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                         contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         items(filteredChatContacts, key = { it.accountId }) { contact ->
-                            val isSelected = selectedContact?.accountId == contact.accountId
                             val roleColor = when (contact.role) {
                                 UserRole.ADMIN -> DeepEmerald
                                 UserRole.TEACHER -> InfoBlue
                                 UserRole.STUDENT -> SuccessGreen
-                                UserRole.PARENT -> MaterialTheme.colorScheme.primary
+                                UserRole.PARENT -> DeepEmerald
                             }
                             val roleIcon = when (contact.role) {
                                 UserRole.ADMIN -> Icons.Filled.AdminPanelSettings
@@ -891,31 +882,27 @@ fun ReportsAndChatScreen(
                             }
 
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = if (isSelected) DeepEmerald.copy(alpha = 0.08f)
-                                else MaterialTheme.colorScheme.surface,
-                                border = BorderStroke(
-                                    width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) DeepEmerald.copy(alpha = 0.55f)
-                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
-                                ),
-                                shadowElevation = 1.dp,
+                                onClick = {
+                                    selectedContactAccountId = contact.accountId
+                                    isChatConversationOpen = true
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.12f)),
+                                shadowElevation = 0.dp,
+                                tonalElevation = 0.dp,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .clickable {
-                                        selectedContactAccountId = contact.accountId
-                                        isChatConversationOpen = true
-                                    }
                                     .testTag("chat_contact_${contact.accountId}")
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
+                                    // Right side (in RTL): Circular Avatar + Name + Soft Role Pill + Class/Section & Last Message
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -925,32 +912,36 @@ fun ReportsAndChatScreen(
                                             base64Data = contact.photoBase64,
                                             fallbackIcon = roleIcon,
                                             contentDescription = contact.fullName,
-                                            size = 42.dp,
+                                            size = 44.dp,
                                             tint = roleColor
                                         )
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 Text(
                                                     text = contact.fullName,
-                                                    style = MaterialTheme.typography.bodyLarge,
-                                                    fontWeight = FontWeight.ExtraBold,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
                                                     color = MaterialTheme.colorScheme.onSurface,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                                 Surface(
                                                     shape = RoundedCornerShape(50),
-                                                    color = roleColor.copy(alpha = 0.12f)
+                                                    color = roleColor.copy(alpha = 0.10f),
+                                                    shadowElevation = 0.dp
                                                 ) {
                                                     Text(
                                                         text = contact.role.arabicTitle,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = roleColor,
-                                                        fontWeight = FontWeight.Bold,
+                                                        fontWeight = FontWeight.SemiBold,
                                                         maxLines = 1,
                                                         softWrap = false
                                                     )
@@ -965,10 +956,9 @@ fun ReportsAndChatScreen(
                                             )
                                             if (lastMsgForContact != null) {
                                                 Text(
-                                                    text = "آخر رسالة: ${lastMsgForContact.messageText.ifBlank { "صورة مرفقة" }}",
+                                                    text = lastMsgForContact.messageText.ifBlank { "صورة مرفقة" },
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    color = DeepEmerald,
-                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.80f),
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
@@ -976,31 +966,27 @@ fun ReportsAndChatScreen(
                                         }
                                     }
 
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = DeepEmerald,
+                                    // Left side (in RTL): Last message time + subtle clean chat/arrow icon only
+                                    Column(
+                                        horizontalAlignment = Alignment.End,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
                                         modifier = Modifier.padding(start = 8.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Forum,
-                                                contentDescription = null,
-                                                tint = Color(0xFFA7F3D0),
-                                                modifier = Modifier.size(14.dp)
-                                            )
+                                        if (lastMsgForContact != null && lastMsgForContact.timestamp.isNotBlank()) {
                                             Text(
-                                                text = "مراسلة",
+                                                text = lastMsgForContact.timestamp,
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                                                 maxLines = 1,
                                                 softWrap = false
                                             )
                                         }
+                                        Icon(
+                                            imageVector = Icons.Filled.ChatBubbleOutline,
+                                            contentDescription = "فتح المحادثة",
+                                            tint = DeepEmerald.copy(alpha = 0.75f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
                             }

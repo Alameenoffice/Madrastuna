@@ -3411,11 +3411,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun reviewHomeworkSubmission(
         submissionId: String,
-        feedback: String = "أحسنت، تمت المراجعة والتصحيح"
+        feedback: String = "أحسنت، تمت المراجعة والتصحيح",
+        score: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
         val reviewer = _currentUser.value?.fullName ?: "معلم المادة"
+        val cleanFeedback = InputSanitizer.sanitize(feedback).ifBlank { "تمت المراجعة والتصحيح" }
+        val cleanScore = InputSanitizer.sanitize(score)
         var targetStudentId = ""
         var subjectName = ""
 
@@ -3425,19 +3428,31 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 subjectName = sub.subjectName
                 sub.copy(
                     status = HomeworkSubmissionStatus.REVIEWED_CORRECTED,
-                    teacherFeedback = InputSanitizer.sanitize(feedback).ifBlank { "تمت المراجعة والتصحيح" },
+                    teacherFeedback = cleanFeedback,
+                    homeworkScore = cleanScore,
                     reviewedByTeacher = reviewer
                 )
             } else sub
         }
         _homeworkSubmissions.value = updated
         repo.saveHomeworkSubmissions(updated, sid)
-        showToastAlert("تم اعتماد ومراجعة حل الواجب وإبلاغ الطالب وولي الأمر", isSuccess = true)
+        showToastAlert("تم اعتماد التصحيح وإرسال الرد للطالب وولي أمره فوراً", isSuccess = true)
 
         if (targetStudentId.isNotBlank()) {
+            val notifTitle = if (cleanScore.isNotBlank()) {
+                "تم تصحيح الواجب ($subjectName) • درجة الواجب: $cleanScore"
+            } else {
+                "تم تصحيح ومراجعة الواجب ($subjectName)"
+            }
+            val notifBody = buildString {
+                append("ملاحظة المعلم ($reviewer): $cleanFeedback")
+                if (cleanScore.isNotBlank()) {
+                    append(" • درجة الواجب: $cleanScore")
+                }
+            }
             pushNotification(
-                title = "تم تصحيح ومراجعة الواجب ($subjectName)",
-                body = "راجع المعلم ($reviewer) حل الواجب المصور: $feedback",
+                title = notifTitle,
+                body = notifBody,
                 type = NotificationType.HOMEWORK,
                 targetStudentId = targetStudentId
             )

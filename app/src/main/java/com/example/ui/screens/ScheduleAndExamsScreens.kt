@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -523,16 +524,17 @@ fun ScheduleAndHomeworkScreen(
                                     }
                                 }
 
-                                // Photo Homework Submission & Teacher Review (تسليم الواجب بالصورة)
+                                // Photo Homework Submission & Teacher Review (تسليم الواجب بالصورة وتصحيح المعلم)
                                 if (featureSettings.homeworkSubmissionEnabled) {
                                     if (isParentOrStudent) {
                                         Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = DeepEmerald.copy(alpha = 0.07f),
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = DeepEmerald.copy(alpha = 0.06f),
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Column(
-                                                modifier = Modifier.padding(10.dp),
+                                                modifier = Modifier.padding(12.dp),
                                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 if (mySubmission != null) {
@@ -543,29 +545,131 @@ fun ScheduleAndHomeworkScreen(
                                                     ) {
                                                         Row(
                                                             verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                                                             modifier = Modifier.weight(1f)
                                                         ) {
                                                             Base64AvatarImage(
                                                                 base64Data = mySubmission.solutionImageBase64,
-                                                                size = 42.dp,
+                                                                size = 44.dp,
                                                                 fallbackIcon = Icons.Filled.CameraAlt,
                                                                 contentDescription = "صورة حل الواجب"
                                                             )
-                                                            Column {
+                                                            Column(
+                                                                modifier = Modifier.weight(1f),
+                                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    Surface(
+                                                                        shape = RoundedCornerShape(50),
+                                                                        color = if (mySubmission.isReviewed) {
+                                                                            SuccessGreen.copy(alpha = 0.14f)
+                                                                        } else {
+                                                                            DeepEmerald.copy(alpha = 0.12f)
+                                                                        }
+                                                                    ) {
+                                                                        Row(
+                                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                                            verticalAlignment = Alignment.CenterVertically,
+                                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                        ) {
+                                                                            Icon(
+                                                                                imageVector = if (mySubmission.isReviewed) Icons.Filled.CheckCircle else Icons.Filled.HourglassTop,
+                                                                                contentDescription = null,
+                                                                                tint = if (mySubmission.isReviewed) SuccessGreen else DeepEmerald,
+                                                                                modifier = Modifier.size(13.dp)
+                                                                            )
+                                                                            Text(
+                                                                                text = if (mySubmission.isReviewed) "تمت المراجعة والتصحيح" else "تم إرسال صورة الحل للمعلم",
+                                                                                style = MaterialTheme.typography.labelSmall,
+                                                                                fontWeight = FontWeight.ExtraBold,
+                                                                                color = if (mySubmission.isReviewed) SuccessGreen else DeepEmerald,
+                                                                                maxLines = 1,
+                                                                                softWrap = false
+                                                                            )
+                                                                        }
+                                                                    }
+
+                                                                    if (mySubmission.homeworkScore.isNotBlank()) {
+                                                                        Surface(
+                                                                            shape = RoundedCornerShape(50),
+                                                                            color = Color(0xFFECFDF5),
+                                                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f))
+                                                                        ) {
+                                                                            Row(
+                                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                            ) {
+                                                                                Icon(
+                                                                                    imageVector = Icons.Filled.WorkspacePremium,
+                                                                                    contentDescription = null,
+                                                                                    tint = DeepEmerald,
+                                                                                    modifier = Modifier.size(13.dp)
+                                                                                )
+                                                                                Text(
+                                                                                    text = "درجة الواجب: ${mySubmission.homeworkScore}",
+                                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                                    color = DeepForestGreen,
+                                                                                    maxLines = 1,
+                                                                                    softWrap = false
+                                                                                )
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+
                                                                 Text(
-                                                                    text = if (mySubmission.isReviewed) "تمت المراجعة والتصحيح" else "تم إرسال صورة الحل للمعلم",
-                                                                    style = MaterialTheme.typography.labelMedium,
-                                                                    fontWeight = FontWeight.ExtraBold,
-                                                                    color = if (mySubmission.isReviewed) SuccessGreen else DeepEmerald
+                                                                    text = "تاريخ التسليم: ${mySubmission.submittedAt}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                                                 )
-                                                                if (mySubmission.teacherFeedback.isNotBlank()) {
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (mySubmission.teacherFeedback.isNotBlank()) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(10.dp),
+                                                            color = MaterialTheme.colorScheme.surface,
+                                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            Column(
+                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                                                            ) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Filled.RateReview,
+                                                                        contentDescription = null,
+                                                                        tint = DeepEmerald,
+                                                                        modifier = Modifier.size(15.dp)
+                                                                    )
                                                                     Text(
-                                                                        text = "ملاحظة المعلم: ${mySubmission.teacherFeedback}",
+                                                                        text = if (mySubmission.reviewedByTeacher.isNotBlank()) {
+                                                                            "ملاحظة المعلم (${mySubmission.reviewedByTeacher}):"
+                                                                        } else {
+                                                                            "ملاحظة المعلم:"
+                                                                        },
                                                                         style = MaterialTheme.typography.labelSmall,
+                                                                        fontWeight = FontWeight.ExtraBold,
                                                                         color = DeepEmerald
                                                                     )
                                                                 }
+                                                                Text(
+                                                                    text = mySubmission.teacherFeedback,
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                                    fontWeight = FontWeight.Medium
+                                                                )
                                                             }
                                                         }
                                                     }
@@ -606,13 +710,14 @@ fun ScheduleAndHomeworkScreen(
                                         }
                                     } else if (canPublish && hwSubs.isNotEmpty()) {
                                         Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = DeepEmerald.copy(alpha = 0.07f),
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = DeepEmerald.copy(alpha = 0.06f),
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Column(
-                                                modifier = Modifier.padding(10.dp),
-                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
                                                 Text(
                                                     text = "حلول الواجب المرسلة بالصورة من الطلاب (${hwSubs.size}):",
@@ -621,50 +726,215 @@ fun ScheduleAndHomeworkScreen(
                                                     color = DeepEmerald
                                                 )
                                                 hwSubs.forEach { sub ->
-                                                    Row(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .padding(vertical = 4.dp),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
+                                                    var isGradingExpanded by remember(sub.id, sub.isReviewed) {
+                                                        mutableStateOf(!sub.isReviewed)
+                                                    }
+                                                    var customFeedbackInput by remember(sub.id, sub.teacherFeedback) {
+                                                        mutableStateOf(
+                                                            sub.teacherFeedback.ifBlank {
+                                                                "أحسنت بارك الله بك، تمت مراجعة وتصحيح الواجب"
+                                                            }
+                                                        )
+                                                    }
+                                                    var customScoreInput by remember(sub.id, sub.homeworkScore) {
+                                                        mutableStateOf(sub.homeworkScore)
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = MaterialTheme.colorScheme.surface,
+                                                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                                        modifier = Modifier.fillMaxWidth()
                                                     ) {
-                                                        Row(
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                            modifier = Modifier.weight(1f)
+                                                        Column(
+                                                            modifier = Modifier.padding(10.dp),
+                                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                                         ) {
-                                                            Base64AvatarImage(
-                                                                base64Data = sub.solutionImageBase64,
-                                                                size = 40.dp,
-                                                                fallbackIcon = Icons.Filled.Image,
-                                                                contentDescription = "حل الطالب ${sub.studentName}"
-                                                            )
-                                                            Column {
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                                    modifier = Modifier.weight(1f)
+                                                                ) {
+                                                                    Base64AvatarImage(
+                                                                        base64Data = sub.solutionImageBase64,
+                                                                        size = 44.dp,
+                                                                        fallbackIcon = Icons.Filled.Image,
+                                                                        contentDescription = "حل الطالب ${sub.studentName}"
+                                                                    )
+                                                                    Column(modifier = Modifier.weight(1f)) {
+                                                                        Text(
+                                                                            text = "${sub.studentName} (اضغط على الصورة للتكبير)",
+                                                                            style = MaterialTheme.typography.labelMedium,
+                                                                            fontWeight = FontWeight.Bold
+                                                                        )
+                                                                        Row(
+                                                                            verticalAlignment = Alignment.CenterVertically,
+                                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                                        ) {
+                                                                            Text(
+                                                                                text = if (sub.isReviewed) "تم التصحيح" else "بانتظار التصحيح • ${sub.submittedAt}",
+                                                                                style = MaterialTheme.typography.labelSmall,
+                                                                                color = if (sub.isReviewed) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                                fontWeight = if (sub.isReviewed) FontWeight.Bold else FontWeight.Normal
+                                                                            )
+                                                                            if (sub.homeworkScore.isNotBlank()) {
+                                                                                Surface(
+                                                                                    shape = RoundedCornerShape(50),
+                                                                                    color = Color(0xFFECFDF5),
+                                                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.4f))
+                                                                                ) {
+                                                                                    Text(
+                                                                                        text = "درجة الواجب: ${sub.homeworkScore}",
+                                                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                                        fontWeight = FontWeight.ExtraBold,
+                                                                                        color = DeepEmerald
+                                                                                    )
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                TextButton(
+                                                                    onClick = { isGradingExpanded = !isGradingExpanded }
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = if (sub.isReviewed) Icons.Filled.Edit else Icons.Filled.RateReview,
+                                                                        contentDescription = null,
+                                                                        tint = DeepEmerald,
+                                                                        modifier = Modifier.size(16.dp)
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                                    Text(
+                                                                        text = if (sub.isReviewed) "تعديل الرد" else "تصحيح",
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = DeepEmerald
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            if (sub.isReviewed && !isGradingExpanded && sub.teacherFeedback.isNotBlank()) {
                                                                 Text(
-                                                                    text = "${sub.studentName} (اضغط على الصورة للتكبير)",
-                                                                    style = MaterialTheme.typography.labelMedium,
-                                                                    fontWeight = FontWeight.Bold
-                                                                )
-                                                                Text(
-                                                                    text = if (sub.isReviewed) "تمت المراجعة" else "بانتظار التصحيح • ${sub.submittedAt}",
+                                                                    text = "ملاحظة المعلم: ${sub.teacherFeedback}",
                                                                     style = MaterialTheme.typography.labelSmall,
-                                                                    color = if (sub.isReviewed) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                                                                    color = DeepEmerald,
+                                                                    fontWeight = FontWeight.SemiBold
                                                                 )
                                                             }
-                                                        }
-                                                        if (!sub.isReviewed) {
-                                                            TextButton(
-                                                                onClick = {
-                                                                    viewModel.reviewHomeworkSubmission(
-                                                                        submissionId = sub.id,
-                                                                        feedback = "أحسنت بارك الله بك، تمت مراجعة وتصحيح الواجب"
+
+                                                            if (isGradingExpanded) {
+                                                                HorizontalDivider(color = DeepEmerald.copy(alpha = 0.12f))
+
+                                                                val quickReplies = listOf(
+                                                                    "أحسنت بارك الله بك، حل نموذجي ومرتب",
+                                                                    "ممتاز جداً، إجابات صحيحة وخط واضح",
+                                                                    "جيد، يرجى مراجعة الخطوات وتصحيح الأخطاء البسيطة",
+                                                                    "يرجى إكمال حل جميع فقرات الواجب"
+                                                                )
+                                                                LazyRow(
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    items(quickReplies) { preset ->
+                                                                        SuggestionChip(
+                                                                            onClick = { customFeedbackInput = preset },
+                                                                            label = {
+                                                                                Text(
+                                                                                    text = preset,
+                                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                                    maxLines = 1
+                                                                                )
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                }
+
+                                                                OutlinedTextField(
+                                                                    value = customFeedbackInput,
+                                                                    onValueChange = { customFeedbackInput = it },
+                                                                    label = { Text("رد وملاحظة المعلم المخصصة للطالب") },
+                                                                    placeholder = { Text("اكتب ملاحظتك التربوية أو توجيهاتك للطالب...") },
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .testTag("hw_feedback_input_${sub.id}"),
+                                                                    shape = RoundedCornerShape(12.dp),
+                                                                    maxLines = 3
+                                                                )
+
+                                                                val quickScores = listOf("10 / 10", "9 / 10", "ممتاز 100%", "جيد جداً")
+                                                                Row(
+                                                                    modifier = Modifier.fillMaxWidth(),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                                ) {
+                                                                    OutlinedTextField(
+                                                                        value = customScoreInput,
+                                                                        onValueChange = { customScoreInput = it },
+                                                                        label = { Text("درجة الواجب (اختياري — مثل: 10 / 10)") },
+                                                                        singleLine = true,
+                                                                        modifier = Modifier
+                                                                            .weight(1f)
+                                                                            .testTag("hw_score_input_${sub.id}"),
+                                                                        shape = RoundedCornerShape(12.dp)
                                                                     )
-                                                                },
-                                                                modifier = Modifier.testTag("review_hw_sub_btn_${sub.id}")
-                                                            ) {
-                                                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(16.dp))
-                                                                Spacer(modifier = Modifier.width(4.dp))
-                                                                Text("تصحيح", fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                                                }
+
+                                                                LazyRow(
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    items(quickScores) { sc ->
+                                                                        FilterChip(
+                                                                            selected = customScoreInput == sc,
+                                                                            onClick = {
+                                                                                customScoreInput = if (customScoreInput == sc) "" else sc
+                                                                            },
+                                                                            label = {
+                                                                                Text(
+                                                                                    text = sc,
+                                                                                    style = MaterialTheme.typography.labelSmall
+                                                                                )
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                }
+
+                                                                Button(
+                                                                    onClick = {
+                                                                        viewModel.reviewHomeworkSubmission(
+                                                                            submissionId = sub.id,
+                                                                            feedback = customFeedbackInput,
+                                                                            score = customScoreInput
+                                                                        )
+                                                                        isGradingExpanded = false
+                                                                    },
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .testTag("review_hw_sub_btn_${sub.id}"),
+                                                                    shape = RoundedCornerShape(12.dp),
+                                                                    colors = ButtonDefaults.buttonColors(
+                                                                        containerColor = DeepEmerald,
+                                                                        contentColor = Color.White
+                                                                    )
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Filled.CheckCircle,
+                                                                        contentDescription = null,
+                                                                        tint = Color(0xFFA7F3D0),
+                                                                        modifier = Modifier.size(17.dp)
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                                    Text(
+                                                                        text = "اعتماد التصحيح وإرسال الرد",
+                                                                        fontWeight = FontWeight.ExtraBold
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }

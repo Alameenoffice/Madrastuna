@@ -1899,6 +1899,7 @@ class SchoolRepository(context: Context) {
                         submittedAt = o.optString("submittedAt"),
                         status = st,
                         teacherFeedback = o.optString("teacherFeedback"),
+                        homeworkScore = o.optString("homeworkScore"),
                         reviewedByTeacher = o.optString("reviewedByTeacher"),
                         schoolId = itemSid
                     )
@@ -1927,6 +1928,7 @@ class SchoolRepository(context: Context) {
                 put("submittedAt", item.submittedAt)
                 put("status", item.status.name)
                 put("teacherFeedback", InputSanitizer.sanitize(item.teacherFeedback))
+                put("homeworkScore", InputSanitizer.sanitize(item.homeworkScore))
                 put("reviewedByTeacher", InputSanitizer.sanitize(item.reviewedByTeacher))
                 put("schoolId", schoolId)
             })

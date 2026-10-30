@@ -911,6 +911,7 @@ data class HomeworkSubmissionItem(
     val submittedAt: String,
     val status: HomeworkSubmissionStatus = HomeworkSubmissionStatus.PENDING_REVIEW,
     val teacherFeedback: String = "",
+    val homeworkScore: String = "",
     val reviewedByTeacher: String = "",
     val schoolId: String = ""
 ) {
