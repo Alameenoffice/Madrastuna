@@ -494,17 +494,60 @@ data class ParentReport(
     val schoolId: String = ""
 )
 
+data class ChatContactItem(
+    val accountId: String,
+    val fullName: String,
+    val role: UserRole,
+    val subtitle: String,
+    val gradeClass: String = "",
+    val sectionName: String = "",
+    val phone: String = "",
+    val photoBase64: String = "",
+    val linkedStudentId: String = "",
+    val linkedStudentName: String = ""
+)
+
 data class ChatMessage(
     val id: String,
     val studentId: String,
     val studentName: String,
+    val senderId: String = "",
     val senderName: String,
     val senderRole: UserRole,
+    val recipientId: String = "",
+    val recipientName: String = "",
+    val recipientRole: UserRole = UserRole.PARENT,
+    val conversationKey: String = "",
     val messageText: String,
     val timestamp: String,
     val imageBase64: String = "",
     val schoolId: String = ""
-)
+) {
+    companion object {
+        fun buildConversationKey(userId1: String, userId2: String): String {
+            return listOf(userId1.trim(), userId2.trim()).sorted().joinToString("__")
+        }
+    }
+
+    fun matchesConversation(currentUser: UserAccount, contact: ChatContactItem): Boolean {
+        val expectedKey = buildConversationKey(currentUser.id, contact.accountId)
+        if (conversationKey.isNotEmpty()) {
+            return conversationKey == expectedKey
+        }
+        if (senderId.isNotEmpty() && recipientId.isNotEmpty()) {
+            return (senderId == currentUser.id && recipientId == contact.accountId) ||
+                (senderId == contact.accountId && recipientId == currentUser.id)
+        }
+        // Fallback for legacy student-scoped messages with Administration
+        val targetStuId = contact.linkedStudentId.ifBlank { currentUser.linkedStudentId }
+        val involvesAdmin = currentUser.role == UserRole.ADMIN || contact.role == UserRole.ADMIN
+        val involvesParentOrStudent = currentUser.role == UserRole.PARENT ||
+            currentUser.role == UserRole.STUDENT ||
+            contact.role == UserRole.PARENT ||
+            contact.role == UserRole.STUDENT
+        return involvesAdmin && involvesParentOrStudent && targetStuId.isNotEmpty() && studentId == targetStuId
+    }
+}
 
 data class SchoolEvent(
     val id: String,
@@ -515,6 +558,8 @@ data class SchoolEvent(
     val location: String = "الموصل - زمار",
     val imageBase64: String = "",
     val authorName: String = "إدارة المدرسة",
+    val heartCount: Int = 0,
+    val likedByUserIds: List<String> = emptyList(),
     val schoolId: String = ""
 )
 

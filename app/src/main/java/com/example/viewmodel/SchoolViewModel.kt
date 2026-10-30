@@ -735,6 +735,130 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         return all.filter { notif -> notif.isTargetedForUser(user, linkedStu) }
     }
 
+    /**
+     * Role-Based Messaging Contacts Directory:
+     * - ADMIN: All Teachers, all Students, and all Parents in the school.
+     * - TEACHER: School Admin + ONLY Students and Parents registered in the classes & sections assigned to this Teacher.
+     * - STUDENT / PARENT: ONLY the School Admin + Teachers assigned to this student's specific class & section.
+     */
+    fun getAllowedChatContacts(user: UserAccount? = _currentUser.value): List<ChatContactItem> {
+        if (user == null) return emptyList()
+        val sid = _schoolConfig.value.schoolId
+        val schoolAccounts = _accounts.value.filter { it.schoolId.isEmpty() || it.schoolId == sid }
+        val schoolStudents = _students.value.filter { it.schoolId.isEmpty() || it.schoolId == sid }
+
+        val adminAccount = schoolAccounts.firstOrNull { it.role == UserRole.ADMIN }
+        val adminContact = ChatContactItem(
+            accountId = adminAccount?.id ?: "admin_${sid.lowercase()}",
+            fullName = adminAccount?.fullName?.ifBlank { "مدير المدرسة" } ?: "مدير المدرسة",
+            role = UserRole.ADMIN,
+            subtitle = "مدير المدرسة • إدارة ${_schoolConfig.value.schoolName}",
+            phone = adminAccount?.phone?.ifBlank { _schoolConfig.value.phone } ?: _schoolConfig.value.phone,
+            photoBase64 = adminAccount?.photoBase64?.ifBlank { _schoolConfig.value.logoBase64 } ?: _schoolConfig.value.logoBase64
+        )
+
+        val teacherContacts = schoolAccounts
+            .filter { it.role == UserRole.TEACHER && it.id != user.id }
+            .map { t ->
+                val spec = t.specialty.ifBlank { "كادر تدريسي" }
+                val assigned = t.assignedClasses.ifBlank { "الصفوف المسندة" }
+                ChatContactItem(
+                    accountId = t.id,
+                    fullName = t.fullName,
+                    role = UserRole.TEACHER,
+                    subtitle = "معلم ($spec) • $assigned",
+                    gradeClass = assigned,
+                    phone = t.phone,
+                    photoBase64 = t.photoBase64
+                )
+            }
+
+        fun buildStudentAndParentContacts(studentsSubset: List<StudentRecord>): List<ChatContactItem> {
+            val result = mutableListOf<ChatContactItem>()
+            studentsSubset.forEach { stu ->
+                val stuAcc = schoolAccounts.firstOrNull {
+                    it.role == UserRole.STUDENT &&
+                        (it.linkedStudentId == stu.id || it.username.equals(stu.studentUsername, ignoreCase = true))
+                }
+                val parAcc = schoolAccounts.firstOrNull {
+                    it.role == UserRole.PARENT &&
+                        (it.linkedStudentId == stu.id || it.username.equals(stu.parentUsername, ignoreCase = true))
+                }
+                val stuAccId = stuAcc?.id ?: "acc_stu_${stu.id}"
+                val parAccId = parAcc?.id ?: "acc_par_${stu.id}"
+
+                if (stuAccId != user.id) {
+                    result.add(
+                        ChatContactItem(
+                            accountId = stuAccId,
+                            fullName = stu.studentName,
+                            role = UserRole.STUDENT,
+                            subtitle = "طالب • ${stu.gradeClass} - شعبة (${stu.sectionName})",
+                            gradeClass = stu.gradeClass,
+                            sectionName = stu.sectionName,
+                            phone = stu.parentPhone,
+                            photoBase64 = stu.photoBase64.ifBlank { stuAcc?.photoBase64.orEmpty() },
+                            linkedStudentId = stu.id,
+                            linkedStudentName = stu.studentName
+                        )
+                    )
+                }
+                if (parAccId != user.id) {
+                    result.add(
+                        ChatContactItem(
+                            accountId = parAccId,
+                            fullName = stu.parentName,
+                            role = UserRole.PARENT,
+                            subtitle = "ولي أمر الطالب: ${stu.studentName} • ${stu.gradeClass} (${stu.sectionName})",
+                            gradeClass = stu.gradeClass,
+                            sectionName = stu.sectionName,
+                            phone = stu.parentPhone,
+                            photoBase64 = parAcc?.photoBase64?.ifBlank { stu.photoBase64 } ?: stu.photoBase64,
+                            linkedStudentId = stu.id,
+                            linkedStudentName = stu.studentName
+                        )
+                    )
+                }
+            }
+            return result
+        }
+
+        return when (user.role) {
+            UserRole.ADMIN -> {
+                teacherContacts + buildStudentAndParentContacts(schoolStudents)
+            }
+            UserRole.TEACHER -> {
+                val assignedStudents = schoolStudents.filter { stu ->
+                    user.canTeacherAccessClassSection(stu.gradeClass, stu.sectionName)
+                }
+                listOf(adminContact) + buildStudentAndParentContacts(assignedStudents)
+            }
+            UserRole.STUDENT, UserRole.PARENT -> {
+                val linkedStu = schoolStudents.firstOrNull { it.id == user.linkedStudentId }
+                val stuClass = linkedStu?.gradeClass?.ifBlank { user.gradeClass } ?: user.gradeClass
+                val stuSection = linkedStu?.sectionName?.ifBlank { user.sectionName } ?: user.sectionName
+                val myClassTeachers = schoolAccounts
+                    .filter { t ->
+                        t.role == UserRole.TEACHER && t.canTeacherAccessClassSection(stuClass, stuSection)
+                    }
+                    .map { t ->
+                        val spec = t.specialty.ifBlank { "معلم المادة" }
+                        ChatContactItem(
+                            accountId = t.id,
+                            fullName = t.fullName,
+                            role = UserRole.TEACHER,
+                            subtitle = "معلم ($spec) • $stuClass - شعبة ($stuSection)",
+                            gradeClass = stuClass,
+                            sectionName = stuSection,
+                            phone = t.phone,
+                            photoBase64 = t.photoBase64
+                        )
+                    }
+                listOf(adminContact) + myClassTeachers
+            }
+        }
+    }
+
     fun toggleDarkMode() {
         val next = !_isDarkMode.value
         _isDarkMode.value = next
@@ -1872,21 +1996,25 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * Interactive Heart Reaction on the Golden Honor Roll.
-     * Increments the student's live heartCount and syncs immediately to schools/{schoolId}/honor_roll in Firestore.
+     * Restricted to ONE reaction per user (Toggle Like/Unlike via `likedBy` array containing `currentUser.id`),
+     * synced immediately in real time to schools/{schoolId}/honor_roll in Firestore.
      */
     fun reactWithHeartToHonorStudent(studentId: String) {
         if (!validateSessionAndSchoolAccess()) return
         val sid = _schoolConfig.value.schoolId
         val userId = _currentUser.value?.id.orEmpty()
+        if (userId.isEmpty()) return
+
         val updated = _students.value.map { s ->
             if (s.id == studentId) {
-                val updatedLikers = if (userId.isNotEmpty() && userId !in s.likedByUserIds) {
-                    s.likedByUserIds + userId
+                val alreadyLiked = userId in s.likedByUserIds
+                val updatedLikers = if (alreadyLiked) {
+                    s.likedByUserIds.filterNot { it == userId }
                 } else {
-                    s.likedByUserIds
+                    (s.likedByUserIds + userId).distinct()
                 }
                 s.copy(
-                    heartCount = s.heartCount + 1,
+                    heartCount = updatedLikers.size,
                     likedByUserIds = updatedLikers
                 )
             } else s
@@ -1998,8 +2126,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
-    fun sendChatMessage(
-        student: StudentRecord,
+    fun sendDirectChatMessage(
+        contact: ChatContactItem,
         messageText: String,
         imageBase64: String = ""
     ) {
@@ -2012,12 +2140,22 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         val sid = _schoolConfig.value.schoolId
         val timeLabel = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
+        val relatedStudentId = contact.linkedStudentId.ifBlank { user.linkedStudentId }
+        val relatedStudentName = contact.linkedStudentName.ifBlank {
+            _students.value.firstOrNull { it.id == relatedStudentId }?.studentName ?: contact.fullName
+        }
+
         val msg = ChatMessage(
             id = "msg_${UUID.randomUUID().toString().take(6)}",
-            studentId = student.id,
-            studentName = student.studentName,
+            studentId = relatedStudentId,
+            studentName = relatedStudentName,
+            senderId = user.id,
             senderName = "${user.fullName} (${user.role.arabicTitle})",
             senderRole = user.role,
+            recipientId = contact.accountId,
+            recipientName = contact.fullName,
+            recipientRole = contact.role,
+            conversationKey = ChatMessage.buildConversationKey(user.id, contact.accountId),
             messageText = cleanText,
             timestamp = timeLabel,
             imageBase64 = imageBase64,
@@ -2027,27 +2165,38 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _chatMessages.value = updated
         repo.saveChatMessages(updated, sid)
 
-        showToastAlert("تم إرسال الرسالة في المحادثة المباشرة", isSuccess = true)
+        showToastAlert("تم إرسال الرسالة إلى ${contact.fullName}", isSuccess = true)
 
-        // Strictly target the recipient only (Parent/Student of that student, or Admin if sent by Parent/Student)
-        if (user.role == UserRole.ADMIN || user.role == UserRole.TEACHER) {
-            pushNotification(
-                title = "رسالة جديدة من ${msg.senderName}",
-                body = cleanText.ifBlank { "تم إرفاق صورة في محادثة الطالب ${student.studentName}" },
-                type = NotificationType.REPORT,
-                targetStudentId = student.id
-            )
-        } else {
-            val adminAccount = _accounts.value.firstOrNull { it.role == UserRole.ADMIN }
-            if (adminAccount != null) {
-                pushNotification(
-                    title = "رسالة جديدة من ${msg.senderName}",
-                    body = cleanText.ifBlank { "تم إرفاق صورة في محادثة الطالب ${student.studentName}" },
-                    type = NotificationType.REPORT,
-                    targetUserId = adminAccount.id
-                )
-            }
+        // Strictly notify ONLY the exact recipient accountId
+        pushNotification(
+            title = "رسالة جديدة من ${msg.senderName}",
+            body = cleanText.ifBlank { "تم إرفاق صورة في المحادثة المباشرة" },
+            type = NotificationType.REPORT,
+            targetUserId = contact.accountId
+        )
+    }
+
+    fun sendChatMessage(
+        student: StudentRecord,
+        messageText: String,
+        imageBase64: String = ""
+    ) {
+        val parentAcc = _accounts.value.firstOrNull {
+            it.role == UserRole.PARENT && it.linkedStudentId == student.id
         }
+        val contact = ChatContactItem(
+            accountId = parentAcc?.id ?: "acc_par_${student.id}",
+            fullName = student.parentName,
+            role = UserRole.PARENT,
+            subtitle = "ولي أمر الطالب: ${student.studentName} (${student.gradeClass})",
+            gradeClass = student.gradeClass,
+            sectionName = student.sectionName,
+            phone = student.parentPhone,
+            photoBase64 = student.photoBase64,
+            linkedStudentId = student.id,
+            linkedStudentName = student.studentName
+        )
+        sendDirectChatMessage(contact, messageText, imageBase64)
     }
 
     // =========================================================================
@@ -2079,6 +2228,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             location = InputSanitizer.sanitize(location).ifBlank { "الموصل - زمار" },
             imageBase64 = imageBase64,
             authorName = author,
+            heartCount = 0,
+            likedByUserIds = emptyList(),
             schoolId = sid
         )
         val updated = listOf(ev) + _events.value
@@ -2092,6 +2243,35 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             body = ev.description,
             type = NotificationType.GENERAL
         )
+    }
+
+    /**
+     * Interactive Heart Reaction on Events & News Gallery (`events_gallery`).
+     * Restricted to ONE reaction per user (`likedBy` contains `currentUser.id`),
+     * synced immediately in real time to schools/{schoolId}/events_gallery in Firestore.
+     */
+    fun toggleEventHeartReaction(eventId: String) {
+        if (!validateSessionAndSchoolAccess()) return
+        val sid = _schoolConfig.value.schoolId
+        val userId = _currentUser.value?.id.orEmpty()
+        if (userId.isEmpty()) return
+
+        val updated = _events.value.map { ev ->
+            if (ev.id == eventId) {
+                val alreadyLiked = userId in ev.likedByUserIds
+                val updatedLikers = if (alreadyLiked) {
+                    ev.likedByUserIds.filterNot { it == userId }
+                } else {
+                    (ev.likedByUserIds + userId).distinct()
+                }
+                ev.copy(
+                    heartCount = updatedLikers.size,
+                    likedByUserIds = updatedLikers
+                )
+            } else ev
+        }
+        _events.value = updated
+        repo.saveEvents(updated, sid)
     }
 
     // =========================================================================

@@ -534,8 +534,8 @@ fun GoldenVectorMedal(
 }
 
 /**
- * Interactive Heart Reaction Button for the Golden Honor Roll (لوحة الشرف الذهبية)
- * with live counter, elastic heart pulse, and floating mini-hearts & golden sparkles animation.
+ * Interactive Heart Reaction Button for Golden Honor Roll (لوحة الشرف الذهبية) and Events Gallery (معرض الفعاليات)
+ * with single-reaction-per-user toggle (`isLikedByMe`), live counter, elastic heart pulse, and floating mini-hearts & golden sparkles animation.
  */
 @Composable
 fun HonorHeartReactionButton(
@@ -543,6 +543,7 @@ fun HonorHeartReactionButton(
     isLikedByMe: Boolean,
     onReact: () -> Unit,
     modifier: Modifier = Modifier,
+    emptyLabel: String = "تشجيع",
     testTag: String = ""
 ) {
     var burstTrigger by remember { mutableIntStateOf(0) }
@@ -575,7 +576,6 @@ fun HonorHeartReactionButton(
         }
     }
 
-    val isActive = isLikedByMe || heartCount > 0 || burstTrigger > 0
     val crimsonHeart = Color(0xFFE11D48)
     val softRoseBg = Color(0xFFFFE4E6)
 
@@ -583,7 +583,7 @@ fun HonorHeartReactionButton(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        // Floating mini-hearts & golden sparkles particle burst around the heart button
+        // Floating mini-hearts & golden sparkles particle burst around the heart button when liking
         if (burstTrigger > 0 && burstProgress.value < 0.99f) {
             val p = burstProgress.value
             val alpha = (1f - p).coerceIn(0f, 1f)
@@ -621,16 +621,18 @@ fun HonorHeartReactionButton(
 
         Surface(
             shape = RoundedCornerShape(50),
-            color = if (isActive) softRoseBg else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+            color = if (isLikedByMe) softRoseBg else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .border(
                     width = 1.dp,
-                    color = if (isActive) crimsonHeart.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    color = if (isLikedByMe) crimsonHeart.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                     shape = RoundedCornerShape(50)
                 )
                 .clickable {
-                    burstTrigger++
+                    if (!isLikedByMe) {
+                        burstTrigger++
+                    }
                     onReact()
                 }
                 .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier)
@@ -641,16 +643,16 @@ fun HonorHeartReactionButton(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(
-                    imageVector = if (isActive) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    imageVector = if (isLikedByMe) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     contentDescription = "تفاعل القلب",
-                    tint = if (isActive) crimsonHeart else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (isLikedByMe) crimsonHeart else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size((20f * heartScale.value).dp)
                 )
                 Text(
-                    text = if (heartCount > 0) "$heartCount" else "تشجيع",
+                    text = if (heartCount > 0) "$heartCount" else emptyLabel,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
-                    color = if (isActive) Color(0xFF9F1239) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isLikedByMe) Color(0xFF9F1239) else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     softWrap = false
                 )
@@ -658,7 +660,7 @@ fun HonorHeartReactionButton(
                     Text(
                         text = "قلب",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFBE123C),
+                        color = if (isLikedByMe) Color(0xFFBE123C) else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         softWrap = false
                     )

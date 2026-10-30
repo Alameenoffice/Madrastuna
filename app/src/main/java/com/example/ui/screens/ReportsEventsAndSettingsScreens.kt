@@ -53,6 +53,7 @@ fun ReportsAndChatScreen(
     val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val accounts by viewModel.accounts.collectAsState()
     val students by viewModel.students.collectAsState()
     val reports by viewModel.reports.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
@@ -67,20 +68,64 @@ fun ReportsAndChatScreen(
         viewModel.getScopedStudentsForUser(currentUser)
     }
 
-    var selectedStudentId by remember(scopedStudents) {
-        mutableStateOf(scopedStudents.firstOrNull()?.id ?: "")
-    }
-    val selectedStudent = remember(scopedStudents, selectedStudentId) {
-        scopedStudents.firstOrNull { it.id == selectedStudentId } ?: scopedStudents.firstOrNull()
-    }
-
     val visibleReports = remember(reports, scopedStudents) {
         val allowedIds = scopedStudents.map { it.id }.toSet()
         reports.filter { it.studentId in allowedIds }
     }
 
-    val studentChats = remember(chatMessages, selectedStudent) {
-        chatMessages.filter { it.studentId == selectedStudent?.id }
+    // Role-based contacts directory for Direct Messaging
+    val allowedChatContacts = remember(accounts, students, currentUser, schoolConfig) {
+        viewModel.getAllowedChatContacts(currentUser)
+    }
+    var chatSearchQuery by remember { mutableStateOf("") }
+    var selectedRoleFilter by remember { mutableStateOf("الكل") }
+    var selectedClassFilter by remember { mutableStateOf("الكل") }
+
+    val filteredChatContacts = remember(
+        allowedChatContacts,
+        chatSearchQuery,
+        selectedRoleFilter,
+        selectedClassFilter
+    ) {
+        allowedChatContacts.filter { c ->
+            val roleMatch = when (selectedRoleFilter) {
+                "المدير", "مدير المدرسة" -> c.role == UserRole.ADMIN
+                "المعلمون", "معلمو صفي" -> c.role == UserRole.TEACHER
+                "الطلاب", "طلابي" -> c.role == UserRole.STUDENT
+                "أولياء الأمور" -> c.role == UserRole.PARENT
+                else -> true
+            }
+            val classMatch = selectedClassFilter == "الكل" ||
+                c.gradeClass.contains(selectedClassFilter, ignoreCase = true) ||
+                c.subtitle.contains(selectedClassFilter, ignoreCase = true)
+            val query = chatSearchQuery.trim()
+            val queryMatch = query.isEmpty() ||
+                c.fullName.contains(query, ignoreCase = true) ||
+                c.subtitle.contains(query, ignoreCase = true) ||
+                c.gradeClass.contains(query, ignoreCase = true) ||
+                c.linkedStudentName.contains(query, ignoreCase = true)
+            roleMatch && classMatch && queryMatch
+        }
+    }
+
+    var selectedContactAccountId by remember(allowedChatContacts) {
+        mutableStateOf(allowedChatContacts.firstOrNull()?.accountId ?: "")
+    }
+    val selectedContact = remember(filteredChatContacts, allowedChatContacts, selectedContactAccountId) {
+        filteredChatContacts.firstOrNull { it.accountId == selectedContactAccountId }
+            ?: allowedChatContacts.firstOrNull { it.accountId == selectedContactAccountId }
+            ?: filteredChatContacts.firstOrNull()
+            ?: allowedChatContacts.firstOrNull()
+    }
+
+    val activeConversationMessages = remember(chatMessages, currentUser, selectedContact) {
+        val user = currentUser
+        val contact = selectedContact
+        if (user == null || contact == null) {
+            emptyList()
+        } else {
+            chatMessages.filter { msg -> msg.matchesConversation(user, contact) }
+        }
     }
 
     var draftMessage by remember { mutableStateOf("") }
@@ -253,24 +298,193 @@ fun ReportsAndChatScreen(
                 }
             }
         } else {
-            // Direct Messaging Inbox between Parent & Administration
-            if (!isParentOrStudent) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(scopedStudents, key = { it.id }) { stu ->
+            // =========================================================================
+            // Role-Based Direct Messaging & Smart Search (المراسلة والمحادثات حسب الدور)
+            // =========================================================================
+            val searchPlaceholder = when (currentUser?.role) {
+                UserRole.ADMIN -> "ابحث بالاسم أو الصف عن (معلم، طالب، أو ولي أمر)..."
+                UserRole.TEACHER -> "ابحث عن المدير أو طلاب وأولياء أمور صفوفك المسندة..."
+                else -> "ابحث عن مدير المدرسة أو معلمي صفك وشعبتك..."
+            }
+
+            val roleFilterOptions = remember(currentUser?.role) {
+                when (currentUser?.role) {
+                    UserRole.ADMIN -> listOf("الكل", "المعلمون", "الطلاب", "أولياء الأمور")
+                    UserRole.TEACHER -> listOf("الكل", "مدير المدرسة", "طلابي", "أولياء الأمور")
+                    else -> listOf("الكل", "مدير المدرسة", "معلمو صفي")
+                }
+            }
+
+            OutlinedTextField(
+                value = chatSearchQuery,
+                onValueChange = { chatSearchQuery = it },
+                placeholder = { Text(searchPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "بحث") },
+                trailingIcon = {
+                    if (chatSearchQuery.isNotEmpty()) {
+                        IconButton(onClick = { chatSearchQuery = "" }) {
+                            Icon(Icons.Filled.Clear, contentDescription = "مسح البحث")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("chat_contacts_search_input")
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Role Filter Chips
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(roleFilterOptions) { roleOpt ->
+                    FilterChip(
+                        selected = selectedRoleFilter == roleOpt,
+                        onClick = { selectedRoleFilter = roleOpt },
+                        label = { Text(roleOpt, maxLines = 1, softWrap = false) },
+                        leadingIcon = {
+                            val icon = when (roleOpt) {
+                                "المدير", "مدير المدرسة" -> Icons.Filled.AdminPanelSettings
+                                "المعلمون", "معلمو صفي" -> Icons.Filled.Badge
+                                "الطلاب", "طلابي" -> Icons.Filled.School
+                                "أولياء الأمور" -> Icons.Filled.FamilyRestroom
+                                else -> Icons.Filled.Groups
+                            }
+                            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                    )
+                }
+
+                // Class filter chips for Admin & Teacher
+                if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
+                    val allowedCls = viewModel.getAllowedClassesForUser(currentUser)
+                    items(allowedCls) { cls ->
                         FilterChip(
-                            selected = selectedStudent?.id == stu.id,
-                            onClick = { selectedStudentId = stu.id },
-                            label = { Text("محادثة: ${stu.studentName}", maxLines = 1, softWrap = false) },
+                            selected = selectedClassFilter == cls,
+                            onClick = {
+                                selectedClassFilter = if (selectedClassFilter == cls) "الكل" else cls
+                            },
+                            label = { Text(cls, maxLines = 1, softWrap = false) },
                             leadingIcon = {
-                                Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Filled.Class, contentDescription = null, modifier = Modifier.size(15.dp))
                             }
                         )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Selectable Contacts Strip (One-Tap Direct Conversation Starter)
+            if (filteredChatContacts.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "لا توجد جهات اتصال مطابقة للبحث ضمن صلاحيات حسابك.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+            } else {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(filteredChatContacts, key = { it.accountId }) { contact ->
+                        val isSelected = selectedContact?.accountId == contact.accountId
+                        val roleColor = when (contact.role) {
+                            UserRole.ADMIN -> GoldDeep
+                            UserRole.TEACHER -> InfoBlue
+                            UserRole.STUDENT -> SuccessGreen
+                            UserRole.PARENT -> MaterialTheme.colorScheme.primary
+                        }
+                        val roleIcon = when (contact.role) {
+                            UserRole.ADMIN -> Icons.Filled.AdminPanelSettings
+                            UserRole.TEACHER -> Icons.Filled.Badge
+                            UserRole.STUDENT -> Icons.Filled.School
+                            UserRole.PARENT -> Icons.Filled.FamilyRestroom
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                                    shape = RoundedCornerShape(14.dp)
+                                )
+                                .clickable { selectedContactAccountId = contact.accountId }
+                                .testTag("chat_contact_${contact.accountId}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Base64AvatarImage(
+                                    base64Data = contact.photoBase64,
+                                    fallbackIcon = roleIcon,
+                                    contentDescription = contact.fullName,
+                                    size = 34.dp,
+                                    tint = roleColor
+                                )
+                                Column {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = contact.fullName,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        Text(
+                                            text = "• ${contact.role.arabicTitle}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = roleColor,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                    Text(
+                                        text = contact.subtitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            if (selectedStudent != null) {
+            if (selectedContact != null) {
                 Card(
                     modifier = Modifier
                         .weight(1f)
@@ -289,106 +503,158 @@ fun ReportsAndChatScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "تواصل مباشر: ${selectedStudent.parentName}",
-                                    style = MaterialTheme.typography.titleSmall
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Base64AvatarImage(
+                                    base64Data = selectedContact.photoBase64,
+                                    fallbackIcon = Icons.Filled.Person,
+                                    contentDescription = selectedContact.fullName,
+                                    size = 42.dp,
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
-                                Text(
-                                    text = "ولي أمر الطالب: ${selectedStudent.studentName} (${selectedStudent.gradeClass})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = WhatsAppGreen,
-                                modifier = Modifier.clickable {
-                                    ExternalIntents.sendWhatsAppMessage(
-                                        context,
-                                        selectedStudent.parentPhone,
-                                        "السلام عليكم السيد ${selectedStudent.parentName} ولي أمر الطالب ${selectedStudent.studentName}، نتواصل معكم من إدارة ${schoolConfig.schoolName}."
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "محادثة مباشرة: ${selectedContact.fullName}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = selectedContact.subtitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                            }
+
+                            if (selectedContact.phone.isNotBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = WhatsAppGreen,
+                                    modifier = Modifier.clickable {
+                                        ExternalIntents.sendWhatsAppMessage(
+                                            context,
+                                            selectedContact.phone,
+                                            "السلام عليكم ${selectedContact.fullName}، نتواصل معكم عبر منصة ${schoolConfig.schoolName}."
+                                        )
+                                    }
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Chat,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "محادثة واتساب",
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Chat,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "محادثة واتساب",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                        LazyColumn(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(studentChats, key = { it.id }) { msg ->
-                                val isFromAdminOrTeacher = msg.senderRole == UserRole.ADMIN || msg.senderRole == UserRole.TEACHER
-                                val msgBitmap = remember(msg.imageBase64) {
-                                    ImageCompressor.decodeBase64ToImageBitmap(msg.imageBase64)
+                        if (activeConversationMessages.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Forum,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "ابدأ المحادثة الفورية مع ${selectedContact.fullName}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "تصل الرسائل والإشعارات لحظياً للمستلم المعني فقط",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
                                 }
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = if (isFromAdminOrTeacher) Alignment.Start else Alignment.End
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(14.dp),
-                                        color = if (isFromAdminOrTeacher) MaterialTheme.colorScheme.primaryContainer
-                                        else MaterialTheme.colorScheme.secondaryContainer,
-                                        modifier = Modifier.widthIn(max = 290.dp)
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(activeConversationMessages, key = { it.id }) { msg ->
+                                    val isSentByMe = if (msg.senderId.isNotEmpty()) {
+                                        msg.senderId == currentUser?.id
+                                    } else {
+                                        msg.senderRole == currentUser?.role
+                                    }
+                                    val msgBitmap = remember(msg.imageBase64) {
+                                        ImageCompressor.decodeBase64ToImageBitmap(msg.imageBase64)
+                                    }
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = if (isSentByMe) Alignment.Start else Alignment.End
                                     ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text(
-                                                text = msg.senderName,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            if (msgBitmap != null) {
-                                                Spacer(modifier = Modifier.height(6.dp))
-                                                Image(
-                                                    bitmap = msgBitmap,
-                                                    contentDescription = "صورة مرفقة",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(150.dp)
-                                                        .clip(RoundedCornerShape(10.dp))
-                                                )
-                                            }
-                                            if (msg.messageText.isNotBlank()) {
-                                                Spacer(modifier = Modifier.height(4.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = if (isSentByMe) MaterialTheme.colorScheme.primaryContainer
+                                            else MaterialTheme.colorScheme.secondaryContainer,
+                                            modifier = Modifier.widthIn(max = 290.dp)
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
                                                 Text(
-                                                    text = msg.messageText,
-                                                    style = MaterialTheme.typography.bodyMedium
+                                                    text = msg.senderName,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                if (msgBitmap != null) {
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Image(
+                                                        bitmap = msgBitmap,
+                                                        contentDescription = "صورة مرفقة",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(150.dp)
+                                                            .clip(RoundedCornerShape(10.dp))
+                                                    )
+                                                }
+                                                if (msg.messageText.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = msg.messageText,
+                                                        style = MaterialTheme.typography.bodyMedium
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = msg.timestamp,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = msg.timestamp,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
                                         }
                                     }
                                 }
@@ -461,7 +727,7 @@ fun ReportsAndChatScreen(
                             OutlinedTextField(
                                 value = draftMessage,
                                 onValueChange = { draftMessage = it },
-                                placeholder = { Text("اكتب رسالتك للإدارة أو ولي الأمر...") },
+                                placeholder = { Text("اكتب رسالتك إلى ${selectedContact.fullName}...") },
                                 singleLine = true,
                                 modifier = Modifier
                                     .weight(1f)
@@ -472,7 +738,7 @@ fun ReportsAndChatScreen(
                             Button(
                                 onClick = {
                                     if (draftMessage.isNotBlank() || draftChatImageBase64.isNotBlank()) {
-                                        viewModel.sendChatMessage(selectedStudent, draftMessage, draftChatImageBase64)
+                                        viewModel.sendDirectChatMessage(selectedContact, draftMessage, draftChatImageBase64)
                                         draftMessage = ""
                                         draftChatImageBase64 = ""
                                     }
@@ -754,6 +1020,7 @@ fun EventsAndNewsScreen(
             val decodedBitmap = remember(ev.imageBase64) {
                 ImageCompressor.decodeBase64ToImageBitmap(ev.imageBase64)
             }
+            val isLikedByMe = currentUser?.id != null && currentUser?.id in ev.likedByUserIds
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -805,7 +1072,7 @@ fun EventsAndNewsScreen(
 
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -838,20 +1105,39 @@ fun EventsAndNewsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Verified,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "الناشر: ${ev.authorName}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Verified,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "الناشر: ${ev.authorName}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            HonorHeartReactionButton(
+                                heartCount = ev.heartCount,
+                                isLikedByMe = isLikedByMe,
+                                onReact = { viewModel.toggleEventHeartReaction(ev.id) },
+                                emptyLabel = "إعجاب",
+                                testTag = "event_heart_button_${ev.id}"
                             )
                         }
                     }

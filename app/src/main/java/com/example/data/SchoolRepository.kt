@@ -344,8 +344,11 @@ class SchoolRepository(context: Context) {
                         excellencePoints = o.optInt("excellencePoints", 90),
                         isOnHonorRoll = o.optBoolean("isOnHonorRoll", false),
                         honorTitle = o.optString("honorTitle", "وسام التفوق الذهبي"),
-                        heartCount = o.optInt("heartCount", 0),
-                        likedByUserIds = jsonArrayToList(o.optJSONArray("likedByUserIds")),
+                        heartCount = run {
+                            val likedList = jsonArrayToList(o.optJSONArray("likedBy") ?: o.optJSONArray("likedByUserIds")).distinct()
+                            if (likedList.isNotEmpty()) likedList.size else o.optInt("heartCount", 0)
+                        },
+                        likedByUserIds = jsonArrayToList(o.optJSONArray("likedBy") ?: o.optJSONArray("likedByUserIds")).distinct(),
                         schoolId = itemSchoolId
                     )
                 )
@@ -360,6 +363,8 @@ class SchoolRepository(context: Context) {
         if (schoolId.isBlank()) return
         val arr = JSONArray()
         students.forEach { s ->
+            val cleanLikedBy = s.likedByUserIds.filter { it.isNotBlank() }.distinct()
+            val finalHeartCount = if (cleanLikedBy.isNotEmpty() || s.heartCount == 0) cleanLikedBy.size else s.heartCount
             arr.put(JSONObject().apply {
                 put("id", s.id)
                 put("studentName", InputSanitizer.sanitize(s.studentName))
@@ -377,8 +382,9 @@ class SchoolRepository(context: Context) {
                 put("excellencePoints", s.excellencePoints)
                 put("isOnHonorRoll", s.isOnHonorRoll)
                 put("honorTitle", InputSanitizer.sanitize(s.honorTitle))
-                put("heartCount", s.heartCount)
-                put("likedByUserIds", JSONArray(s.likedByUserIds))
+                put("heartCount", finalHeartCount)
+                put("likedBy", JSONArray(cleanLikedBy))
+                put("likedByUserIds", JSONArray(cleanLikedBy))
                 put("schoolId", schoolId)
             })
         }
@@ -864,8 +870,17 @@ class SchoolRepository(context: Context) {
                         id = o.optString("id"),
                         studentId = o.optString("studentId"),
                         studentName = o.optString("studentName"),
+                        senderId = o.optString("senderId", ""),
                         senderName = o.optString("senderName"),
-                        senderRole = UserRole.valueOf(o.optString("senderRole", UserRole.ADMIN.name)),
+                        senderRole = runCatching {
+                            UserRole.valueOf(o.optString("senderRole", UserRole.ADMIN.name))
+                        }.getOrDefault(UserRole.ADMIN),
+                        recipientId = o.optString("recipientId", ""),
+                        recipientName = o.optString("recipientName", ""),
+                        recipientRole = runCatching {
+                            UserRole.valueOf(o.optString("recipientRole", UserRole.PARENT.name))
+                        }.getOrDefault(UserRole.PARENT),
+                        conversationKey = o.optString("conversationKey", ""),
                         messageText = o.optString("messageText"),
                         timestamp = o.optString("timestamp"),
                         imageBase64 = o.optString("imageBase64", ""),
@@ -887,8 +902,13 @@ class SchoolRepository(context: Context) {
                 put("id", m.id)
                 put("studentId", m.studentId)
                 put("studentName", InputSanitizer.sanitize(m.studentName))
+                put("senderId", m.senderId)
                 put("senderName", InputSanitizer.sanitize(m.senderName))
                 put("senderRole", m.senderRole.name)
+                put("recipientId", m.recipientId)
+                put("recipientName", InputSanitizer.sanitize(m.recipientName))
+                put("recipientRole", m.recipientRole.name)
+                put("conversationKey", m.conversationKey)
                 put("messageText", InputSanitizer.sanitize(m.messageText))
                 put("timestamp", InputSanitizer.sanitize(m.timestamp))
                 put("imageBase64", m.imageBase64)
@@ -917,6 +937,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<SchoolEvent>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val likedList = jsonArrayToList(o.optJSONArray("likedBy") ?: o.optJSONArray("likedByUserIds")).distinct()
+                val heartCount = if (likedList.isNotEmpty()) likedList.size else o.optInt("heartCount", 0)
                 list.add(
                     SchoolEvent(
                         id = o.optString("id"),
@@ -927,6 +949,8 @@ class SchoolRepository(context: Context) {
                         location = o.optString("location", "الموصل - زمار"),
                         imageBase64 = o.optString("imageBase64", ""),
                         authorName = o.optString("authorName", "إدارة المدرسة"),
+                        heartCount = heartCount,
+                        likedByUserIds = likedList,
                         schoolId = o.optString("schoolId", schoolId)
                     )
                 )
@@ -941,6 +965,8 @@ class SchoolRepository(context: Context) {
         if (schoolId.isBlank()) return
         val arr = JSONArray()
         events.forEach { ev ->
+            val cleanLikedBy = ev.likedByUserIds.filter { it.isNotBlank() }.distinct()
+            val finalHeartCount = if (cleanLikedBy.isNotEmpty() || ev.heartCount == 0) cleanLikedBy.size else ev.heartCount
             arr.put(JSONObject().apply {
                 put("id", ev.id)
                 put("title", InputSanitizer.sanitize(ev.title))
@@ -950,6 +976,9 @@ class SchoolRepository(context: Context) {
                 put("location", InputSanitizer.sanitize(ev.location))
                 put("imageBase64", ev.imageBase64)
                 put("authorName", InputSanitizer.sanitize(ev.authorName))
+                put("heartCount", finalHeartCount)
+                put("likedBy", JSONArray(cleanLikedBy))
+                put("likedByUserIds", JSONArray(cleanLikedBy))
                 put("schoolId", schoolId)
             })
         }
