@@ -98,9 +98,9 @@ fun StudentAutoBadgesRow(
 ) {
     if (badges.isEmpty()) return
     FlowRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         badges.forEach { badge ->
             val bgColor = if (badge.isGoldAttendance) {
@@ -113,50 +113,33 @@ fun StudentAutoBadgesRow(
             } else {
                 DeepEmerald.copy(alpha = 0.28f)
             }
-            val iconCircleBg = if (badge.isGoldAttendance) {
-                DeepEmerald.copy(alpha = 0.14f)
-            } else {
-                EmeraldAccent.copy(alpha = 0.18f)
-            }
             Surface(
                 shape = RoundedCornerShape(50),
                 color = bgColor,
                 border = BorderStroke(1.dp, borderColor),
-                shadowElevation = 0.dp
+                shadowElevation = 0.dp,
+                modifier = Modifier.height(24.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(iconCircleBg),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (badge.isGoldAttendance) Icons.Default.Verified else Icons.Default.EmojiEvents,
-                            contentDescription = badge.title,
-                            tint = DeepEmerald,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = if (badge.isGoldAttendance) Icons.Default.Verified else Icons.Default.EmojiEvents,
+                        contentDescription = badge.title,
+                        tint = DeepEmerald,
+                        modifier = Modifier.size(13.dp)
+                    )
                     Text(
                         text = badge.title,
-                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = DeepForestGreen
+                        color = DeepForestGreen,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    if (badge.subtitle.isNotBlank()) {
-                        Text(
-                            text = "• ${badge.subtitle}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = DeepEmerald.copy(alpha = 0.85f),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
                 }
             }
         }

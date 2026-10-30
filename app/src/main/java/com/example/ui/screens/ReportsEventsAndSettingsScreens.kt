@@ -127,8 +127,8 @@ fun ReportsAndChatScreen(
                 c.subtitle.contains(query, ignoreCase = true) ||
                 c.gradeClass.contains(query, ignoreCase = true) ||
                 c.linkedStudentName.contains(query, ignoreCase = true)
-            roleMatch && classMatch && queryMatch
-        }
+            c.accountId.isNotBlank() && roleMatch && classMatch && queryMatch
+        }.distinctBy { it.accountId }
     }
 
     var selectedContactAccountId by remember(allowedChatContacts) {
@@ -147,7 +147,9 @@ fun ReportsAndChatScreen(
         if (user == null || contact == null) {
             emptyList()
         } else {
-            chatMessages.filter { msg -> msg.matchesConversation(user, contact) }
+            chatMessages
+                .filter { msg -> msg.id.isNotBlank() && msg.matchesConversation(user, contact) }
+                .distinctBy { it.id }
         }
     }
 
@@ -1064,7 +1066,7 @@ fun ReportsAndChatScreen(
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 Text(
-                                                    text = contact.fullName,
+                                                    text = contact.fullName.ifBlank { "مستخدم" },
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     fontWeight = FontWeight.Bold,
                                                     color = MaterialTheme.colorScheme.onSurface,
@@ -1088,7 +1090,7 @@ fun ReportsAndChatScreen(
                                                 }
                                             }
                                             Text(
-                                                text = contact.subtitle,
+                                                text = contact.subtitle.ifBlank { contact.role.arabicTitle },
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
@@ -1984,42 +1986,90 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else {
-                            Text(
-                                text = "الرسائل السرية الواردة للمدير (${privateSuggestions.size}):",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = DeepEmerald
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Lock,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "الرسائل السرية الواردة للمدير (${privateSuggestions.size}):",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = DeepEmerald
+                                )
+                            }
                             privateSuggestions.take(10).forEach { sug ->
+                                val cleanSugSender = com.example.util.InputSanitizer.stripEmojis(sug.senderName)
+                                val cleanSugMsg = com.example.util.InputSanitizer.stripEmojis(sug.messageText)
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = DeepEmerald.copy(alpha = 0.06f),
-                                    modifier = Modifier.fillMaxWidth()
+                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .wrapContentHeight()
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        Icon(
+                                            imageVector = Icons.Filled.Lock,
+                                            contentDescription = "رسالة سرية",
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(2.dp)
                                         ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "$cleanSugSender (${sug.senderRoleArabic})",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepEmerald,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = sug.createdAt,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1
+                                                )
+                                            }
                                             Text(
-                                                text = "${sug.senderName} (${sug.senderRoleArabic})",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = DeepEmerald
-                                            )
-                                            Text(
-                                                text = sug.createdAt,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                text = cleanSugMsg,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
                                         }
-                                        Text(
-                                            text = sug.messageText,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
+                                        IconButton(
+                                            onClick = { viewModel.deletePrivateSuggestion(sug.id) },
+                                            modifier = Modifier
+                                                .size(26.dp)
+                                                .testTag("delete_private_suggestion_${sug.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Close,
+                                                contentDescription = "حذف الرسالة السرية",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

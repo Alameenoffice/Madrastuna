@@ -1224,26 +1224,33 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     )
                 }
                 if (parAccId != user.id) {
-                    result.add(
-                        ChatContactItem(
-                            accountId = parAccId,
-                            fullName = stu.parentName,
-                            role = UserRole.PARENT,
-                            subtitle = "ولي أمر الطالب: ${stu.studentName} • ${stu.gradeClass} (${stu.sectionName})",
-                            gradeClass = stu.gradeClass,
-                            sectionName = stu.sectionName,
-                            phone = stu.parentPhone,
-                            photoBase64 = parAcc?.photoBase64?.ifBlank { stu.photoBase64 } ?: stu.photoBase64,
-                            linkedStudentId = stu.id,
-                            linkedStudentName = stu.studentName
+                    val existingIdx = result.indexOfFirst { it.accountId == parAccId }
+                    if (existingIdx >= 0) {
+                        val existing = result[existingIdx]
+                        val combinedSubtitle = "ولي أمر الطالب: ${existing.linkedStudentName} و ${stu.studentName} • ${stu.gradeClass}"
+                        result[existingIdx] = existing.copy(subtitle = combinedSubtitle)
+                    } else {
+                        result.add(
+                            ChatContactItem(
+                                accountId = parAccId,
+                                fullName = stu.parentName.ifBlank { "ولي أمر الطالب" },
+                                role = UserRole.PARENT,
+                                subtitle = "ولي أمر الطالب: ${stu.studentName} • ${stu.gradeClass} (${stu.sectionName})",
+                                gradeClass = stu.gradeClass,
+                                sectionName = stu.sectionName,
+                                phone = stu.parentPhone,
+                                photoBase64 = parAcc?.photoBase64?.ifBlank { stu.photoBase64 } ?: stu.photoBase64,
+                                linkedStudentId = stu.id,
+                                linkedStudentName = stu.studentName
+                            )
                         )
-                    )
+                    }
                 }
             }
-            return result
+            return result.distinctBy { it.accountId }
         }
 
-        return when (user.role) {
+        val rawContacts = when (user.role) {
             UserRole.ADMIN -> {
                 teacherContacts + buildStudentAndParentContacts(schoolStudents)
             }
@@ -1265,7 +1272,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         val spec = t.specialty.ifBlank { "معلم المادة" }
                         ChatContactItem(
                             accountId = t.id,
-                            fullName = t.fullName,
+                            fullName = t.fullName.ifBlank { "معلم المادة" },
                             role = UserRole.TEACHER,
                             subtitle = "معلم ($spec) • $stuClass - شعبة ($stuSection)",
                             gradeClass = stuClass,
@@ -1277,6 +1284,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 listOf(adminContact) + myClassTeachers
             }
         }
+        return rawContacts
+            .filter { it.accountId.isNotBlank() }
+            .distinctBy { it.accountId }
     }
 
     fun toggleDarkMode() {
@@ -2381,6 +2391,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun markAllNotificationsRead() {
         val sid = _schoolConfig.value.schoolId
         val updated = _notifications.value.map { it.copy(isRead = true) }
+        _notifications.value = updated
+        repo.saveNotifications(updated, sid)
+    }
+
+    fun deleteNotification(notificationId: String) {
+        val sid = _schoolConfig.value.schoolId
+        val updated = _notifications.value.filterNot { it.id == notificationId }
         _notifications.value = updated
         repo.saveNotifications(updated, sid)
     }
@@ -3626,15 +3643,85 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         correctOptionIndex: Int,
         points: Int = 5
     ) {
-        publishQuickQuiz(
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val cleanQuestion = InputSanitizer.sanitize(questionText)
+        if (cleanQuestion.isBlank() || options.size < 2) {
+            showToastAlert("يرجى إدخال نص السؤال وخيارات الإجابة", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val teacherName = _currentUser.value?.fullName ?: "معلم المادة"
+        val item = QuickQuizItem(
+            id = "quiz_${UUID.randomUUID().toString().take(6)}",
             gradeClass = gradeClass,
             sectionName = sectionName,
             subjectName = subjectName,
-            questionText = questionText,
+            teacherName = teacherName,
+            questionText = cleanQuestion,
             quizType = QuickQuizType.MULTIPLE_CHOICE,
-            options = options,
-            correctOptionIndex = correctOptionIndex
+            options = options.map { InputSanitizer.sanitize(it) },
+            correctOptionIndex = correctOptionIndex.coerceIn(0, options.lastIndex),
+            createdAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()),
+            studentAnswers = emptyMap(),
+            points = points.coerceIn(1, 100),
+            schoolId = sid
         )
+        val updated = listOf(item) + _quickQuizzes.value
+        _quickQuizzes.value = updated
+        _quickQuizAnswers.value = buildQuickQuizAnswerViews(updated)
+        repo.saveQuickQuizzes(updated, sid)
+        showToastAlert("تم نشر الاختبار السريع لمادة ($subjectName) لصف $gradeClass ($sectionName)", isSuccess = true)
+
+        pushNotification(
+            title = "اختبار سريع جديد: $subjectName ($gradeClass)",
+            body = "نشر $teacherName سؤالاً تفاعلياً سريعاً: $cleanQuestion",
+            type = NotificationType.HOMEWORK,
+            targetGradeClass = gradeClass,
+            targetSectionName = sectionName
+        )
+    }
+
+    fun updateQuickQuiz(
+        quizId: String,
+        subjectName: String,
+        questionText: String,
+        options: List<String>,
+        correctOptionIndex: Int,
+        points: Int = 5
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val cleanQuestion = InputSanitizer.sanitize(questionText)
+        val cleanOptions = options.map { InputSanitizer.sanitize(it) }.filter { it.isNotBlank() }
+        if (cleanQuestion.isBlank() || cleanOptions.size < 2) {
+            showToastAlert("يرجى إدخال نص السؤال وخيارات الإجابة بشكل صحيح", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val updated = _quickQuizzes.value.map { q ->
+            if (q.id == quizId) {
+                q.copy(
+                    subjectName = InputSanitizer.sanitize(subjectName).ifBlank { q.subjectName },
+                    questionText = cleanQuestion,
+                    options = cleanOptions,
+                    correctOptionIndex = correctOptionIndex.coerceIn(0, cleanOptions.lastIndex),
+                    points = points.coerceIn(1, 100)
+                )
+            } else q
+        }
+        _quickQuizzes.value = updated
+        _quickQuizAnswers.value = buildQuickQuizAnswerViews(updated)
+        repo.saveQuickQuizzes(updated, sid)
+        showToastAlert("تم تعديل الاختبار السريع وحفظ التغييرات في السحابة بنجاح", isSuccess = true)
+    }
+
+    fun deleteQuickQuiz(quizId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _quickQuizzes.value.filterNot { it.id == quizId }
+        _quickQuizzes.value = updated
+        _quickQuizAnswers.value = buildQuickQuizAnswerViews(updated)
+        repo.saveQuickQuizzes(updated, sid)
+        showToastAlert("تم حذف الاختبار السريع نهائياً", isSuccess = true)
     }
 
     fun submitQuickQuizAnswer(quiz: QuickQuizItem, chosenIndex: Int) {
@@ -3786,6 +3873,44 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert("تم تحديث حالة الغرض في سجل المفقودات", isSuccess = true)
     }
 
+    fun updateLostAndFoundItem(
+        itemId: String,
+        title: String,
+        foundLocation: String,
+        photoBase64: String
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val cleanTitle = InputSanitizer.sanitize(title)
+        if (cleanTitle.isBlank()) {
+            showToastAlert("يرجى إدخال وصف الغرض المفقود أو المعثور عليه", isSuccess = false)
+            return
+        }
+        val cleanLocation = InputSanitizer.sanitize(foundLocation).ifBlank { "الإدارة المدرسية" }
+        val sid = _schoolConfig.value.schoolId
+        val updated = _lostAndFoundItems.value.map { item ->
+            if (item.id == itemId) {
+                item.copy(
+                    title = cleanTitle,
+                    description = cleanTitle,
+                    foundLocation = cleanLocation,
+                    photoBase64 = photoBase64
+                )
+            } else item
+        }
+        _lostAndFoundItems.value = updated
+        repo.saveLostAndFoundItems(updated, sid)
+        showToastAlert("تم تعديل بيانات الغرض في سجل المفقودات وحفظها بنجاح", isSuccess = true)
+    }
+
+    fun deleteLostAndFoundItem(itemId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _lostAndFoundItems.value.filterNot { it.id == itemId }
+        _lostAndFoundItems.value = updated
+        repo.saveLostAndFoundItems(updated, sid)
+        showToastAlert("تم حذف الغرض من سجل المفقودات نهائياً", isSuccess = true)
+    }
+
     fun submitPrivateSuggestionToPrincipal(message: String) {
         submitPrivateSuggestionToPrincipal(
             category = "مقترح وملاحظة سرية",
@@ -3828,6 +3953,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             type = NotificationType.REPORT,
             targetRole = UserRole.ADMIN.name
         )
+    }
+
+    fun deletePrivateSuggestion(suggestionId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _privateSuggestions.value.filterNot { it.id == suggestionId }
+        _privateSuggestions.value = updated
+        repo.savePrivateSuggestions(updated, sid)
+        showToastAlert("تم حذف الرسالة من صندوق المقترحات السري", isSuccess = true)
     }
 
     fun updateGlobalAppUpdateConfig(

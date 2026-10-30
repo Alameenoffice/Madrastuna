@@ -81,6 +81,7 @@ fun ScheduleAndHomeworkScreen(
 
     var showPublishHomeworkDialog by remember { mutableStateOf(false) }
     var showPublishQuickQuizDialog by remember { mutableStateOf(false) }
+    var editingQuiz by remember { mutableStateOf<QuickQuizItem?>(null) }
     var showAddPeriodDialog by remember { mutableStateOf(false) }
     var showPublishStudyMaterialDialog by remember { mutableStateOf(false) }
 
@@ -435,6 +436,59 @@ fun ScheduleAndHomeworkScreen(
                                         color = DeepEmerald,
                                         fontWeight = FontWeight.Bold
                                     )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { editingQuiz = quiz },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(36.dp)
+                                                .testTag("edit_quick_quiz_${quiz.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Edit,
+                                                contentDescription = "تعديل الاختبار",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "تعديل الاختبار",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { viewModel.deleteQuickQuiz(quiz.id) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(36.dp)
+                                                .testTag("delete_quick_quiz_${quiz.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "حذف الاختبار",
+                                                tint = DangerRed,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "حذف الاختبار",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DangerRed
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1304,6 +1358,117 @@ fun ScheduleAndHomeworkScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showPublishQuickQuizDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    editingQuiz?.let { quizTarget ->
+        var editSubject by remember(quizTarget.id) { mutableStateOf(quizTarget.subjectName) }
+        var editQuestion by remember(quizTarget.id) { mutableStateOf(quizTarget.questionText) }
+        var editOpt1 by remember(quizTarget.id) { mutableStateOf(quizTarget.options.getOrElse(0) { "" }) }
+        var editOpt2 by remember(quizTarget.id) { mutableStateOf(quizTarget.options.getOrElse(1) { "" }) }
+        var editOpt3 by remember(quizTarget.id) { mutableStateOf(quizTarget.options.getOrElse(2) { "" }) }
+        var editCorrectIdx by remember(quizTarget.id) { mutableIntStateOf(quizTarget.correctOptionIndex) }
+        var editPointsStr by remember(quizTarget.id) { mutableStateOf(quizTarget.points.toString()) }
+
+        AlertDialog(
+            onDismissRequest = { editingQuiz = null },
+            title = {
+                Text(
+                    text = "تعديل الاختبار السريع (${quizTarget.subjectName})",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepEmerald
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedSubjects) { sOpt ->
+                            FilterChip(
+                                selected = editSubject == sOpt,
+                                onClick = { editSubject = sOpt },
+                                label = { Text(sOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = editQuestion,
+                        onValueChange = { editQuestion = it },
+                        label = { Text("نص السؤال التفاعلي") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editOpt1,
+                        onValueChange = { editOpt1 = it },
+                        label = { Text("الخيار الأول (1)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editOpt2,
+                        onValueChange = { editOpt2 = it },
+                        label = { Text("الخيار الثاني (2)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editOpt3,
+                        onValueChange = { editOpt3 = it },
+                        label = { Text("الخيار الثالث (3 - اختياري)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("الإجابة الصحيحة:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        listOf(0 to "خيار 1", 1 to "خيار 2", 2 to "خيار 3").forEach { (idx, lbl) ->
+                            FilterChip(
+                                selected = editCorrectIdx == idx,
+                                onClick = { editCorrectIdx = idx },
+                                label = { Text(lbl) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = editPointsStr,
+                        onValueChange = { editPointsStr = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("درجة السؤال") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val optionsList = listOfNotNull(
+                            editOpt1.trim().takeIf { it.isNotEmpty() },
+                            editOpt2.trim().takeIf { it.isNotEmpty() },
+                            editOpt3.trim().takeIf { it.isNotEmpty() }
+                        )
+                        if (editQuestion.isNotBlank() && optionsList.size >= 2) {
+                            viewModel.updateQuickQuiz(
+                                quizId = quizTarget.id,
+                                subjectName = editSubject,
+                                questionText = editQuestion,
+                                options = optionsList,
+                                correctOptionIndex = editCorrectIdx.coerceIn(0, optionsList.lastIndex),
+                                points = editPointsStr.toIntOrNull()?.coerceIn(1, 100) ?: quizTarget.points
+                            )
+                            editingQuiz = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                    modifier = Modifier.testTag("confirm_edit_quick_quiz_btn")
+                ) {
+                    Text("حفظ التعديل", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingQuiz = null }) { Text("إلغاء") }
             }
         )
     }

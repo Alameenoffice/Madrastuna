@@ -689,50 +689,84 @@ fun DashboardScreen(
                     }
 
                     scopedNotifications.take(3).forEach { notif ->
+                        val cleanNotifTitle = com.example.util.InputSanitizer.stripEmojis(notif.title)
+                        val cleanNotifBody = com.example.util.InputSanitizer.stripEmojis(notif.body)
+                        val isSecretSuggestion = cleanNotifTitle.contains("صندوق المقترحات") || cleanNotifTitle.contains("سرية")
                         Surface(
                             color = if (!notif.isRead) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
                         ) {
                             Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.Top,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Icon(
-                                    imageVector = when (notif.type) {
-                                        NotificationType.ATTENDANCE -> Icons.Filled.EventBusy
-                                        NotificationType.HOMEWORK -> Icons.Filled.MenuBook
-                                        NotificationType.GRADES -> Icons.Filled.Grade
-                                        NotificationType.TUITION -> Icons.Filled.Payments
-                                        NotificationType.REPORT -> Icons.Filled.Campaign
-                                        NotificationType.GENERAL -> Icons.Filled.Notifications
+                                    imageVector = if (isSecretSuggestion) {
+                                        Icons.Filled.Lock
+                                    } else {
+                                        when (notif.type) {
+                                            NotificationType.ATTENDANCE -> Icons.Filled.EventBusy
+                                            NotificationType.HOMEWORK -> Icons.Filled.MenuBook
+                                            NotificationType.GRADES -> Icons.Filled.Grade
+                                            NotificationType.TUITION -> Icons.Filled.Payments
+                                            NotificationType.REPORT -> Icons.Filled.Campaign
+                                            NotificationType.GENERAL -> Icons.Filled.Notifications
+                                        }
                                     },
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                Column(modifier = Modifier.weight(1f)) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = notif.title,
+                                            text = cleanNotifTitle,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
                                         )
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = notif.createdAt,
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
                                         )
                                     }
                                     Text(
-                                        text = notif.body,
+                                        text = cleanNotifBody,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { viewModel.deleteNotification(notif.id) },
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .testTag("delete_dash_notif_${notif.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "حذف الإشعار",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(15.dp)
                                     )
                                 }
                             }
@@ -1497,11 +1531,11 @@ fun DailyAttendanceScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // 1. رأس البطاقة: صورة الطالب + الاسم الثلاثي + الصف والشعبة + وسام الالتزام الذهبي بشكل أنيق
+                        // 1. رأس البطاقة: صورة الطالب + الاسم الثلاثي + الصف والشعبة + صف أفقي مدمج لوسام الالتزام الذهبي وعدد الغيابات
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1512,22 +1546,31 @@ fun DailyAttendanceScreen(
                                     base64Data = stu.photoBase64,
                                     fallbackIcon = Icons.Filled.Person,
                                     contentDescription = stu.fullNameWithFather,
-                                    size = 48.dp
+                                    size = 46.dp
                                 )
-                                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
                                         text = stu.fullNameWithFather,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                    Text(
-                                        text = "${stu.gradeClass} • شعبة (${stu.sectionName})",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    if (stuBadges.isNotEmpty()) {
-                                        StudentAutoBadgesRow(badges = stuBadges)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "${stu.gradeClass} • شعبة (${stu.sectionName})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        if (stuBadges.isNotEmpty()) {
+                                            StudentAutoBadgesRow(badges = stuBadges.take(1))
+                                        }
                                     }
                                 }
                             }
@@ -1539,12 +1582,15 @@ fun DailyAttendanceScreen(
                                 if (featureSettings.qrAttendanceEnabled) {
                                     IconButton(
                                         onClick = { selectedStudentForIdCard = stu },
-                                        modifier = Modifier.testTag("att_open_student_id_${stu.id}")
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .testTag("att_open_student_id_${stu.id}")
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.Badge,
                                             contentDescription = "بطاقة الهوية والـ QR",
-                                            tint = DeepEmerald
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }
@@ -1744,6 +1790,12 @@ fun DailyAttendanceScreen(
             canPublish = canEdit,
             onPublishItem = { title, foundLoc, photoBase64 ->
                 viewModel.publishLostAndFoundItem(title, foundLoc, photoBase64)
+            },
+            onUpdateItem = { itemId, title, foundLoc, photoBase64 ->
+                viewModel.updateLostAndFoundItem(itemId, title, foundLoc, photoBase64)
+            },
+            onDeleteItem = { itemId ->
+                viewModel.deleteLostAndFoundItem(itemId)
             },
             onToggleStatus = { itemId ->
                 viewModel.toggleLostAndFoundStatus(itemId)
@@ -2086,12 +2138,15 @@ private fun LostAndFoundRegistryDialog(
     items: List<LostAndFoundItem>,
     canPublish: Boolean,
     onPublishItem: (String, String, String) -> Unit,
+    onUpdateItem: (String, String, String, String) -> Unit,
+    onDeleteItem: (String) -> Unit,
     onToggleStatus: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var foundLocation by remember { mutableStateOf("") }
     var photoBase64 by remember { mutableStateOf("") }
+    var editingItem by remember { mutableStateOf<LostAndFoundItem?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2153,7 +2208,8 @@ private fun LostAndFoundRegistryDialog(
                                     label = if (photoBase64.isEmpty()) "إرفاق صورة الغرض" else "تغيير الصورة",
                                     hasImage = photoBase64.isNotEmpty(),
                                     onPhotoSelected = { photoBase64 = it },
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f),
+                                    isAvatar = false
                                 )
                                 Button(
                                     onClick = {
@@ -2183,48 +2239,110 @@ private fun LostAndFoundRegistryDialog(
                     items.forEach { item ->
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f))
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                if (item.photoBase64.isNotBlank()) {
-                                    Base64AvatarImage(
-                                        base64Data = item.photoBase64,
-                                        size = 48.dp,
-                                        fallbackIcon = Icons.Filled.Inventory2,
-                                        contentDescription = item.title
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(
-                                        text = item.title,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "مكان التواجد: ${item.foundLocation} • التاريخ: ${item.date}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = if (item.isClaimed) "تم تسليمه لصاحبه" else "موجود لدى الإدارة",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (item.isClaimed) SuccessGreen else DeepEmerald,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                if (canPublish) {
-                                    TextButton(onClick = { onToggleStatus(item.id) }) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (item.photoBase64.isNotBlank()) {
+                                        Base64AvatarImage(
+                                            base64Data = item.photoBase64,
+                                            size = 48.dp,
+                                            fallbackIcon = Icons.Filled.Inventory2,
+                                            contentDescription = item.title
+                                        )
+                                    }
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                         Text(
-                                            text = if (item.isClaimed) "إعادة كموجود" else "تم التسليم",
-                                            style = MaterialTheme.typography.labelSmall,
+                                            text = item.title,
+                                            style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold
                                         )
+                                        Text(
+                                            text = "مكان الاستلام: ${item.foundLocation} • التاريخ: ${item.date}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = if (item.isClaimed) "تم تسليمه لصاحبه" else "موجود لدى الإدارة",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (item.isClaimed) SuccessGreen else DeepEmerald,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    if (canPublish) {
+                                        TextButton(onClick = { onToggleStatus(item.id) }) {
+                                            Text(
+                                                text = if (item.isClaimed) "إعادة كموجود" else "تم التسليم",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (canPublish) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { editingItem = item },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(34.dp)
+                                                .testTag("edit_lost_found_${item.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Edit,
+                                                contentDescription = "تعديل الغرض",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "تعديل",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { onDeleteItem(item.id) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(34.dp)
+                                                .testTag("delete_lost_found_${item.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "حذف الغرض",
+                                                tint = DangerRed,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "حذف",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DangerRed
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2239,6 +2357,66 @@ private fun LostAndFoundRegistryDialog(
             }
         }
     )
+
+    editingItem?.let { target ->
+        var editTitle by remember(target.id) { mutableStateOf(target.title) }
+        var editLocation by remember(target.id) { mutableStateOf(target.foundLocation) }
+        var editPhoto by remember(target.id) { mutableStateOf(target.photoBase64) }
+
+        AlertDialog(
+            onDismissRequest = { editingItem = null },
+            title = {
+                Text(
+                    text = "تعديل بيانات الغرض في سجل المفقودات",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepEmerald
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = editTitle,
+                        onValueChange = { editTitle = it },
+                        label = { Text("وصف الغرض") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editLocation,
+                        onValueChange = { editLocation = it },
+                        label = { Text("مكان الاستلام / التواجد") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    CompressedPhotoPickerButton(
+                        label = if (editPhoto.isEmpty()) "إرفاق صورة الغرض" else "تغيير صورة الغرض",
+                        hasImage = editPhoto.isNotEmpty(),
+                        onPhotoSelected = { editPhoto = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        isAvatar = false
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onUpdateItem(target.id, editTitle, editLocation, editPhoto)
+                        editingItem = null
+                    },
+                    enabled = editTitle.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+                ) {
+                    Text("حفظ التعديل", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingItem = null }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
 }
 
 

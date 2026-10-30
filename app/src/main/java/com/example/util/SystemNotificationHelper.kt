@@ -22,11 +22,19 @@ import kotlin.random.Random
  */
 object InputSanitizer {
     private val dangerousPattern = Regex("[<>\"'`\\\\;\\x00-\\x1F]")
+    private val classicEmojiPattern = Regex("[\\uD83C-\\uDBFF\\uDC00-\\uDFFF]+|[\\u2600-\\u27BF\\uFE0F]")
+
+    fun stripEmojis(input: String?): String {
+        if (input.isNullOrBlank()) return ""
+        return input
+            .replace("🔒", "")
+            .replace(classicEmojiPattern, "")
+            .replace(Regex("\\s{2,}"), " ")
+            .trim()
+    }
 
     fun sanitize(input: String, maxLength: Int = 1000): String {
-        return input
-            .replace(dangerousPattern, "")
-            .trim()
+        return stripEmojis(input.replace(dangerousPattern, ""))
             .take(maxLength)
     }
 

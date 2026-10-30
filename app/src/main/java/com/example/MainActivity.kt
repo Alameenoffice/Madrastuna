@@ -842,6 +842,9 @@ fun AuthenticatedMainPlatform(
                 AnimatedVisibility(visible = latestBannerAlert != null) {
                     val alert = latestBannerAlert
                     if (alert != null) {
+                        val cleanAlertTitle = com.example.util.InputSanitizer.stripEmojis(alert.title)
+                        val cleanAlertBody = com.example.util.InputSanitizer.stripEmojis(alert.body)
+                        val isSecretSuggestion = cleanAlertTitle.contains("صندوق المقترحات") || cleanAlertTitle.contains("سرية")
                         Surface(
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
@@ -850,7 +853,7 @@ fun AuthenticatedMainPlatform(
                             shape = RoundedCornerShape(14.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
@@ -859,19 +862,20 @@ fun AuthenticatedMainPlatform(
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.NotificationsActive,
+                                        imageVector = if (isSecretSuggestion) Icons.Filled.Lock else Icons.Filled.NotificationsActive,
                                         contentDescription = null,
-                                        tint = GoldAccent
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
-                                            text = alert.title,
+                                            text = cleanAlertTitle,
                                             style = MaterialTheme.typography.labelLarge,
                                             color = Color.White
                                         )
                                         Text(
-                                            text = alert.body,
+                                            text = cleanAlertBody,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = Color.White.copy(alpha = 0.9f),
                                             maxLines = 2,
@@ -879,11 +883,15 @@ fun AuthenticatedMainPlatform(
                                         )
                                     }
                                 }
-                                IconButton(onClick = { viewModel.dismissBannerAlert() }) {
+                                IconButton(
+                                    onClick = { viewModel.dismissBannerAlert() },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
                                         contentDescription = "إغلاق",
-                                        tint = Color.White
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -935,43 +943,79 @@ fun AuthenticatedMainPlatform(
             },
             text = {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.heightIn(max = 420.dp)
                 ) {
-                    items(notifications, key = { it.id }) { notif ->
+                    items(notifications.distinctBy { it.id }, key = { it.id }) { notif ->
+                        val cleanTitle = com.example.util.InputSanitizer.stripEmojis(notif.title)
+                        val cleanBody = com.example.util.InputSanitizer.stripEmojis(notif.body)
+                        val isSecretSuggestion = cleanTitle.contains("صندوق المقترحات") || cleanTitle.contains("سرية")
                         Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
                         ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                Icon(
+                                    imageVector = if (isSecretSuggestion) {
+                                        Icons.Filled.Lock
+                                    } else {
+                                        Icons.Filled.Notifications
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = cleanTitle,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = notif.createdAt,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
+                                        )
+                                    }
                                     Text(
-                                        text = notif.type.arabicLabel,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = notif.createdAt,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        text = cleanBody,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Text(
-                                    text = notif.title,
-                                    style = MaterialTheme.typography.titleSmall
-                                )
-                                Text(
-                                    text = notif.body,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                IconButton(
+                                    onClick = { viewModel.deleteNotification(notif.id) },
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .testTag("delete_sheet_notif_${notif.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "حذف الإشعار",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
                             }
                         }
                     }

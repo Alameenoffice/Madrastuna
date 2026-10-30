@@ -457,21 +457,26 @@ fun VectorActionButton(
 
 /**
  * Photo Picker Button that automatically compresses any chosen image via Canvas to
- * max 800px width and 0.7 JPEG quality Base64.
+ * max 800px (or 400px for avatars) and 0.75 JPEG quality Base64.
  */
 @Composable
 fun CompressedPhotoPickerButton(
     label: String,
     currentBase64: String,
     onImageCompressed: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isAvatar: Boolean = label.contains("شخصية") || label.contains("شعار") || label.contains("الطالب") || label.contains("المعلم")
 ) {
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            val compressed = ImageCompressor.compressUriToBase64Jpeg(context, uri)
+            val compressed = ImageCompressor.compressUriToBase64Jpeg(
+                context = context,
+                uri = uri,
+                isAvatar = isAvatar
+            )
             if (compressed != null) {
                 onImageCompressed(compressed)
             }
@@ -509,13 +514,15 @@ fun CompressedPhotoPickerButton(
     label: String,
     hasImage: Boolean,
     onPhotoSelected: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isAvatar: Boolean = label.contains("شخصية") || label.contains("شعار") || label.contains("الطالب") || label.contains("المعلم")
 ) {
     CompressedPhotoPickerButton(
         label = label,
         currentBase64 = if (hasImage) "selected" else "",
         onImageCompressed = onPhotoSelected,
-        modifier = modifier
+        modifier = modifier,
+        isAvatar = isAvatar
     )
 }
 
@@ -525,14 +532,15 @@ fun CompressedPhotoPickerButton(
  */
 @Composable
 fun Base64AvatarImage(
-    base64Data: String,
+    base64Data: String?,
     fallbackIcon: ImageVector,
     contentDescription: String,
     size: Dp = 52.dp,
     tint: Color = MaterialTheme.colorScheme.primary
 ) {
-    val bitmap = remember(base64Data) {
-        ImageCompressor.decodeBase64ToImageBitmap(base64Data)
+    val safeData = base64Data.orEmpty()
+    val bitmap = remember(safeData) {
+        ImageCompressor.decodeBase64ToImageBitmap(safeData, maxDimension = 240)
     }
     Box(
         modifier = Modifier
@@ -541,9 +549,9 @@ fun Base64AvatarImage(
             .background(tint.copy(alpha = 0.14f))
             .border(1.5.dp, tint.copy(alpha = 0.4f), CircleShape)
             .then(
-                if (bitmap != null && base64Data.isNotBlank()) {
+                if (bitmap != null && safeData.isNotBlank()) {
                     Modifier.clickable {
-                        GlobalImageLightboxController.open(base64Data, contentDescription)
+                        GlobalImageLightboxController.open(safeData, contentDescription)
                     }
                 } else {
                     Modifier
