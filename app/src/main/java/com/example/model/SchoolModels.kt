@@ -32,11 +32,20 @@ object FirebaseConfigConstants {
     const val COL_LEAVE_REQUESTS = "leave_requests"
     const val COL_BUS_TRACKING = "bus_tracking"
     const val COL_STUDY_MATERIALS = "study_materials"
+    const val COL_FEATURE_SETTINGS = "feature_settings"
+    const val COL_DAILY_BEHAVIOR = "daily_behavior"
+    const val COL_HOMEWORK_SUBMISSIONS = "homework_submissions"
+    const val COL_QUICK_QUIZZES = "quick_quizzes"
+    const val COL_DISMISSAL_CALLS = "dismissal_calls"
+    const val COL_LOST_AND_FOUND = "lost_and_found"
+    const val COL_PRIVATE_SUGGESTIONS = "private_suggestions"
 
     // Root collections for Developer Super-Admin Panel
     const val COL_SCHOOL_LICENSES = "school_licenses"
     const val COL_SCHOOLS_REGISTRY = "schools"
     const val COL_DEV_BROADCASTS = "developer_broadcasts"
+    const val COL_APP_UPDATE_CONFIG = "global_app_update_config"
+    const val COL_OCCASION_THEME = "global_occasion_theme"
 
     // Developer Super-Admin Credentials
     const val DEV_USERNAME = "ABU-RASLAN"
@@ -262,7 +271,8 @@ data class SchoolConfig(
     val logoBase64: String = "",
     val academicYear: String = "2026 - 2027",
     val phone: String = "07512362567",
-    val subscriptionExpiryDate: String = "2027-10-29"
+    val subscriptionExpiryDate: String = "2027-10-29",
+    val featureSettings: SchoolFeatureSettings = SchoolFeatureSettings()
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -361,7 +371,7 @@ data class StudentRecord(
     val schoolId: String = ""
 ) {
     val qrCodeValue: String
-        get() = "MADRASATI-STU-${schoolId.ifBlank { "100" }}-$id"
+        get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
 
     /**
      * Returns the student's full compound name including their father's name (الاسم الثنائي/الكامل)
@@ -790,5 +800,308 @@ object DateCountdownHelper {
         return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(cal.time)
     }
 }
+
+/**
+ * Modular Feature Toggles for School Principal (لوحة تحكم المدير في تفعيل أو إيقاف مزايا مدرسته)
+ */
+data class SchoolFeatureSettings(
+    val honorRollEnabled: Boolean = true,
+    val eventsGalleryEnabled: Boolean = true,
+    val directChatEnabled: Boolean = true,
+    val leaveRequestsEnabled: Boolean = true,
+    val tuitionEnabled: Boolean = true,
+    val busTrackingEnabled: Boolean = true,
+    val studyMaterialsEnabled: Boolean = true,
+    val quickQuizzesEnabled: Boolean = true,
+    val dailyBehaviorEnabled: Boolean = true,
+    val dismissalAndLostFoundEnabled: Boolean = true,
+    val suggestionsBoxEnabled: Boolean = true,
+    val digitalIdEnabled: Boolean = true,
+    val busAlertsEnabled: Boolean = busTrackingEnabled,
+    val studyLibraryEnabled: Boolean = studyMaterialsEnabled,
+    val qrScannerEnabled: Boolean = digitalIdEnabled,
+    val qrAttendanceEnabled: Boolean = digitalIdEnabled,
+    val homeworkSubmissionEnabled: Boolean = true,
+    val dismissalCallEnabled: Boolean = dismissalAndLostFoundEnabled,
+    val lostAndFoundEnabled: Boolean = dismissalAndLostFoundEnabled
+)
+
+/**
+ * Smart Parent Auto-Link Match Info (الاكتشاف التلقائي لولي الأمر المسجل مسبقاً وربط الإخوة)
+ */
+data class SiblingParentMatchInfo(
+    val parentName: String,
+    val parentPhone: String,
+    val parentUsername: String,
+    val parentPassword: String,
+    val existingChildrenNames: List<String>,
+    val address: String
+)
+
+/**
+ * 7.a Daily Classroom Follow-up & Behavior Evaluation (دفتر المتابعة اليومي والسلوك)
+ */
+enum class DailyBehaviorType(
+    val arabicLabel: String,
+    val notificationTitle: String,
+    val isPositive: Boolean,
+    val emoji: String = "🌟"
+) {
+    EXCELLENT_PARTICIPATION(
+        arabicLabel = "مشارك ممتاز 🌟",
+        notificationTitle = "إشادة يومية: مشارك ممتاز 🌟",
+        isPositive = true,
+        emoji = "🌟"
+    ),
+    FORGOT_BOOK(
+        arabicLabel = "نسي الكتاب 📓",
+        notificationTitle = "ملاحظة متابعة: نسيان الكتاب المدرسي 📓",
+        isPositive = false,
+        emoji = "📓"
+    ),
+    MISSED_HOMEWORK(
+        arabicLabel = "لم يحل الواجب ✍️",
+        notificationTitle = "تنبيه دراسي: عدم حل الواجب البيتي ✍️",
+        isPositive = false,
+        emoji = "✍️"
+    ),
+    BEHAVIOR_NOTE(
+        arabicLabel = "ملاحظة سلوكية ⚠️",
+        notificationTitle = "ملاحظة سلوكية داخل الصف ⚠️",
+        isPositive = false,
+        emoji = "⚠️"
+    );
+
+    val arabicTitle: String
+        get() = arabicLabel
+}
+
+data class DailyBehaviorLogItem(
+    val id: String,
+    val studentId: String,
+    val studentName: String,
+    val gradeClass: String,
+    val sectionName: String,
+    val subjectName: String,
+    val behaviorType: DailyBehaviorType,
+    val note: String,
+    val teacherName: String,
+    val date: String,
+    val schoolId: String = ""
+)
+
+/**
+ * 7.b Photo Homework Submission & Auto-Graded Quick Quizzes (تسليم الواجبات المصور والاختبارات السريعة)
+ */
+enum class HomeworkSubmissionStatus(val arabicLabel: String) {
+    PENDING_REVIEW("قيد مراجعة المعلم ⏳"),
+    REVIEWED_CORRECTED("تمت المراجعة والتصحيح ✅")
+}
+
+data class HomeworkSubmissionItem(
+    val id: String,
+    val homeworkId: String,
+    val subjectName: String,
+    val studentId: String,
+    val studentName: String,
+    val gradeClass: String,
+    val sectionName: String,
+    val note: String,
+    val photoBase64: String,
+    val submittedAt: String,
+    val status: HomeworkSubmissionStatus = HomeworkSubmissionStatus.PENDING_REVIEW,
+    val teacherFeedback: String = "",
+    val reviewedByTeacher: String = "",
+    val schoolId: String = ""
+) {
+    val solutionImageBase64: String
+        get() = photoBase64
+
+    val isReviewed: Boolean
+        get() = status == HomeworkSubmissionStatus.REVIEWED_CORRECTED
+}
+
+enum class QuickQuizType(val arabicLabel: String) {
+    MULTIPLE_CHOICE("اختيار من متعدد"),
+    TRUE_FALSE("صح أو خطأ")
+}
+
+data class QuickQuizAnswerView(
+    val quizId: String,
+    val studentId: String,
+    val selectedOptionIndex: Int,
+    val isCorrect: Boolean,
+    val earnedPoints: Int
+)
+
+data class QuickQuizItem(
+    val id: String,
+    val gradeClass: String,
+    val sectionName: String,
+    val subjectName: String,
+    val teacherName: String,
+    val questionText: String,
+    val quizType: QuickQuizType = QuickQuizType.MULTIPLE_CHOICE,
+    val options: List<String>,
+    val correctOptionIndex: Int,
+    val createdAt: String,
+    val studentAnswers: Map<String, Int> = emptyMap(), // studentId -> chosenIndex
+    val points: Int = 5,
+    val schoolId: String = ""
+)
+
+/**
+ * 7.c Smart Dismissal Call + School Lost & Found Registry (الاستدعاء السريع عند الانصراف + سجل المفقودات)
+ */
+data class DismissalCallItem(
+    val id: String,
+    val studentId: String,
+    val studentName: String,
+    val gradeClass: String,
+    val sectionName: String,
+    val parentName: String,
+    val parentPhone: String,
+    val requestedAtTime: String,
+    val status: String = "بانتظار خروج الطالب 🚗", // or "تم تسليم الطالب لولي الأمر ✅"
+    val isHandled: Boolean = false,
+    val schoolId: String = ""
+) {
+    val isAcknowledged: Boolean
+        get() = isHandled
+
+    val requestedAt: String
+        get() = requestedAtTime
+}
+
+enum class LostAndFoundStatus(val arabicLabel: String) {
+    AT_ADMINISTRATION("موجود في الإدارة 📦"),
+    RETURNED_TO_OWNER("تم التسليم لصاحبه ✅")
+}
+
+data class LostAndFoundItem(
+    val id: String,
+    val title: String,
+    val description: String,
+    val foundLocation: String,
+    val date: String,
+    val photoBase64: String = "",
+    val status: LostAndFoundStatus = LostAndFoundStatus.AT_ADMINISTRATION,
+    val publisherName: String = "إدارة المدرسة",
+    val schoolId: String = ""
+) {
+    val isClaimed: Boolean
+        get() = status == LostAndFoundStatus.RETURNED_TO_OWNER
+}
+
+/**
+ * 7.d Private Principal Suggestions & Complaints Box (صندوق المقترحات والشكاوى السري للمدير)
+ */
+data class PrivateSuggestionItem(
+    val id: String,
+    val senderName: String,
+    val senderRoleLabel: String,
+    val category: String, // مقترح تطويري / ملاحظة إدارية / شكوى سرية
+    val title: String,
+    val message: String,
+    val createdAt: String,
+    val adminReply: String = "",
+    val schoolId: String = ""
+) {
+    val senderRoleArabic: String
+        get() = senderRoleLabel
+
+    val messageText: String
+        get() = message
+}
+
+/**
+ * 8.a Developer App Updates & Live Occasion Theme / Icon Config (إدارة تحديثات التطبيق وثيم المناسبات المباشر)
+ */
+data class AppUpdateConfig(
+    val latestVersionCode: Int = 2,
+    val latestVersionName: String = "2.5.0",
+    val apkDownloadUrl: String = "https://github.com/madrasati-smart/releases/latest/download/app-debug.apk",
+    val releaseNotes: String = "تحديث شامل يتضمن نظام QR Code الحقيقي، ربط الإخوة الذكي، الماسح الضوئي المباشر، والمزايا الميدانية اليومية.",
+    val isForceUpdate: Boolean = false,
+    val isUpdateBroadcastActive: Boolean = false,
+    val updatedAt: String = "2026-10-29"
+) {
+    val isUpdateActive: Boolean
+        get() = isUpdateBroadcastActive
+
+    val updateNotes: String
+        get() = releaseNotes
+
+    val downloadUrl: String
+        get() = apkDownloadUrl
+}
+
+enum class OccasionThemeType(
+    val arabicLabel: String,
+    val badgeTitle: String,
+    val bannerGreeting: String,
+    val emojiSymbol: String
+) {
+    OFFICIAL(
+        arabicLabel = "الوضع الرسمي",
+        badgeTitle = "الهوية الزمردية الملكية الرسمية",
+        bannerGreeting = "أهلاً بكم في منصة مدرستي الذكية للتعليم الحديث",
+        emojiSymbol = "🏛️"
+    ),
+    NEW_YEAR(
+        arabicLabel = "رأس السنة",
+        badgeTitle = "احتفالية العام الميلادي الجديد",
+        bannerGreeting = "كل عام وأنتم بخير • عام دراسي مليء بالتفوق والنجاح",
+        emojiSymbol = "🎉"
+    ),
+    RAMADAN_EID(
+        arabicLabel = "رمضان والعيد",
+        badgeTitle = "نفحات شهر رمضان المبارك والعيد السعيد",
+        bannerGreeting = "رمضان كريم وكل عام وأسرتنا التربوية والطلابية بألف خير",
+        emojiSymbol = "🌙"
+    ),
+    ACADEMIC_EXCELLENCE(
+        arabicLabel = "تفوق العام الدراسي",
+        badgeTitle = "موسم الحصاد والتفوق العلمي الذهبي",
+        bannerGreeting = "نبارك لطلبتنا الأعزاء موسم التميز والتفوق الدراسي",
+        emojiSymbol = "🏆"
+    );
+
+    val iconEmoji: String
+        get() = emojiSymbol
+
+    val badgeEmoji: String
+        get() = emojiSymbol
+
+    val arabicTitle: String
+        get() = badgeTitle
+
+    val defaultBanner: String
+        get() = bannerGreeting
+
+    val greetingBanner: String
+        get() = bannerGreeting
+
+    companion object {
+        val DEFAULT: OccasionThemeType = OFFICIAL
+    }
+}
+
+data class OccasionThemeConfig(
+    val themeType: OccasionThemeType = OccasionThemeType.OFFICIAL,
+    val customBannerText: String = "",
+    val customIconBase64: String = "",
+    val updatedAt: String = "2026-10-29"
+) {
+    val occasionTheme: OccasionThemeType
+        get() = themeType
+
+    val customGreeting: String
+        get() = customBannerText
+
+    val customIconEmoji: String
+        get() = themeType.emojiSymbol
+}
+
 
 

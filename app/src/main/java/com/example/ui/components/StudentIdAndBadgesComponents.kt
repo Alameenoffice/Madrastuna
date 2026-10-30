@@ -553,10 +553,40 @@ fun QrAttendanceScannerDialog(
     students: List<StudentRecord>,
     selectedDate: String,
     onScanQrCode: (String) -> Unit,
+    onScanStudentDetailed: (String) -> StudentRecord? = { code ->
+        onScanQrCode(code)
+        val trimmed = code.trim()
+        val parts = trimmed.split("|")
+        val extractedId = if (parts.size >= 3 && parts[0].equals("MADRASATI", ignoreCase = true)) {
+            parts[2].trim()
+        } else {
+            trimmed
+        }
+        students.firstOrNull {
+            it.qrCodeValue.equals(trimmed, ignoreCase = true) ||
+                it.id.equals(extractedId, ignoreCase = true) ||
+                it.studentUsername.equals(trimmed, ignoreCase = true)
+        }
+    },
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var qrInput by remember { mutableStateOf("") }
     var searchFilter by remember { mutableStateOf("") }
+    var showLiveCamera by remember { mutableStateOf(true) }
+    var lastScannedStudent by remember { mutableStateOf<StudentRecord?>(null) }
+    var lastScanTimeText by remember { mutableStateOf("") }
+
+    fun handleQrDetected(rawCode: String) {
+        val clean = rawCode.trim()
+        if (clean.isBlank()) return
+        com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(context)
+        val matched = onScanStudentDetailed(clean)
+        if (matched != null) {
+            lastScannedStudent = matched
+            lastScanTimeText = java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale("ar")).format(java.util.Date())
+        }
+    }
 
     val filteredStudents = remember(students, searchFilter) {
         val q = searchFilter.trim()
@@ -575,193 +605,306 @@ fun QrAttendanceScannerDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .padding(vertical = 16.dp),
+                .fillMaxWidth(0.95f)
+                .padding(vertical = 12.dp),
             shape = RoundedCornerShape(24.dp),
             color = CardSurfaceWhite,
             border = BorderStroke(1.5.dp, GoldFoil)
         ) {
-            Column(
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                item {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = DeepEmerald
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = null,
-                                tint = GoldFoil,
-                                modifier = Modifier
-                                    .padding(10.dp)
-                                    .size(22.dp)
-                            )
+                            Surface(
+                                shape = CircleShape,
+                                color = DeepEmerald
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.QrCodeScanner,
+                                    contentDescription = null,
+                                    tint = GoldFoil,
+                                    modifier = Modifier
+                                        .padding(10.dp)
+                                        .size(22.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "الماسح الضوئي الفعلي بالكاميرا (QR Scanner)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "يتعرف على الطالب فوراً ويسجله (حاضر) ليوم $selectedDate مع إشعار لولي أمره",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen
+                                )
+                            }
                         }
-                        Column {
-                            Text(
-                                text = "مسح الهوية المدرسية بالـ QR",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = DeepForestGreen,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                text = "يسجل الطالب (حاضر) ليوم $selectedDate ويرسل إشعاراً فورياً لولي أمره",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextMutedGreen
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "إغلاق",
+                                tint = TextMutedGreen
                             )
                         }
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "إغلاق",
-                            tint = TextMutedGreen
+                }
+
+                // Live Camera QR Scanner Box
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (showLiveCamera) "الكاميرا الحية نشطة — وجّه الكاميرا نحو هوية الطالب" else "الكاميرا متوقفة مؤقتاً",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = DeepEmerald,
+                            fontWeight = FontWeight.Bold
+                        )
+                        OutlinedButton(
+                            onClick = { showLiveCamera = !showLiveCamera },
+                            shape = RoundedCornerShape(50),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text(
+                                text = if (showLiveCamera) "إخفاء الكاميرا" else "تشغيل الكاميرا 📷",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                if (showLiveCamera) {
+                    item {
+                        com.example.util.StandardQrCodeHelper.LiveCameraQrScannerBox(
+                            onQrCodeScanned = { scannedValue ->
+                                handleQrDetected(scannedValue)
+                            },
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
 
-                // Direct QR code scanner / reader input
-                OutlinedTextField(
-                    value = qrInput,
-                    onValueChange = { qrInput = it },
-                    label = { Text("امسح أو أدخل كود الـ QR أو يوزر الطالب (مثال: MADRASATI-STU-...)") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("qr_attendance_input"),
-                    leadingIcon = {
-                        Icon(Icons.Default.QrCode2, contentDescription = null, tint = DeepEmerald)
-                    },
-                    shape = RoundedCornerShape(14.dp)
-                )
-
-                Button(
-                    onClick = {
-                        if (qrInput.isNotBlank()) {
-                            onScanQrCode(qrInput.trim())
-                            qrInput = ""
-                        }
-                    },
-                    enabled = qrInput.isNotBlank(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("confirm_qr_scan_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = DeepEmerald,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = GoldFoil)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("تأكيد مسح الكود وتسجيل الحضور الفوري", fontWeight = FontWeight.Bold)
-                }
-
-                HorizontalDivider(color = DeepEmerald.copy(alpha = 0.12f))
-
-                Text(
-                    text = "أو اختر بطاقة الطالب لمحاكاة المسح الضوئي السريع عند البوابة:",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = DeepForestGreen,
-                    fontWeight = FontWeight.Bold
-                )
-
-                OutlinedTextField(
-                    value = searchFilter,
-                    onValueChange = { searchFilter = it },
-                    label = { Text("بحث سريع باسم الطالب أو الصف...") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = DeepEmerald)
-                    },
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 260.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(filteredStudents, key = { it.id }) { stu ->
+                // Instant Scanned Student Confirmation Card
+                lastScannedStudent?.let { scannedStu ->
+                    item {
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onScanQrCode(stu.qrCodeValue) }
-                                .testTag("qr_quick_scan_${stu.id}"),
-                            shape = RoundedCornerShape(14.dp),
-                            color = DeepEmerald.copy(alpha = 0.05f),
-                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f))
+                                .testTag("scanned_student_confirmation_card"),
+                            shape = RoundedCornerShape(16.dp),
+                            color = SuccessGreen.copy(alpha = 0.12f),
+                            border = BorderStroke(1.5.dp, SuccessGreen)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    AvatarOrPhotoView(
-                                        base64Image = stu.photoBase64,
-                                        fallbackName = stu.fullNameWithFather,
-                                        size = 40.dp,
-                                        borderColor = GoldFoil
-                                    )
-                                    Column {
-                                        Text(
-                                            text = stu.fullNameWithFather,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = DeepForestGreen,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "${stu.gradeClass} (${stu.sectionName}) • ${stu.qrCodeValue}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = TextMutedGreen
-                                        )
-                                    }
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = DeepEmerald
-                                ) {
+                                AvatarOrPhotoView(
+                                    base64Image = scannedStu.photoBase64,
+                                    fallbackName = scannedStu.fullNameWithFather,
+                                    size = 54.dp,
+                                    borderColor = SuccessGreen
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.QrCodeScanner,
+                                            imageVector = Icons.Default.CheckCircle,
                                             contentDescription = null,
-                                            tint = GoldFoil,
-                                            modifier = Modifier.size(15.dp)
+                                            tint = SuccessGreen,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                         Text(
-                                            text = "مسح QR",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold
+                                            text = "تم التعرف على الطالب وتسجيل حضوره فوراً!",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = DeepForestGreen,
+                                            fontWeight = FontWeight.ExtraBold
                                         )
                                     }
+                                    Text(
+                                        text = scannedStu.fullNameWithFather,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = DeepForestGreen,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Text(
+                                        text = "${scannedStu.gradeClass} — شعبة (${scannedStu.sectionName}) • وقت الوصول: $lastScanTimeText",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = DeepEmerald,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "تم إرسال إشعار فوري لولي الأمر (${scannedStu.parentName.ifBlank { "ولي الأمر" }}) بوصول الطالب للمدرسة",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextMutedGreen
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Direct QR code scanner / reader input
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = qrInput,
+                            onValueChange = { qrInput = it },
+                            label = { Text("قارئ الباركود أو كود الهوية (MADRASATI|...)") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qr_attendance_input"),
+                            leadingIcon = {
+                                Icon(Icons.Default.QrCode2, contentDescription = null, tint = DeepEmerald)
+                            },
+                            shape = RoundedCornerShape(14.dp)
+                        )
+
+                        Button(
+                            onClick = {
+                                if (qrInput.isNotBlank()) {
+                                    handleQrDetected(qrInput.trim())
+                                    qrInput = ""
+                                }
+                            },
+                            enabled = qrInput.isNotBlank(),
+                            modifier = Modifier
+                                .height(54.dp)
+                                .testTag("confirm_qr_scan_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = DeepEmerald,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = GoldFoil)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("تسجيل", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                item {
+                    HorizontalDivider(color = DeepEmerald.copy(alpha = 0.12f))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "المسح السريع لهويات الطلاب المسجلين عند البوابة:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = DeepForestGreen,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = searchFilter,
+                        onValueChange = { searchFilter = it },
+                        label = { Text("بحث سريع باسم الطالب أو الصف...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = DeepEmerald)
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                items(filteredStudents, key = { it.id }) { stu ->
+                    val isJustScanned = lastScannedStudent?.id == stu.id
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { handleQrDetected(stu.qrCodeValue) }
+                            .testTag("qr_quick_scan_${stu.id}"),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isJustScanned) SuccessGreen.copy(alpha = 0.12f) else DeepEmerald.copy(alpha = 0.05f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isJustScanned) SuccessGreen else DeepEmerald.copy(alpha = 0.18f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                AvatarOrPhotoView(
+                                    base64Image = stu.photoBase64,
+                                    fallbackName = stu.fullNameWithFather,
+                                    size = 38.dp,
+                                    borderColor = if (isJustScanned) SuccessGreen else GoldFoil
+                                )
+                                Column {
+                                    Text(
+                                        text = stu.fullNameWithFather,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = DeepForestGreen,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "${stu.gradeClass} (${stu.sectionName})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextMutedGreen
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isJustScanned) SuccessGreen else DeepEmerald
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isJustScanned) Icons.Default.CheckCircle else Icons.Default.QrCodeScanner,
+                                        contentDescription = null,
+                                        tint = if (isJustScanned) Color.White else GoldFoil,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = if (isJustScanned) "تم المسح" else "مسح QR",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
@@ -773,8 +916,12 @@ fun QrAttendanceScannerDialog(
 }
 
 /**
- * Sleek top bar in the Parent interface allowing parents to switch between their children
- * with a single tap, and quickly open the active child's Digital ID Card.
+ * Compact, calm, 60%-smaller single-row glassmorphic pill bar for Student and Parent accounts.
+ * - Uses calm dark emerald-slate colors instead of bright gold/orange.
+ * - Right side: Shows child switcher chips ONLY if `isParentRole && children.size > 1`.
+ *   If the parent has only 1 child, or if the user is a Student (`!isParentRole`), hides switcher
+ *   buttons completely and shows a calm compact student label.
+ * - Left side: Sleek compact button "بطاقة الهوية" that opens the Digital ID popup dialog.
  */
 @Composable
 fun ParentMultiChildSwitcherBar(
@@ -782,128 +929,140 @@ fun ParentMultiChildSwitcherBar(
     selectedStudent: StudentRecord?,
     onSelectStudent: (String) -> Unit,
     onOpenStudentIdCard: (StudentRecord) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isParentRole: Boolean = true,
+    showDigitalIdButton: Boolean = true
 ) {
     if (children.isEmpty()) return
     val activeChild = selectedStudent ?: children.first()
+    val hasMultipleChildren = isParentRole && children.size > 1
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = DeepForestGreen,
-        border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.65f)),
-        shadowElevation = 4.dp
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .testTag("compact_student_parent_top_bar"),
+        shape = RoundedCornerShape(50),
+        color = Color(0xFF0A2E22).copy(alpha = 0.90f),
+        border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.32f)),
+        shadowElevation = 2.dp
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            // Right Side: Multi-child compact chips (ONLY if parent has >1 child) OR calm single student info
+            if (hasMultipleChildren) {
                 Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FamilyRestroom,
-                        contentDescription = null,
-                        tint = GoldFoil,
-                        modifier = Modifier.size(20.dp)
+                    children.forEach { child ->
+                        val isSelected = child.id == activeChild.id
+                        Surface(
+                            modifier = Modifier
+                                .clickable { onSelectStudent(child.id) }
+                                .testTag("switch_child_chip_${child.id}"),
+                            shape = RoundedCornerShape(50),
+                            color = if (isSelected) {
+                                EmeraldAccent.copy(alpha = 0.25f)
+                            } else {
+                                Color.White.copy(alpha = 0.06f)
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) EmeraldAccent.copy(alpha = 0.75f) else Color.White.copy(alpha = 0.14f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                AvatarOrPhotoView(
+                                    base64Image = child.photoBase64,
+                                    fallbackName = child.fullNameWithFather,
+                                    size = 20.dp,
+                                    borderColor = if (isSelected) EmeraldAccent else Color.White.copy(alpha = 0.4f)
+                                )
+                                Text(
+                                    text = child.studentName.ifBlank { child.fullNameWithFather },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.72f),
+                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    AvatarOrPhotoView(
+                        base64Image = activeChild.photoBase64,
+                        fallbackName = activeChild.fullNameWithFather,
+                        size = 22.dp,
+                        borderColor = EmeraldAccent.copy(alpha = 0.7f)
                     )
                     Text(
-                        text = if (children.size > 1) {
-                            "التبديل السريع بين الأبناء (${children.size} أبناء مسجلين)"
-                        } else {
-                            "الابن المسجل: ${activeChild.fullNameWithFather}"
-                        },
+                        text = activeChild.fullNameWithFather,
                         style = MaterialTheme.typography.labelMedium,
-                        color = WarmGoldLight,
-                        fontWeight = FontWeight.Bold
+                        color = Color.White.copy(alpha = 0.92f),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "• ${activeChild.gradeClass} (${activeChild.sectionName})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFA7F3D0),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
 
+            if (showDigitalIdButton) {
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Left Side: Sleek compact "بطاقة الهوية" pill button
                 Surface(
                     modifier = Modifier
                         .clickable { onOpenStudentIdCard(activeChild) }
                         .testTag("parent_bar_open_id_button"),
                     shape = RoundedCornerShape(50),
-                    color = GoldFoil
+                    color = DeepEmerald.copy(alpha = 0.85f),
+                    border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.55f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Badge,
-                            contentDescription = null,
-                            tint = DeepForestGreen,
-                            modifier = Modifier.size(15.dp)
+                            contentDescription = "بطاقة الهوية",
+                            tint = Color(0xFFA7F3D0),
+                            modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = "هوية الطالب QR",
+                            text = "بطاقة الهوية",
                             style = MaterialTheme.typography.labelSmall,
-                            color = DeepForestGreen,
-                            fontWeight = FontWeight.ExtraBold
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
                         )
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                children.forEach { child ->
-                    val isSelected = child.id == activeChild.id
-                    Surface(
-                        modifier = Modifier
-                            .clickable { onSelectStudent(child.id) }
-                            .testTag("switch_child_chip_${child.id}"),
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isSelected) GoldFoil else Color.White.copy(alpha = 0.1f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isSelected) GoldFoil else Color.White.copy(alpha = 0.25f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            AvatarOrPhotoView(
-                                base64Image = child.photoBase64,
-                                fallbackName = child.fullNameWithFather,
-                                size = 26.dp,
-                                borderColor = if (isSelected) DeepForestGreen else GoldFoil
-                            )
-                            Column {
-                                Text(
-                                    text = child.fullNameWithFather,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (isSelected) DeepForestGreen else Color.White,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "${child.gradeClass} (${child.sectionName})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isSelected) DeepForestGreen.copy(alpha = 0.8f) else WarmGoldLight,
-                                    fontSize = 10.sp
-                                )
-                            }
-                        }
                     }
                 }
             }

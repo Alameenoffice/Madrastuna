@@ -32,6 +32,7 @@ import com.example.model.SchoolConfig
 import com.example.model.StudentAutoBadge
 import com.example.model.StudentRecord
 import com.example.model.SubjectGrade
+import com.example.model.TuitionInstallment
 import com.example.model.TuitionRecord
 import java.io.File
 import java.io.FileInputStream
@@ -52,109 +53,11 @@ object DocumentAndIdExporter {
     private const val COLOR_MUTED_TEXT = 0xFF4A6659.toInt()
 
     /**
-     * Generates a crisp, deterministic QR matrix Bitmap for the given student QR payload
-     * without requiring external ZXing dependencies.
+     * Generates a 100% real ISO/IEC 18004 standard QR Code Bitmap in pure black on a pure white background
+     * so any standard camera or QR scanner app reads the student's payload immediately.
      */
-    fun generateQrCodeBitmap(content: String, sizePx: Int = 360): Bitmap {
-        val gridSize = 25
-        val matrix = Array(gridSize) { BooleanArray(gridSize) }
-        val reserved = Array(gridSize) { BooleanArray(gridSize) }
-
-        fun placeFinderPattern(startRow: Int, startCol: Int) {
-            for (r in -1..7) {
-                for (c in -1..7) {
-                    val rr = startRow + r
-                    val cc = startCol + c
-                    if (rr in 0 until gridSize && cc in 0 until gridSize) {
-                        reserved[rr][cc] = true
-                        val inOuter = r in 0..6 && c in 0..6 && (r == 0 || r == 6 || c == 0 || c == 6)
-                        val inInner = r in 2..4 && c in 2..4
-                        matrix[rr][cc] = inOuter || inInner
-                    }
-                }
-            }
-        }
-
-        placeFinderPattern(0, 0)
-        placeFinderPattern(0, gridSize - 7)
-        placeFinderPattern(gridSize - 7, 0)
-
-        // Alignment pattern at (16, 16)
-        for (r in 16..20) {
-            for (c in 16..20) {
-                reserved[r][c] = true
-                val outer = r == 16 || r == 20 || c == 16 || c == 20
-                val center = r == 18 && c == 18
-                matrix[r][c] = outer || center
-            }
-        }
-
-        // Timing patterns
-        for (i in 8 until gridSize - 8) {
-            reserved[6][i] = true
-            matrix[6][i] = (i % 2 == 0)
-            reserved[i][6] = true
-            matrix[i][6] = (i % 2 == 0)
-        }
-
-        // Deterministic bit stream from content bytes + hash mixing
-        val payloadBytes = content.toByteArray(Charsets.UTF_8)
-        var bitIndex = 0
-        var rollingHash = content.hashCode()
-        for (r in 0 until gridSize) {
-            for (c in 0 until gridSize) {
-                if (!reserved[r][c]) {
-                    val byteVal = if (payloadBytes.isNotEmpty()) {
-                        payloadBytes[(bitIndex / 8) % payloadBytes.size].toInt() and 0xFF
-                    } else {
-                        0x5A
-                    }
-                    val bitMask = 1 shl (bitIndex % 8)
-                    rollingHash = (rollingHash * 1664525 + 1013904223) xor (r * 31 + c * 17)
-                    val dataBit = (byteVal and bitMask) != 0
-                    val maskBit = ((r + c + (rollingHash and 3)) % 2) == 0
-                    matrix[r][c] = dataBit xor maskBit
-                    bitIndex++
-                }
-            }
-        }
-
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.WHITE)
-
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = COLOR_DEEP_EMERALD
-        }
-
-        val quietZone = sizePx * 0.08f
-        val drawableSize = sizePx - (quietZone * 2f)
-        val cellSize = drawableSize / gridSize.toFloat()
-
-        for (r in 0 until gridSize) {
-            for (c in 0 until gridSize) {
-                if (matrix[r][c]) {
-                    val left = quietZone + c * cellSize
-                    val top = quietZone + r * cellSize
-                    canvas.drawRect(left, top, left + cellSize + 0.4f, top + cellSize + 0.4f, paint)
-                }
-            }
-        }
-
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 4f
-            color = COLOR_GOLD
-        }
-        canvas.drawRoundRect(
-            RectF(3f, 3f, sizePx - 3f, sizePx - 3f),
-            18f,
-            18f,
-            borderPaint
-        )
-
-        return bitmap
+    fun generateQrCodeBitmap(content: String, sizePx: Int = 420): Bitmap {
+        return StandardQrCodeHelper.generateStandardQrBitmap(content = content, sizePx = sizePx)
     }
 
     /**
@@ -1092,6 +995,158 @@ object DocumentAndIdExporter {
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * Saves any Base64 image from the Global Image Lightbox directly to the user's device gallery (MediaStore).
+     */
+    fun saveBase64ImageToGallery(
+        context: Context,
+        base64Data: String,
+        title: String = "Madrasati_Photo",
+        titlePrefix: String = title
+    ): Result<String> {
+        return try {
+            val bitmap = decodeBase64Bitmap(base64Data)
+                ?: return Result.failure(IllegalArgumentException("الصورة غير صالحة للحفظ"))
+            val safeTitle = titlePrefix.replace(Regex("[^\\p{L}\\p{N}_-]"), "_").ifBlank { "Madrasati_Photo" }
+            val fileName = "${safeTitle}_${System.currentTimeMillis()}.png"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Madrasati_Images")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: return Result.failure(IllegalStateException("تعذر إنشاء ملف الصورة في المعرض"))
+                resolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                Result.success("تم حفظ الصورة في المعرض: Pictures/Madrasati_Images/$fileName")
+            } else {
+                val outFile = File(context.cacheDir, fileName)
+                FileOutputStream(outFile).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                Result.success("تم حفظ الصورة: ${outFile.absolutePath}")
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Exports a luxury dated Digital Tuition Receipt (وصل قبض رقمي رسمي) for a single installment as PDF & opens Print/Save dialog.
+     */
+    fun exportSingleInstallmentReceiptPdf(
+        context: Context,
+        schoolConfig: SchoolConfig,
+        tuitionRecord: TuitionRecord,
+        installment: TuitionInstallment,
+        principalName: String = "إدارة المدرسة"
+    ): Result<String> {
+        return try {
+            val pdfDocument = PdfDocument()
+            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+
+            canvas.drawColor(COLOR_OFF_WHITE)
+            drawOfficialPdfHeader(
+                canvas = canvas,
+                schoolConfig = schoolConfig,
+                documentTitle = "وصل قبض قسط دراسي رقمي رسمي",
+                subtitle = "رقم الوصل: ${installment.receiptNumber} • التاريخ: ${installment.paymentDate}"
+            )
+
+            val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = Color.WHITE
+            }
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 2.5f
+                color = COLOR_GOLD
+            }
+            val receiptRect = RectF(40f, 155f, 555f, 530f)
+            canvas.drawRoundRect(receiptRect, 18f, 18f, cardPaint)
+            canvas.drawRoundRect(receiptRect, 18f, 18f, borderPaint)
+
+            val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_MUTED_TEXT
+                textSize = 14f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.RIGHT
+            }
+            val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DARK_TEXT
+                textSize = 15f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.LEFT
+            }
+
+            val rows = listOf(
+                "رقم وصل القبض الرسمي:" to installment.receiptNumber,
+                "تاريخ تسديد الدفعة:" to installment.paymentDate,
+                "اسم الطالب الكامل:" to tuitionRecord.studentName,
+                "الصف والشعبة:" to "${tuitionRecord.gradeClass} (${tuitionRecord.sectionName})",
+                "اسم ولي الأمر:" to tuitionRecord.parentName,
+                "مبلغ الدفعة المستلمة:" to "${installment.amount} دينار عراقي",
+                "ملاحظات الدفعة:" to installment.note.ifBlank { "دفعة قسط دراسي" },
+                "إجمالي القسط السنوي:" to "${tuitionRecord.totalFee} د.ع",
+                "مجموع المبالغ الواصلة:" to "${tuitionRecord.paidAmount} د.ع",
+                "المبلغ المتبقي في الذمة:" to "${tuitionRecord.remainingAmount} د.ع"
+            )
+
+            var y = 195f
+            rows.forEachIndexed { idx, (label, value) ->
+                canvas.drawText(label, 530f, y, labelPaint)
+                canvas.drawText(value, 65f, y, valuePaint)
+                if (idx < rows.lastIndex) {
+                    val divPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = 0xFFE2E8F0.toInt()
+                        strokeWidth = 1f
+                    }
+                    canvas.drawLine(60f, y + 10f, 535f, y + 10f, divPaint)
+                }
+                y += 33f
+            }
+
+            // Stamp QR verification on receipt
+            val receiptQrPayload = "RECEIPT|${schoolConfig.schoolId}|${installment.receiptNumber}|${tuitionRecord.studentName}|${installment.amount}|${installment.paymentDate}"
+            val qrBmp = generateQrCodeBitmap(receiptQrPayload, 140)
+            canvas.drawBitmap(qrBmp, 65f, 560f, null)
+
+            val stampPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DEEP_EMERALD
+                textSize = 14f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.RIGHT
+            }
+            canvas.drawText("وصل رقمي موثق بختم QR من إدارة (${schoolConfig.schoolName})", 545f, 615f, stampPaint)
+            canvas.drawText("العنوان: ${schoolConfig.address} • العام الدراسي: ${schoolConfig.academicYear}", 545f, 642f, labelPaint)
+
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            pdfDocument.finishPage(page)
+
+            val fileName = "Tuition_Receipt_${installment.receiptNumber}_${System.currentTimeMillis()}.pdf"
+            val path = savePdfAndTriggerPrint(
+                context = context,
+                pdfDocument = pdfDocument,
+                fileName = fileName,
+                jobName = "وصل قبض ${installment.receiptNumber} - ${tuitionRecord.studentName}"
+            )
+            pdfDocument.close()
+            Result.success(path)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

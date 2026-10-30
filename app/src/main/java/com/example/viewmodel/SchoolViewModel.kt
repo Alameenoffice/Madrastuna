@@ -78,6 +78,65 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _developerBroadcasts = MutableStateFlow(repo.loadDeveloperBroadcasts())
     val developerBroadcasts: StateFlow<List<DeveloperBroadcastItem>> = _developerBroadcasts.asStateFlow()
 
+    private val _isSideDrawerEnabled = MutableStateFlow(repo.isSideDrawerEnabled())
+    val isSideDrawerEnabled: StateFlow<Boolean> = _isSideDrawerEnabled.asStateFlow()
+
+    private val _dailyBehaviors = MutableStateFlow(repo.loadDailyBehaviors())
+    val dailyBehaviors: StateFlow<List<DailyBehaviorLogItem>> = _dailyBehaviors.asStateFlow()
+
+    private val _homeworkSubmissions = MutableStateFlow(repo.loadHomeworkSubmissions())
+    val homeworkSubmissions: StateFlow<List<HomeworkSubmissionItem>> = _homeworkSubmissions.asStateFlow()
+
+    private val _quickQuizzes = MutableStateFlow(repo.loadQuickQuizzes())
+    val quickQuizzes: StateFlow<List<QuickQuizItem>> = _quickQuizzes.asStateFlow()
+
+    private val _quickQuizAnswers = MutableStateFlow(buildQuickQuizAnswerViews(_quickQuizzes.value))
+    val quickQuizAnswers: StateFlow<List<QuickQuizAnswerView>> = _quickQuizAnswers.asStateFlow()
+
+    private val _featureSettings = MutableStateFlow(_schoolConfig.value.featureSettings)
+    val featureSettings: StateFlow<SchoolFeatureSettings> = _featureSettings.asStateFlow()
+
+    private val _dismissalCalls = MutableStateFlow(repo.loadDismissalCalls())
+    val dismissalCalls: StateFlow<List<DismissalCallItem>> = _dismissalCalls.asStateFlow()
+
+    private val _lostAndFoundItems = MutableStateFlow(repo.loadLostAndFoundItems())
+    val lostAndFoundItems: StateFlow<List<LostAndFoundItem>> = _lostAndFoundItems.asStateFlow()
+
+    private val _privateSuggestions = MutableStateFlow(repo.loadPrivateSuggestions())
+    val privateSuggestions: StateFlow<List<PrivateSuggestionItem>> = _privateSuggestions.asStateFlow()
+
+    private val _appUpdateConfig = MutableStateFlow(repo.loadAppUpdateConfig())
+    val appUpdateConfig: StateFlow<AppUpdateConfig> = _appUpdateConfig.asStateFlow()
+
+    private val _dismissedUpdateVersion = MutableStateFlow("")
+    val dismissedUpdateVersion: StateFlow<String> = _dismissedUpdateVersion.asStateFlow()
+
+    private val _occasionThemeConfig = MutableStateFlow(repo.loadOccasionThemeConfig())
+    val occasionThemeConfig: StateFlow<OccasionThemeConfig> = _occasionThemeConfig.asStateFlow()
+
+    // Security Shield Brute-Force Lockout States
+    private val _failedLoginAttempts = MutableStateFlow(0)
+    val failedLoginAttempts: StateFlow<Int> = _failedLoginAttempts.asStateFlow()
+    val failedLoginAttemptsCount: StateFlow<Int> = _failedLoginAttempts.asStateFlow()
+
+    private val _loginLockoutUntilMs = MutableStateFlow(0L)
+    val loginLockoutUntilMs: StateFlow<Long> = _loginLockoutUntilMs.asStateFlow()
+
+    private fun buildQuickQuizAnswerViews(quizzes: List<QuickQuizItem>): List<QuickQuizAnswerView> {
+        return quizzes.flatMap { q ->
+            q.studentAnswers.map { (stuId, chosenIdx) ->
+                val correct = chosenIdx == q.correctOptionIndex
+                QuickQuizAnswerView(
+                    quizId = q.id,
+                    studentId = stuId,
+                    selectedOptionIndex = chosenIdx,
+                    isCorrect = correct,
+                    earnedPoints = if (correct) q.points else 0
+                )
+            }
+        }
+    }
+
     private val _selectedParentChildId = MutableStateFlow("")
     val selectedParentChildId: StateFlow<String> = _selectedParentChildId.asStateFlow()
 
@@ -175,7 +234,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private fun reloadSchoolDataIntoMemory(schoolId: String) {
         if (schoolId.isBlank()) return
         repo.setActiveSchoolId(schoolId)
-        _schoolConfig.value = repo.loadSchoolConfig(schoolId)
+        val loadedCfg = repo.loadSchoolConfig(schoolId)
+        _schoolConfig.value = loadedCfg
+        _featureSettings.value = loadedCfg.featureSettings
         _accounts.value = repo.loadAccounts(schoolId)
         _students.value = repo.loadStudents(schoolId)
         _attendance.value = repo.loadAttendance(schoolId)
@@ -190,6 +251,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _notifications.value = repo.loadNotifications(schoolId)
         _leaveRequests.value = repo.loadLeaveRequests(schoolId)
         _studyMaterials.value = repo.loadStudyMaterials(schoolId)
+        _dailyBehaviors.value = repo.loadDailyBehaviors(schoolId)
+        _homeworkSubmissions.value = repo.loadHomeworkSubmissions(schoolId)
+        val loadedQuizzes = repo.loadQuickQuizzes(schoolId)
+        _quickQuizzes.value = loadedQuizzes
+        _quickQuizAnswers.value = buildQuickQuizAnswerViews(loadedQuizzes)
+        _dismissalCalls.value = repo.loadDismissalCalls(schoolId)
+        _lostAndFoundItems.value = repo.loadLostAndFoundItems(schoolId)
+        _privateSuggestions.value = repo.loadPrivateSuggestions(schoolId)
     }
 
     // =========================================================================
@@ -239,6 +308,22 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         _developerBroadcasts.value = merged
                         repo.saveDeveloperBroadcasts(merged)
                     }
+                }
+
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_APP_UPDATE_CONFIG,
+                    docName = "registry"
+                )?.let { remoteUpdateJson ->
+                    val parsed = repo.parseAppUpdateConfigJson(remoteUpdateJson)
+                    _appUpdateConfig.value = parsed
+                }
+
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_OCCASION_THEME,
+                    docName = "registry"
+                )?.let { remoteThemeJson ->
+                    val parsed = repo.parseOccasionThemeConfigJson(remoteThemeJson)
+                    _occasionThemeConfig.value = parsed
                 }
             } catch (_: Exception) {
             }
@@ -780,6 +865,103 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 }
                             }
                         }
+
+                        // 15. Live sync: feature_settings, daily_behavior, homework_submissions, quick_quizzes, dismissal_calls, lost_and_found, private_suggestions
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS)) {
+                            val remoteFeatRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS)
+                            if (!remoteFeatRaw.isNullOrBlank() &&
+                                remoteFeatRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS, remoteFeatRaw)
+                                val parsedFeat = repo.parseFeatureSettingsJson(remoteFeatRaw)
+                                _schoolConfig.value = _schoolConfig.value.copy(featureSettings = parsedFeat)
+                                _featureSettings.value = parsedFeat
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_DAILY_BEHAVIOR)) {
+                            val remoteBehRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_DAILY_BEHAVIOR)
+                            if (!remoteBehRaw.isNullOrBlank() &&
+                                remoteBehRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_DAILY_BEHAVIOR)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_DAILY_BEHAVIOR, remoteBehRaw)
+                                _dailyBehaviors.value = repo.parseDailyBehaviorsJson(remoteBehRaw, sid)
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS)) {
+                            val remoteSubRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS)
+                            if (!remoteSubRaw.isNullOrBlank() &&
+                                remoteSubRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS, remoteSubRaw)
+                                _homeworkSubmissions.value = repo.parseHomeworkSubmissionsJson(remoteSubRaw, sid)
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_QUICK_QUIZZES)) {
+                            val remoteQuizRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_QUICK_QUIZZES)
+                            if (!remoteQuizRaw.isNullOrBlank() &&
+                                remoteQuizRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_QUICK_QUIZZES)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_QUICK_QUIZZES, remoteQuizRaw)
+                                val parsedQ = repo.parseQuickQuizzesJson(remoteQuizRaw, sid)
+                                _quickQuizzes.value = parsedQ
+                                _quickQuizAnswers.value = buildQuickQuizAnswerViews(parsedQ)
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_DISMISSAL_CALLS)) {
+                            val remoteDisRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_DISMISSAL_CALLS)
+                            if (!remoteDisRaw.isNullOrBlank() &&
+                                remoteDisRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_DISMISSAL_CALLS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_DISMISSAL_CALLS, remoteDisRaw)
+                                _dismissalCalls.value = repo.parseDismissalCallsJson(remoteDisRaw, sid)
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_LOST_AND_FOUND)) {
+                            val remoteLfRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_LOST_AND_FOUND)
+                            if (!remoteLfRaw.isNullOrBlank() &&
+                                remoteLfRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_LOST_AND_FOUND)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_LOST_AND_FOUND, remoteLfRaw)
+                                _lostAndFoundItems.value = repo.parseLostAndFoundJson(remoteLfRaw, sid)
+                            }
+                        }
+
+                        if (user.role == UserRole.ADMIN &&
+                            !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS)
+                        ) {
+                            val remoteSugRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS)
+                            if (!remoteSugRaw.isNullOrBlank() &&
+                                remoteSugRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS, remoteSugRaw)
+                                _privateSuggestions.value = repo.parsePrivateSuggestionsJson(remoteSugRaw, sid)
+                            }
+                        }
+
+                        // 16. Global App Update & Occasion Theme live sync
+                        FirebaseCloudSync.fetchGlobalCollectionPayload(
+                            collectionName = FirebaseConfigConstants.COL_APP_UPDATE_CONFIG,
+                            docName = "registry"
+                        )?.let { remoteUpd ->
+                            val parsedUpd = repo.parseAppUpdateConfigJson(remoteUpd)
+                            if (parsedUpd != _appUpdateConfig.value) {
+                                _appUpdateConfig.value = parsedUpd
+                            }
+                        }
+                        FirebaseCloudSync.fetchGlobalCollectionPayload(
+                            collectionName = FirebaseConfigConstants.COL_OCCASION_THEME,
+                            docName = "registry"
+                        )?.let { remoteThm ->
+                            val parsedThm = repo.parseOccasionThemeConfigJson(remoteThm)
+                            if (parsedThm != _occasionThemeConfig.value) {
+                                _occasionThemeConfig.value = parsedThm
+                            }
+                        }
                     } catch (_: Exception) {
                     }
                 }
@@ -1073,8 +1255,43 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.setOnboardingSeen(false)
     }
 
+    fun toggleSideDrawerEnabled() {
+        val next = !_isSideDrawerEnabled.value
+        _isSideDrawerEnabled.value = next
+        repo.setSideDrawerEnabled(next)
+        showToastAlert(
+            if (next) "تم تفعيل القائمة الجانبية الشاملة بنجاح" else "تم إخفاء القائمة الجانبية والاكتفاء بالبطاقات والشريط السفلي",
+            isSuccess = true
+        )
+    }
+
+    fun updateSchoolFeatureSettings(newSettings: SchoolFeatureSettings) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val normalized = newSettings.copy(
+            busTrackingEnabled = newSettings.busAlertsEnabled,
+            studyMaterialsEnabled = newSettings.studyLibraryEnabled,
+            digitalIdEnabled = newSettings.qrScannerEnabled,
+            qrAttendanceEnabled = newSettings.qrScannerEnabled,
+            dismissalAndLostFoundEnabled = newSettings.dismissalCallEnabled || newSettings.lostAndFoundEnabled
+        )
+        val updated = _schoolConfig.value.copy(featureSettings = normalized)
+        _schoolConfig.value = updated
+        _featureSettings.value = normalized
+        repo.saveSchoolConfig(updated)
+        showToastAlert("تم تحديث مزايا وأقسام المنصة ومزامنتها لجميع المستخدمين فوراً", isSuccess = true)
+    }
+
     fun navigateToSection(section: AppSection) {
-        if (section == AppSection.TUITION_FEES && _schoolConfig.value.schoolType == SchoolType.PUBLIC) {
+        val feat = _schoolConfig.value.featureSettings
+        if (section == AppSection.TUITION_FEES && (_schoolConfig.value.schoolType == SchoolType.PUBLIC || !feat.tuitionEnabled)) {
+            _activeSection.value = AppSection.DASHBOARD
+            return
+        }
+        if (section == AppSection.HONOR_ROLL && !feat.honorRollEnabled) {
+            _activeSection.value = AppSection.DASHBOARD
+            return
+        }
+        if (section == AppSection.EVENTS_NEWS && !feat.eventsGalleryEnabled) {
             _activeSection.value = AppSection.DASHBOARD
             return
         }
@@ -1464,6 +1681,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun login(usernameInput: String, passwordInput: String): Result<UserAccount> {
+        val nowMs = System.currentTimeMillis()
+        val lockUntil = _loginLockoutUntilMs.value
+        if (lockUntil > nowMs) {
+            val remainingFormatted = com.example.util.SecurityShieldHelper.formatRemainingLockout(lockUntil - nowMs)
+            val lockMsg = "الدرع الأمني: تم قفل المحاولات مؤقتاً لمدة 5 دقائق بسبب 5 محاولات خاطئة. المتبقي: ($remainingFormatted)"
+            showToastAlert(lockMsg, isSuccess = false)
+            return Result.failure(IllegalStateException(lockMsg))
+        }
+
         val rawUser = usernameInput.trim()
         val rawPass = passwordInput.trim()
         if (rawUser.isEmpty() || rawPass.isEmpty()) {
@@ -1471,10 +1697,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return Result.failure(IllegalArgumentException("يرجى إدخال اسم المستخدم وكلمة المرور"))
         }
 
-        // 1. Check Developer Super-Admin Credentials ("ABU-RASLAN" / "07512362567")
-        if (rawUser.equals(FirebaseConfigConstants.DEV_USERNAME, ignoreCase = true) &&
-            rawPass == FirebaseConfigConstants.DEV_PASSWORD
-        ) {
+        // 1. Check Developer Super-Admin Credentials using SHA-256 verification ("ABU-RASLAN" / "07512362567")
+        if (com.example.util.SecurityShieldHelper.verifyDeveloperCredentials(rawUser, rawPass)) {
+            _failedLoginAttempts.value = 0
+            _loginLockoutUntilMs.value = 0L
             _isDeveloperAuthenticated.value = true
             _isSchoolSetupUnlocked.value = false
             _loginConnectingMessage.value = null
@@ -1529,6 +1755,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         reloadSchoolDataIntoMemory(extractedPrefix)
                         completeMemberLogin(cleanUser, cleanPass, extractedPrefix)
                     } else {
+                        registerFailedLoginAttempt()
                         showToastAlert("بيانات الدخول غير صحيحة أو لم يتم العثور على المدرسة المطلوبة", isSuccess = false)
                     }
                 }
@@ -1538,6 +1765,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         _loginConnectingMessage.value = null
         return completeMemberLogin(cleanUser, cleanPass, extractedPrefix ?: _schoolConfig.value.schoolId)
+    }
+
+    private fun registerFailedLoginAttempt() {
+        val nextCount = _failedLoginAttempts.value + 1
+        _failedLoginAttempts.value = nextCount
+        if (nextCount >= com.example.util.SecurityShieldHelper.MAX_FAILED_ATTEMPTS) {
+            _loginLockoutUntilMs.value = System.currentTimeMillis() + com.example.util.SecurityShieldHelper.LOCKOUT_DURATION_MS
+            _failedLoginAttempts.value = 0
+        }
     }
 
     private fun completeMemberLogin(
@@ -1555,12 +1791,23 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             val prefixedMatch = acc.username.equals(prefixedCandidate, ignoreCase = true)
 
             (exactMatch || prefixedMatch) &&
-                acc.password == cleanPass &&
+                com.example.util.SecurityShieldHelper.verifyPassword(cleanPass, acc.password) &&
                 (currentSchoolId.isEmpty() || acc.schoolId.isEmpty() || acc.schoolId == currentSchoolId)
         } ?: run {
-            showToastAlert("بيانات الدخول غير صحيحة، تأكد من اسم المستخدم (مثال: 105-1) وكلمة المرور", isSuccess = false)
-            return Result.failure(IllegalArgumentException("بيانات الدخول غير صحيحة، تأكد من اسم المستخدم وكلمة المرور"))
+            registerFailedLoginAttempt()
+            val lockUntil = _loginLockoutUntilMs.value
+            val errMsg = if (lockUntil > System.currentTimeMillis()) {
+                "تم حظر المحاولات لمدة 5 دقائق بعد 5 محاولات خاطئة متتالية حفاظاً على أمان الحسابات"
+            } else {
+                val rem = (com.example.util.SecurityShieldHelper.MAX_FAILED_ATTEMPTS - _failedLoginAttempts.value).coerceAtLeast(1)
+                "بيانات الدخول غير صحيحة، تأكد من اسم المستخدم وكلمة المرور (المحاولات المتبقية: $rem)"
+            }
+            showToastAlert(errMsg, isSuccess = false)
+            return Result.failure(IllegalArgumentException(errMsg))
         }
+
+        _failedLoginAttempts.value = 0
+        _loginLockoutUntilMs.value = 0L
 
         val resolvedSchoolId = matched.schoolId.ifBlank { currentSchoolId }
 
@@ -1707,6 +1954,78 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert("تم تحديث حالة تفعيل الحساب بنجاح", isSuccess = true)
     }
 
+    /**
+     * Deliverable 1: Smart Parent Auto-Link (الاكتشاف التلقائي لولي الأمر المسجل مسبقاً وربط الإخوة)
+     * Searches existing students in the same school as the admin types the student's name, father's name, or phone.
+     */
+    fun findExistingParentMatch(
+        studentNameInput: String,
+        parentNameInput: String,
+        parentPhoneInput: String,
+        excludeStudentId: String? = null
+    ): SiblingParentMatchInfo? {
+        val sid = _schoolConfig.value.schoolId
+        val schoolStudents = _students.value.filter {
+            (it.schoolId.isEmpty() || it.schoolId == sid) && it.id != excludeStudentId
+        }
+        if (schoolStudents.isEmpty()) return null
+
+        val cleanParentInput = parentNameInput
+            .replace("ولي أمر الطالب", "")
+            .replace("ولي أمر", "")
+            .replace("السيد", "")
+            .trim()
+        val cleanPhoneInput = parentPhoneInput.trim()
+
+        // Extract probable father name from studentNameInput if it has 2+ words (e.g., "محمد أحمد" -> "أحمد")
+        val studentWords = studentNameInput.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val inferredFatherFromStudent = if (studentWords.size >= 2) {
+            studentWords.drop(1).joinToString(" ").trim()
+        } else ""
+
+        val matchedSiblings = schoolStudents.filter { existing ->
+            val existingFatherClean = existing.parentName
+                .replace("ولي أمر الطالب", "")
+                .replace("ولي أمر", "")
+                .replace("السيد", "")
+                .trim()
+
+            val phoneMatches = cleanPhoneInput.length >= 10 &&
+                cleanPhoneInput != "07512362567" &&
+                existing.parentPhone.trim() == cleanPhoneInput
+
+            val parentNameMatches = cleanParentInput.length >= 3 &&
+                existingFatherClean.isNotEmpty() &&
+                (existingFatherClean.equals(cleanParentInput, ignoreCase = true) ||
+                    existingFatherClean.contains(cleanParentInput, ignoreCase = true) ||
+                    cleanParentInput.contains(existingFatherClean, ignoreCase = true))
+
+            val inferredFatherMatches = inferredFatherFromStudent.length >= 3 &&
+                existingFatherClean.isNotEmpty() &&
+                (existingFatherClean.equals(inferredFatherMatchesOr(inferredFatherFromStudent), ignoreCase = true) ||
+                    existingFatherClean.contains(inferredFatherFromStudent, ignoreCase = true))
+
+            phoneMatches || parentNameMatches || inferredFatherMatches
+        }
+
+        val primary = matchedSiblings.firstOrNull() ?: return null
+        val allSameParent = schoolStudents.filter {
+            it.parentUsername.equals(primary.parentUsername, ignoreCase = true) ||
+                (primary.parentName.isNotBlank() && it.parentName.equals(primary.parentName, ignoreCase = true))
+        }.ifEmpty { listOf(primary) }
+
+        return SiblingParentMatchInfo(
+            parentName = primary.parentName,
+            parentPhone = primary.parentPhone,
+            parentUsername = primary.parentUsername,
+            parentPassword = primary.parentPassword,
+            existingChildrenNames = allSameParent.map { "${it.studentName} (${it.gradeClass})" }.distinct(),
+            address = primary.address
+        )
+    }
+
+    private fun inferredFatherMatchesOr(s: String): String = s
+
     fun addStudentAndParentAccounts(
         studentName: String,
         gradeClass: String,
@@ -1764,21 +2083,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _students.value = updatedStudents
         repo.saveStudents(updatedStudents, sid)
 
-        val parentAcc = UserAccount(
-            id = "acc_parent_$stuId",
-            username = pUser,
-            password = pPass,
-            fullName = cleanParName,
-            role = UserRole.PARENT,
-            isActive = true,
-            phone = finalPhone,
-            linkedStudentId = stuId,
-            gradeClass = gradeClass,
-            sectionName = sectionName,
-            address = finalAddress,
-            photoBase64 = photoBase64,
-            schoolId = sid
-        )
+        // Reuse existing parent account if linking siblings to the same parent username!
+        val existingParentAcc = _accounts.value.firstOrNull {
+            it.role == UserRole.PARENT &&
+                it.username.equals(pUser, ignoreCase = true) &&
+                (it.schoolId.isEmpty() || it.schoolId == sid)
+        }
+
         val studentAcc = UserAccount(
             id = "acc_stu_$stuId",
             username = sUser,
@@ -1795,7 +2106,26 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             schoolId = sid
         )
 
-        val updatedAccounts = listOf(parentAcc, studentAcc) + _accounts.value
+        val updatedAccounts = if (existingParentAcc != null) {
+            listOf(studentAcc) + _accounts.value
+        } else {
+            val parentAcc = UserAccount(
+                id = "acc_parent_$stuId",
+                username = pUser,
+                password = pPass,
+                fullName = cleanParName,
+                role = UserRole.PARENT,
+                isActive = true,
+                phone = finalPhone,
+                linkedStudentId = stuId,
+                gradeClass = gradeClass,
+                sectionName = sectionName,
+                address = finalAddress,
+                photoBase64 = photoBase64,
+                schoolId = sid
+            )
+            listOf(parentAcc, studentAcc) + _accounts.value
+        }
         _accounts.value = updatedAccounts
         repo.saveAccounts(updatedAccounts, sid)
 
@@ -1815,7 +2145,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _tuitions.value = updatedTuitions
         repo.saveTuitions(updatedTuitions, sid)
 
-        showToastAlert("تمت إضافة الطالب ($cleanStuName) • المستخدم: ($sUser) وولي الأمر: ($pUser)", isSuccess = true)
+        val msg = if (existingParentAcc != null) {
+            "تمت إضافة الطالب ($cleanStuName) وربطه تلقائياً بحساب ولي الأمر الحالي ($pUser) مع إخوته بنجاح"
+        } else {
+            "تمت إضافة الطالب ($cleanStuName) • المستخدم: ($sUser) وولي الأمر: ($pUser)"
+        }
+        showToastAlert(msg, isSuccess = true)
         return newStudent
     }
 
@@ -2037,26 +2372,46 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
      * "وصل ابنكم [اسم الطالب] إلى المدرسة الآن".
      */
     fun recordAttendanceByQrCode(qrOrUsername: String, date: String): Boolean {
-        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return false
+        return recordAttendanceByQrCodeDetailed(qrOrUsername, date) != null
+    }
+
+    /**
+     * Scans a Student ID QR Code (MADRASATI|schoolId|studentId|studentName|gradeClass or legacy MADRASATI-STU-...),
+     * plays a beep + tactile vibration, marks the student PRESENT ("حاضر") in Firebase,
+     * sends an instant arrival notification to the parent, and returns the matched StudentRecord.
+     */
+    fun recordAttendanceByQrCodeDetailed(qrOrUsername: String, date: String): StudentRecord? {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return null
         val cleanInput = qrOrUsername.trim()
         if (cleanInput.isEmpty()) {
             showToastAlert("يرجى مسح أو إدخال رمز الـ QR الخاص بالطالب", isSuccess = false)
-            return false
+            return null
         }
 
         val sid = _schoolConfig.value.schoolId
         val schoolStudents = _students.value.filter { it.schoolId.isEmpty() || it.schoolId == sid }
+        val pipeParts = cleanInput.split("|").map { it.trim() }
+        val extractedStuIdFromPipe = if (pipeParts.size >= 3 && pipeParts[0].equals("MADRASATI", ignoreCase = true)) {
+            pipeParts[2]
+        } else ""
+
         val matchedStudent = schoolStudents.firstOrNull { stu ->
             stu.qrCodeValue.equals(cleanInput, ignoreCase = true) ||
+                (extractedStuIdFromPipe.isNotEmpty() && stu.id.equals(extractedStuIdFromPipe, ignoreCase = true)) ||
+                cleanInput.contains("|${stu.id}|", ignoreCase = true) ||
                 stu.id.equals(cleanInput, ignoreCase = true) ||
                 stu.studentUsername.equals(cleanInput, ignoreCase = true) ||
-                cleanInput.endsWith("-${stu.id}", ignoreCase = true)
+                cleanInput.endsWith("-${stu.id}", ignoreCase = true) ||
+                stu.studentName.equals(cleanInput, ignoreCase = true) ||
+                stu.fullNameWithFather.equals(cleanInput, ignoreCase = true)
         }
 
         if (matchedStudent == null) {
             showToastAlert("لم يتم العثور على طالب مطابق لرمز الـ QR ($cleanInput)", isSuccess = false)
-            return false
+            return null
         }
+
+        com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
 
         val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
         val existingIndex = _attendance.value.indexOfFirst {
@@ -2083,8 +2438,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _attendance.value = updated
         repo.saveAttendance(updated, sid)
 
-        val arrivalMsg = "وصل ابنكم ${matchedStudent.fullNameWithFather} إلى المدرسة الآن"
-        showToastAlert("تم تسجيل حضور (${matchedStudent.fullNameWithFather}) بالـ QR وإبلاغ ولي أمره فوراً", isSuccess = true)
+        val arrivalMsg = "وصل ابنكم ${matchedStudent.fullNameWithFather} (${matchedStudent.gradeClass} - شعبة ${matchedStudent.sectionName}) إلى المدرسة الآن الساعة $timeNow"
+        showToastAlert("تم التعرف على الطالب (${matchedStudent.fullNameWithFather}) وتسجيل حضوره بالـ QR وإبلاغ ولي أمره فوراً", isSuccess = true)
 
         pushNotification(
             title = "بوابة الحضور الذكي QR: ${matchedStudent.fullNameWithFather}",
@@ -2093,7 +2448,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             targetStudentId = matchedStudent.id,
             targetRole = UserRole.PARENT.name
         )
-        return true
+        return matchedStudent
     }
 
     /**
@@ -2933,5 +3288,458 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _studyMaterials.value = updated
         repo.saveStudyMaterials(updated, sid)
         showToastAlert("تم حذف الملخص الدراسي من المكتبة الإلكترونية", isSuccess = true)
+    }
+
+    // =========================================================================
+    // SECTION 11: DAILY BEHAVIOR LOG, HOMEWORK SUBMISSIONS, QUICK QUIZZES,
+    // SMART DISMISSAL CALL, LOST & FOUND, PRIVATE SUGGESTIONS, AND DEV UPDATES
+    // =========================================================================
+
+    fun sendDailyBehaviorEvaluation(
+        student: StudentRecord,
+        behaviorType: DailyBehaviorType,
+        subjectName: String = "المتابعة اليومية",
+        customNote: String = ""
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val teacherName = _currentUser.value?.fullName ?: "كادر المدرسة"
+        val finalNote = InputSanitizer.sanitize(customNote).ifBlank { behaviorType.arabicLabel }
+
+        val item = DailyBehaviorLogItem(
+            id = "beh_${UUID.randomUUID().toString().take(6)}",
+            studentId = student.id,
+            studentName = student.fullNameWithFather,
+            gradeClass = student.gradeClass,
+            sectionName = student.sectionName,
+            subjectName = InputSanitizer.sanitize(subjectName).ifBlank { "المتابعة اليومية" },
+            behaviorType = behaviorType,
+            note = finalNote,
+            teacherName = teacherName,
+            date = today,
+            schoolId = sid
+        )
+        val updated = listOf(item) + _dailyBehaviors.value
+        _dailyBehaviors.value = updated
+        repo.saveDailyBehaviors(updated, sid)
+
+        showToastAlert("تم إرسال تقييم (${behaviorType.arabicLabel}) للطالب ${student.fullNameWithFather} وإشعار ولي أمره فوراً", isSuccess = true)
+
+        pushNotification(
+            title = "${behaviorType.notificationTitle} - ${student.fullNameWithFather}",
+            body = "تقييم يومي من ($teacherName - $subjectName): ${behaviorType.arabicLabel}. ملاحظة: $finalNote",
+            type = NotificationType.REPORT,
+            targetStudentId = student.id
+        )
+    }
+
+    fun submitHomeworkPhotoSolution(
+        homework: HomeworkItem,
+        solutionImageBase64: String = "",
+        studentNote: String = "",
+        note: String = studentNote,
+        photoBase64: String = solutionImageBase64
+    ) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val targetStu = getScopedStudentsForUser(user).firstOrNull()
+        val stuId = targetStu?.id ?: user.linkedStudentId.ifBlank { user.id }
+        val stuName = targetStu?.fullNameWithFather ?: user.fullName
+
+        val item = HomeworkSubmissionItem(
+            id = "hwsub_${UUID.randomUUID().toString().take(6)}",
+            homeworkId = homework.id,
+            subjectName = homework.subjectName,
+            studentId = stuId,
+            studentName = stuName,
+            gradeClass = homework.gradeClass,
+            sectionName = homework.sectionName,
+            note = InputSanitizer.sanitize(note).ifBlank { "تسليم حل الواجب البيتي لمادة ${homework.subjectName}" },
+            photoBase64 = photoBase64,
+            submittedAt = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date()),
+            status = HomeworkSubmissionStatus.PENDING_REVIEW,
+            schoolId = sid
+        )
+        val updated = listOf(item) + _homeworkSubmissions.value
+        _homeworkSubmissions.value = updated
+        repo.saveHomeworkSubmissions(updated, sid)
+
+        showToastAlert("تم إرسال حل الواجب المصور لمادة (${homework.subjectName}) إلى معلم المادة بنجاح", isSuccess = true)
+
+        pushNotification(
+            title = "تسليم واجب مصور: $stuName (${homework.subjectName})",
+            body = "قام الطالب $stuName (${homework.gradeClass}) بإرفاق صورة حل الواجب البيتي للمراجعة.",
+            type = NotificationType.HOMEWORK,
+            targetRole = UserRole.TEACHER.name
+        )
+    }
+
+    fun reviewHomeworkSubmission(
+        submissionId: String,
+        feedback: String = "أحسنت، تمت المراجعة والتصحيح ✅"
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val reviewer = _currentUser.value?.fullName ?: "معلم المادة"
+        var targetStudentId = ""
+        var subjectName = ""
+
+        val updated = _homeworkSubmissions.value.map { sub ->
+            if (sub.id == submissionId) {
+                targetStudentId = sub.studentId
+                subjectName = sub.subjectName
+                sub.copy(
+                    status = HomeworkSubmissionStatus.REVIEWED_CORRECTED,
+                    teacherFeedback = InputSanitizer.sanitize(feedback).ifBlank { "تمت المراجعة والتصحيح ✅" },
+                    reviewedByTeacher = reviewer
+                )
+            } else sub
+        }
+        _homeworkSubmissions.value = updated
+        repo.saveHomeworkSubmissions(updated, sid)
+        showToastAlert("تم اعتماد ومراجعة حل الواجب وإبلاغ الطالب وولي الأمر", isSuccess = true)
+
+        if (targetStudentId.isNotBlank()) {
+            pushNotification(
+                title = "تم تصحيح ومراجعة الواجب ($subjectName) ✅",
+                body = "راجع المعلم ($reviewer) حل الواجب المصور: $feedback",
+                type = NotificationType.HOMEWORK,
+                targetStudentId = targetStudentId
+            )
+        }
+    }
+
+    fun publishQuickQuiz(
+        gradeClass: String,
+        sectionName: String,
+        subjectName: String,
+        questionText: String,
+        quizType: QuickQuizType,
+        options: List<String>,
+        correctOptionIndex: Int
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val cleanQuestion = InputSanitizer.sanitize(questionText)
+        if (cleanQuestion.isBlank() || options.size < 2) {
+            showToastAlert("يرجى إدخال نص السؤال وخيارات الإجابة", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val teacherName = _currentUser.value?.fullName ?: "معلم المادة"
+        val item = QuickQuizItem(
+            id = "quiz_${UUID.randomUUID().toString().take(6)}",
+            gradeClass = gradeClass,
+            sectionName = sectionName,
+            subjectName = subjectName,
+            teacherName = teacherName,
+            questionText = cleanQuestion,
+            quizType = quizType,
+            options = options.map { InputSanitizer.sanitize(it) },
+            correctOptionIndex = correctOptionIndex.coerceIn(0, options.lastIndex),
+            createdAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()),
+            studentAnswers = emptyMap(),
+            schoolId = sid
+        )
+        val updated = listOf(item) + _quickQuizzes.value
+        _quickQuizzes.value = updated
+        _quickQuizAnswers.value = buildQuickQuizAnswerViews(updated)
+        repo.saveQuickQuizzes(updated, sid)
+        showToastAlert("تم نشر الاختبار السريع لمادة ($subjectName) لصف $gradeClass ($sectionName)", isSuccess = true)
+
+        pushNotification(
+            title = "اختبار سريع جديد: $subjectName ($gradeClass)",
+            body = "نشر $teacherName سؤالاً تفاعلياً سريعاً: $cleanQuestion",
+            type = NotificationType.HOMEWORK,
+            targetGradeClass = gradeClass,
+            targetSectionName = sectionName
+        )
+    }
+
+    fun publishQuickQuiz(
+        gradeClass: String,
+        sectionName: String,
+        subjectName: String,
+        questionText: String,
+        options: List<String>,
+        correctOptionIndex: Int,
+        points: Int = 5
+    ) {
+        publishQuickQuiz(
+            gradeClass = gradeClass,
+            sectionName = sectionName,
+            subjectName = subjectName,
+            questionText = questionText,
+            quizType = QuickQuizType.MULTIPLE_CHOICE,
+            options = options,
+            correctOptionIndex = correctOptionIndex
+        )
+    }
+
+    fun submitQuickQuizAnswer(quiz: QuickQuizItem, chosenIndex: Int) {
+        submitQuickQuizAnswer(quiz.id, chosenIndex)
+    }
+
+    fun submitQuickQuizAnswer(quizId: String, chosenIndex: Int) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val stuId = getScopedStudentsForUser(user).firstOrNull()?.id ?: user.linkedStudentId.ifBlank { user.id }
+        var isCorrect = false
+
+        val updated = _quickQuizzes.value.map { q ->
+            if (q.id == quizId) {
+                isCorrect = (chosenIndex == q.correctOptionIndex)
+                val nextMap = q.studentAnswers.toMutableMap()
+                nextMap[stuId] = chosenIndex
+                q.copy(studentAnswers = nextMap)
+            } else q
+        }
+        _quickQuizzes.value = updated
+        _quickQuizAnswers.value = buildQuickQuizAnswerViews(updated)
+        repo.saveQuickQuizzes(updated, sid)
+
+        if (isCorrect) {
+            showToastAlert("إجابة صحيحة وممتازة! أحسنت التفوق 🌟", isSuccess = true)
+        } else {
+            showToastAlert("تم تسجيل إجابتك وتصحيحها تلقائياً — راجع الإجابة النموذجية", isSuccess = false)
+        }
+    }
+
+    fun triggerParentDismissalCall(student: StudentRecord) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
+        com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
+
+        val item = DismissalCallItem(
+            id = "dis_${UUID.randomUUID().toString().take(6)}",
+            studentId = student.id,
+            studentName = student.fullNameWithFather,
+            gradeClass = student.gradeClass,
+            sectionName = student.sectionName,
+            parentName = student.parentName.ifBlank { user.fullName },
+            parentPhone = student.parentPhone.ifBlank { user.phone },
+            requestedAtTime = timeNow,
+            status = "ولي الأمر أمام البوابة بانتظار خروج الطالب 🚗",
+            isHandled = false,
+            schoolId = sid
+        )
+        val updated = listOf(item) + _dismissalCalls.value
+        _dismissalCalls.value = updated
+        repo.saveDismissalCalls(updated, sid)
+
+        showToastAlert("تم إرسال نداء الانصراف للإدارة والمدرسين: جاري تجهيز (${student.fullNameWithFather}) للخروج", isSuccess = true)
+
+        pushNotification(
+            title = "نداء انصراف فوري 🚗: ${student.fullNameWithFather}",
+            body = "ولي أمر الطالب (${student.fullNameWithFather} - ${student.gradeClass} شعبة ${student.sectionName}) متواجد الآن أمام باب المدرسة لاستلامه.",
+            type = NotificationType.ATTENDANCE,
+            targetRole = UserRole.ADMIN.name
+        )
+    }
+
+    fun markDismissalCallHandled(callId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        var targetStuId = ""
+        var stuName = ""
+        val updated = _dismissalCalls.value.map { c ->
+            if (c.id == callId) {
+                targetStuId = c.studentId
+                stuName = c.studentName
+                c.copy(status = "تم خروج وتسليم الطالب لولي الأمر بسلامة الله ✅", isHandled = true)
+            } else c
+        }
+        _dismissalCalls.value = updated
+        repo.saveDismissalCalls(updated, sid)
+        showToastAlert("تم تأكيد تسليم الطالب ($stuName) لولي أمره بنجاح", isSuccess = true)
+
+        if (targetStuId.isNotBlank()) {
+            pushNotification(
+                title = "تم توجيه الطالب للبوابة: $stuName ✅",
+                body = "تم إخراج الطالب ($stuName) لتسليمه إلى ولي أمره بسلامة الله.",
+                type = NotificationType.ATTENDANCE,
+                targetStudentId = targetStuId
+            )
+        }
+    }
+
+    fun publishLostAndFoundItem(
+        title: String,
+        foundLocation: String,
+        photoBase64: String
+    ) {
+        publishLostAndFoundItem(
+            title = title,
+            description = title,
+            foundLocation = foundLocation,
+            photoBase64 = photoBase64
+        )
+    }
+
+    fun publishLostAndFoundItem(
+        title: String,
+        description: String,
+        foundLocation: String,
+        photoBase64: String
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val cleanTitle = InputSanitizer.sanitize(title)
+        if (cleanTitle.isBlank()) {
+            showToastAlert("يرجى إدخال اسم الغرض المفقود أو المعثور عليه", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val item = LostAndFoundItem(
+            id = "lf_${UUID.randomUUID().toString().take(6)}",
+            title = cleanTitle,
+            description = InputSanitizer.sanitize(description).ifBlank { cleanTitle },
+            foundLocation = InputSanitizer.sanitize(foundLocation).ifBlank { "ساحة المدرسة / الإدارة" },
+            date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()),
+            photoBase64 = photoBase64,
+            status = LostAndFoundStatus.AT_ADMINISTRATION,
+            publisherName = _currentUser.value?.fullName ?: "إدارة المدرسة",
+            schoolId = sid
+        )
+        val updated = listOf(item) + _lostAndFoundItems.value
+        _lostAndFoundItems.value = updated
+        repo.saveLostAndFoundItems(updated, sid)
+        showToastAlert("تمت إضافة ($cleanTitle) إلى سجل المفقودات المدرسية", isSuccess = true)
+    }
+
+    fun toggleLostAndFoundStatus(itemId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _lostAndFoundItems.value.map { item ->
+            if (item.id == itemId) {
+                val nextStatus = if (item.status == LostAndFoundStatus.AT_ADMINISTRATION) {
+                    LostAndFoundStatus.RETURNED_TO_OWNER
+                } else {
+                    LostAndFoundStatus.AT_ADMINISTRATION
+                }
+                item.copy(status = nextStatus)
+            } else item
+        }
+        _lostAndFoundItems.value = updated
+        repo.saveLostAndFoundItems(updated, sid)
+        showToastAlert("تم تحديث حالة الغرض في سجل المفقودات", isSuccess = true)
+    }
+
+    fun submitPrivateSuggestionToPrincipal(message: String) {
+        submitPrivateSuggestionToPrincipal(
+            category = "مقترح وملاحظة سرية",
+            title = "رسالة سرية لمدير المدرسة",
+            message = message
+        )
+    }
+
+    fun submitPrivateSuggestionToPrincipal(
+        category: String,
+        title: String,
+        message: String
+    ) {
+        val user = _currentUser.value ?: return
+        val cleanTitle = InputSanitizer.sanitize(title)
+        val cleanMsg = InputSanitizer.sanitize(message)
+        if (cleanTitle.isBlank() || cleanMsg.isBlank()) {
+            showToastAlert("يرجى كتابة عنوان وتفاصيل الرسالة السرية للمدير", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val item = PrivateSuggestionItem(
+            id = "sug_${UUID.randomUUID().toString().take(6)}",
+            senderName = user.fullName,
+            senderRoleLabel = user.role.arabicTitle,
+            category = InputSanitizer.sanitize(category).ifBlank { "مقترح تطويري" },
+            title = cleanTitle,
+            message = cleanMsg,
+            createdAt = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date()),
+            schoolId = sid
+        )
+        val updated = listOf(item) + _privateSuggestions.value
+        _privateSuggestions.value = updated
+        repo.savePrivateSuggestions(updated, sid)
+        showToastAlert("تم إرسال رسالتك إلى صندوق المدير السري بنجاح (لا يطلع عليها سوى المدير حصراً)", isSuccess = true)
+
+        pushNotification(
+            title = "صندوق المقترحات السري 🔒: $cleanTitle",
+            body = "رسالة سرية جديدة من (${user.fullName} - ${user.role.arabicTitle}): $cleanMsg",
+            type = NotificationType.REPORT,
+            targetRole = UserRole.ADMIN.name
+        )
+    }
+
+    fun updateGlobalAppUpdateConfig(
+        latestVersionCode: Int,
+        latestVersionName: String,
+        updateNotes: String,
+        downloadUrl: String,
+        isForceUpdate: Boolean
+    ) {
+        val updated = AppUpdateConfig(
+            latestVersionCode = latestVersionCode,
+            latestVersionName = InputSanitizer.sanitize(latestVersionName).ifBlank { "2.5.0" },
+            apkDownloadUrl = downloadUrl.trim().ifBlank { "https://github.com/madrasati-smart/releases/latest/download/app-debug.apk" },
+            releaseNotes = InputSanitizer.sanitize(updateNotes),
+            isForceUpdate = isForceUpdate,
+            isUpdateBroadcastActive = true,
+            updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        )
+        _appUpdateConfig.value = updated
+        repo.saveAppUpdateConfig(updated)
+        showToastAlert("تم حفظ وبث إعدادات تحديث التطبيق (الإصدار ${updated.latestVersionName}) لجميع المستخدمين فوراً", isSuccess = true)
+    }
+
+    fun updateGlobalAppUpdateConfig(
+        versionName: String,
+        apkUrl: String,
+        releaseNotes: String,
+        isForceUpdate: Boolean,
+        isBroadcastActive: Boolean
+    ) {
+        val updated = AppUpdateConfig(
+            latestVersionName = InputSanitizer.sanitize(versionName).ifBlank { "2.5.0" },
+            apkDownloadUrl = apkUrl.trim().ifBlank { "https://github.com/madrasati-smart/releases/latest/download/app-debug.apk" },
+            releaseNotes = InputSanitizer.sanitize(releaseNotes),
+            isForceUpdate = isForceUpdate,
+            isUpdateBroadcastActive = isBroadcastActive,
+            updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        )
+        _appUpdateConfig.value = updated
+        repo.saveAppUpdateConfig(updated)
+        showToastAlert("تم حفظ وبث إعدادات تحديث التطبيق (الإصدار ${updated.latestVersionName}) لجميع المستخدمين فوراً", isSuccess = true)
+    }
+
+    fun dismissAppUpdateBannerLocally() {
+        _dismissedUpdateVersion.value = _appUpdateConfig.value.latestVersionName
+        if (!_appUpdateConfig.value.isForceUpdate) {
+            _appUpdateConfig.value = _appUpdateConfig.value.copy(isUpdateBroadcastActive = false)
+        }
+    }
+
+    fun updateGlobalOccasionTheme(
+        occasionTheme: OccasionThemeType,
+        customGreeting: String
+    ) {
+        updateGlobalOccasionTheme(
+            themeType = occasionTheme,
+            customBannerText = customGreeting
+        )
+    }
+
+    fun updateGlobalOccasionTheme(
+        themeType: OccasionThemeType,
+        customBannerText: String = "",
+        customIconBase64: String = _occasionThemeConfig.value.customIconBase64
+    ) {
+        val updated = OccasionThemeConfig(
+            themeType = themeType,
+            customBannerText = InputSanitizer.sanitize(customBannerText),
+            customIconBase64 = customIconBase64,
+            updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        )
+        _occasionThemeConfig.value = updated
+        repo.saveOccasionThemeConfig(updated)
+        showToastAlert("تم تفعيل ثيم وأيقونة المناسبة (${themeType.arabicLabel}) في جميع المدارس فوراً", isSuccess = true)
     }
 }

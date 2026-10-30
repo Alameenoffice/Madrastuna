@@ -857,6 +857,16 @@ fun AdminAccountsScreen(
 
         var classDropdownExpanded by remember { mutableStateOf(false) }
         var sectionDropdownExpanded by remember { mutableStateOf(false) }
+        var isLinkedToExistingParent by remember(currentStu) { mutableStateOf(false) }
+
+        val matchedParent = remember(studentName, parentName, parentPhone, students, currentStu) {
+            viewModel.findExistingParentMatch(
+                studentNameInput = studentName,
+                parentNameInput = parentName,
+                parentPhoneInput = parentPhone,
+                excludeStudentId = currentStu?.id
+            )
+        }
 
         AlertDialog(
             onDismissRequest = { showStudentDialog = false },
@@ -870,17 +880,128 @@ fun AdminAccountsScreen(
             text = {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.heightIn(max = 440.dp)
+                    modifier = Modifier.heightIn(max = 460.dp)
                 ) {
                     item {
                         OutlinedTextField(
                             value = studentName,
-                            onValueChange = { studentName = it },
+                            onValueChange = {
+                                studentName = it
+                                // Auto-extract father's name if parentName is still blank and user typed 2+ words
+                                val tokens = it.trim().split("\\s+".toRegex()).filter { t -> t.isNotBlank() }
+                                if (parentName.isBlank() && tokens.size >= 2) {
+                                    val candidateFather = tokens.drop(1).joinToString(" ")
+                                    val existingMatch = viewModel.findExistingParentMatch(
+                                        studentNameInput = it,
+                                        parentNameInput = candidateFather,
+                                        parentPhoneInput = parentPhone,
+                                        excludeStudentId = currentStu?.id
+                                    )
+                                    if (existingMatch != null) {
+                                        parentName = existingMatch.parentName
+                                    }
+                                }
+                            },
                             label = { Text("اسم الطالب الرباعي") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+
+                    // Smart Parent Auto-Link Interactive Banner (الاكتشاف التلقائي لولي الأمر وربط الإخوة)
+                    if (matchedParent != null) {
+                        item {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("smart_parent_autolink_banner"),
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isLinkedToExistingParent) {
+                                    Color(0xFF065F46).copy(alpha = 0.14f)
+                                } else {
+                                    Color(0xFFD97706).copy(alpha = 0.14f)
+                                },
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.5.dp,
+                                    if (isLinkedToExistingParent) Color(0xFF059669) else Color(0xFFD97706)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isLinkedToExistingParent) Icons.Filled.CheckCircle else Icons.Filled.FamilyRestroom,
+                                            contentDescription = null,
+                                            tint = if (isLinkedToExistingParent) Color(0xFF059669) else Color(0xFFB45309),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = if (isLinkedToExistingParent) {
+                                                "تم الربط الذكي بنجاح مع حساب ولي الأمر (${matchedParent.parentName})"
+                                            } else {
+                                                "وجدنا ولي الأمر [${matchedParent.parentName}] مسجلاً مسبقاً (لديه الطالب: ${matchedParent.existingChildrenNames.joinToString("، ")}) — هل تريد ربط الطالب الجديد بنفس حساب ولي الأمر؟"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+
+                                    if (!isLinkedToExistingParent) {
+                                        Button(
+                                            onClick = {
+                                                parentName = matchedParent.parentName
+                                                if (matchedParent.parentPhone.isNotBlank()) {
+                                                    parentPhone = matchedParent.parentPhone
+                                                }
+                                                if (matchedParent.address.isNotBlank()) {
+                                                    address = matchedParent.address
+                                                }
+                                                pUser = matchedParent.parentUsername
+                                                pPass = matchedParent.parentPassword
+                                                isLinkedToExistingParent = true
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("confirm_smart_parent_link_button"),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = Color.White
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Link,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "(نعم، اربط بنفس الحساب)",
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            text = "سيظهر الطالب الجديد تلقائياً بجانب إخوته (${matchedParent.existingChildrenNames.joinToString("، ")}) في حساب ولي الأمر الموحد (${matchedParent.parentUsername}).",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFF047857),
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         Text(
                             text = "اختر الصف والشعبة من الصفوف المسجلة:",
@@ -955,7 +1076,10 @@ fun AdminAccountsScreen(
                     item {
                         OutlinedTextField(
                             value = parentName,
-                            onValueChange = { parentName = it },
+                            onValueChange = {
+                                parentName = it
+                                isLinkedToExistingParent = false
+                            },
                             label = { Text("اسم ولي الأمر") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
@@ -964,7 +1088,10 @@ fun AdminAccountsScreen(
                     item {
                         OutlinedTextField(
                             value = parentPhone,
-                            onValueChange = { parentPhone = it },
+                            onValueChange = {
+                                parentPhone = it
+                                isLinkedToExistingParent = false
+                            },
                             label = { Text("رقم واتساب ولي الأمر") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()

@@ -140,6 +140,13 @@ class SchoolRepository(context: Context) {
                 }
             }
 
+            val featObj = obj.optJSONObject("featureSettings")
+            val parsedFeatures = if (featObj != null) {
+                parseFeatureSettingsObject(featObj)
+            } else {
+                loadFeatureSettings(resolvedSchoolId)
+            }
+
             SchoolConfig(
                 schoolId = resolvedSchoolId,
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
@@ -156,7 +163,8 @@ class SchoolRepository(context: Context) {
                 logoBase64 = obj.optString("logoBase64", ""),
                 academicYear = obj.optString("academicYear", "2026 - 2027"),
                 phone = obj.optString("phone", "07512362567"),
-                subscriptionExpiryDate = obj.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" }
+                subscriptionExpiryDate = obj.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
+                featureSettings = parsedFeatures
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -169,6 +177,7 @@ class SchoolRepository(context: Context) {
         }
         setActiveSchoolId(sid)
 
+        val featJson = featureSettingsToJsonObject(config.featureSettings)
         val obj = JSONObject().apply {
             put("schoolId", sid)
             put("isSetupCompleted", config.isSetupCompleted)
@@ -185,14 +194,74 @@ class SchoolRepository(context: Context) {
             put("academicYear", config.academicYear)
             put("phone", config.phone)
             put("subscriptionExpiryDate", config.subscriptionExpiryDate.ifBlank { "2027-10-29" })
+            put("featureSettings", featJson)
         }
         val jsonStr = obj.toString()
-        prefs.edit().putString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), jsonStr).apply()
+        prefs.edit()
+            .putString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), jsonStr)
+            .putString(scopedKey(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS), featJson.toString())
+            .apply()
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_SETTINGS, jsonStr)
+        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS, featJson.toString())
 
         if (config.subjectConfigs.isNotEmpty()) {
             saveSubjectConfigs(config.subjectConfigs, sid)
         }
+    }
+
+    private fun featureSettingsToJsonObject(f: SchoolFeatureSettings): JSONObject {
+        return JSONObject().apply {
+            put("honorRollEnabled", f.honorRollEnabled)
+            put("eventsGalleryEnabled", f.eventsGalleryEnabled)
+            put("directChatEnabled", f.directChatEnabled)
+            put("leaveRequestsEnabled", f.leaveRequestsEnabled)
+            put("tuitionEnabled", f.tuitionEnabled)
+            put("busTrackingEnabled", f.busTrackingEnabled)
+            put("studyMaterialsEnabled", f.studyMaterialsEnabled)
+            put("quickQuizzesEnabled", f.quickQuizzesEnabled)
+            put("dailyBehaviorEnabled", f.dailyBehaviorEnabled)
+            put("dismissalAndLostFoundEnabled", f.dismissalAndLostFoundEnabled)
+            put("suggestionsBoxEnabled", f.suggestionsBoxEnabled)
+            put("digitalIdEnabled", f.digitalIdEnabled)
+        }
+    }
+
+    private fun parseFeatureSettingsObject(o: JSONObject): SchoolFeatureSettings {
+        return SchoolFeatureSettings(
+            honorRollEnabled = o.optBoolean("honorRollEnabled", true),
+            eventsGalleryEnabled = o.optBoolean("eventsGalleryEnabled", true),
+            directChatEnabled = o.optBoolean("directChatEnabled", true),
+            leaveRequestsEnabled = o.optBoolean("leaveRequestsEnabled", true),
+            tuitionEnabled = o.optBoolean("tuitionEnabled", true),
+            busTrackingEnabled = o.optBoolean("busTrackingEnabled", true),
+            studyMaterialsEnabled = o.optBoolean("studyMaterialsEnabled", true),
+            quickQuizzesEnabled = o.optBoolean("quickQuizzesEnabled", true),
+            dailyBehaviorEnabled = o.optBoolean("dailyBehaviorEnabled", true),
+            dismissalAndLostFoundEnabled = o.optBoolean("dismissalAndLostFoundEnabled", true),
+            suggestionsBoxEnabled = o.optBoolean("suggestionsBoxEnabled", true),
+            digitalIdEnabled = o.optBoolean("digitalIdEnabled", true)
+        )
+    }
+
+    fun loadFeatureSettings(schoolId: String = getActiveSchoolId()): SchoolFeatureSettings {
+        if (schoolId.isBlank()) return SchoolFeatureSettings()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_FEATURE_SETTINGS), null)
+            ?: return SchoolFeatureSettings()
+        return parseFeatureSettingsJson(raw)
+    }
+
+    fun parseFeatureSettingsJson(raw: String): SchoolFeatureSettings {
+        return try {
+            parseFeatureSettingsObject(JSONObject(raw))
+        } catch (_: Exception) {
+            SchoolFeatureSettings()
+        }
+    }
+
+    fun isSideDrawerEnabled(): Boolean = prefs.getBoolean("side_drawer_enabled", true)
+
+    fun setSideDrawerEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("side_drawer_enabled", enabled).apply()
     }
 
     fun loadSubjectConfigs(schoolId: String = getActiveSchoolId()): List<SubjectConfigItem> {
@@ -1670,9 +1739,510 @@ class SchoolRepository(context: Context) {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_STUDY_MATERIALS), it)
             }
         }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_FEATURE_SETTINGS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_FEATURE_SETTINGS), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_DAILY_BEHAVIOR)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_DAILY_BEHAVIOR), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_QUICK_QUIZZES)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_QUICK_QUIZZES), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_DISMISSAL_CALLS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_DISMISSAL_CALLS), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_LOST_AND_FOUND)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_LOST_AND_FOUND), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS), it)
+            }
+        }
 
         editor.apply()
         return foundAny
+    }
+
+    // =========================================================================
+    // 14. FIELD FEATURES & DEVELOPER GLOBAL CONFIGS
+    // =========================================================================
+
+    fun loadDailyBehaviors(schoolId: String = getActiveSchoolId()): List<DailyBehaviorLogItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_DAILY_BEHAVIOR), null)
+            ?: return emptyList()
+        return parseDailyBehaviorsJson(raw, schoolId)
+    }
+
+    fun parseDailyBehaviorsJson(raw: String, schoolId: String = getActiveSchoolId()): List<DailyBehaviorLogItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<DailyBehaviorLogItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                val bType = try {
+                    DailyBehaviorType.valueOf(o.optString("behaviorType", DailyBehaviorType.EXCELLENT_PARTICIPATION.name))
+                } catch (_: Exception) {
+                    DailyBehaviorType.EXCELLENT_PARTICIPATION
+                }
+                list.add(
+                    DailyBehaviorLogItem(
+                        id = o.optString("id"),
+                        studentId = o.optString("studentId"),
+                        studentName = o.optString("studentName"),
+                        gradeClass = o.optString("gradeClass"),
+                        sectionName = o.optString("sectionName"),
+                        subjectName = o.optString("subjectName", "عام"),
+                        behaviorType = bType,
+                        note = o.optString("note"),
+                        teacherName = o.optString("teacherName"),
+                        date = o.optString("date"),
+                        schoolId = itemSid
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveDailyBehaviors(items: List<DailyBehaviorLogItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        items.forEach { item ->
+            arr.put(JSONObject().apply {
+                put("id", item.id)
+                put("studentId", item.studentId)
+                put("studentName", InputSanitizer.sanitize(item.studentName))
+                put("gradeClass", InputSanitizer.sanitize(item.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(item.sectionName))
+                put("subjectName", InputSanitizer.sanitize(item.subjectName))
+                put("behaviorType", item.behaviorType.name)
+                put("note", InputSanitizer.sanitize(item.note))
+                put("teacherName", InputSanitizer.sanitize(item.teacherName))
+                put("date", item.date)
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_DAILY_BEHAVIOR), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_DAILY_BEHAVIOR, jsonStr)
+    }
+
+    fun loadHomeworkSubmissions(schoolId: String = getActiveSchoolId()): List<HomeworkSubmissionItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS), null)
+            ?: return emptyList()
+        return parseHomeworkSubmissionsJson(raw, schoolId)
+    }
+
+    fun parseHomeworkSubmissionsJson(raw: String, schoolId: String = getActiveSchoolId()): List<HomeworkSubmissionItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<HomeworkSubmissionItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                val st = try {
+                    HomeworkSubmissionStatus.valueOf(o.optString("status", HomeworkSubmissionStatus.PENDING_REVIEW.name))
+                } catch (_: Exception) {
+                    HomeworkSubmissionStatus.PENDING_REVIEW
+                }
+                list.add(
+                    HomeworkSubmissionItem(
+                        id = o.optString("id"),
+                        homeworkId = o.optString("homeworkId"),
+                        subjectName = o.optString("subjectName"),
+                        studentId = o.optString("studentId"),
+                        studentName = o.optString("studentName"),
+                        gradeClass = o.optString("gradeClass"),
+                        sectionName = o.optString("sectionName"),
+                        note = o.optString("note"),
+                        photoBase64 = o.optString("photoBase64"),
+                        submittedAt = o.optString("submittedAt"),
+                        status = st,
+                        teacherFeedback = o.optString("teacherFeedback"),
+                        reviewedByTeacher = o.optString("reviewedByTeacher"),
+                        schoolId = itemSid
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveHomeworkSubmissions(items: List<HomeworkSubmissionItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        items.forEach { item ->
+            arr.put(JSONObject().apply {
+                put("id", item.id)
+                put("homeworkId", item.homeworkId)
+                put("subjectName", InputSanitizer.sanitize(item.subjectName))
+                put("studentId", item.studentId)
+                put("studentName", InputSanitizer.sanitize(item.studentName))
+                put("gradeClass", InputSanitizer.sanitize(item.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(item.sectionName))
+                put("note", InputSanitizer.sanitize(item.note))
+                put("photoBase64", item.photoBase64)
+                put("submittedAt", item.submittedAt)
+                put("status", item.status.name)
+                put("teacherFeedback", InputSanitizer.sanitize(item.teacherFeedback))
+                put("reviewedByTeacher", InputSanitizer.sanitize(item.reviewedByTeacher))
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS, jsonStr)
+    }
+
+    fun loadQuickQuizzes(schoolId: String = getActiveSchoolId()): List<QuickQuizItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_QUICK_QUIZZES), null)
+            ?: return emptyList()
+        return parseQuickQuizzesJson(raw, schoolId)
+    }
+
+    fun parseQuickQuizzesJson(raw: String, schoolId: String = getActiveSchoolId()): List<QuickQuizItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<QuickQuizItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                val qType = try {
+                    QuickQuizType.valueOf(o.optString("quizType", QuickQuizType.MULTIPLE_CHOICE.name))
+                } catch (_: Exception) {
+                    QuickQuizType.MULTIPLE_CHOICE
+                }
+                val answersObj = o.optJSONObject("studentAnswers")
+                val answersMap = mutableMapOf<String, Int>()
+                if (answersObj != null) {
+                    val keys = answersObj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        answersMap[k] = answersObj.optInt(k, 0)
+                    }
+                }
+                list.add(
+                    QuickQuizItem(
+                        id = o.optString("id"),
+                        gradeClass = o.optString("gradeClass"),
+                        sectionName = o.optString("sectionName"),
+                        subjectName = o.optString("subjectName"),
+                        teacherName = o.optString("teacherName"),
+                        questionText = o.optString("questionText"),
+                        quizType = qType,
+                        options = jsonArrayToList(o.optJSONArray("options")),
+                        correctOptionIndex = o.optInt("correctOptionIndex", 0),
+                        createdAt = o.optString("createdAt"),
+                        studentAnswers = answersMap,
+                        schoolId = itemSid
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveQuickQuizzes(items: List<QuickQuizItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        items.forEach { q ->
+            val ansObj = JSONObject()
+            q.studentAnswers.forEach { (stuId, idx) -> ansObj.put(stuId, idx) }
+            arr.put(JSONObject().apply {
+                put("id", q.id)
+                put("gradeClass", InputSanitizer.sanitize(q.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(q.sectionName))
+                put("subjectName", InputSanitizer.sanitize(q.subjectName))
+                put("teacherName", InputSanitizer.sanitize(q.teacherName))
+                put("questionText", InputSanitizer.sanitize(q.questionText))
+                put("quizType", q.quizType.name)
+                put("options", JSONArray(q.options))
+                put("correctOptionIndex", q.correctOptionIndex)
+                put("createdAt", q.createdAt)
+                put("studentAnswers", ansObj)
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_QUICK_QUIZZES), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_QUICK_QUIZZES, jsonStr)
+    }
+
+    fun loadDismissalCalls(schoolId: String = getActiveSchoolId()): List<DismissalCallItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_DISMISSAL_CALLS), null)
+            ?: return emptyList()
+        return parseDismissalCallsJson(raw, schoolId)
+    }
+
+    fun parseDismissalCallsJson(raw: String, schoolId: String = getActiveSchoolId()): List<DismissalCallItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<DismissalCallItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                list.add(
+                    DismissalCallItem(
+                        id = o.optString("id"),
+                        studentId = o.optString("studentId"),
+                        studentName = o.optString("studentName"),
+                        gradeClass = o.optString("gradeClass"),
+                        sectionName = o.optString("sectionName"),
+                        parentName = o.optString("parentName"),
+                        parentPhone = o.optString("parentPhone"),
+                        requestedAtTime = o.optString("requestedAtTime"),
+                        status = o.optString("status", "بانتظار خروج الطالب 🚗"),
+                        isHandled = o.optBoolean("isHandled", false),
+                        schoolId = itemSid
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveDismissalCalls(items: List<DismissalCallItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        items.forEach { c ->
+            arr.put(JSONObject().apply {
+                put("id", c.id)
+                put("studentId", c.studentId)
+                put("studentName", InputSanitizer.sanitize(c.studentName))
+                put("gradeClass", InputSanitizer.sanitize(c.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(c.sectionName))
+                put("parentName", InputSanitizer.sanitize(c.parentName))
+                put("parentPhone", InputSanitizer.sanitize(c.parentPhone))
+                put("requestedAtTime", c.requestedAtTime)
+                put("status", InputSanitizer.sanitize(c.status))
+                put("isHandled", c.isHandled)
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_DISMISSAL_CALLS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_DISMISSAL_CALLS, jsonStr)
+    }
+
+    fun loadLostAndFoundItems(schoolId: String = getActiveSchoolId()): List<LostAndFoundItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_LOST_AND_FOUND), null)
+            ?: return emptyList()
+        return parseLostAndFoundJson(raw, schoolId)
+    }
+
+    fun parseLostAndFoundJson(raw: String, schoolId: String = getActiveSchoolId()): List<LostAndFoundItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<LostAndFoundItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                val st = try {
+                    LostAndFoundStatus.valueOf(o.optString("status", LostAndFoundStatus.AT_ADMINISTRATION.name))
+                } catch (_: Exception) {
+                    LostAndFoundStatus.AT_ADMINISTRATION
+                }
+                list.add(
+                    LostAndFoundItem(
+                        id = o.optString("id"),
+                        title = o.optString("title"),
+                        description = o.optString("description"),
+                        foundLocation = o.optString("foundLocation"),
+                        date = o.optString("date"),
+                        photoBase64 = o.optString("photoBase64"),
+                        status = st,
+                        publisherName = o.optString("publisherName", "إدارة المدرسة"),
+                        schoolId = itemSid
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveLostAndFoundItems(items: List<LostAndFoundItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        items.forEach { item ->
+            arr.put(JSONObject().apply {
+                put("id", item.id)
+                put("title", InputSanitizer.sanitize(item.title))
+                put("description", InputSanitizer.sanitize(item.description))
+                put("foundLocation", InputSanitizer.sanitize(item.foundLocation))
+                put("date", item.date)
+                put("photoBase64", item.photoBase64)
+                put("status", item.status.name)
+                put("publisherName", InputSanitizer.sanitize(item.publisherName))
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_LOST_AND_FOUND), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_LOST_AND_FOUND, jsonStr)
+    }
+
+    fun loadPrivateSuggestions(schoolId: String = getActiveSchoolId()): List<PrivateSuggestionItem> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS), null)
+            ?: return emptyList()
+        return parsePrivateSuggestionsJson(raw, schoolId)
+    }
+
+    fun parsePrivateSuggestionsJson(raw: String, schoolId: String = getActiveSchoolId()): List<PrivateSuggestionItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<PrivateSuggestionItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                list.add(
+                    PrivateSuggestionItem(
+                        id = o.optString("id"),
+                        senderName = o.optString("senderName"),
+                        senderRoleLabel = o.optString("senderRoleLabel"),
+                        category = o.optString("category", "مقترح تطويري"),
+                        title = o.optString("title"),
+                        message = o.optString("message"),
+                        createdAt = o.optString("createdAt"),
+                        adminReply = o.optString("adminReply"),
+                        schoolId = itemSid
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun savePrivateSuggestions(items: List<PrivateSuggestionItem>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        items.forEach { item ->
+            arr.put(JSONObject().apply {
+                put("id", item.id)
+                put("senderName", InputSanitizer.sanitize(item.senderName))
+                put("senderRoleLabel", InputSanitizer.sanitize(item.senderRoleLabel))
+                put("category", InputSanitizer.sanitize(item.category))
+                put("title", InputSanitizer.sanitize(item.title))
+                put("message", InputSanitizer.sanitize(item.message))
+                put("createdAt", item.createdAt)
+                put("adminReply", InputSanitizer.sanitize(item.adminReply))
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS, jsonStr)
+    }
+
+    fun loadAppUpdateConfig(): AppUpdateConfig {
+        val raw = prefs.getString("global_app_update_config_json", null) ?: return AppUpdateConfig()
+        return parseAppUpdateConfigJson(raw)
+    }
+
+    fun parseAppUpdateConfigJson(raw: String): AppUpdateConfig {
+        return try {
+            val o = JSONObject(raw)
+            AppUpdateConfig(
+                latestVersionName = o.optString("latestVersionName", "2.5.0"),
+                apkDownloadUrl = o.optString("apkDownloadUrl", "https://github.com/madrasati-smart/releases/latest/download/app-debug.apk"),
+                releaseNotes = o.optString("releaseNotes", ""),
+                isForceUpdate = o.optBoolean("isForceUpdate", false),
+                isUpdateBroadcastActive = o.optBoolean("isUpdateBroadcastActive", false),
+                updatedAt = o.optString("updatedAt", "2026-10-29")
+            )
+        } catch (_: Exception) {
+            AppUpdateConfig()
+        }
+    }
+
+    fun saveAppUpdateConfig(config: AppUpdateConfig) {
+        val obj = JSONObject().apply {
+            put("latestVersionName", InputSanitizer.sanitize(config.latestVersionName))
+            put("apkDownloadUrl", config.apkDownloadUrl.trim())
+            put("releaseNotes", InputSanitizer.sanitize(config.releaseNotes))
+            put("isForceUpdate", config.isForceUpdate)
+            put("isUpdateBroadcastActive", config.isUpdateBroadcastActive)
+            put("updatedAt", config.updatedAt)
+        }
+        val jsonStr = obj.toString()
+        prefs.edit().putString("global_app_update_config_json", jsonStr).apply()
+        FirebaseCloudSync.pushRootNodeAsync(FirebaseConfigConstants.COL_APP_UPDATE_CONFIG, jsonStr)
+    }
+
+    fun loadOccasionThemeConfig(): OccasionThemeConfig {
+        val raw = prefs.getString("global_occasion_theme_json", null) ?: return OccasionThemeConfig()
+        return parseOccasionThemeConfigJson(raw)
+    }
+
+    fun parseOccasionThemeConfigJson(raw: String): OccasionThemeConfig {
+        return try {
+            val o = JSONObject(raw)
+            val tType = try {
+                OccasionThemeType.valueOf(o.optString("themeType", OccasionThemeType.OFFICIAL.name))
+            } catch (_: Exception) {
+                OccasionThemeType.OFFICIAL
+            }
+            OccasionThemeConfig(
+                themeType = tType,
+                customBannerText = o.optString("customBannerText", ""),
+                customIconBase64 = o.optString("customIconBase64", ""),
+                updatedAt = o.optString("updatedAt", "2026-10-29")
+            )
+        } catch (_: Exception) {
+            OccasionThemeConfig()
+        }
+    }
+
+    fun saveOccasionThemeConfig(config: OccasionThemeConfig) {
+        val obj = JSONObject().apply {
+            put("themeType", config.themeType.name)
+            put("customBannerText", InputSanitizer.sanitize(config.customBannerText))
+            put("customIconBase64", config.customIconBase64)
+            put("updatedAt", config.updatedAt)
+        }
+        val jsonStr = obj.toString()
+        prefs.edit().putString("global_occasion_theme_json", jsonStr).apply()
+        FirebaseCloudSync.pushRootNodeAsync(FirebaseConfigConstants.COL_OCCASION_THEME, jsonStr)
     }
 
     // =========================================================================

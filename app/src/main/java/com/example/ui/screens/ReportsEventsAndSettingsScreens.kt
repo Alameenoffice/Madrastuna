@@ -52,6 +52,7 @@ fun ReportsAndChatScreen(
 ) {
     val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val featureSettings by viewModel.featureSettings.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val students by viewModel.students.collectAsState()
@@ -171,21 +172,23 @@ fun ReportsAndChatScreen(
                 )
             }
 
-            Button(
-                onClick = { selectedTab = 1 },
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 48.dp)
-                    .testTag("tab_direct_chat"),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            ) {
-                Icon(Icons.Filled.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("صندوق المراسلة المباشر", maxLines = 1, softWrap = false)
+            if (featureSettings.directChatEnabled) {
+                Button(
+                    onClick = { selectedTab = 1 },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("tab_direct_chat"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Icon(Icons.Filled.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("صندوق المراسلة المباشر", maxLines = 1, softWrap = false)
+                }
             }
         }
 
@@ -639,6 +642,12 @@ fun ReportsAndChatScreen(
                                                             .fillMaxWidth()
                                                             .height(150.dp)
                                                             .clip(RoundedCornerShape(10.dp))
+                                                            .clickable {
+                                                                GlobalImageLightboxController.open(
+                                                                    msg.imageBase64,
+                                                                    "صورة مرفقة - ${msg.senderName}"
+                                                                )
+                                                            }
                                                     )
                                                 }
                                                 if (msg.messageText.isNotBlank()) {
@@ -1049,7 +1058,11 @@ fun EventsAndNewsScreen(
                                 bitmap = decodedBitmap,
                                 contentDescription = ev.title,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable {
+                                        GlobalImageLightboxController.open(ev.imageBase64, ev.title)
+                                    }
                             )
                         } else {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1231,8 +1244,11 @@ fun SettingsScreen(
 ) {
     val clipboardManager = LocalClipboardManager.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val featureSettings by viewModel.featureSettings.collectAsState()
+    val privateSuggestions by viewModel.privateSuggestions.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val isSideDrawerEnabled by viewModel.isSideDrawerEnabled.collectAsState()
     val customSubjects = schoolConfig.subjectConfigs
 
     var schoolName by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolName) }
@@ -1255,6 +1271,9 @@ fun SettingsScreen(
     // Backup & Restore State
     var backupJsonText by remember { mutableStateOf("") }
     var showRestoreDialog by remember { mutableStateOf(false) }
+
+    // Private suggestion input
+    var suggestionDraft by remember { mutableStateOf("") }
 
     val isAdmin = currentUser?.role == UserRole.ADMIN
 
@@ -1315,7 +1334,7 @@ fun SettingsScreen(
             }
         }
 
-        // Theme & Display Preferences Card
+        // Theme & Display Preferences Card (includes Side Navigation Drawer toggle)
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -1327,7 +1346,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "المظهر والعرض",
+                    text = "المظهر والعرض والتنقل",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -1337,7 +1356,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Icon(
                             imageVector = if (isDarkMode) Icons.Filled.DarkMode else Icons.Filled.LightMode,
                             contentDescription = null,
@@ -1359,6 +1378,40 @@ fun SettingsScreen(
                     )
                 }
 
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Filled.MenuOpen,
+                            contentDescription = null,
+                            tint = DeepEmerald
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "تفعيل القائمة الجانبية السريعة (Side Navigation Drawer)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (isSideDrawerEnabled) "مفعلة (تظهر أيقونة ☰ أعلى الشاشة للانتقال الفوري)" else "مخفية حالياً",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = isSideDrawerEnabled,
+                        onCheckedChange = { viewModel.toggleSideDrawerEnabled() },
+                        modifier = Modifier.testTag("toggle_side_drawer_switch")
+                    )
+                }
+
                 OutlinedButton(
                     onClick = { viewModel.reopenOnboarding() },
                     modifier = Modifier.fillMaxWidth(),
@@ -1367,6 +1420,225 @@ fun SettingsScreen(
                     Icon(Icons.Filled.PlayCircleOutline, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("استعراض شاشة الترحيب التفاعلية (Onboarding)", maxLines = 1, softWrap = false)
+                }
+            }
+        }
+
+        // Private Principal Suggestions Box (صندوق المقترحات والشكاوى السري للمدير)
+        if (featureSettings.suggestionsBoxEnabled) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.Lock, contentDescription = null, tint = DeepEmerald)
+                            Column {
+                                Text(
+                                    text = "صندوق المقترحات والملاحظات السري للمدير",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepEmerald
+                                )
+                                Text(
+                                    text = "سري للغاية — يطلع عليه مدير المدرسة حصراً دون أي طرف آخر",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        NoWrapBadge(
+                            text = "سري 🔒",
+                            icon = Icons.Filled.VerifiedUser,
+                            containerColor = DeepEmerald.copy(alpha = 0.14f),
+                            contentColor = DeepEmerald
+                        )
+                    }
+
+                    if (!isAdmin) {
+                        OutlinedTextField(
+                            value = suggestionDraft,
+                            onValueChange = { suggestionDraft = it },
+                            label = { Text("اكتب مقترحك أو ملاحظتك السرية لمدير المدرسة...") },
+                            minLines = 2,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("private_suggestion_input")
+                        )
+                        VectorActionButton(
+                            text = "إرسال المقترح السري لمدير المدرسة 🔒",
+                            icon = Icons.AutoMirrored.Filled.Send,
+                            containerColor = DeepEmerald,
+                            onClick = {
+                                if (suggestionDraft.isNotBlank()) {
+                                    viewModel.submitPrivateSuggestionToPrincipal(suggestionDraft)
+                                    suggestionDraft = ""
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            testTag = "submit_private_suggestion_btn"
+                        )
+                    } else {
+                        if (privateSuggestions.isEmpty()) {
+                            Text(
+                                text = "لا توجد مقترحات أو شكاوى سرية واردة حالياً.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(
+                                text = "الرسائل السرية الواردة للمدير (${privateSuggestions.size}):",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = DeepEmerald
+                            )
+                            privateSuggestions.take(10).forEach { sug ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = DeepEmerald.copy(alpha = 0.06f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "${sug.senderName} (${sug.senderRoleArabic})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepEmerald
+                                            )
+                                            Text(
+                                                text = sug.createdAt,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Text(
+                                            text = sug.messageText,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Principal Modular Feature Toggles Card (لوحة تحكم المدير في تفعيل أو إيقاف مزايا مدرسته)
+        if (isAdmin) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.Tune, contentDescription = null, tint = DeepEmerald)
+                        Column {
+                            Text(
+                                text = "التحكم في مزايا وأقسام المنصة (لوحة المدير المرنة)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepEmerald
+                            )
+                            Text(
+                                text = "قم بتفعيل أو إيقاف أي ميزة في مدرستك بضغطة زر؛ تختفي الميزة الموقوفة تلقائياً من حسابات الطلاب والمعلمين.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    val featureRows = listOf(
+                        Triple("ميزة الخطوط والنقل المدرسي 🚌", featureSettings.busAlertsEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(busAlertsEnabled = v))
+                        },
+                        Triple("ميزة لوحة الشرف والتفاعل بالقلب 🏆", featureSettings.honorRollEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(honorRollEnabled = v))
+                        },
+                        Triple("ميزة المراسلة والمحادثات المباشرة 💬", featureSettings.directChatEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(directChatEnabled = v))
+                        },
+                        Triple("ميزة المكتبة الرقمية والملخصات 📚", featureSettings.studyLibraryEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(studyLibraryEnabled = v))
+                        },
+                        Triple("ميزة طلبات الإجازة الإلكترونية 📝", featureSettings.leaveRequestsEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(leaveRequestsEnabled = v))
+                        },
+                        Triple("ميزة الماسح الضوئي للهويات (QR Attendance) 📷", featureSettings.qrScannerEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(qrScannerEnabled = v))
+                        },
+                        Triple("ميزة الأقساط الدراسية والوصولات 💰", featureSettings.tuitionEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(tuitionEnabled = v))
+                        },
+                        Triple("ميزة تسليم الواجبات بالصورة 📸", featureSettings.homeworkSubmissionEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(homeworkSubmissionEnabled = v))
+                        },
+                        Triple("ميزة دفتر المتابعة اليومي والسلوك 🌟", featureSettings.dailyBehaviorEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(dailyBehaviorEnabled = v))
+                        },
+                        Triple("ميزة النداء الذكي للانصراف (استلام الأبناء) 🚗", featureSettings.dismissalCallEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(dismissalCallEnabled = v))
+                        },
+                        Triple("ميزة الاختبارات السريعة المؤقتة ⚡", featureSettings.quickQuizzesEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(quickQuizzesEnabled = v))
+                        },
+                        Triple("ميزة سجل المفقودات وصندوق المقترحات 🔎", featureSettings.lostAndFoundEnabled) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(
+                                featureSettings.copy(lostAndFoundEnabled = v, suggestionsBoxEnabled = v)
+                            )
+                        }
+                    )
+
+                    featureRows.forEachIndexed { idx, (label, isChecked, onToggle) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(
+                                checked = isChecked,
+                                onCheckedChange = onToggle,
+                                modifier = Modifier.testTag("feature_toggle_switch_$idx")
+                            )
+                        }
+                    }
                 }
             }
         }

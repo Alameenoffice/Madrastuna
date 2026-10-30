@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,7 +29,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -37,14 +40,219 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.GoldDeep
 import com.example.ui.theme.WhatsAppGreen
+import com.example.util.DocumentAndIdExporter
 import com.example.util.ExternalIntents
 import com.example.util.ImageCompressor
 import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.sin
+
+/**
+ * Global controller so any image across the entire platform (chat, events, honor roll,
+ * homework, study materials, student photos, school logo, lost & found) opens in a smooth
+ * full-screen interactive Lightbox with pinch-to-zoom, zoom buttons, and 1-tap Save to Device.
+ */
+object GlobalImageLightboxController {
+    var activeImageState by mutableStateOf<Pair<String, String>?>(null)
+        private set
+
+    fun open(base64Data: String, title: String = "معاينة الصورة") {
+        if (base64Data.isNotBlank()) {
+            activeImageState = base64Data to title
+        }
+    }
+
+    fun close() {
+        activeImageState = null
+    }
+}
+
+/**
+ * Global Smooth Interactive Image Lightbox Dialog hosted at the root of the app.
+ */
+@Composable
+fun GlobalImageLightboxDialog() {
+    val active = GlobalImageLightboxController.activeImageState ?: return
+    val (base64Data, title) = active
+    val context = LocalContext.current
+    val bitmap = remember(base64Data) {
+        ImageCompressor.decodeBase64ToImageBitmap(base64Data)
+    }
+    var scale by remember(base64Data) { mutableFloatStateOf(1f) }
+    var offsetX by remember(base64Data) { mutableFloatStateOf(0f) }
+    var offsetY by remember(base64Data) { mutableFloatStateOf(0f) }
+
+    Dialog(
+        onDismissRequest = { GlobalImageLightboxController.close() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.92f))
+                .pointerInput(base64Data) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val newScale = (scale * zoom).coerceIn(1f, 4.5f)
+                        scale = newScale
+                        if (newScale > 1f) {
+                            offsetX = (offsetX + pan.x).coerceIn(-900f, 900f)
+                            offsetY = (offsetY + pan.y).coerceIn(-900f, 900f)
+                        } else {
+                            offsetX = 0f
+                            offsetY = 0f
+                        }
+                    }
+                }
+        ) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = title,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp, vertical = 72.dp)
+                        .graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale,
+                            translationX = offsetX,
+                            translationY = offsetY
+                        )
+                )
+            }
+
+            // Top Bar: Title + Close Button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = title.ifBlank { "معاينة الصورة" },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { GlobalImageLightboxController.close() },
+                    modifier = Modifier.testTag("lightbox_close_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color.White
+                    )
+                }
+            }
+
+            // Bottom Control Bar: Zoom In / Out / Reset + Save Image to Device
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp, vertical = 20.dp),
+                shape = RoundedCornerShape(50),
+                color = Color(0xFF064E3B).copy(alpha = 0.94f),
+                tonalElevation = 6.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    IconButton(
+                        onClick = {
+                            scale = (scale - 0.4f).coerceAtLeast(1f)
+                            if (scale <= 1f) {
+                                offsetX = 0f
+                                offsetY = 0f
+                            }
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ZoomOut,
+                            contentDescription = "تصغير",
+                            tint = Color.White
+                        )
+                    }
+                    Text(
+                        text = "${(scale * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GoldAccent,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(
+                        onClick = { scale = (scale + 0.4f).coerceAtMost(4.5f) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ZoomIn,
+                            contentDescription = "تكبير",
+                            tint = Color.White
+                        )
+                    }
+                    if (scale > 1.05f) {
+                        IconButton(
+                            onClick = {
+                                scale = 1f
+                                offsetX = 0f
+                                offsetY = 0f
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CenterFocusStrong,
+                                contentDescription = "إعادة ضبط الحجم",
+                                tint = GoldAccent
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            DocumentAndIdExporter.saveBase64ImageToGallery(
+                                context = context,
+                                base64Data = base64Data,
+                                titlePrefix = title.ifBlank { "Madrasati_Image" }
+                            )
+                        },
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GoldAccent,
+                            contentColor = Color(0xFF052E16)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("lightbox_save_image_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "حفظ الصورة في الجهاز",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 /**
  * Single-line Developer Credit Bar required at the bottom of Onboarding, Login, and Settings:
@@ -213,12 +421,14 @@ fun VectorActionButton(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     containerColor: Color = MaterialTheme.colorScheme.primary,
     contentColor: Color = Color.White,
     testTag: String = ""
 ) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .heightIn(min = 48.dp)
             .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier),
@@ -294,8 +504,24 @@ fun CompressedPhotoPickerButton(
     }
 }
 
+@Composable
+fun CompressedPhotoPickerButton(
+    label: String,
+    hasImage: Boolean,
+    onPhotoSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    CompressedPhotoPickerButton(
+        label = label,
+        currentBase64 = if (hasImage) "selected" else "",
+        onImageCompressed = onPhotoSelected,
+        modifier = modifier
+    )
+}
+
 /**
  * Renders a Base64 compressed image or a clean vector fallback avatar/icon.
+ * Tapping any non-empty Base64 image opens it in the Global Smooth Image Lightbox.
  */
 @Composable
 fun Base64AvatarImage(
@@ -313,7 +539,16 @@ fun Base64AvatarImage(
             .size(size)
             .clip(CircleShape)
             .background(tint.copy(alpha = 0.14f))
-            .border(1.5.dp, tint.copy(alpha = 0.4f), CircleShape),
+            .border(1.5.dp, tint.copy(alpha = 0.4f), CircleShape)
+            .then(
+                if (bitmap != null && base64Data.isNotBlank()) {
+                    Modifier.clickable {
+                        GlobalImageLightboxController.open(base64Data, contentDescription)
+                    }
+                } else {
+                    Modifier
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         if (bitmap != null) {

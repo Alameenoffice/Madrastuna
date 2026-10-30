@@ -543,6 +543,7 @@ fun TuitionFeesScreen(
     val tuitions by viewModel.tuitions.collectAsState()
 
     var selectedTuitionForPayment by remember { mutableStateOf<TuitionRecord?>(null) }
+    var selectedReceiptPair by remember { mutableStateOf<Pair<TuitionRecord, TuitionInstallment>?>(null) }
 
     val canRecordPayment = currentUser?.role == UserRole.ADMIN
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
@@ -735,9 +736,10 @@ fun TuitionFeesScreen(
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = "سجل الدفعات والوصولات:",
+                                    text = "سجل الدفعات والوصولات الرقمية الرسمية:",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 record.installments.forEach { inst ->
                                     Row(
@@ -747,37 +749,60 @@ fun TuitionFeesScreen(
                                     ) {
                                         Text(
                                             text = "${inst.receiptNumber} • ${inst.amount} د.ع (${inst.paymentDate})",
-                                            style = MaterialTheme.typography.bodySmall
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        TextButton(
-                                            onClick = {
-                                                val msg = """
-                                                    وصل قبض قسط دراسي رقم (${inst.receiptNumber})
-                                                    الصادر من: ${schoolConfig.schoolName} (${schoolConfig.address})
-                                                    • اسم الطالب: ${record.studentName} (${record.gradeClass})
-                                                    • المبلغ المستلم: ${inst.amount} دينار عراقي
-                                                    • تاريخ الدفعة: ${inst.paymentDate}
-                                                    • إجمالي المدفوع: ${record.paidAmount} د.ع
-                                                    • المبلغ المتبقي: ${record.remainingAmount} د.ع
-                                                    شكراً لتعاونكم الكريم.
-                                                """.trimIndent()
-                                                ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            TextButton(
+                                                onClick = { selectedReceiptPair = record to inst },
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                                modifier = Modifier.testTag("view_digital_receipt_btn_${inst.receiptNumber}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.ReceiptLong,
+                                                    contentDescription = null,
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text(
+                                                    text = "وصل رقمي PDF",
+                                                    color = DeepEmerald,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
                                             }
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Chat,
-                                                contentDescription = null,
-                                                tint = WhatsAppGreen,
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "إرسال الوصل واتساب",
-                                                color = WhatsAppGreen,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
+                                            TextButton(
+                                                onClick = {
+                                                    val msg = """
+                                                        وصل قبض قسط دراسي رقم (${inst.receiptNumber})
+                                                        الصادر من: ${schoolConfig.schoolName} (${schoolConfig.address})
+                                                        • اسم الطالب: ${record.studentName} (${record.gradeClass})
+                                                        • المبلغ المستلم: ${inst.amount} دينار عراقي
+                                                        • تاريخ الدفعة: ${inst.paymentDate}
+                                                        • إجمالي المدفوع: ${record.paidAmount} د.ع
+                                                        • المبلغ المتبقي: ${record.remainingAmount} د.ع
+                                                        شكراً لتعاونكم الكريم.
+                                                    """.trimIndent()
+                                                    ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Chat,
+                                                    contentDescription = null,
+                                                    tint = WhatsAppGreen,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text(
+                                                    text = "واتساب",
+                                                    color = WhatsAppGreen,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -822,6 +847,96 @@ fun TuitionFeesScreen(
                 }
             }
         }
+    }
+
+    selectedReceiptPair?.let { (tuitionRec, installment) ->
+        AlertDialog(
+            onDismissRequest = { selectedReceiptPair = null },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Filled.Verified, contentDescription = null, tint = DeepEmerald)
+                    Text(
+                        text = "وصل قبض رقمي رسمي (${installment.receiptNumber})",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            },
+            text = {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = DeepEmerald.copy(alpha = 0.07f),
+                    border = BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.65f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "${schoolConfig.schoolName} (${schoolConfig.schoolType.arabicLabel})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepEmerald
+                        )
+                        Text(
+                            text = "العنوان: ${schoolConfig.address}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        HorizontalDivider(color = GoldAccent.copy(alpha = 0.4f))
+                        Text("• اسم الطالب: ${tuitionRec.studentName}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        Text("• الصف والشعبة: ${tuitionRec.gradeClass} (${tuitionRec.sectionName})", style = MaterialTheme.typography.bodySmall)
+                        Text("• ولي الأمر: ${tuitionRec.parentName}", style = MaterialTheme.typography.bodySmall)
+                        HorizontalDivider(color = GoldAccent.copy(alpha = 0.4f))
+                        Text(
+                            text = "المبلغ المستلم في هذا الوصل: ${installment.amount} د.ع",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = SuccessGreen
+                        )
+                        Text("• تاريخ الدفعة: ${installment.paymentDate}", style = MaterialTheme.typography.bodySmall)
+                        Text("• إجمالي القسط السنوي: ${tuitionRec.totalFee} د.ع", style = MaterialTheme.typography.bodySmall)
+                        Text("• مجموع الواصل الكلي: ${tuitionRec.paidAmount} د.ع", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = "• الرصيد المتبقي: ${tuitionRec.remainingAmount} د.ع",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (tuitionRec.remainingAmount == 0L) SuccessGreen else DangerRed
+                        )
+                        Text("• البيان: ${installment.note}", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val msg = DocumentAndIdExporter.exportSingleInstallmentReceiptPdf(
+                            context = context,
+                            tuitionRecord = tuitionRec,
+                            installment = installment,
+                            schoolConfig = schoolConfig
+                        )
+                        viewModel.showBannerMessage(msg)
+                        selectedReceiptPair = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                    modifier = Modifier.testTag("print_single_receipt_pdf_btn")
+                ) {
+                    Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("طباعة / حفظ الوصل (PDF)", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedReceiptPair = null }) {
+                    Text("إغلاق")
+                }
+            }
+        )
     }
 
     if (selectedTuitionForPayment != null) {

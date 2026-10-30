@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -47,7 +49,11 @@ fun DashboardScreen(
     val notifications by viewModel.notifications.collectAsState()
     val tuitions by viewModel.tuitions.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val occasionThemeConfig by viewModel.occasionThemeConfig.collectAsState()
+    val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
+    val dismissalCalls by viewModel.dismissalCalls.collectAsState()
 
+    val featureSettings = schoolConfig.featureSettings
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isTeacher = currentUser?.role == UserRole.TEACHER
     val isAdmin = currentUser?.role == UserRole.ADMIN
@@ -62,8 +68,6 @@ fun DashboardScreen(
         } else null
     }
 
-    var showDigitalIdCard by remember { mutableStateOf(false) }
-
     val scopedNotifications = remember(notifications, currentUser, students) {
         viewModel.getScopedNotificationsForUser(currentUser)
     }
@@ -76,8 +80,49 @@ fun DashboardScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
+        contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
+        // Live Occasion Theme Greeting Banner (Managed by Developer ABU-RASLAN)
+        if (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL) {
+            item {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("dashboard_occasion_theme_banner"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = DeepForestGreen,
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, GoldFoil)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = occasionThemeConfig.customIconEmoji.ifBlank { occasionThemeConfig.themeType.iconEmoji },
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = occasionThemeConfig.themeType.arabicTitle,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = GoldFoil,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = occasionThemeConfig.customBannerText.ifBlank { occasionThemeConfig.themeType.defaultBanner },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Welcome Hero Card
         item {
             Card(
@@ -195,86 +240,140 @@ fun DashboardScreen(
                 val myBadges = remember(attendance, grades, myStudent.id) {
                     viewModel.getStudentAutoBadges(myStudent.id)
                 }
-
-                Text(
-                    text = "المتابعة الخاصة بالطالب: ${myStudent.fullNameWithFather}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Spacer(modifier = Modifier.height(6.dp))
+                val myBehaviors = remember(dailyBehaviors, myStudent.id) {
+                    dailyBehaviors.filter { it.studentId == myStudent.id }.take(3)
+                }
 
                 // Automatic Motivational Badges (وسام الالتزام الذهبي + وسام نجم المادة)
                 if (myBadges.isNotEmpty()) {
                     StudentAutoBadgesRow(
                         badges = myBadges,
-                        modifier = Modifier.padding(bottom = 10.dp)
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
 
-                // Quick Digital Student ID Badge Toggle / Display
-                Button(
-                    onClick = { showDigitalIdCard = !showDigitalIdCard },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 10.dp)
-                        .testTag("dashboard_toggle_student_id_card"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = DeepEmerald,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.Filled.Badge, contentDescription = null, tint = GoldFoil)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (showDigitalIdCard) {
-                            "إخفاء بطاقة الهوية المدرسية الرقمية (QR)"
-                        } else {
-                            "عرض وتحميل بطاقة الهوية المدرسية والـ QR (${myStudent.fullNameWithFather})"
-                        },
-                        fontWeight = FontWeight.Bold
-                    )
+                // Smart 1-Tap Dismissal Call for Parents ("أنا أمام المدرسة لاستلام ابني 🚗")
+                if (currentUser?.role == UserRole.PARENT && featureSettings.dismissalAndLostFoundEnabled) {
+                    val activeCall = dismissalCalls.firstOrNull { it.studentId == myStudent.id && !it.isAcknowledged }
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (activeCall != null) SuccessGreen.copy(alpha = 0.14f) else DeepForestGreen,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (activeCall != null) SuccessGreen else EmeraldAccent.copy(alpha = 0.45f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (activeCall != null) {
+                                        "تم إبلاغ الإدارة بوصولك (${activeCall.requestedAt}) ✅"
+                                    } else {
+                                        "الاستدعاء السريع عند الانصراف 🚗"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (activeCall != null) DeepForestGreen else WarmGoldLight,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = if (activeCall != null) {
+                                        "الإدارة تجهز خروج الطالب (${myStudent.studentName}) الآن للبوابة"
+                                    } else {
+                                        "اضغط لإبلاغ الإدارة والمعلمين فور وصولك أمام المدرسة لاستلام ابنك"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (activeCall != null) DeepEmerald else Color.White.copy(alpha = 0.85f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = { viewModel.triggerParentDismissalCall(myStudent) },
+                                shape = RoundedCornerShape(50),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = GoldFoil,
+                                    contentColor = DeepForestGreen
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("dashboard_parent_dismissal_call_btn")
+                            ) {
+                                Icon(Icons.Filled.DirectionsCar, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (activeCall != null) "إعادة تنبيه" else "أنا أمام المدرسة",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+                    }
                 }
 
-                if (showDigitalIdCard) {
-                    DigitalStudentIdCardView(
-                        student = myStudent,
-                        schoolConfig = schoolConfig,
-                        badges = myBadges,
-                        onSavePng = {
-                            val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
-                                context = context,
-                                student = myStudent,
-                                schoolConfig = schoolConfig,
-                                badges = myBadges
-                            )
-                            if (res.isSuccess) {
-                                viewModel.showToastAlert(
-                                    "تم حفظ الهوية المدرسية بدقة عالية (PNG) في المعرض جاهزة للطباعة أو الكبس الحراري",
-                                    isSuccess = true
+                // Recent Daily Follow-Up & Behavior Log for Student/Parent
+                if (featureSettings.dailyBehaviorEnabled && myBehaviors.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = "دفتر المتابعة اليومي والسلوك (${myStudent.studentName}):",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
                                 )
-                            } else {
-                                viewModel.showToastAlert("تعذر حفظ الصورة: ${res.exceptionOrNull()?.message}", isSuccess = false)
                             }
-                        },
-                        onExportPdf = {
-                            val res = DocumentAndIdExporter.exportStudentIdCardPdf(
-                                context = context,
-                                student = myStudent,
-                                schoolConfig = schoolConfig,
-                                badges = myBadges
-                            )
-                            if (res.isSuccess) {
-                                viewModel.showToastAlert(
-                                    "تم تصدير وفتح نافذة طباعة الهوية المدرسية بصيغة PDF بنجاح",
-                                    isSuccess = true
-                                )
-                            } else {
-                                viewModel.showToastAlert("تعذر تصدير PDF: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                            myBehaviors.forEach { beh ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (beh.behaviorType.isPositive) {
+                                        SuccessGreen.copy(alpha = 0.12f)
+                                    } else {
+                                        WarningAmber.copy(alpha = 0.14f)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "${beh.behaviorType.emoji} ${beh.behaviorType.arabicTitle} • ${beh.subjectName}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepForestGreen,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            text = beh.date,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMutedGreen
+                                        )
+                                    }
+                                }
                             }
-                        },
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                        }
+                    }
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -326,7 +425,7 @@ fun DashboardScreen(
                         )
                     }
 
-                    if (schoolConfig.schoolType == SchoolType.PRIVATE && myTuition != null) {
+                    if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.tuitionEnabled && myTuition != null) {
                         SmartStatCard(
                             title = "الأقساط الدراسية الخاصة بالطالب (${myStudent.studentName})",
                             value = "الواصل: ${myTuition.paidAmount} د.ع",
@@ -695,6 +794,7 @@ private fun SmartStatCard(
  * - Strictly isolates Parent/Student so they see ONLY their own student's attendance & total absence days.
  * - Filters Teacher to ONLY their assigned classes & sections.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DailyAttendanceScreen(
     viewModel: SchoolViewModel
@@ -706,7 +806,11 @@ fun DailyAttendanceScreen(
     val attendance by viewModel.attendance.collectAsState()
     val leaveRequests by viewModel.leaveRequests.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
+    val dismissalCalls by viewModel.dismissalCalls.collectAsState()
+    val lostAndFoundItems by viewModel.lostAndFoundItems.collectAsState()
 
+    val featureSettings = schoolConfig.featureSettings
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
@@ -728,6 +832,7 @@ fun DailyAttendanceScreen(
     var searchName by remember { mutableStateOf("") }
     var showQrScannerDialog by remember { mutableStateOf(false) }
     var showLeaveRequestDialog by remember { mutableStateOf(false) }
+    var showLostAndFoundDialog by remember { mutableStateOf(false) }
     var selectedStudentForIdCard by remember { mutableStateOf<StudentRecord?>(null) }
 
     val scopedStudents = remember(students, currentUser, selectedClass, selectedSection, searchName, selectedParentChildId) {
@@ -761,6 +866,7 @@ fun DailyAttendanceScreen(
                 val todayStatus = myRecords.firstOrNull { it.date == selectedDate }?.status ?: AttendanceStatus.PRESENT
                 val myLeaveRequests = leaveRequests.filter { it.studentId == myStu.id }
                 val myBadges = viewModel.getStudentAutoBadges(myStu.id)
+                val myBehaviors = dailyBehaviors.filter { it.studentId == myStu.id }
 
                 item {
                     Card(
@@ -804,32 +910,125 @@ fun DailyAttendanceScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Button(
-                                    onClick = { showLeaveRequestDialog = true },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("open_leave_request_dialog_btn"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = DeepEmerald,
-                                        contentColor = Color.White
-                                    )
-                                ) {
-                                    Icon(Icons.Filled.EventNote, contentDescription = null, tint = GoldFoil, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("طلب إجازة للطالب", fontWeight = FontWeight.Bold)
+                                if (featureSettings.leaveRequestsEnabled) {
+                                    Button(
+                                        onClick = { showLeaveRequestDialog = true },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("open_leave_request_dialog_btn"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = DeepEmerald,
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        Icon(Icons.Filled.EventNote, contentDescription = null, tint = GoldFoil, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("طلب إجازة للطالب", fontWeight = FontWeight.Bold)
+                                    }
                                 }
 
-                                OutlinedButton(
-                                    onClick = { selectedStudentForIdCard = myStu },
+                                if (featureSettings.dismissalAndLostFoundEnabled) {
+                                    OutlinedButton(
+                                        onClick = { showLostAndFoundDialog = true },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("open_lost_and_found_btn_student"),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Inventory2, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("سجل المفقودات (${lostAndFoundItems.size})", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            if (currentUser?.role == UserRole.PARENT && featureSettings.dismissalAndLostFoundEnabled) {
+                                Button(
+                                    onClick = { viewModel.triggerParentDismissalCall(myStu) },
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("open_student_qr_id_btn"),
-                                    shape = RoundedCornerShape(12.dp)
+                                        .fillMaxWidth()
+                                        .testTag("attendance_parent_dismissal_call_btn"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = GoldFoil,
+                                        contentColor = DeepForestGreen
+                                    )
                                 ) {
-                                    Icon(Icons.Filled.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("بطاقة الهوية QR", fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Filled.DirectionsCar, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("الاستدعاء السريع: أنا أمام المدرسة لاستلام ابني 🚗", fontWeight = FontWeight.ExtraBold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Daily Behavior & Classroom Follow-Up Log for Student/Parent
+                if (featureSettings.dailyBehaviorEnabled && myBehaviors.isNotEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = DeepEmerald)
+                                    Text(
+                                        text = "دفتر المتابعة اليومي والسلوك الصفي (${myBehaviors.size}):",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                                myBehaviors.forEach { beh ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (beh.behaviorType.isPositive) {
+                                            SuccessGreen.copy(alpha = 0.12f)
+                                        } else {
+                                            WarningAmber.copy(alpha = 0.14f)
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "${beh.behaviorType.emoji} ${beh.behaviorType.arabicTitle}",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen
+                                                )
+                                                Text(
+                                                    text = "المادة: ${beh.subjectName} • بواسطة: ${beh.teacherName}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = TextMutedGreen
+                                                )
+                                                if (beh.note.isNotBlank()) {
+                                                    Text(
+                                                        text = beh.note,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = DeepEmerald
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = beh.date,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -931,30 +1130,32 @@ fun DailyAttendanceScreen(
                             )
                         }
 
-                        // Action Buttons: QR Code Attendance Scan + Monthly Attendance PDF Export
+                        // Action Buttons: QR Code Attendance Scan + Monthly Attendance PDF Export + Lost & Found
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Button(
-                                onClick = { showQrScannerDialog = true },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("open_qr_attendance_scanner_btn"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = DeepEmerald,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.QrCodeScanner,
-                                    contentDescription = null,
-                                    tint = GoldFoil,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("مسح الهوية بالـ QR", fontWeight = FontWeight.Bold, maxLines = 1)
+                            if (featureSettings.qrAttendanceEnabled) {
+                                Button(
+                                    onClick = { showQrScannerDialog = true },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("open_qr_attendance_scanner_btn"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = DeepEmerald,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.QrCodeScanner,
+                                        contentDescription = null,
+                                        tint = GoldFoil,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("مسح الهوية بالـ QR", fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
                             }
 
                             if (isAdmin) {
@@ -1000,6 +1201,23 @@ fun DailyAttendanceScreen(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("تصدير كشف الغياب الشهري", fontWeight = FontWeight.Bold, maxLines = 1)
                                 }
+                            }
+                        }
+
+                        if (featureSettings.dismissalAndLostFoundEnabled) {
+                            OutlinedButton(
+                                onClick = { showLostAndFoundDialog = true },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("open_lost_and_found_btn_admin"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Filled.Inventory2, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "سجل المفقودات المدرسية المصور (${lostAndFoundItems.size})",
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
 
@@ -1068,8 +1286,83 @@ fun DailyAttendanceScreen(
                 }
             }
 
+            // Live Parent Dismissal Calls Card ("الاستدعاء السريع عند الانصراف 🚗")
+            val activeDismissalCalls = dismissalCalls.filter { !it.isAcknowledged }
+            if (featureSettings.dismissalAndLostFoundEnabled && activeDismissalCalls.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_active_dismissal_calls_card"),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = WarmGoldLight),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GoldFoil)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Filled.DirectionsCar, contentDescription = null, tint = DeepForestGreen)
+                                Text(
+                                    text = "طلبات استلام الطلاب عند البوابة الآن (${activeDismissalCalls.size}):",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                            activeDismissalCalls.forEach { call ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color.White,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "الطالب: ${call.studentName}",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = DeepForestGreen,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                            Text(
+                                                text = "${call.gradeClass} (${call.sectionName}) • ولي الأمر: ${call.parentName} (${call.requestedAt})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        Button(
+                                            onClick = { viewModel.markDismissalCallHandled(call.id) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = SuccessGreen,
+                                                contentColor = Color.White
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("تم التسليم", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // School Bus Quick Alert Buttons in Attendance section for Private Schools
-            if (schoolConfig.schoolType == SchoolType.PRIVATE && canEdit) {
+            if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled && canEdit) {
                 item {
                     val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
                     SchoolBusQuickAlertsCard(
@@ -1080,7 +1373,7 @@ fun DailyAttendanceScreen(
             }
 
             // Electronic Leave Requests Section for Admin (with Approve / Reject buttons)
-            if (isAdmin && leaveRequests.isNotEmpty()) {
+            if (isAdmin && featureSettings.leaveRequestsEnabled && leaveRequests.isNotEmpty()) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -1274,6 +1567,56 @@ fun DailyAttendanceScreen(
                             }
                         }
 
+                        // Daily Follow-Up & Behavior Evaluation Chips (دفتر المتابعة اليومي والسلوك)
+                        if (canEdit && featureSettings.dailyBehaviorEnabled) {
+                            val teacherDefaultSubj = currentUser?.specialty?.split("،")?.firstOrNull()?.trim()?.ifBlank { "المتابعة اليومية" } ?: "المتابعة اليومية"
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "تقييم المتابعة والسلوك الصفي الفوري (يرسل إشعاراً لولي الأمر):",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    DailyBehaviorType.entries.forEach { behType ->
+                                        Surface(
+                                            modifier = Modifier
+                                                .clickable {
+                                                    viewModel.sendDailyBehaviorEvaluation(
+                                                        student = stu,
+                                                        behaviorType = behType,
+                                                        subjectName = teacherDefaultSubj
+                                                    )
+                                                }
+                                                .testTag("behavior_chip_${stu.id}_${behType.name}"),
+                                            shape = RoundedCornerShape(50),
+                                            color = if (behType.isPositive) {
+                                                SuccessGreen.copy(alpha = 0.14f)
+                                            } else {
+                                                WarningAmber.copy(alpha = 0.15f)
+                                            },
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (behType.isPositive) SuccessGreen.copy(alpha = 0.5f) else WarningAmber.copy(alpha = 0.55f)
+                                            )
+                                        ) {
+                                            Text(
+                                                text = "${behType.emoji} ${behType.arabicTitle}",
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (behType.isPositive) DeepEmerald else Color(0xFF92400E)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         if (currentStatus == AttendanceStatus.ABSENT || currentStatus == AttendanceStatus.LATE) {
                             VectorActionButton(
                                 text = "إرسال تبليغ ${currentStatus.arabicLabel} لولي الأمر عبر واتساب",
@@ -1306,12 +1649,26 @@ fun DailyAttendanceScreen(
             students = allSchoolStudents,
             selectedDate = selectedDate,
             onScanQrCode = { qrValue ->
-                val ok = viewModel.recordAttendanceByQrCode(qrValue, selectedDate)
-                if (ok) {
-                    showQrScannerDialog = false
-                }
+                viewModel.recordAttendanceByQrCode(qrValue, selectedDate)
+            },
+            onScanStudentDetailed = { qrValue ->
+                viewModel.recordAttendanceByQrCodeDetailed(qrValue, selectedDate)
             },
             onDismiss = { showQrScannerDialog = false }
+        )
+    }
+
+    if (showLostAndFoundDialog) {
+        LostAndFoundRegistryDialog(
+            items = lostAndFoundItems,
+            canPublish = canEdit,
+            onPublishItem = { title, foundLoc, photoBase64 ->
+                viewModel.publishLostAndFoundItem(title, foundLoc, photoBase64)
+            },
+            onToggleStatus = { itemId ->
+                viewModel.toggleLostAndFoundStatus(itemId)
+            },
+            onDismiss = { showLostAndFoundDialog = false }
         )
     }
 
@@ -1643,4 +2000,165 @@ private fun SubmitLeaveRequestDialog(
         }
     )
 }
+
+@Composable
+private fun LostAndFoundRegistryDialog(
+    items: List<LostAndFoundItem>,
+    canPublish: Boolean,
+    onPublishItem: (String, String, String) -> Unit,
+    onToggleStatus: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var foundLocation by remember { mutableStateOf("") }
+    var photoBase64 by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Filled.Inventory2, contentDescription = null, tint = DeepEmerald)
+                Text(
+                    text = "سجل المفقودات والأمانات المدرسية",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (canPublish) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = DeepEmerald.copy(alpha = 0.08f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "إضافة غرض مفقود تم العثور عليه في المدرسة:",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepEmerald
+                            )
+                            OutlinedTextField(
+                                value = title,
+                                onValueChange = { title = it },
+                                label = { Text("وصف الغرض (مثلاً: سترة شتوية، نظارة، حقيبة)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = foundLocation,
+                                onValueChange = { foundLocation = it },
+                                label = { Text("مكان الاستلام / العثور عليه (مثلاً: لدى الإدارة)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CompressedPhotoPickerButton(
+                                    label = if (photoBase64.isEmpty()) "إرفاق صورة الغرض" else "تغيير الصورة",
+                                    hasImage = photoBase64.isNotEmpty(),
+                                    onPhotoSelected = { photoBase64 = it },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Button(
+                                    onClick = {
+                                        onPublishItem(title, foundLocation, photoBase64)
+                                        title = ""
+                                        foundLocation = ""
+                                        photoBase64 = ""
+                                    },
+                                    enabled = title.isNotBlank(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                                    modifier = Modifier.testTag("publish_lost_found_btn")
+                                ) {
+                                    Text("نشر الغرض", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (items.isEmpty()) {
+                    Text(
+                        text = "لا توجد مفقودات مسجلة حالياً في المدرسة.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    items.forEach { item ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (item.photoBase64.isNotBlank()) {
+                                    Base64AvatarImage(
+                                        base64Data = item.photoBase64,
+                                        size = 48.dp,
+                                        fallbackIcon = Icons.Filled.Inventory2,
+                                        contentDescription = item.title
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        text = item.title,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "مكان التواجد: ${item.foundLocation} • التاريخ: ${item.date}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = if (item.isClaimed) "تم تسليمه لصاحبه ✅" else "موجود لدى الإدارة ⏳",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (item.isClaimed) SuccessGreen else WarningAmber,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                if (canPublish) {
+                                    TextButton(onClick = { onToggleStatus(item.id) }) {
+                                        Text(
+                                            text = if (item.isClaimed) "إعادة كموجود" else "تم التسليم ✅",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إغلاق", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
 

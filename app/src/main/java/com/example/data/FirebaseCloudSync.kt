@@ -168,6 +168,17 @@ object FirebaseCloudSync {
         }
     }
 
+    fun pushRootNodeAsync(
+        collectionName: String,
+        jsonPayload: String
+    ) {
+        pushGlobalCollectionAsync(
+            collectionName = collectionName,
+            docName = "registry",
+            jsonPayload = jsonPayload
+        )
+    }
+
     /**
      * Also writes each individual license document under school_licenses/{code} in Firestore & RTDB
      * with explicit fields (code, used, createdAt, usedBySchoolId, usedBySchoolName).

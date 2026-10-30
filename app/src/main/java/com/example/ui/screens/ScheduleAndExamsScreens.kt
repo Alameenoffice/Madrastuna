@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -42,14 +43,21 @@ fun ScheduleAndHomeworkScreen(
 ) {
     val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val featureSettings by viewModel.featureSettings.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val schedules by viewModel.schedules.collectAsState()
     val homeworks by viewModel.homeworks.collectAsState()
+    val homeworkSubmissions by viewModel.homeworkSubmissions.collectAsState()
+    val quickQuizzes by viewModel.quickQuizzes.collectAsState()
+    val quickQuizAnswers by viewModel.quickQuizAnswers.collectAsState()
     val studyMaterials by viewModel.studyMaterials.collectAsState()
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val canPublish = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
+    val activeStudent = remember(currentUser, selectedParentChildId) {
+        viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
+    }
 
     val allowedClasses = remember(schoolConfig, currentUser, selectedParentChildId) {
         viewModel.getAllowedClassesForUser(currentUser)
@@ -71,6 +79,7 @@ fun ScheduleAndHomeworkScreen(
     var selectedDay by remember { mutableStateOf("الأحد") }
 
     var showPublishHomeworkDialog by remember { mutableStateOf(false) }
+    var showPublishQuickQuizDialog by remember { mutableStateOf(false) }
     var showAddPeriodDialog by remember { mutableStateOf(false) }
     var showPublishStudyMaterialDialog by remember { mutableStateOf(false) }
 
@@ -81,6 +90,13 @@ fun ScheduleAndHomeworkScreen(
                 currentUser?.canTeacherAccessSubject(hw.subjectName) == true
             } else true
             clsMatch && subjMatch
+        }
+    }
+
+    val filteredQuickQuizzes = remember(quickQuizzes, selectedClass, selectedSection) {
+        quickQuizzes.filter { q ->
+            q.gradeClass == selectedClass &&
+                (q.sectionName == "الكل" || q.sectionName == selectedSection)
         }
     }
 
@@ -144,22 +160,24 @@ fun ScheduleAndHomeworkScreen(
                 Text("جدول الحصص", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
             }
 
-            Button(
-                onClick = { selectedTab = 2 },
-                modifier = Modifier
-                    .weight(1.1f)
-                    .heightIn(min = 46.dp)
-                    .testTag("tab_study_materials"),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (selectedTab == 2) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            ) {
-                Icon(Icons.Filled.LocalLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("المكتبة والملخصات", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+            if (featureSettings.studyLibraryEnabled) {
+                Button(
+                    onClick = { selectedTab = 2 },
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .heightIn(min = 46.dp)
+                        .testTag("tab_study_materials"),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (selectedTab == 2) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Icon(Icons.Filled.LocalLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("المكتبة والملخصات", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                }
             }
         }
 
@@ -226,13 +244,28 @@ fun ScheduleAndHomeworkScreen(
 
         if (selectedTab == 0) {
             if (canPublish) {
-                VectorActionButton(
-                    text = "نشر التحضير اليومي والواجب البيتي لـ ($selectedClass - $selectedSection)",
-                    icon = Icons.Filled.PostAdd,
-                    onClick = { showPublishHomeworkDialog = true },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    testTag = "publish_homework_button"
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    VectorActionButton(
+                        text = "نشر تحضير وواجب",
+                        icon = Icons.Filled.PostAdd,
+                        onClick = { showPublishHomeworkDialog = true },
+                        modifier = Modifier.weight(1f),
+                        testTag = "publish_homework_button"
+                    )
+                    if (featureSettings.quickQuizzesEnabled) {
+                        VectorActionButton(
+                            text = "نشر اختبار سريع ⚡",
+                            icon = Icons.Filled.Quiz,
+                            containerColor = GoldDeep,
+                            onClick = { showPublishQuickQuizDialog = true },
+                            modifier = Modifier.weight(1f),
+                            testTag = "publish_quick_quiz_button"
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
@@ -241,6 +274,162 @@ fun ScheduleAndHomeworkScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
+                // Quick Quizzes Section (الاختبارات السريعة والتصحيح التلقائي)
+                if (featureSettings.quickQuizzesEnabled && filteredQuickQuizzes.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "الاختبارات السريعة المؤقتة والتصحيح الفوري ⚡ (${filteredQuickQuizzes.size}):",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepEmerald
+                        )
+                    }
+                    items(filteredQuickQuizzes, key = { "quiz_${it.id}" }) { quiz ->
+                        val quizAnsForStudent = remember(quickQuizAnswers, quiz.id, activeStudent?.id) {
+                            quickQuizAnswers.firstOrNull { it.quizId == quiz.id && it.studentId == activeStudent?.id }
+                        }
+                        val allQuizAnswers = remember(quickQuizAnswers, quiz.id) {
+                            quickQuizAnswers.filter { it.quizId == quiz.id }
+                        }
+                        var selectedOptIndex by remember(quiz.id) { mutableIntStateOf(-1) }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = GoldAccent.copy(alpha = 0.10f)
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    NoWrapBadge(
+                                        text = "اختبار سريع • ${quiz.subjectName}",
+                                        icon = Icons.Filled.Quiz,
+                                        containerColor = GoldAccent.copy(alpha = 0.25f),
+                                        contentColor = Color(0xFF78350F)
+                                    )
+                                    NoWrapBadge(
+                                        text = "الدرجة: ${quiz.points}",
+                                        icon = Icons.Filled.Stars,
+                                        containerColor = DeepEmerald.copy(alpha = 0.14f),
+                                        contentColor = DeepEmerald
+                                    )
+                                }
+
+                                Text(
+                                    text = quiz.questionText,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+
+                                quiz.options.forEachIndexed { idx, optText ->
+                                    val isAnswered = quizAnsForStudent != null
+                                    val isCorrectOption = idx == quiz.correctOptionIndex
+                                    val isChosenOption = (quizAnsForStudent?.selectedOptionIndex ?: selectedOptIndex) == idx
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable(enabled = isParentOrStudent && !isAnswered) {
+                                                selectedOptIndex = idx
+                                            },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = when {
+                                            isAnswered && isCorrectOption -> SuccessGreen.copy(alpha = 0.18f)
+                                            isAnswered && isChosenOption && !isCorrectOption -> DangerRed.copy(alpha = 0.18f)
+                                            isChosenOption -> DeepEmerald.copy(alpha = 0.15f)
+                                            else -> MaterialTheme.colorScheme.surface
+                                        },
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            when {
+                                                isAnswered && isCorrectOption -> SuccessGreen
+                                                isAnswered && isChosenOption && !isCorrectOption -> DangerRed
+                                                isChosenOption -> DeepEmerald
+                                                else -> MaterialTheme.colorScheme.outlineVariant
+                                            }
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "${idx + 1}. $optText",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (isChosenOption || (isAnswered && isCorrectOption)) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                            if (isAnswered && isCorrectOption) {
+                                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
+                                            } else if (isAnswered && isChosenOption && !isCorrectOption) {
+                                                Icon(Icons.Filled.Cancel, contentDescription = null, tint = DangerRed, modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (isParentOrStudent) {
+                                    if (quizAnsForStudent != null) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (quizAnsForStudent.isCorrect) SuccessGreen.copy(alpha = 0.15f) else DangerRed.copy(alpha = 0.15f),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = if (quizAnsForStudent.isCorrect) {
+                                                    "إجابة صحيحة ممتازة! حصلت على (${quizAnsForStudent.earnedPoints} / ${quiz.points}) 🌟"
+                                                } else {
+                                                    "إجابة غير صحيحة • الإجابة الصحيحة هي: ${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""}"
+                                                },
+                                                modifier = Modifier.padding(10.dp),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (quizAnsForStudent.isCorrect) DeepEmerald else DangerRed
+                                            )
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = {
+                                                if (selectedOptIndex >= 0) {
+                                                    viewModel.submitQuickQuizAnswer(quiz, selectedOptIndex)
+                                                }
+                                            },
+                                            enabled = selectedOptIndex >= 0,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("submit_quick_quiz_btn_${quiz.id}"),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+                                        ) {
+                                            Icon(Icons.Filled.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("تأكيد الإجابة والتصحيح التلقائي الفوري", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                } else if (canPublish) {
+                                    val correctCount = allQuizAnswers.count { it.isCorrect }
+                                    Text(
+                                        text = "إحصائية الإجابات: شارك ${allQuizAnswers.size} طالب • إجابات صحيحة: $correctCount • الإجابة الصحيحة: (${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = DeepEmerald,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (filteredHomeworks.isEmpty()) {
                     item {
                         Card(
@@ -267,6 +456,15 @@ fun ScheduleAndHomeworkScreen(
                     }
                 } else {
                     items(filteredHomeworks, key = { it.id }) { hw ->
+                        val hwSubs = remember(homeworkSubmissions, hw.id) {
+                            homeworkSubmissions.filter { it.homeworkId == hw.id }
+                        }
+                        val mySubmission = remember(hwSubs, activeStudent?.id) {
+                            hwSubs.firstOrNull { it.studentId == activeStudent?.id }
+                        }
+                        var pendingPhotoBase64 by remember(hw.id) { mutableStateOf("") }
+                        var pendingStudentNote by remember(hw.id) { mutableStateOf("") }
+
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
@@ -322,6 +520,155 @@ fun ScheduleAndHomeworkScreen(
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
+                                    }
+                                }
+
+                                // Photo Homework Submission & Teacher Review (تسليم الواجب بالصورة)
+                                if (featureSettings.homeworkSubmissionEnabled) {
+                                    if (isParentOrStudent) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = DeepEmerald.copy(alpha = 0.07f),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                if (mySubmission != null) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Base64AvatarImage(
+                                                                base64Data = mySubmission.solutionImageBase64,
+                                                                size = 42.dp,
+                                                                fallbackIcon = Icons.Filled.CameraAlt,
+                                                                contentDescription = "صورة حل الواجب"
+                                                            )
+                                                            Column {
+                                                                Text(
+                                                                    text = if (mySubmission.isReviewed) "تمت المراجعة والتصحيح ✅" else "تم إرسال صورة الحل للمعلم ⏳",
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = if (mySubmission.isReviewed) SuccessGreen else DeepEmerald
+                                                                )
+                                                                if (mySubmission.teacherFeedback.isNotBlank()) {
+                                                                    Text(
+                                                                        text = "ملاحظة المعلم: ${mySubmission.teacherFeedback}",
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        color = DeepEmerald
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    CompressedPhotoPickerButton(
+                                                        label = if (pendingPhotoBase64.isEmpty()) "تصوير/إرفاق دفتر الحل 📸" else "جاهز للإرسال ✅",
+                                                        hasImage = pendingPhotoBase64.isNotEmpty(),
+                                                        onPhotoSelected = { pendingPhotoBase64 = it },
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                    if (pendingPhotoBase64.isNotEmpty()) {
+                                                        Button(
+                                                            onClick = {
+                                                                viewModel.submitHomeworkPhotoSolution(
+                                                                    homework = hw,
+                                                                    solutionImageBase64 = pendingPhotoBase64,
+                                                                    studentNote = pendingStudentNote
+                                                                )
+                                                                pendingPhotoBase64 = ""
+                                                            },
+                                                            shape = RoundedCornerShape(10.dp),
+                                                            colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                                                            modifier = Modifier.testTag("send_hw_photo_btn_${hw.id}")
+                                                        ) {
+                                                            Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            Text("إرسال للمعلم", fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if (canPublish && hwSubs.isNotEmpty()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = DeepEmerald.copy(alpha = 0.07f),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "حلول الواجب المرسلة بالصورة من الطلاب (${hwSubs.size}):",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepEmerald
+                                                )
+                                                hwSubs.forEach { sub ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 4.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Base64AvatarImage(
+                                                                base64Data = sub.solutionImageBase64,
+                                                                size = 40.dp,
+                                                                fallbackIcon = Icons.Filled.Image,
+                                                                contentDescription = "حل الطالب ${sub.studentName}"
+                                                            )
+                                                            Column {
+                                                                Text(
+                                                                    text = "${sub.studentName} (اضغط على الصورة للتكبير)",
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                                Text(
+                                                                    text = if (sub.isReviewed) "تمت المراجعة ✅" else "بانتظار التصحيح ⏳ • ${sub.submittedAt}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = if (sub.isReviewed) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+                                                        }
+                                                        if (!sub.isReviewed) {
+                                                            TextButton(
+                                                                onClick = {
+                                                                    viewModel.reviewHomeworkSubmission(
+                                                                        submissionId = sub.id,
+                                                                        feedback = "أحسنت بارك الله بك، تمت مراجعة وتصحيح الواجب 🌟"
+                                                                    )
+                                                                },
+                                                                modifier = Modifier.testTag("review_hw_sub_btn_${sub.id}")
+                                                            ) {
+                                                                Text("تصحيح ✅", fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -542,6 +889,9 @@ fun ScheduleAndHomeworkScreen(
                                             .fillMaxWidth()
                                             .height(190.dp)
                                             .clip(RoundedCornerShape(14.dp))
+                                            .clickable {
+                                                GlobalImageLightboxController.open(mat.imageBase64, mat.title)
+                                            }
                                     )
                                 }
 
@@ -567,6 +917,113 @@ fun ScheduleAndHomeworkScreen(
                 }
             }
         }
+    }
+
+    // Publish Quick Quiz Modal
+    if (showPublishQuickQuizDialog) {
+        var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }
+        var questionText by remember { mutableStateOf("") }
+        var opt1 by remember { mutableStateOf("") }
+        var opt2 by remember { mutableStateOf("") }
+        var opt3 by remember { mutableStateOf("") }
+        var correctIdx by remember { mutableIntStateOf(0) }
+        var pointsStr by remember { mutableStateOf("5") }
+
+        AlertDialog(
+            onDismissRequest = { showPublishQuickQuizDialog = false },
+            title = { Text("نشر اختبار سريع مؤقت لـ ($selectedClass - $selectedSection) ⚡", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedSubjects) { sOpt ->
+                            FilterChip(
+                                selected = subject == sOpt,
+                                onClick = { subject = sOpt },
+                                label = { Text(sOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = questionText,
+                        onValueChange = { questionText = it },
+                        label = { Text("نص السؤال التفاعلي") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = opt1,
+                        onValueChange = { opt1 = it },
+                        label = { Text("الخيار الأول (1)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = opt2,
+                        onValueChange = { opt2 = it },
+                        label = { Text("الخيار الثاني (2)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = opt3,
+                        onValueChange = { opt3 = it },
+                        label = { Text("الخيار الثالث (3 - اختياري)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("الإجابة الصحيحة:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        listOf(0 to "خيار 1", 1 to "خيار 2", 2 to "خيار 3").forEach { (idx, lbl) ->
+                            FilterChip(
+                                selected = correctIdx == idx,
+                                onClick = { correctIdx = idx },
+                                label = { Text(lbl) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = pointsStr,
+                        onValueChange = { pointsStr = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("درجة السؤال") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val optionsList = listOfNotNull(
+                            opt1.trim().takeIf { it.isNotEmpty() },
+                            opt2.trim().takeIf { it.isNotEmpty() },
+                            opt3.trim().takeIf { it.isNotEmpty() }
+                        )
+                        if (questionText.isNotBlank() && optionsList.size >= 2) {
+                            viewModel.publishQuickQuiz(
+                                gradeClass = selectedClass,
+                                sectionName = selectedSection,
+                                subjectName = subject,
+                                questionText = questionText,
+                                options = optionsList,
+                                correctOptionIndex = correctIdx.coerceIn(0, optionsList.lastIndex),
+                                points = pointsStr.toIntOrNull()?.coerceIn(1, 100) ?: 5
+                            )
+                            showPublishQuickQuizDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                    modifier = Modifier.testTag("confirm_publish_quick_quiz_btn")
+                ) {
+                    Text("نشر الاختبار للطلاب ⚡", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishQuickQuizDialog = false }) { Text("إلغاء") }
+            }
+        )
     }
 
     // Publish Homework Modal with Dynamic Registered Subject Selector

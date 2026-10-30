@@ -53,7 +53,8 @@ data class OnboardingSlideData(
 fun OnboardingScreen(
     isDarkMode: Boolean,
     onToggleDarkMode: () -> Unit,
-    onFinishOnboarding: () -> Unit
+    onFinishOnboarding: () -> Unit,
+    occasionThemeConfig: OccasionThemeConfig = OccasionThemeConfig()
 ) {
     val slides = remember {
         listOf(
@@ -156,7 +157,33 @@ fun OnboardingScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = GoldAccent.copy(alpha = 0.18f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "${occasionThemeConfig.occasionTheme.badgeEmoji} ${
+                                occasionThemeConfig.customGreeting.ifBlank { occasionThemeConfig.occasionTheme.greetingBanner }
+                            }",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepEmerald,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
 
             AnimatedContent(
                 targetState = currentSlide,
@@ -775,12 +802,25 @@ fun UnifiedLoginScreen(
     onVerifyActivationCode: (String, (Boolean) -> Unit) -> Unit = { _, _ -> },
     discoveredSchoolName: String? = null,
     loginConnectingMessage: String? = null,
-    onUsernameChanged: (String) -> Unit = {}
+    onUsernameChanged: (String) -> Unit = {},
+    occasionThemeConfig: OccasionThemeConfig = OccasionThemeConfig(),
+    loginLockoutUntilMs: Long = 0L,
+    failedLoginAttemptsCount: Int = 0
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var loginError by remember { mutableStateOf<String?>(null) }
+
+    var nowTickMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(loginLockoutUntilMs) {
+        while (loginLockoutUntilMs > System.currentTimeMillis()) {
+            nowTickMs = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000L)
+        }
+        nowTickMs = System.currentTimeMillis()
+    }
+    val remainingLockoutSec = ((loginLockoutUntilMs - nowTickMs) / 1000L).coerceAtLeast(0L)
 
     // 5-Tap Consecutive Logo Gesture State for New School Activation Code
     var logoTapCount by remember { mutableIntStateOf(0) }
@@ -947,7 +987,28 @@ fun UnifiedLoginScreen(
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = GoldAccent.copy(alpha = 0.18f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "${occasionThemeConfig.occasionTheme.badgeEmoji} ${
+                                occasionThemeConfig.customGreeting.ifBlank { occasionThemeConfig.occasionTheme.greetingBanner }
+                            }",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepEmerald,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1101,9 +1162,36 @@ fun UnifiedLoginScreen(
                             }
                         }
 
+                        if (remainingLockoutSec > 0L) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.LockClock,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Text(
+                                        text = "الدرع الأمني مفعل: يرجى الانتظار ${remainingLockoutSec} ثانية قبل المحاولة مجدداً.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        }
+
                         VectorActionButton(
-                            text = "تسجيل الدخول",
+                            text = if (remainingLockoutSec > 0L) "مقفل مؤقتاً (${remainingLockoutSec}ث)" else "تسجيل الدخول",
                             icon = Icons.AutoMirrored.Filled.Login,
+                            enabled = remainingLockoutSec == 0L,
                             onClick = {
                                 val res = onLoginAttempt(username, password)
                                 if (res.isFailure) {
@@ -1163,9 +1251,20 @@ fun DeveloperControlPanelScreen(
     val licenses by viewModel.schoolLicenses.collectAsState()
     val registeredSchools by viewModel.registeredSchools.collectAsState()
     val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
+    val appUpdateConfig by viewModel.appUpdateConfig.collectAsState()
+    val occasionThemeConfig by viewModel.occasionThemeConfig.collectAsState()
     var directorPhoneForWhatsApp by remember { mutableStateOf("") }
     var showBroadcastToPrincipalsDialog by remember { mutableStateOf(false) }
     var editingExpirySchool by remember { mutableStateOf<RegisteredSchoolSummary?>(null) }
+
+    var updateVersionCodeStr by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.latestVersionCode.toString()) }
+    var updateVersionName by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.latestVersionName) }
+    var updateNotes by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.updateNotes) }
+    var updateDownloadUrl by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.downloadUrl) }
+    var isForceUpdate by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.isForceUpdate) }
+
+    var selectedOccasionTheme by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.occasionTheme) }
+    var customOccasionGreeting by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customGreeting) }
 
     BackHandler {
         viewModel.exitDeveloperPanel()
@@ -1394,6 +1493,166 @@ fun DeveloperControlPanelScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // Developer Upgrade A: Remote App Update Control Card (إدارة تحديثات التطبيق المباشرة)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.SystemUpdate, contentDescription = null, tint = DeepEmerald)
+                        Column {
+                            Text(
+                                text = "إدارة تحديثات التطبيق عن بُعد (Remote App Update)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "أرسل إشعار تحديث مع رابط تحميل الـ APK الجديد لجميع الهواتف فورياً",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = updateVersionCodeStr,
+                            onValueChange = { updateVersionCodeStr = it.filter { ch -> ch.isDigit() } },
+                            label = { Text("رقم الإصدار (مثال: 2)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = updateVersionName,
+                            onValueChange = { updateVersionName = it },
+                            label = { Text("اسم الإصدار (2.0.0)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = updateDownloadUrl,
+                        onValueChange = { updateDownloadUrl = it },
+                        label = { Text("رابط تحميل التحديث المباشر (GitHub Release APK URL)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = updateNotes,
+                        onValueChange = { updateNotes = it },
+                        label = { Text("ملاحظات ومزايا التحديث الجديد") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("تحديث إجباري (Force Update - يمنع الإغلاق)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Switch(checked = isForceUpdate, onCheckedChange = { isForceUpdate = it })
+                    }
+
+                    VectorActionButton(
+                        text = "نشر التحديث فوراً لجميع المستخدمين 🚀",
+                        icon = Icons.Filled.CloudUpload,
+                        containerColor = DeepEmerald,
+                        onClick = {
+                            viewModel.updateGlobalAppUpdateConfig(
+                                latestVersionCode = updateVersionCodeStr.toIntOrNull() ?: 1,
+                                latestVersionName = updateVersionName.ifBlank { "1.0.0" },
+                                updateNotes = updateNotes,
+                                downloadUrl = updateDownloadUrl,
+                                isForceUpdate = isForceUpdate
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "dev_publish_app_update_btn"
+                    )
+                }
+            }
+
+            // Developer Upgrade B: Live Occasion Theme & Greeting Card (ثيم وأيقونة المناسبات المباشر)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.Celebration, contentDescription = null, tint = GoldDeep)
+                        Column {
+                            Text(
+                                text = "ثيم وأيقونة المناسبات المباشر (Occasion Theme)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "تغيير الشريط الاحتفالي والتهنئة في جميع المدارس بضغطة زر",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(OccasionThemeType.entries) { occ ->
+                            FilterChip(
+                                selected = selectedOccasionTheme == occ,
+                                onClick = {
+                                    selectedOccasionTheme = occ
+                                    if (customOccasionGreeting.isBlank()) {
+                                        customOccasionGreeting = occ.greetingBanner
+                                    }
+                                },
+                                label = { Text("${occ.badgeEmoji} ${occ.arabicLabel}") }
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = customOccasionGreeting,
+                        onValueChange = { customOccasionGreeting = it },
+                        label = { Text("عبارة التهنئة المخصصة (اختياري)") },
+                        placeholder = { Text(selectedOccasionTheme.greetingBanner) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    VectorActionButton(
+                        text = "تفعيل ثيم المناسبة في جميع المدارس ✨",
+                        icon = Icons.Filled.AutoAwesome,
+                        containerColor = GoldDeep,
+                        onClick = {
+                            viewModel.updateGlobalOccasionTheme(
+                                occasionTheme = selectedOccasionTheme,
+                                customGreeting = customOccasionGreeting
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "dev_apply_occasion_theme_btn"
+                    )
                 }
             }
 
