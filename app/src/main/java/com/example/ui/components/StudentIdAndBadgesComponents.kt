@@ -619,7 +619,7 @@ fun QrAttendanceScannerDialog(
                 .padding(vertical = 12.dp),
             shape = RoundedCornerShape(24.dp),
             color = CardSurfaceWhite,
-            border = BorderStroke(1.5.dp, GoldFoil)
+            border = BorderStroke(1.5.dp, EmeraldAccent.copy(alpha = 0.65f))
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -645,7 +645,7 @@ fun QrAttendanceScannerDialog(
                                 Icon(
                                     imageVector = Icons.Default.QrCodeScanner,
                                     contentDescription = null,
-                                    tint = GoldFoil,
+                                    tint = Color(0xFFA7F3D0),
                                     modifier = Modifier
                                         .padding(10.dp)
                                         .size(22.dp)
@@ -659,7 +659,7 @@ fun QrAttendanceScannerDialog(
                                     fontWeight = FontWeight.ExtraBold
                                 )
                                 Text(
-                                    text = "يتعرف على الطالب فوراً ويسجله (حاضر) ليوم $selectedDate مع إشعار لولي أمره",
+                                    text = "يقرأ رمز QR الحقيقي لهوية الطالب ويسجله (حاضر) ليوم $selectedDate",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextMutedGreen
                                 )
@@ -675,7 +675,7 @@ fun QrAttendanceScannerDialog(
                     }
                 }
 
-                // Live Camera QR Scanner Box
+                // Live Camera QR Scanner Header & Toggle Button (Fixed alignment, no text clipping)
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -683,29 +683,36 @@ fun QrAttendanceScannerDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (showLiveCamera) "الكاميرا الحية نشطة — وجّه الكاميرا نحو هوية الطالب" else "الكاميرا متوقفة مؤقتاً",
+                            text = if (showLiveCamera) "الكاميرا الحية نشطة — وجّه العدسة للباركود" else "الكاميرا متوقفة مؤقتاً",
                             style = MaterialTheme.typography.labelMedium,
                             color = DeepEmerald,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = { showLiveCamera = !showLiveCamera },
-                            shape = RoundedCornerShape(50),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 38.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.QrCodeScanner,
                                 contentDescription = null,
                                 tint = DeepEmerald,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(15.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (showLiveCamera) "إخفاء الكاميرا" else "تشغيل الكاميرا",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = if (showLiveCamera) "إيقاف الكاميرا" else "تشغيل الكاميرا",
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = DeepEmerald
+                                color = DeepEmerald,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -886,7 +893,7 @@ fun QrAttendanceScannerDialog(
                                     base64Image = stu.photoBase64,
                                     fallbackName = stu.fullNameWithFather,
                                     size = 38.dp,
-                                    borderColor = if (isJustScanned) SuccessGreen else GoldFoil
+                                    borderColor = if (isJustScanned) SuccessGreen else DeepEmerald
                                 )
                                 Column {
                                     Text(
@@ -915,7 +922,7 @@ fun QrAttendanceScannerDialog(
                                     Icon(
                                         imageVector = if (isJustScanned) Icons.Default.CheckCircle else Icons.Default.QrCodeScanner,
                                         contentDescription = null,
-                                        tint = if (isJustScanned) Color.White else GoldFoil,
+                                        tint = if (isJustScanned) Color.White else Color(0xFFA7F3D0),
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Text(
@@ -1091,7 +1098,7 @@ fun ParentMultiChildSwitcherBar(
 
 /**
  * Displays the 14-day Subscription Expiry Warning Banner and Developer Broadcasts
- * exclusively to the School Principal (ADMIN).
+ * exclusively to the School Principal (ADMIN), with an immediate (×) close/dismiss button.
  */
 @Composable
 fun AdminSubscriptionAndBroadcastBanner(
@@ -1101,10 +1108,20 @@ fun AdminSubscriptionAndBroadcastBanner(
     dismissedBroadcastIds: Set<String> = emptySet(),
     onDismissBroadcast: (String) -> Unit = {}
 ) {
+    var isExpiryWarningDismissed by remember { mutableStateOf(false) }
+    var isBroadcastBannerDismissed by remember { mutableStateOf(false) }
+
     val daysRemaining = schoolConfig.daysUntilExpiry()
-    val showExpiryWarning = schoolConfig.isWithinRenewalWarningWindow()
-    val visibleBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds) {
-        developerBroadcasts.filterNot { it.id in dismissedBroadcastIds }
+    val showExpiryWarning = schoolConfig.isWithinRenewalWarningWindow() && !isExpiryWarningDismissed
+    val visibleBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds, isBroadcastBannerDismissed) {
+        if (isBroadcastBannerDismissed) {
+            emptyList()
+        } else {
+            developerBroadcasts.filterNot { bc ->
+                val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                bc.id in dismissedBroadcastIds || key in dismissedBroadcastIds
+            }
+        }
     }
     val latestBroadcast = visibleBroadcasts.firstOrNull()
 
@@ -1127,7 +1144,7 @@ fun AdminSubscriptionAndBroadcastBanner(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -1154,6 +1171,22 @@ fun AdminSubscriptionAndBroadcastBanner(
                             color = TextMutedGreen
                         )
                     }
+                    Surface(
+                        shape = CircleShape,
+                        color = DeepForestGreen.copy(alpha = 0.08f),
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clickable { isExpiryWarningDismissed = true }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "إغلاق التنبيه",
+                                tint = DeepForestGreen,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1170,7 +1203,7 @@ fun AdminSubscriptionAndBroadcastBanner(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+                        .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -1201,18 +1234,31 @@ fun AdminSubscriptionAndBroadcastBanner(
                             color = DeepEmerald
                         )
                     }
-                    IconButton(
-                        onClick = { onDismissBroadcast(latestBroadcast.id) },
+                    Surface(
+                        shape = CircleShape,
+                        color = DeepEmerald.copy(alpha = 0.14f),
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(30.dp)
+                            .clickable {
+                                isBroadcastBannerDismissed = true
+                                developerBroadcasts.forEach { bc ->
+                                    val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                                    onDismissBroadcast(key)
+                                    if (bc.id.isNotBlank()) {
+                                        onDismissBroadcast(bc.id)
+                                    }
+                                }
+                            }
                             .testTag("dismiss_developer_broadcast_btn")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "تجاهل وإغلاق التعميم",
-                            tint = DeepForestGreen.copy(alpha = 0.7f),
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "تجاهل وإغلاق التعميم",
+                                tint = DeepForestGreen,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
                     }
                 }
             }

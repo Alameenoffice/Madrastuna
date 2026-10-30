@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,10 +13,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
@@ -33,6 +38,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
@@ -45,6 +52,7 @@ import com.example.viewmodel.SchoolViewModel
  * - Structured Report Creation: Step A (Select Class & Section) -> Step B (Search by Name & Select Student) -> Send Report
  * - Strict Privacy Isolation for Parent/Student (sees only their own reports & chat)
  * - Scoped to assigned classes/sections for Teacher
+ * - Expanded Full-Height Chat View on contact selection with auto-collapsed filters & slim single-line composer
  */
 @Composable
 fun ReportsAndChatScreen(
@@ -61,6 +69,12 @@ fun ReportsAndChatScreen(
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = البلاغات الرسمية, 1 = صندوق المراسلة المباشر
     var showCreateReportDialog by remember { mutableStateOf(false) }
+    var isChatConversationOpen by remember { mutableStateOf(false) }
+    var isFullScreenChatModal by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = selectedTab == 1 && isChatConversationOpen) {
+        isChatConversationOpen = false
+    }
 
     val canSendReport = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
@@ -142,62 +156,491 @@ fun ReportsAndChatScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+    @Composable
+    fun ExpandedConversationContent(
+        contact: ChatContactItem,
+        isInsideModal: Boolean,
+        modifier: Modifier = Modifier
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = { selectedTab = 0 },
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 48.dp)
-                    .testTag("tab_official_reports"),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            ) {
-                Icon(Icons.Filled.Campaign, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات والتبليغات",
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-
-            if (featureSettings.directChatEnabled) {
-                Button(
-                    onClick = { selectedTab = 1 },
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                        .testTag("tab_direct_chat"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(Icons.Filled.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("صندوق المراسلة المباشر", maxLines = 1, softWrap = false)
-                }
+        val listState = rememberLazyListState()
+        LaunchedEffect(activeConversationMessages.size, contact.accountId) {
+            if (activeConversationMessages.isNotEmpty()) {
+                listState.animateScrollToItem(activeConversationMessages.size - 1)
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Card(
+            modifier = modifier.fillMaxSize(),
+            shape = RoundedCornerShape(if (isInsideModal) 22.dp else 18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                // Sleek Compact Conversation Header with Back Button ("رجوع لقائمة المراسلة")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = DeepEmerald.copy(alpha = 0.10f),
+                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                        modifier = Modifier
+                            .clickable {
+                                if (isInsideModal) {
+                                    isFullScreenChatModal = false
+                                } else {
+                                    isChatConversationOpen = false
+                                }
+                            }
+                            .testTag("chat_back_to_contacts_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "رجوع لقائمة المراسلة",
+                                tint = DeepEmerald,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "رجوع لقائمة المراسلة",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = DeepEmerald,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Base64AvatarImage(
+                            base64Data = contact.photoBase64,
+                            fallbackIcon = Icons.Filled.Person,
+                            contentDescription = contact.fullName,
+                            size = 34.dp,
+                            tint = DeepEmerald
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = contact.fullName,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = contact.subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (contact.phone.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = WhatsAppGreen,
+                                modifier = Modifier.clickable {
+                                    ExternalIntents.sendWhatsAppMessage(
+                                        context,
+                                        contact.phone,
+                                        "السلام عليكم ${contact.fullName}، نتواصل معكم عبر منصة ${schoolConfig.schoolName}."
+                                    )
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Chat,
+                                        contentDescription = "واتساب",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "واتساب",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+
+                        if (!isInsideModal) {
+                            IconButton(
+                                onClick = { isFullScreenChatModal = true },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(DeepEmerald.copy(alpha = 0.08f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.OpenInFull,
+                                    contentDescription = "تكبير المحادثة لملء الشاشة",
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    color = DeepEmerald.copy(alpha = 0.14f)
+                )
+
+                // Spacious Full-Height Messages Area
+                if (activeConversationMessages.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Filled.Forum,
+                                contentDescription = null,
+                                tint = DeepEmerald.copy(alpha = 0.40f),
+                                modifier = Modifier.size(46.dp)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "ابدأ المحادثة الفورية مع ${contact.fullName}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "تصل الرسائل والإشعارات لحظياً للمستلم المعني فقط",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        items(activeConversationMessages, key = { it.id }) { msg ->
+                            val isSentByMe = if (msg.senderId.isNotEmpty()) {
+                                msg.senderId == currentUser?.id
+                            } else {
+                                msg.senderRole == currentUser?.role
+                            }
+                            val msgBitmap = remember(msg.imageBase64) {
+                                ImageCompressor.decodeBase64ToImageBitmap(msg.imageBase64)
+                            }
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = if (isSentByMe) Alignment.Start else Alignment.End
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(
+                                        topStart = 16.dp,
+                                        topEnd = 16.dp,
+                                        bottomStart = if (isSentByMe) 4.dp else 16.dp,
+                                        bottomEnd = if (isSentByMe) 16.dp else 4.dp
+                                    ),
+                                    color = if (isSentByMe) {
+                                        DeepEmerald.copy(alpha = 0.12f)
+                                    } else {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    },
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSentByMe) DeepEmerald.copy(alpha = 0.28f)
+                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                                    ),
+                                    modifier = Modifier.widthIn(max = 300.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                        Text(
+                                            text = msg.senderName,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = DeepEmerald,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                        if (msgBitmap != null) {
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Image(
+                                                bitmap = msgBitmap,
+                                                contentDescription = "صورة مرفقة",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(155.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .clickable {
+                                                        GlobalImageLightboxController.open(
+                                                            msg.imageBase64,
+                                                            "صورة مرفقة - ${msg.senderName}"
+                                                        )
+                                                    }
+                                            )
+                                        }
+                                        if (msg.messageText.isNotBlank()) {
+                                            Spacer(modifier = Modifier.height(3.dp))
+                                            Text(
+                                                text = msg.messageText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = msg.timestamp,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (draftChatImageBase64.isNotBlank()) {
+                    Surface(
+                        color = DeepEmerald.copy(alpha = 0.10f),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Image,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "تم إرفاق صورة جاهزة للإرسال",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            IconButton(
+                                onClick = { draftChatImageBase64 = "" },
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(Icons.Filled.Close, contentDescription = "إزالة الصورة", modifier = Modifier.size(15.dp))
+                            }
+                        }
+                    }
+                }
+
+                // Slim, Modern Single-Line Bottom Composer Bar (زر إرفاق صورة + حقل نص مريح + زر الإرسال)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    IconButton(
+                        onClick = {
+                            chatPhotoLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(DeepEmerald.copy(alpha = 0.10f))
+                            .testTag("chat_attach_photo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AddPhotoAlternate,
+                            contentDescription = "إرفاق صورة",
+                            tint = DeepEmerald,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = draftMessage,
+                        onValueChange = { draftMessage = it },
+                        placeholder = {
+                            Text(
+                                text = "اكتب رسالتك إلى ${contact.fullName}...",
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("chat_message_input"),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = DeepEmerald,
+                            unfocusedBorderColor = DeepEmerald.copy(alpha = 0.30f)
+                        )
+                    )
+
+                    Button(
+                        onClick = {
+                            if (draftMessage.isNotBlank() || draftChatImageBase64.isNotBlank()) {
+                                viewModel.sendDirectChatMessage(contact, draftMessage, draftChatImageBase64)
+                                draftMessage = ""
+                                draftChatImageBase64 = ""
+                            }
+                        },
+                        modifier = Modifier
+                            .height(44.dp)
+                            .testTag("send_chat_button"),
+                        shape = RoundedCornerShape(50),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeepEmerald,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "إرسال",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "إرسال",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (isFullScreenChatModal && selectedContact != null) {
+        Dialog(
+            onDismissRequest = { isFullScreenChatModal = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.96f)
+                    .fillMaxHeight(0.92f)
+            ) {
+                ExpandedConversationContent(
+                    contact = selectedContact,
+                    isInsideModal = true
+                )
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        // Hide the top tab switcher when an active chat conversation is expanded so messages get full height
+        if (!(selectedTab == 1 && isChatConversationOpen && selectedContact != null)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        selectedTab = 0
+                        isChatConversationOpen = false
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 46.dp)
+                        .testTag("tab_official_reports"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Icon(Icons.Filled.Campaign, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات والتبليغات",
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                if (featureSettings.directChatEnabled) {
+                    Button(
+                        onClick = { selectedTab = 1 },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 46.dp)
+                            .testTag("tab_direct_chat"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Icon(Icons.Filled.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("صندوق المراسلة المباشر", maxLines = 1, softWrap = false)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+        }
 
         if (selectedTab == 0) {
             if (canSendReport) {
                 VectorActionButton(
-                    text = "إرسال بلاغ رسمي (اختيار الصف والشعبة ⬅️ البحث واختيار الطالب)",
+                    text = "إرسال بلاغ رسمي جديد",
                     icon = Icons.Filled.MarkChatUnread,
                     onClick = { showCreateReportDialog = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -303,461 +746,263 @@ fun ReportsAndChatScreen(
         } else {
             // =========================================================================
             // Role-Based Direct Messaging & Smart Search (المراسلة والمحادثات حسب الدور)
+            // Automatically collapses Search/Filters/Contacts when a conversation is opened!
             // =========================================================================
-            val searchPlaceholder = when (currentUser?.role) {
-                UserRole.ADMIN -> "ابحث بالاسم أو الصف عن (معلم، طالب، أو ولي أمر)..."
-                UserRole.TEACHER -> "ابحث عن المدير أو طلاب وأولياء أمور صفوفك المسندة..."
-                else -> "ابحث عن مدير المدرسة أو معلمي صفك وشعبتك..."
-            }
-
-            val roleFilterOptions = remember(currentUser?.role) {
-                when (currentUser?.role) {
-                    UserRole.ADMIN -> listOf("الكل", "المعلمون", "الطلاب", "أولياء الأمور")
-                    UserRole.TEACHER -> listOf("الكل", "مدير المدرسة", "طلابي", "أولياء الأمور")
-                    else -> listOf("الكل", "مدير المدرسة", "معلمو صفي")
-                }
-            }
-
-            OutlinedTextField(
-                value = chatSearchQuery,
-                onValueChange = { chatSearchQuery = it },
-                placeholder = { Text(searchPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "بحث") },
-                trailingIcon = {
-                    if (chatSearchQuery.isNotEmpty()) {
-                        IconButton(onClick = { chatSearchQuery = "" }) {
-                            Icon(Icons.Filled.Clear, contentDescription = "مسح البحث")
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("chat_contacts_search_input")
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Role Filter Chips
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(roleFilterOptions) { roleOpt ->
-                    FilterChip(
-                        selected = selectedRoleFilter == roleOpt,
-                        onClick = { selectedRoleFilter = roleOpt },
-                        label = { Text(roleOpt, maxLines = 1, softWrap = false) },
-                        leadingIcon = {
-                            val icon = when (roleOpt) {
-                                "المدير", "مدير المدرسة" -> Icons.Filled.AdminPanelSettings
-                                "المعلمون", "معلمو صفي" -> Icons.Filled.Badge
-                                "الطلاب", "طلابي" -> Icons.Filled.School
-                                "أولياء الأمور" -> Icons.Filled.FamilyRestroom
-                                else -> Icons.Filled.Groups
-                            }
-                            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    )
-                }
-
-                // Class filter chips for Admin & Teacher
-                if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
-                    val allowedCls = viewModel.getAllowedClassesForUser(currentUser)
-                    items(allowedCls) { cls ->
-                        FilterChip(
-                            selected = selectedClassFilter == cls,
-                            onClick = {
-                                selectedClassFilter = if (selectedClassFilter == cls) "الكل" else cls
-                            },
-                            label = { Text(cls, maxLines = 1, softWrap = false) },
-                            leadingIcon = {
-                                Icon(Icons.Filled.Class, contentDescription = null, modifier = Modifier.size(15.dp))
-                            }
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Selectable Contacts Strip (One-Tap Direct Conversation Starter)
-            if (filteredChatContacts.isEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "لا توجد جهات اتصال مطابقة للبحث ضمن صلاحيات حسابك.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(6.dp))
+            if (isChatConversationOpen && selectedContact != null) {
+                ExpandedConversationContent(
+                    contact = selectedContact,
+                    isInsideModal = false,
+                    modifier = Modifier.fillMaxSize()
+                )
             } else {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(filteredChatContacts, key = { it.accountId }) { contact ->
-                        val isSelected = selectedContact?.accountId == contact.accountId
-                        val roleColor = when (contact.role) {
-                            UserRole.ADMIN -> GoldDeep
-                            UserRole.TEACHER -> InfoBlue
-                            UserRole.STUDENT -> SuccessGreen
-                            UserRole.PARENT -> MaterialTheme.colorScheme.primary
-                        }
-                        val roleIcon = when (contact.role) {
-                            UserRole.ADMIN -> Icons.Filled.AdminPanelSettings
-                            UserRole.TEACHER -> Icons.Filled.Badge
-                            UserRole.STUDENT -> Icons.Filled.School
-                            UserRole.PARENT -> Icons.Filled.FamilyRestroom
-                        }
+                val searchPlaceholder = when (currentUser?.role) {
+                    UserRole.ADMIN -> "ابحث بالاسم أو الصف عن (معلم، طالب، أو ولي أمر)..."
+                    UserRole.TEACHER -> "ابحث عن المدير أو طلاب وأولياء أمور صفوفك المسندة..."
+                    else -> "ابحث عن مدير المدرسة أو معلمي صفك وشعبتك..."
+                }
 
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .border(
-                                    width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-                                    shape = RoundedCornerShape(14.dp)
-                                )
-                                .clickable { selectedContactAccountId = contact.accountId }
-                                .testTag("chat_contact_${contact.accountId}")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Base64AvatarImage(
-                                    base64Data = contact.photoBase64,
-                                    fallbackIcon = roleIcon,
-                                    contentDescription = contact.fullName,
-                                    size = 34.dp,
-                                    tint = roleColor
-                                )
-                                Column {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(
-                                            text = contact.fullName,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                        Text(
-                                            text = "• ${contact.role.arabicTitle}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = roleColor,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                    Text(
-                                        text = contact.subtitle,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                val roleFilterOptions = remember(currentUser?.role) {
+                    when (currentUser?.role) {
+                        UserRole.ADMIN -> listOf("الكل", "المعلمون", "الطلاب", "أولياء الأمور")
+                        UserRole.TEACHER -> listOf("الكل", "مدير المدرسة", "طلابي", "أولياء الأمور")
+                        else -> listOf("الكل", "مدير المدرسة", "معلمو صفي")
+                    }
+                }
+
+                OutlinedTextField(
+                    value = chatSearchQuery,
+                    onValueChange = { chatSearchQuery = it },
+                    placeholder = { Text(searchPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "بحث") },
+                    trailingIcon = {
+                        if (chatSearchQuery.isNotEmpty()) {
+                            IconButton(onClick = { chatSearchQuery = "" }) {
+                                Icon(Icons.Filled.Clear, contentDescription = "مسح البحث")
                             }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("chat_contacts_search_input")
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Role Filter Chips
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(roleFilterOptions) { roleOpt ->
+                        FilterChip(
+                            selected = selectedRoleFilter == roleOpt,
+                            onClick = { selectedRoleFilter = roleOpt },
+                            label = { Text(roleOpt, maxLines = 1, softWrap = false) },
+                            leadingIcon = {
+                                val icon = when (roleOpt) {
+                                    "المدير", "مدير المدرسة" -> Icons.Filled.AdminPanelSettings
+                                    "المعلمون", "معلمو صفي" -> Icons.Filled.Badge
+                                    "الطلاب", "طلابي" -> Icons.Filled.School
+                                    "أولياء الأمور" -> Icons.Filled.FamilyRestroom
+                                    else -> Icons.Filled.Groups
+                                }
+                                Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        )
+                    }
+
+                    // Class filter chips for Admin & Teacher
+                    if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
+                        val allowedCls = viewModel.getAllowedClassesForUser(currentUser)
+                        items(allowedCls) { cls ->
+                            FilterChip(
+                                selected = selectedClassFilter == cls,
+                                onClick = {
+                                    selectedClassFilter = if (selectedClassFilter == cls) "الكل" else cls
+                                },
+                                label = { Text(cls, maxLines = 1, softWrap = false) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Class, contentDescription = null, modifier = Modifier.size(15.dp))
+                                }
+                            )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
 
-            if (selectedContact != null) {
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(14.dp)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "اختر الشخص لفتح نافذة المحادثة المباشرة بكامل الشاشة (${filteredChatContacts.size}):",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = DeepEmerald,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (filteredChatContacts.isEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Base64AvatarImage(
-                                    base64Data = selectedContact.photoBase64,
-                                    fallbackIcon = Icons.Filled.Person,
-                                    contentDescription = selectedContact.fullName,
-                                    size = 42.dp,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "محادثة مباشرة: ${selectedContact.fullName}",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = selectedContact.subtitle,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                            Icon(
+                                imageVector = Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "لا توجد جهات اتصال مطابقة للبحث ضمن صلاحيات حسابك.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        items(filteredChatContacts, key = { it.accountId }) { contact ->
+                            val isSelected = selectedContact?.accountId == contact.accountId
+                            val roleColor = when (contact.role) {
+                                UserRole.ADMIN -> DeepEmerald
+                                UserRole.TEACHER -> InfoBlue
+                                UserRole.STUDENT -> SuccessGreen
+                                UserRole.PARENT -> MaterialTheme.colorScheme.primary
+                            }
+                            val roleIcon = when (contact.role) {
+                                UserRole.ADMIN -> Icons.Filled.AdminPanelSettings
+                                UserRole.TEACHER -> Icons.Filled.Badge
+                                UserRole.STUDENT -> Icons.Filled.School
+                                UserRole.PARENT -> Icons.Filled.FamilyRestroom
+                            }
+                            val lastMsgForContact = remember(chatMessages, currentUser, contact) {
+                                val user = currentUser
+                                if (user == null) null
+                                else chatMessages.lastOrNull { it.matchesConversation(user, contact) }
                             }
 
-                            if (selectedContact.phone.isNotBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = WhatsAppGreen,
-                                    modifier = Modifier.clickable {
-                                        ExternalIntents.sendWhatsAppMessage(
-                                            context,
-                                            selectedContact.phone,
-                                            "السلام عليكم ${selectedContact.fullName}، نتواصل معكم عبر منصة ${schoolConfig.schoolName}."
-                                        )
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSelected) DeepEmerald.copy(alpha = 0.08f)
+                                else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) DeepEmerald.copy(alpha = 0.55f)
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+                                ),
+                                shadowElevation = 1.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        selectedContactAccountId = contact.accountId
+                                        isChatConversationOpen = true
                                     }
+                                    .testTag("chat_contact_${contact.accountId}")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Chat,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(15.dp)
+                                        Base64AvatarImage(
+                                            base64Data = contact.photoBase64,
+                                            fallbackIcon = roleIcon,
+                                            contentDescription = contact.fullName,
+                                            size = 42.dp,
+                                            tint = roleColor
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "محادثة واتساب",
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        if (activeConversationMessages.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Forum,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                                        modifier = Modifier.size(44.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = "ابدأ المحادثة الفورية مع ${selectedContact.fullName}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "تصل الرسائل والإشعارات لحظياً للمستلم المعني فقط",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                                    )
-                                }
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(activeConversationMessages, key = { it.id }) { msg ->
-                                    val isSentByMe = if (msg.senderId.isNotEmpty()) {
-                                        msg.senderId == currentUser?.id
-                                    } else {
-                                        msg.senderRole == currentUser?.role
-                                    }
-                                    val msgBitmap = remember(msg.imageBase64) {
-                                        ImageCompressor.decodeBase64ToImageBitmap(msg.imageBase64)
-                                    }
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalAlignment = if (isSentByMe) Alignment.Start else Alignment.End
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = if (isSentByMe) MaterialTheme.colorScheme.primaryContainer
-                                            else MaterialTheme.colorScheme.secondaryContainer,
-                                            modifier = Modifier.widthIn(max = 290.dp)
-                                        ) {
-                                            Column(modifier = Modifier.padding(12.dp)) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
                                                 Text(
-                                                    text = msg.senderName,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    fontWeight = FontWeight.Bold
+                                                    text = contact.fullName,
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
-                                                if (msgBitmap != null) {
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Image(
-                                                        bitmap = msgBitmap,
-                                                        contentDescription = "صورة مرفقة",
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(150.dp)
-                                                            .clip(RoundedCornerShape(10.dp))
-                                                            .clickable {
-                                                                GlobalImageLightboxController.open(
-                                                                    msg.imageBase64,
-                                                                    "صورة مرفقة - ${msg.senderName}"
-                                                                )
-                                                            }
-                                                    )
-                                                }
-                                                if (msg.messageText.isNotBlank()) {
-                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = roleColor.copy(alpha = 0.12f)
+                                                ) {
                                                     Text(
-                                                        text = msg.messageText,
-                                                        style = MaterialTheme.typography.bodyMedium
+                                                        text = contact.role.arabicTitle,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = roleColor,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        softWrap = false
                                                     )
                                                 }
-                                                Spacer(modifier = Modifier.height(2.dp))
+                                            }
+                                            Text(
+                                                text = contact.subtitle,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (lastMsgForContact != null) {
                                                 Text(
-                                                    text = msg.timestamp,
+                                                    text = "آخر رسالة: ${lastMsgForContact.messageText.ifBlank { "صورة مرفقة" }}",
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    color = DeepEmerald,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
                                         }
                                     }
-                                }
-                            }
-                        }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        if (draftChatImageBase64.isNotBlank()) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 6.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Image,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "تم إرفاق صورة جاهزة للإرسال",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { draftChatImageBase64 = "" },
-                                        modifier = Modifier.size(24.dp)
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = DeepEmerald,
+                                        modifier = Modifier.padding(start = 8.dp)
                                     ) {
-                                        Icon(Icons.Filled.Close, contentDescription = "إزالة الصورة", modifier = Modifier.size(16.dp))
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Forum,
+                                                contentDescription = null,
+                                                tint = Color(0xFFA7F3D0),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = "مراسلة",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    chatPhotoLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                },
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .testTag("chat_attach_photo_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.AddPhotoAlternate,
-                                    contentDescription = "إرفاق صورة",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            OutlinedTextField(
-                                value = draftMessage,
-                                onValueChange = { draftMessage = it },
-                                placeholder = { Text("اكتب رسالتك إلى ${selectedContact.fullName}...") },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("chat_message_input"),
-                                shape = RoundedCornerShape(14.dp)
-                            )
-
-                            Button(
-                                onClick = {
-                                    if (draftMessage.isNotBlank() || draftChatImageBase64.isNotBlank()) {
-                                        viewModel.sendDirectChatMessage(selectedContact, draftMessage, draftChatImageBase64)
-                                        draftMessage = ""
-                                        draftChatImageBase64 = ""
-                                    }
-                                },
-                                modifier = Modifier
-                                    .height(52.dp)
-                                    .testTag("send_chat_button"),
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "إرسال")
                             }
                         }
                     }

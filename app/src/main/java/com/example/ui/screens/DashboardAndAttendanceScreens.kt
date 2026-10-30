@@ -262,7 +262,7 @@ fun DashboardScreen(
                     )
                 }
 
-                // Smart 1-Tap Dismissal Call for Parents ("أنا أمام المدرسة لاستلام ابني 🚗")
+                // Smart 1-Tap Dismissal Call for Parents ("أنا أمام المدرسة لاستلام ابني")
                 if (currentUser?.role == UserRole.PARENT && featureSettings.dismissalAndLostFoundEnabled) {
                     val activeCall = dismissalCalls.firstOrNull { it.studentId == myStudent.id && !it.isAcknowledged }
                     Surface(
@@ -1307,7 +1307,7 @@ fun DailyAttendanceScreen(
                 }
             }
 
-            // Live Parent Dismissal Calls Card ("الاستدعاء السريع عند الانصراف 🚗")
+            // Live Parent Dismissal Calls Card ("الاستدعاء السريع عند الانصراف")
             val activeDismissalCalls = dismissalCalls.filter { !it.isAcknowledged }
             if (featureSettings.dismissalAndLostFoundEnabled && activeDismissalCalls.isNotEmpty()) {
                 item {
