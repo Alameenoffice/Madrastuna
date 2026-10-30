@@ -34,6 +34,7 @@ fun AdminAccountsScreen(
 ) {
     val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val featureSettings by viewModel.featureSettings.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val students by viewModel.students.collectAsState()
 
@@ -52,6 +53,12 @@ fun AdminAccountsScreen(
     var showStudentDialog by remember { mutableStateOf(false) }
     var editingStudent by remember { mutableStateOf<StudentRecord?>(null) }
     var studentForDigitalIdCard by remember { mutableStateOf<StudentRecord?>(null) }
+
+    LaunchedEffect(featureSettings.qrAttendanceEnabled) {
+        if (!featureSettings.qrAttendanceEnabled && studentForDigitalIdCard != null) {
+            studentForDigitalIdCard = null
+        }
+    }
 
     val teachers = remember(accounts, searchQuery, selectedClassFilter) {
         accounts.filter { acc ->
@@ -507,42 +514,48 @@ fun AdminAccountsScreen(
                             StudentAutoBadgesRow(badges = stuAutoBadges)
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        if (featureSettings.qrAttendanceEnabled ||
+                            (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled)
                         ) {
-                            OutlinedButton(
-                                onClick = { studentForDigitalIdCard = stu },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("admin_open_student_id_${stu.id}"),
-                                shape = RoundedCornerShape(12.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("بطاقة الهوية والـ QR", maxLines = 1, softWrap = false)
-                            }
-
-                            if (schoolConfig.schoolType == SchoolType.PRIVATE) {
-                                FilterChip(
-                                    selected = stu.isBusSubscribed,
-                                    onClick = { viewModel.toggleStudentBusSubscription(stu.id) },
-                                    label = {
-                                        Text(
-                                            text = if (stu.isBusSubscribed) "مشترك بالخط" else "غير مشترك بالخط",
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Filled.DirectionsBus,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                                if (featureSettings.qrAttendanceEnabled) {
+                                    OutlinedButton(
+                                        onClick = { studentForDigitalIdCard = stu },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("admin_open_student_id_${stu.id}"),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("بطاقة الهوية والـ QR", maxLines = 1, softWrap = false)
                                     }
-                                )
+                                }
+
+                                if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled) {
+                                    FilterChip(
+                                        selected = stu.isBusSubscribed,
+                                        onClick = { viewModel.toggleStudentBusSubscription(stu.id) },
+                                        label = {
+                                            Text(
+                                                text = if (stu.isBusSubscribed) "مشترك بالخط" else "غير مشترك بالخط",
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Filled.DirectionsBus,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    )
+                                }
                             }
                         }
 

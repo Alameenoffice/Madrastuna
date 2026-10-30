@@ -52,8 +52,8 @@ fun DashboardScreen(
     val occasionThemeConfig by viewModel.occasionThemeConfig.collectAsState()
     val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
     val dismissalCalls by viewModel.dismissalCalls.collectAsState()
+    val featureSettings by viewModel.featureSettings.collectAsState()
 
-    val featureSettings = schoolConfig.featureSettings
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isTeacher = currentUser?.role == UserRole.TEACHER
     val isAdmin = currentUser?.role == UserRole.ADMIN
@@ -263,7 +263,7 @@ fun DashboardScreen(
                 }
 
                 // Smart 1-Tap Dismissal Call for Parents ("أنا أمام المدرسة لاستلام ابني")
-                if (currentUser?.role == UserRole.PARENT && featureSettings.dismissalAndLostFoundEnabled) {
+                if (currentUser?.role == UserRole.PARENT && featureSettings.dismissalCallEnabled) {
                     val activeCall = dismissalCalls.firstOrNull { it.studentId == myStudent.id && !it.isAcknowledged }
                     Surface(
                         modifier = Modifier
@@ -512,18 +512,20 @@ fun DashboardScreen(
                             modifier = Modifier.weight(1f),
                             onClick = { viewModel.navigateToSection(AppSection.SCHEDULE_HOMEWORK) }
                         )
-                        SmartStatCard(
-                            title = "لوحة الشرف الذهبية",
-                            value = "$honorCount متفوق",
-                            subtitle = "أوائل الصفوف",
-                            icon = Icons.Filled.EmojiEvents,
-                            accentColor = GoldAccent,
-                            modifier = Modifier.weight(1f),
-                            onClick = { viewModel.navigateToSection(AppSection.HONOR_ROLL) }
-                        )
+                        if (featureSettings.honorRollEnabled) {
+                            SmartStatCard(
+                                title = "لوحة الشرف الذهبية",
+                                value = "$honorCount متفوق",
+                                subtitle = "أوائل الصفوف",
+                                icon = Icons.Filled.EmojiEvents,
+                                accentColor = GoldAccent,
+                                modifier = Modifier.weight(1f),
+                                onClick = { viewModel.navigateToSection(AppSection.HONOR_ROLL) }
+                            )
+                        }
                     }
 
-                    if (isAdmin && schoolConfig.schoolType == SchoolType.PRIVATE) {
+                    if (isAdmin && schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.tuitionEnabled) {
                         val totalPaid = tuitions.sumOf { it.paidAmount }
                         val totalRemaining = tuitions.sumOf { it.remainingAmount }
                         SmartStatCard(
@@ -538,7 +540,7 @@ fun DashboardScreen(
                     }
 
                     // School Bus & Transport Quick Notifications Card (for Private Schools)
-                    if (schoolConfig.schoolType == SchoolType.PRIVATE && (isAdmin || isTeacher)) {
+                    if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled && (isAdmin || isTeacher)) {
                         val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
                         SchoolBusQuickAlertsCard(
                             busSubscribersCount = busSubscribersCount,
@@ -558,17 +560,21 @@ fun DashboardScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            val sectionsList = remember(schoolConfig.schoolType, currentUser) {
+            val sectionsList = remember(schoolConfig.schoolType, featureSettings, currentUser) {
                 buildList {
                     add(Triple(AppSection.ATTENDANCE, Icons.Filled.HowToReg, if (isParentOrStudent) "حالة الحضور وعداد الغياب الخاص" else "رصد الحضور والغياب وتبليغ واتساب"))
                     add(Triple(AppSection.SCHEDULE_HOMEWORK, Icons.Filled.CalendarMonth, "جدول الحصص والتحضير اليومي"))
                     add(Triple(AppSection.EXAMS_GRADES, Icons.Filled.Assessment, if (isParentOrStudent) "جدول كشف درجات الطالب التفصيلي" else "الامتحانات ورصد الدرجات حسب المادة"))
-                    add(Triple(AppSection.HONOR_ROLL, Icons.Filled.WorkspacePremium, "لوحة الشرف للمتفوقين (عام)"))
-                    if (schoolConfig.schoolType == SchoolType.PRIVATE && !isTeacher) {
+                    if (featureSettings.honorRollEnabled) {
+                        add(Triple(AppSection.HONOR_ROLL, Icons.Filled.WorkspacePremium, "لوحة الشرف للمتفوقين (عام)"))
+                    }
+                    if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.tuitionEnabled && !isTeacher) {
                         add(Triple(AppSection.TUITION_FEES, Icons.Filled.AccountBalanceWallet, if (isParentOrStudent) "أقساط الطالب ووصولات الدفع" else "الأقساط الدراسية ووصولات الدفع"))
                     }
                     add(Triple(AppSection.REPORTS_CHAT, Icons.Filled.Forum, if (isParentOrStudent) "بلاغات الطالب ومراسلة الإدارة" else "البلاغات الرسمية والمراسلة المباشرة"))
-                    add(Triple(AppSection.EVENTS_NEWS, Icons.Filled.Newspaper, "معرض الفعاليات والأخبار (عام)"))
+                    if (featureSettings.eventsGalleryEnabled) {
+                        add(Triple(AppSection.EVENTS_NEWS, Icons.Filled.Newspaper, "معرض الفعاليات والأخبار (عام)"))
+                    }
                     if (isAdmin) {
                         add(Triple(AppSection.ADMIN_ACCOUNTS, Icons.Filled.ManageAccounts, "إدارة وتفعيل حسابات المستخدمين"))
                     }
@@ -830,8 +836,8 @@ fun DailyAttendanceScreen(
     val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
     val dismissalCalls by viewModel.dismissalCalls.collectAsState()
     val lostAndFoundItems by viewModel.lostAndFoundItems.collectAsState()
+    val featureSettings by viewModel.featureSettings.collectAsState()
 
-    val featureSettings = schoolConfig.featureSettings
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
@@ -855,6 +861,19 @@ fun DailyAttendanceScreen(
     var showLeaveRequestDialog by remember { mutableStateOf(false) }
     var showLostAndFoundDialog by remember { mutableStateOf(false) }
     var selectedStudentForIdCard by remember { mutableStateOf<StudentRecord?>(null) }
+
+    LaunchedEffect(featureSettings) {
+        if (!featureSettings.qrAttendanceEnabled) {
+            showQrScannerDialog = false
+            selectedStudentForIdCard = null
+        }
+        if (!featureSettings.leaveRequestsEnabled) {
+            showLeaveRequestDialog = false
+        }
+        if (!featureSettings.lostAndFoundEnabled) {
+            showLostAndFoundDialog = false
+        }
+    }
 
     val scopedStudents = remember(students, currentUser, selectedClass, selectedSection, searchName, selectedParentChildId) {
         val base = viewModel.getScopedStudentsForUser(currentUser)
@@ -949,7 +968,7 @@ fun DailyAttendanceScreen(
                                     }
                                 }
 
-                                if (featureSettings.dismissalAndLostFoundEnabled) {
+                                if (featureSettings.lostAndFoundEnabled) {
                                     OutlinedButton(
                                         onClick = { showLostAndFoundDialog = true },
                                         modifier = Modifier
@@ -964,7 +983,7 @@ fun DailyAttendanceScreen(
                                 }
                             }
 
-                            if (currentUser?.role == UserRole.PARENT && featureSettings.dismissalAndLostFoundEnabled) {
+                            if (currentUser?.role == UserRole.PARENT && featureSettings.dismissalCallEnabled) {
                                 Button(
                                     onClick = { viewModel.triggerParentDismissalCall(myStu) },
                                     modifier = Modifier
@@ -1056,7 +1075,7 @@ fun DailyAttendanceScreen(
                     }
                 }
 
-                if (myLeaveRequests.isNotEmpty()) {
+                if (featureSettings.leaveRequestsEnabled && myLeaveRequests.isNotEmpty()) {
                     item {
                         Text(
                             text = "سجل طلبات الإجازة الإلكترونية (${myLeaveRequests.size}):",
@@ -1225,7 +1244,7 @@ fun DailyAttendanceScreen(
                             }
                         }
 
-                        if (featureSettings.dismissalAndLostFoundEnabled) {
+                        if (featureSettings.lostAndFoundEnabled) {
                             OutlinedButton(
                                 onClick = { showLostAndFoundDialog = true },
                                 modifier = Modifier
@@ -1309,7 +1328,7 @@ fun DailyAttendanceScreen(
 
             // Live Parent Dismissal Calls Card ("الاستدعاء السريع عند الانصراف")
             val activeDismissalCalls = dismissalCalls.filter { !it.isAcknowledged }
-            if (featureSettings.dismissalAndLostFoundEnabled && activeDismissalCalls.isNotEmpty()) {
+            if (featureSettings.dismissalCallEnabled && activeDismissalCalls.isNotEmpty()) {
                 item {
                     Card(
                         modifier = Modifier
@@ -1511,15 +1530,17 @@ fun DailyAttendanceScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                IconButton(
-                                    onClick = { selectedStudentForIdCard = stu },
-                                    modifier = Modifier.testTag("att_open_student_id_${stu.id}")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Badge,
-                                        contentDescription = "بطاقة الهوية والـ QR",
-                                        tint = DeepEmerald
-                                    )
+                                if (featureSettings.qrAttendanceEnabled) {
+                                    IconButton(
+                                        onClick = { selectedStudentForIdCard = stu },
+                                        modifier = Modifier.testTag("att_open_student_id_${stu.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Badge,
+                                            contentDescription = "بطاقة الهوية والـ QR",
+                                            tint = DeepEmerald
+                                        )
+                                    }
                                 }
                                 NoWrapBadge(
                                     text = "إجمالي الغياب: $totalAbsences يوم",

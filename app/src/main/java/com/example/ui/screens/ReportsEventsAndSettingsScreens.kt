@@ -72,6 +72,14 @@ fun ReportsAndChatScreen(
     var isChatConversationOpen by remember { mutableStateOf(false) }
     var isFullScreenChatModal by remember { mutableStateOf(false) }
 
+    LaunchedEffect(featureSettings.directChatEnabled) {
+        if (!featureSettings.directChatEnabled) {
+            if (selectedTab == 1) selectedTab = 0
+            isChatConversationOpen = false
+            isFullScreenChatModal = false
+        }
+    }
+
     BackHandler(enabled = selectedTab == 1 && isChatConversationOpen) {
         isChatConversationOpen = false
     }
@@ -1811,9 +1819,11 @@ fun SettingsScreen(
                     val featureRows = listOf(
                         Triple(
                             "ميزة الخطوط والنقل المدرسي" to Icons.Filled.DirectionsBus,
-                            featureSettings.busAlertsEnabled
+                            featureSettings.busTrackingEnabled
                         ) { v: Boolean ->
-                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(busAlertsEnabled = v))
+                            viewModel.updateSchoolFeatureSettings(
+                                featureSettings.copy(busTrackingEnabled = v, busAlertsEnabled = v)
+                            )
                         },
                         Triple(
                             "ميزة لوحة الشرف والتفاعل بالقلب" to Icons.Filled.EmojiEvents,
@@ -1831,7 +1841,9 @@ fun SettingsScreen(
                             "ميزة المكتبة الرقمية والملخصات" to Icons.Filled.MenuBook,
                             featureSettings.studyLibraryEnabled
                         ) { v: Boolean ->
-                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(studyLibraryEnabled = v))
+                            viewModel.updateSchoolFeatureSettings(
+                                featureSettings.copy(studyMaterialsEnabled = v, studyLibraryEnabled = v)
+                            )
                         },
                         Triple(
                             "ميزة طلبات الإجازة الإلكترونية" to Icons.Filled.EventNote,
@@ -1841,9 +1853,15 @@ fun SettingsScreen(
                         },
                         Triple(
                             "ميزة الماسح الضوئي للهويات (QR Attendance)" to Icons.Filled.QrCodeScanner,
-                            featureSettings.qrScannerEnabled
+                            featureSettings.qrAttendanceEnabled
                         ) { v: Boolean ->
-                            viewModel.updateSchoolFeatureSettings(featureSettings.copy(qrScannerEnabled = v))
+                            viewModel.updateSchoolFeatureSettings(
+                                featureSettings.copy(
+                                    digitalIdEnabled = v,
+                                    qrScannerEnabled = v,
+                                    qrAttendanceEnabled = v
+                                )
+                            )
                         },
                         Triple(
                             "ميزة الأقساط الدراسية والوصولات" to Icons.Filled.AccountBalanceWallet,

@@ -608,7 +608,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private fun startRealtimeCloudMonitor() {
         viewModelScope.launch {
             while (isActive) {
-                delay(2500L)
+                delay(1500L)
                 val sid = _schoolConfig.value.schoolId
                 val user = _currentUser.value
                 if (sid.isNotBlank() && user != null) {
@@ -659,7 +659,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 remoteSubjRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SUBJECTS)
                             ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SUBJECTS, remoteSubjRaw)
-                                _schoolConfig.value = repo.loadSchoolConfig(sid)
+                                val loadedCfg = repo.loadSchoolConfig(sid)
+                                _schoolConfig.value = loadedCfg
+                                _featureSettings.value = loadedCfg.featureSettings
                             }
                         }
                         if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_SETTINGS)) {
@@ -671,7 +673,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 remoteCfgRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SETTINGS)
                             ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SETTINGS, remoteCfgRaw)
-                                _schoolConfig.value = repo.parseSchoolConfigJson(remoteCfgRaw, sid)
+                                val parsedCfg = repo.parseSchoolConfigJson(remoteCfgRaw, sid)
+                                _schoolConfig.value = parsedCfg
+                                _featureSettings.value = parsedCfg.featureSettings
+                                enforceActiveSectionFeatureVisibility(parsedCfg.featureSettings)
                             }
                         }
 
@@ -910,6 +915,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 val parsedFeat = repo.parseFeatureSettingsJson(remoteFeatRaw)
                                 _schoolConfig.value = _schoolConfig.value.copy(featureSettings = parsedFeat)
                                 _featureSettings.value = parsedFeat
+                                enforceActiveSectionFeatureVisibility(parsedFeat)
                             }
                         }
 
@@ -1299,20 +1305,47 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
+    private fun enforceActiveSectionFeatureVisibility(feat: SchoolFeatureSettings) {
+        val curr = _activeSection.value
+        if (curr == AppSection.HONOR_ROLL && !feat.honorRollEnabled) {
+            _activeSection.value = AppSection.DASHBOARD
+        } else if (curr == AppSection.TUITION_FEES && (_schoolConfig.value.schoolType == SchoolType.PUBLIC || !feat.tuitionEnabled)) {
+            _activeSection.value = AppSection.DASHBOARD
+        } else if (curr == AppSection.EVENTS_NEWS && !feat.eventsGalleryEnabled) {
+            _activeSection.value = AppSection.DASHBOARD
+        }
+    }
+
     fun updateSchoolFeatureSettings(newSettings: SchoolFeatureSettings) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val prev = _featureSettings.value
+        val bus = if (newSettings.busAlertsEnabled != prev.busAlertsEnabled) newSettings.busAlertsEnabled else newSettings.busTrackingEnabled
+        val study = if (newSettings.studyLibraryEnabled != prev.studyLibraryEnabled) newSettings.studyLibraryEnabled else newSettings.studyMaterialsEnabled
+        val qr = when {
+            newSettings.qrScannerEnabled != prev.qrScannerEnabled -> newSettings.qrScannerEnabled
+            newSettings.qrAttendanceEnabled != prev.qrAttendanceEnabled -> newSettings.qrAttendanceEnabled
+            else -> newSettings.digitalIdEnabled
+        }
+        val lostAndSug = if (newSettings.lostAndFoundEnabled != prev.lostAndFoundEnabled) newSettings.lostAndFoundEnabled else newSettings.suggestionsBoxEnabled
+
         val normalized = newSettings.copy(
-            busTrackingEnabled = newSettings.busAlertsEnabled,
-            studyMaterialsEnabled = newSettings.studyLibraryEnabled,
-            digitalIdEnabled = newSettings.qrScannerEnabled,
-            qrAttendanceEnabled = newSettings.qrScannerEnabled,
-            dismissalAndLostFoundEnabled = newSettings.dismissalCallEnabled || newSettings.lostAndFoundEnabled
+            busTrackingEnabled = bus,
+            busAlertsEnabled = bus,
+            studyMaterialsEnabled = study,
+            studyLibraryEnabled = study,
+            digitalIdEnabled = qr,
+            qrScannerEnabled = qr,
+            qrAttendanceEnabled = qr,
+            lostAndFoundEnabled = lostAndSug,
+            suggestionsBoxEnabled = lostAndSug,
+            dismissalAndLostFoundEnabled = newSettings.dismissalCallEnabled || lostAndSug
         )
         val updated = _schoolConfig.value.copy(featureSettings = normalized)
         _schoolConfig.value = updated
         _featureSettings.value = normalized
+        enforceActiveSectionFeatureVisibility(normalized)
         repo.saveSchoolConfig(updated)
-        showToastAlert("تم تحديث مزايا وأقسام المنصة ومزامنتها لجميع المستخدمين فوراً", isSuccess = true)
+        showToastAlert("تم تحديث مزايا وأقسام المنصة وحفظها في قاعدة بيانات المدرسة وتعميمها لجميع الحسابات فوراً", isSuccess = true)
     }
 
     fun navigateToSection(section: AppSection) {

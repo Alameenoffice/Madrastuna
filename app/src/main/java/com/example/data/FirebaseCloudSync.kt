@@ -82,6 +82,64 @@ object FirebaseCloudSync {
                 }.toString()
 
                 executeHttpWrite(rtdbUrl, "PUT", rtdbBody)
+
+                // 3. When saving settings or feature_settings, also persist directly under schools/{schoolId}/settings/config
+                if (subCollection == FirebaseConfigConstants.COL_SETTINGS ||
+                    subCollection == FirebaseConfigConstants.COL_FEATURE_SETTINGS
+                ) {
+                    val configFirestoreUrl =
+                        "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/settings/config?key=${FirebaseConfigConstants.API_KEY}"
+
+                    val parsedJson = runCatching { JSONObject(jsonPayload) }.getOrNull()
+                    val featJson = parsedJson?.optJSONObject("enabledFeatures")
+                        ?: parsedJson?.optJSONObject("featureSettings")
+                        ?: parsedJson
+
+                    val enabledFeaturesFirestoreMap = JSONObject().apply {
+                        val featureKeys = listOf(
+                            "busTracking",
+                            "honorRoll",
+                            "directMessaging",
+                            "digitalLibrary",
+                            "leaveRequests",
+                            "qrAttendance",
+                            "tuitionInstallments",
+                            "photoHomework",
+                            "dailyBehavior",
+                            "smartDismissal",
+                            "quickQuizzes",
+                            "lostAndFoundSuggestions"
+                        )
+                        featureKeys.forEach { k ->
+                            val v = featJson?.optBoolean(k, true) ?: true
+                            put(k, JSONObject().put("booleanValue", v))
+                        }
+                    }
+
+                    val configFirestoreBody = JSONObject().apply {
+                        put("fields", JSONObject().apply {
+                            put("schoolId", JSONObject().put("stringValue", cleanSchoolId))
+                            put("updatedAt", JSONObject().put("integerValue", System.currentTimeMillis().toString()))
+                            put("enabledFeatures", JSONObject().put("mapValue", JSONObject().put("fields", enabledFeaturesFirestoreMap)))
+                            if (subCollection == FirebaseConfigConstants.COL_FEATURE_SETTINGS) {
+                                put("featureSettingsJson", JSONObject().put("stringValue", jsonPayload))
+                            } else {
+                                put("payloadJson", JSONObject().put("stringValue", jsonPayload))
+                            }
+                        })
+                    }.toString()
+
+                    executeHttpWrite(configFirestoreUrl, "PATCH", configFirestoreBody)
+
+                    val configRtdbUrl =
+                        "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/settings/config.json"
+                    val configRtdbBody = JSONObject().apply {
+                        put("schoolId", cleanSchoolId)
+                        put("updatedAt", System.currentTimeMillis())
+                        put("payloadJson", jsonPayload)
+                    }.toString()
+                    executeHttpWrite(configRtdbUrl, "PUT", configRtdbBody)
+                }
             } catch (_: Exception) {
                 // Offline-tolerant: local school-scoped persistence remains intact
             }
@@ -108,6 +166,24 @@ object FirebaseCloudSync {
                 if (payload.isNotBlank()) return@withContext payload
             }
         } catch (_: Exception) {
+        }
+
+        // If fetching feature_settings, also check schools/{schoolId}/settings/config in Firestore
+        if (subCollection == FirebaseConfigConstants.COL_FEATURE_SETTINGS) {
+            try {
+                val configUrl =
+                    "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/settings/config?key=${FirebaseConfigConstants.API_KEY}"
+                val response = executeHttpGet(configUrl)
+                if (!response.isNullOrBlank()) {
+                    val root = JSONObject(response)
+                    val fields = root.optJSONObject("fields")
+                    val featStr = fields?.optJSONObject("featureSettingsJson")?.optString("stringValue", "") ?: ""
+                    if (featStr.isNotBlank()) return@withContext featStr
+                    val payloadStr = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
+                    if (payloadStr.isNotBlank()) return@withContext payloadStr
+                }
+            } catch (_: Exception) {
+            }
         }
 
         // Fallback to Realtime Database

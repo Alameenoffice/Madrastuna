@@ -340,7 +340,7 @@ fun AuthenticatedMainPlatform(
     val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
     val dismissedBroadcastIds by viewModel.dismissedBroadcastIds.collectAsState()
 
-    val featureSettings = schoolConfig.featureSettings
+    val featureSettings by viewModel.featureSettings.collectAsState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
 
@@ -368,6 +368,21 @@ fun AuthenticatedMainPlatform(
 
     var idCardDialogStudent by remember { mutableStateOf<StudentRecord?>(null) }
     var showNotificationsSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(featureSettings, activeSection, schoolConfig.schoolType) {
+        if (!featureSettings.qrAttendanceEnabled && idCardDialogStudent != null) {
+            idCardDialogStudent = null
+        }
+        if (activeSection == AppSection.HONOR_ROLL && !featureSettings.honorRollEnabled) {
+            viewModel.navigateToSection(AppSection.DASHBOARD)
+        } else if (activeSection == AppSection.TUITION_FEES &&
+            (schoolConfig.schoolType == SchoolType.PUBLIC || !featureSettings.tuitionEnabled)
+        ) {
+            viewModel.navigateToSection(AppSection.DASHBOARD)
+        } else if (activeSection == AppSection.EVENTS_NEWS && !featureSettings.eventsGalleryEnabled) {
+            viewModel.navigateToSection(AppSection.DASHBOARD)
+        }
+    }
 
     val unreadCount = remember(notifications) { notifications.count { !it.isRead } }
 
@@ -810,7 +825,7 @@ fun AuthenticatedMainPlatform(
                         onSelectStudent = { stuId -> viewModel.selectParentChild(stuId) },
                         onOpenStudentIdCard = { stu -> idCardDialogStudent = stu },
                         isParentRole = true,
-                        showDigitalIdButton = featureSettings.digitalIdEnabled
+                        showDigitalIdButton = featureSettings.qrAttendanceEnabled
                     )
                 } else if (currentUser?.role == UserRole.STUDENT && loggedInStudentRecord != null) {
                     ParentMultiChildSwitcherBar(
@@ -819,7 +834,7 @@ fun AuthenticatedMainPlatform(
                         onSelectStudent = {},
                         onOpenStudentIdCard = { stu -> idCardDialogStudent = stu },
                         isParentRole = false,
-                        showDigitalIdButton = featureSettings.digitalIdEnabled
+                        showDigitalIdButton = featureSettings.qrAttendanceEnabled
                     )
                 }
 

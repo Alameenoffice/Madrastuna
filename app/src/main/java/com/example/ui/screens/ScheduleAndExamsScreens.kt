@@ -84,6 +84,16 @@ fun ScheduleAndHomeworkScreen(
     var showAddPeriodDialog by remember { mutableStateOf(false) }
     var showPublishStudyMaterialDialog by remember { mutableStateOf(false) }
 
+    LaunchedEffect(featureSettings.studyLibraryEnabled, featureSettings.quickQuizzesEnabled) {
+        if (!featureSettings.studyLibraryEnabled) {
+            if (selectedTab == 2) selectedTab = 0
+            showPublishStudyMaterialDialog = false
+        }
+        if (!featureSettings.quickQuizzesEnabled) {
+            showPublishQuickQuizDialog = false
+        }
+    }
+
     val filteredHomeworks = remember(homeworks, selectedClass, selectedSection, currentUser) {
         homeworks.filter { hw ->
             val clsMatch = hw.gradeClass == selectedClass && hw.sectionName == selectedSection

@@ -822,9 +822,28 @@ data class SchoolFeatureSettings(
     val qrScannerEnabled: Boolean = digitalIdEnabled,
     val qrAttendanceEnabled: Boolean = digitalIdEnabled,
     val homeworkSubmissionEnabled: Boolean = true,
-    val dismissalCallEnabled: Boolean = dismissalAndLostFoundEnabled,
-    val lostAndFoundEnabled: Boolean = dismissalAndLostFoundEnabled
-)
+    val dismissalCallEnabled: Boolean = true,
+    val lostAndFoundEnabled: Boolean = true
+) {
+    fun normalized(): SchoolFeatureSettings {
+        val bus = busAlertsEnabled && busTrackingEnabled || (busAlertsEnabled != busTrackingEnabled && busAlertsEnabled)
+        val study = studyLibraryEnabled && studyMaterialsEnabled || (studyLibraryEnabled != studyMaterialsEnabled && studyLibraryEnabled)
+        val qr = qrScannerEnabled && qrAttendanceEnabled && digitalIdEnabled || (qrScannerEnabled != digitalIdEnabled && qrScannerEnabled) || (qrAttendanceEnabled != digitalIdEnabled && qrAttendanceEnabled)
+        val lostAndSug = lostAndFoundEnabled
+        return copy(
+            busTrackingEnabled = bus,
+            busAlertsEnabled = bus,
+            studyMaterialsEnabled = study,
+            studyLibraryEnabled = study,
+            digitalIdEnabled = qr,
+            qrScannerEnabled = qr,
+            qrAttendanceEnabled = qr,
+            lostAndFoundEnabled = lostAndSug,
+            suggestionsBoxEnabled = lostAndSug,
+            dismissalAndLostFoundEnabled = dismissalCallEnabled || lostAndSug
+        )
+    }
+}
 
 /**
  * Smart Parent Auto-Link Match Info (الاكتشاف التلقائي لولي الأمر المسجل مسبقاً وربط الإخوة)

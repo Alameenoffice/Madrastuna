@@ -140,7 +140,7 @@ class SchoolRepository(context: Context) {
                 }
             }
 
-            val featObj = obj.optJSONObject("featureSettings")
+            val featObj = obj.optJSONObject("featureSettings") ?: obj.optJSONObject("enabledFeatures")
             val parsedFeatures = if (featObj != null) {
                 parseFeatureSettingsObject(featObj)
             } else {
@@ -195,51 +195,138 @@ class SchoolRepository(context: Context) {
             put("phone", config.phone)
             put("subscriptionExpiryDate", config.subscriptionExpiryDate.ifBlank { "2027-10-29" })
             put("featureSettings", featJson)
+            put("enabledFeatures", featJson)
         }
         val jsonStr = obj.toString()
+        val featStr = featJson.toString()
         prefs.edit()
             .putString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), jsonStr)
-            .putString(scopedKey(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS), featJson.toString())
+            .putString(scopedKey(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS), featStr)
             .apply()
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_SETTINGS, jsonStr)
-        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS, featJson.toString())
+        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS, featStr)
 
         if (config.subjectConfigs.isNotEmpty()) {
             saveSubjectConfigs(config.subjectConfigs, sid)
         }
     }
 
+    fun saveFeatureSettings(settings: SchoolFeatureSettings, schoolId: String = getActiveSchoolId()) {
+        val sid = schoolId.ifBlank { getActiveSchoolId() }
+        if (sid.isBlank()) return
+        val currentCfg = loadSchoolConfig(sid)
+        saveSchoolConfig(currentCfg.copy(schoolId = sid, featureSettings = settings))
+    }
+
     private fun featureSettingsToJsonObject(f: SchoolFeatureSettings): JSONObject {
+        val bus = f.busTrackingEnabled && f.busAlertsEnabled || (f.busAlertsEnabled != f.busTrackingEnabled && f.busAlertsEnabled)
+        val study = f.studyMaterialsEnabled && f.studyLibraryEnabled || (f.studyLibraryEnabled != f.studyMaterialsEnabled && f.studyLibraryEnabled)
+        val qr = f.digitalIdEnabled && f.qrScannerEnabled && f.qrAttendanceEnabled || (f.qrScannerEnabled != f.digitalIdEnabled && f.qrScannerEnabled) || (f.qrAttendanceEnabled != f.digitalIdEnabled && f.qrAttendanceEnabled)
+        val lostAndSug = f.lostAndFoundEnabled
+
+        val enabledFeaturesMap = JSONObject().apply {
+            put("busTracking", bus)
+            put("honorRoll", f.honorRollEnabled)
+            put("directMessaging", f.directChatEnabled)
+            put("digitalLibrary", study)
+            put("leaveRequests", f.leaveRequestsEnabled)
+            put("qrAttendance", qr)
+            put("tuitionInstallments", f.tuitionEnabled)
+            put("photoHomework", f.homeworkSubmissionEnabled)
+            put("dailyBehavior", f.dailyBehaviorEnabled)
+            put("smartDismissal", f.dismissalCallEnabled)
+            put("quickQuizzes", f.quickQuizzesEnabled)
+            put("lostAndFoundSuggestions", lostAndSug)
+        }
+
         return JSONObject().apply {
+            // Canonical 12 keys
+            put("busTracking", bus)
+            put("honorRoll", f.honorRollEnabled)
+            put("directMessaging", f.directChatEnabled)
+            put("digitalLibrary", study)
+            put("leaveRequests", f.leaveRequestsEnabled)
+            put("qrAttendance", qr)
+            put("tuitionInstallments", f.tuitionEnabled)
+            put("photoHomework", f.homeworkSubmissionEnabled)
+            put("dailyBehavior", f.dailyBehaviorEnabled)
+            put("smartDismissal", f.dismissalCallEnabled)
+            put("quickQuizzes", f.quickQuizzesEnabled)
+            put("lostAndFoundSuggestions", lostAndSug)
+            put("enabledFeatures", enabledFeaturesMap)
+
+            // Full SchoolFeatureSettings properties & aliases
             put("honorRollEnabled", f.honorRollEnabled)
             put("eventsGalleryEnabled", f.eventsGalleryEnabled)
             put("directChatEnabled", f.directChatEnabled)
             put("leaveRequestsEnabled", f.leaveRequestsEnabled)
             put("tuitionEnabled", f.tuitionEnabled)
-            put("busTrackingEnabled", f.busTrackingEnabled)
-            put("studyMaterialsEnabled", f.studyMaterialsEnabled)
+            put("busTrackingEnabled", bus)
+            put("busAlertsEnabled", bus)
+            put("studyMaterialsEnabled", study)
+            put("studyLibraryEnabled", study)
             put("quickQuizzesEnabled", f.quickQuizzesEnabled)
             put("dailyBehaviorEnabled", f.dailyBehaviorEnabled)
-            put("dismissalAndLostFoundEnabled", f.dismissalAndLostFoundEnabled)
-            put("suggestionsBoxEnabled", f.suggestionsBoxEnabled)
-            put("digitalIdEnabled", f.digitalIdEnabled)
+            put("homeworkSubmissionEnabled", f.homeworkSubmissionEnabled)
+            put("dismissalCallEnabled", f.dismissalCallEnabled)
+            put("lostAndFoundEnabled", lostAndSug)
+            put("suggestionsBoxEnabled", lostAndSug)
+            put("dismissalAndLostFoundEnabled", f.dismissalCallEnabled || lostAndSug)
+            put("digitalIdEnabled", qr)
+            put("qrScannerEnabled", qr)
+            put("qrAttendanceEnabled", qr)
         }
     }
 
-    private fun parseFeatureSettingsObject(o: JSONObject): SchoolFeatureSettings {
+    private fun parseFeatureSettingsObject(rawObj: JSONObject): SchoolFeatureSettings {
+        val o = rawObj.optJSONObject("featureSettings")
+            ?: rawObj.optJSONObject("enabledFeatures")
+            ?: rawObj
+
+        fun boolKey(primary: String, vararg fallbacks: String, default: Boolean = true): Boolean {
+            if (o.has(primary)) return o.optBoolean(primary, default)
+            if (rawObj.has(primary)) return rawObj.optBoolean(primary, default)
+            for (fb in fallbacks) {
+                if (o.has(fb)) return o.optBoolean(fb, default)
+                if (rawObj.has(fb)) return rawObj.optBoolean(fb, default)
+            }
+            return default
+        }
+
+        val bus = boolKey("busTracking", "busAlertsEnabled", "busTrackingEnabled")
+        val honor = boolKey("honorRoll", "honorRollEnabled")
+        val chat = boolKey("directMessaging", "directChatEnabled")
+        val study = boolKey("digitalLibrary", "studyLibraryEnabled", "studyMaterialsEnabled")
+        val leave = boolKey("leaveRequests", "leaveRequestsEnabled")
+        val qr = boolKey("qrAttendance", "qrScannerEnabled", "qrAttendanceEnabled", "digitalIdEnabled")
+        val tuition = boolKey("tuitionInstallments", "tuitionEnabled")
+        val photoHw = boolKey("photoHomework", "homeworkSubmissionEnabled")
+        val behavior = boolKey("dailyBehavior", "dailyBehaviorEnabled")
+        val smartDismissal = boolKey("smartDismissal", "dismissalCallEnabled", "dismissalAndLostFoundEnabled")
+        val quizzes = boolKey("quickQuizzes", "quickQuizzesEnabled")
+        val lostAndSug = boolKey("lostAndFoundSuggestions", "lostAndFoundEnabled", "suggestionsBoxEnabled", "dismissalAndLostFoundEnabled")
+        val eventsGallery = boolKey("eventsGalleryEnabled")
+
         return SchoolFeatureSettings(
-            honorRollEnabled = o.optBoolean("honorRollEnabled", true),
-            eventsGalleryEnabled = o.optBoolean("eventsGalleryEnabled", true),
-            directChatEnabled = o.optBoolean("directChatEnabled", true),
-            leaveRequestsEnabled = o.optBoolean("leaveRequestsEnabled", true),
-            tuitionEnabled = o.optBoolean("tuitionEnabled", true),
-            busTrackingEnabled = o.optBoolean("busTrackingEnabled", true),
-            studyMaterialsEnabled = o.optBoolean("studyMaterialsEnabled", true),
-            quickQuizzesEnabled = o.optBoolean("quickQuizzesEnabled", true),
-            dailyBehaviorEnabled = o.optBoolean("dailyBehaviorEnabled", true),
-            dismissalAndLostFoundEnabled = o.optBoolean("dismissalAndLostFoundEnabled", true),
-            suggestionsBoxEnabled = o.optBoolean("suggestionsBoxEnabled", true),
-            digitalIdEnabled = o.optBoolean("digitalIdEnabled", true)
+            honorRollEnabled = honor,
+            eventsGalleryEnabled = eventsGallery,
+            directChatEnabled = chat,
+            leaveRequestsEnabled = leave,
+            tuitionEnabled = tuition,
+            busTrackingEnabled = bus,
+            busAlertsEnabled = bus,
+            studyMaterialsEnabled = study,
+            studyLibraryEnabled = study,
+            quickQuizzesEnabled = quizzes,
+            dailyBehaviorEnabled = behavior,
+            dismissalAndLostFoundEnabled = smartDismissal || lostAndSug,
+            suggestionsBoxEnabled = lostAndSug,
+            digitalIdEnabled = qr,
+            qrScannerEnabled = qr,
+            qrAttendanceEnabled = qr,
+            homeworkSubmissionEnabled = photoHw,
+            dismissalCallEnabled = smartDismissal,
+            lostAndFoundEnabled = lostAndSug
         )
     }
 
