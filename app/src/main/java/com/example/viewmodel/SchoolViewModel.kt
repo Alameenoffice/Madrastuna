@@ -100,6 +100,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _registeredSchools = MutableStateFlow(repo.loadRegisteredSchools())
     val registeredSchools: StateFlow<List<RegisteredSchoolSummary>> = _registeredSchools.asStateFlow()
 
+    private val _discoveredSchoolName = MutableStateFlow<String?>(null)
+    val discoveredSchoolName: StateFlow<String?> = _discoveredSchoolName.asStateFlow()
+
+    private val _loginConnectingMessage = MutableStateFlow<String?>(null)
+    val loginConnectingMessage: StateFlow<String?> = _loginConnectingMessage.asStateFlow()
+
     val availableClasses: List<String>
         get() = _schoolConfig.value.registeredClasses.ifEmpty { SchoolStage.SECONDARY.defaultClasses }
 
@@ -1234,6 +1240,31 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     // LOGIN & LOGOUT WITH DEVELOPER SUPER-ADMIN & AUTO SCHOOL-CODE PREFIX
     // =========================================================================
 
+    /**
+     * Proactively discovers and caches the real school name from `schools/{schoolId}/settings` -> `schoolName`
+     * as soon as the user enters a username starting with a school code prefix (e.g. "105-1").
+     */
+    fun previewSchoolNameByUsername(usernameInput: String) {
+        val cleanUser = InputSanitizer.sanitizeUsername(usernameInput.trim())
+        val extractedPrefix = FirebaseConfigConstants.extractSchoolPrefix(cleanUser)
+        if (extractedPrefix.isNullOrBlank()) {
+            _discoveredSchoolName.value = null
+            _loginConnectingMessage.value = null
+            return
+        }
+        val localName = repo.resolveSchoolNameLocally(extractedPrefix)
+            ?: _registeredSchools.value.firstOrNull { it.schoolId == extractedPrefix }?.schoolName
+        if (!localName.isNullOrBlank()) {
+            _discoveredSchoolName.value = localName
+        }
+        viewModelScope.launch {
+            val fetchedName = repo.fetchSchoolNameFromSettings(extractedPrefix)
+            if (!fetchedName.isNullOrBlank()) {
+                _discoveredSchoolName.value = fetchedName
+            }
+        }
+    }
+
     fun login(usernameInput: String, passwordInput: String): Result<UserAccount> {
         val rawUser = usernameInput.trim()
         val rawPass = passwordInput.trim()
@@ -1248,6 +1279,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         ) {
             _isDeveloperAuthenticated.value = true
             _isSchoolSetupUnlocked.value = false
+            _loginConnectingMessage.value = null
             refreshDeveloperCloudData()
             showToastAlert("مرحباً بك في لوحة تحكم المطور - أحمد أبو رسلان", isSuccess = true)
             val devDummy = UserAccount(
@@ -1267,27 +1299,46 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         // 2. Extract school code prefix (e.g. "105" from "105-1" or "105-ali")
         val extractedPrefix = FirebaseConfigConstants.extractSchoolPrefix(cleanUser)
         if (!extractedPrefix.isNullOrBlank()) {
+            val knownSchoolName = repo.resolveSchoolNameLocally(extractedPrefix)
+                ?: _registeredSchools.value.firstOrNull { it.schoolId == extractedPrefix }?.schoolName
+                ?: _discoveredSchoolName.value
+
             // Check if this school is already cached locally; if not, switch to it
             val localAccountsForSchool = repo.loadAccounts(extractedPrefix)
             if (localAccountsForSchool.isNotEmpty() && _schoolConfig.value.schoolId != extractedPrefix) {
                 reloadSchoolDataIntoMemory(extractedPrefix)
             } else if (localAccountsForSchool.isEmpty()) {
                 // Attempt immediate cloud fetch for cross-device login (e.g. logging into 105-1 on a new phone)
+                val initialConnectingText = if (!knownSchoolName.isNullOrBlank()) {
+                    "جاري الاتصال بـ $knownSchoolName..."
+                } else {
+                    "جاري الاتصال بالمدرسة وجلب البيانات..."
+                }
+                _loginConnectingMessage.value = initialConnectingText
+
                 viewModelScope.launch {
-                    showToastAlert("جاري الاتصال بمدرسة رقم ($extractedPrefix) عبر السحابة...", isSuccess = true)
+                    val cloudSchoolName = repo.fetchSchoolNameFromSettings(extractedPrefix) ?: knownSchoolName
+                    val displaySchoolName = cloudSchoolName?.takeIf { it.isNotBlank() } ?: "منصة المدرسة"
+                    _discoveredSchoolName.value = cloudSchoolName
+                    val liveMessage = "جاري الاتصال بـ $displaySchoolName..."
+                    _loginConnectingMessage.value = liveMessage
+                    showToastAlert(liveMessage, isSuccess = true)
+
                     refreshDeveloperCloudData()
                     val pulled = repo.syncFullSchoolFromCloud(extractedPrefix)
+                    _loginConnectingMessage.value = null
                     if (pulled) {
                         reloadSchoolDataIntoMemory(extractedPrefix)
                         completeMemberLogin(cleanUser, cleanPass, extractedPrefix)
                     } else {
-                        showToastAlert("بيانات الدخول غير صحيحة أو لم يتم العثور على مدرسة برقم ($extractedPrefix)", isSuccess = false)
+                        showToastAlert("بيانات الدخول غير صحيحة أو لم يتم العثور على المدرسة المطلوبة", isSuccess = false)
                     }
                 }
-                return Result.failure(IllegalStateException("جاري الاتصال بمدرسة رقم ($extractedPrefix)..."))
+                return Result.failure(IllegalStateException(initialConnectingText))
             }
         }
 
+        _loginConnectingMessage.value = null
         return completeMemberLogin(cleanUser, cleanPass, extractedPrefix ?: _schoolConfig.value.schoolId)
     }
 

@@ -638,7 +638,7 @@ fun HonorHeartReactionButton(
                 .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -649,22 +649,13 @@ fun HonorHeartReactionButton(
                     modifier = Modifier.size((20f * heartScale.value).dp)
                 )
                 Text(
-                    text = if (heartCount > 0) "$heartCount" else emptyLabel,
+                    text = "$heartCount",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = if (isLikedByMe) Color(0xFF9F1239) else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     softWrap = false
                 )
-                if (heartCount > 0) {
-                    Text(
-                        text = "قلب",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isLikedByMe) Color(0xFFBE123C) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
             }
         }
     }

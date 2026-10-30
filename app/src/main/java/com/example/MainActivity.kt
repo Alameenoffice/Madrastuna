@@ -78,6 +78,8 @@ fun MadrasatiRootApp(
     val isDeveloperAuthenticated by viewModel.isDeveloperAuthenticated.collectAsState()
     val isSchoolSetupUnlocked by viewModel.isSchoolSetupUnlocked.collectAsState()
     val toastAlert by viewModel.toastAlert.collectAsState()
+    val discoveredSchoolName by viewModel.discoveredSchoolName.collectAsState()
+    val loginConnectingMessage by viewModel.loginConnectingMessage.collectAsState()
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -145,7 +147,10 @@ fun MadrasatiRootApp(
                     onLoginAttempt = { u, p -> viewModel.login(u, p) },
                     onVerifyActivationCode = { code, callback ->
                         viewModel.verifyActivationCodeAndUnlockSetup(code, callback)
-                    }
+                    },
+                    discoveredSchoolName = discoveredSchoolName,
+                    loginConnectingMessage = loginConnectingMessage,
+                    onUsernameChanged = { u -> viewModel.previewSchoolNameByUsername(u) }
                 )
             }
             else -> {

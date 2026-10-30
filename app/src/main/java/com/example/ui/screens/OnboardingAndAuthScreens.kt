@@ -775,7 +775,10 @@ fun UnifiedLoginScreen(
     isDarkMode: Boolean,
     onToggleDarkMode: () -> Unit,
     onLoginAttempt: (String, String) -> Result<*>,
-    onVerifyActivationCode: (String, (Boolean) -> Unit) -> Unit = { _, _ -> }
+    onVerifyActivationCode: (String, (Boolean) -> Unit) -> Unit = { _, _ -> },
+    discoveredSchoolName: String? = null,
+    loginConnectingMessage: String? = null,
+    onUsernameChanged: (String) -> Unit = {}
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -868,7 +871,9 @@ fun UnifiedLoginScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NoWrapBadge(
-                    text = if (schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank()) {
+                    text = if (!discoveredSchoolName.isNullOrBlank()) {
+                        "منصة: $discoveredSchoolName"
+                    } else if (schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank()) {
                         "كود المدرسة: ${schoolConfig.schoolId} • ${schoolConfig.schoolStage.arabicLabel}"
                     } else {
                         "منصة مدرستي الذكية • الموصل - زمار"
@@ -919,7 +924,7 @@ fun UnifiedLoginScreen(
                     Base64AvatarImage(
                         base64Data = schoolConfig.logoBase64,
                         fallbackIcon = Icons.Filled.School,
-                        contentDescription = schoolConfig.schoolName,
+                        contentDescription = discoveredSchoolName ?: schoolConfig.schoolName,
                         size = 84.dp,
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -928,7 +933,11 @@ fun UnifiedLoginScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = if (schoolConfig.isSetupCompleted) schoolConfig.schoolName else "منصة مدرستي المتكاملة",
+                    text = when {
+                        !discoveredSchoolName.isNullOrBlank() -> discoveredSchoolName
+                        schoolConfig.isSetupCompleted -> schoolConfig.schoolName
+                        else -> "منصة مدرستي المتكاملة"
+                    },
                     style = MaterialTheme.typography.headlineLarge,
                     color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center
@@ -974,6 +983,7 @@ fun UnifiedLoginScreen(
                             onValueChange = {
                                 username = it
                                 loginError = null
+                                onUsernameChanged(it)
                             },
                             label = { Text("اسم المستخدم") },
                             placeholder = { Text("مثال: 105-1 أو 105-ali") },
@@ -984,6 +994,33 @@ fun UnifiedLoginScreen(
                                 .testTag("login_username_input"),
                             shape = RoundedCornerShape(12.dp)
                         )
+
+                        if (!discoveredSchoolName.isNullOrBlank() && loginConnectingMessage == null) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Verified,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "جاري الاتصال بـ $discoveredSchoolName...",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
 
                         OutlinedTextField(
                             value = password,
@@ -1010,7 +1047,39 @@ fun UnifiedLoginScreen(
                             shape = RoundedCornerShape(12.dp)
                         )
 
-                        if (loginError != null) {
+                        val activeConnectingBanner = loginConnectingMessage
+                            ?: loginError?.takeIf { it.startsWith("جاري الاتصال") }
+
+                        if (!activeConnectingBanner.isNullOrBlank()) {
+                            val resolvedBannerText = if (!discoveredSchoolName.isNullOrBlank()) {
+                                "جاري الاتصال بـ $discoveredSchoolName..."
+                            } else {
+                                activeConnectingBanner
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = resolvedBannerText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        } else if (loginError != null) {
                             Surface(
                                 color = MaterialTheme.colorScheme.errorContainer,
                                 shape = RoundedCornerShape(12.dp),

@@ -345,7 +345,31 @@ data class StudentRecord(
     val heartCount: Int = 0,
     val likedByUserIds: List<String> = emptyList(),
     val schoolId: String = ""
-)
+) {
+    /**
+     * Returns the student's full compound name including their father's name (الاسم الثنائي/الكامل)
+     * without duplicating the father's name if it is already part of studentName.
+     */
+    val fullNameWithFather: String
+        get() {
+            val cleanStudent = studentName.trim()
+            val cleanFather = parentName
+                .replace("ولي أمر الطالب", "")
+                .replace("ولي أمر", "")
+                .replace("السيد", "")
+                .replace("الأستاذ", "")
+                .trim()
+            if (cleanFather.isEmpty()) return cleanStudent
+            if (cleanStudent.contains(cleanFather, ignoreCase = true)) return cleanStudent
+            val firstFatherToken = cleanFather.split(" ").firstOrNull()?.trim().orEmpty()
+            val studentTokens = cleanStudent.split(" ").map { it.trim() }.filter { it.isNotEmpty() }
+            return if (studentTokens.size >= 2 && firstFatherToken.isNotEmpty() && studentTokens.drop(1).any { it == firstFatherToken }) {
+                cleanStudent
+            } else {
+                "$cleanStudent $cleanFather"
+            }
+        }
+}
 
 data class AttendanceEntry(
     val id: String,

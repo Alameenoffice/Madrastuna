@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -43,6 +44,7 @@ fun HonorRollScreen(
 
     var selectedClass by remember { mutableStateOf("الكل") }
     var editingStudent by remember { mutableStateOf<StudentRecord?>(null) }
+    var honorSearchQuery by remember { mutableStateOf("") }
 
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
@@ -54,6 +56,22 @@ fun HonorRollScreen(
 
     val scopedEditableStudents = remember(students, currentUser) {
         viewModel.getScopedStudentsForUser(currentUser)
+    }
+
+    val filteredNominatableStudents = remember(scopedEditableStudents, honorSearchQuery, selectedClass) {
+        val q = honorSearchQuery.trim()
+        scopedEditableStudents.filter { s ->
+            val matchesClass = selectedClass == "الكل" || s.gradeClass == selectedClass
+            val matchesSearch = if (q.isEmpty()) {
+                !s.isOnHonorRoll
+            } else {
+                s.fullNameWithFather.contains(q, ignoreCase = true) ||
+                    s.studentName.contains(q, ignoreCase = true) ||
+                    s.parentName.contains(q, ignoreCase = true) ||
+                    s.gradeClass.contains(q, ignoreCase = true)
+            }
+            matchesClass && matchesSearch
+        }
     }
 
     LazyColumn(
@@ -147,6 +165,162 @@ fun HonorRollScreen(
             }
         }
 
+        // Fast Search by Student Name for Admin / Teacher to add or update students on the Honor Roll with one tap
+        if (canEdit) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PersonSearch,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "إضافة سريعة للوحة الشرف (بحث بالاسم)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                            NoWrapBadge(
+                                text = "اختيار بضغطة واحدة",
+                                icon = Icons.Filled.EmojiEvents,
+                                containerColor = GoldAccent.copy(alpha = 0.22f),
+                                contentColor = GoldDeep
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = honorSearchQuery,
+                            onValueChange = { honorSearchQuery = it },
+                            label = { Text("ابحث باسم الطالب أو اسم الأب لإضافته للوحة الشرف...") },
+                            placeholder = { Text("اكتب اسم الطالب ليظهر فوراً وتختاره بضغطة واحدة") },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            trailingIcon = {
+                                if (honorSearchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { honorSearchQuery = "" }) {
+                                        Icon(Icons.Filled.Close, contentDescription = "مسح البحث")
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("honor_student_search_input"),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+
+                        if (honorSearchQuery.isNotBlank() || filteredNominatableStudents.isNotEmpty()) {
+                            Text(
+                                text = if (honorSearchQuery.isNotBlank()) {
+                                    "نتائج البحث (${filteredNominatableStudents.size}) — اضغط على اسم الطالب لإضافته فوراً:"
+                                } else {
+                                    "طلبة مرشحون للإضافة إلى لوحة الشرف (اضغط لمنح وسام الشرف):"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            val displayCandidates = if (honorSearchQuery.isNotBlank()) {
+                                filteredNominatableStudents
+                            } else {
+                                filteredNominatableStudents.take(6)
+                            }
+
+                            if (displayCandidates.isEmpty()) {
+                                Text(
+                                    text = "لا يوجد طالب مطابق لاسم البحث ضمن صلاحيتك",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    displayCandidates.forEach { s ->
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { editingStudent = s }
+                                                .testTag("honor_nominate_student_${s.id}"),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surface
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = s.fullNameWithFather,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = "${s.gradeClass} • شعبة (${s.sectionName})",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                Surface(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = GoldAccent.copy(alpha = 0.2f),
+                                                    modifier = Modifier.clickable { editingStudent = s }
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.EmojiEvents,
+                                                            contentDescription = null,
+                                                            tint = GoldDeep,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                        Text(
+                                                            text = if (s.isOnHonorRoll) "تعديل الوسام" else "منح وسام الشرف",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = GoldDeep,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         itemsIndexed(honorStudents, key = { _, s -> s.id }) { index, stu ->
             val rank = index + 1
             val canEditThisStudent = canEdit && stu.id in scopedEditableStudents.map { it.id }
@@ -185,15 +359,16 @@ fun HonorRollScreen(
                             Base64AvatarImage(
                                 base64Data = stu.photoBase64,
                                 fallbackIcon = Icons.Filled.School,
-                                contentDescription = stu.studentName,
+                                contentDescription = stu.fullNameWithFather,
                                 size = 60.dp,
                                 tint = GoldAccent
                             )
 
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(
-                                    text = stu.studentName,
+                                    text = stu.fullNameWithFather,
                                     style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
@@ -286,43 +461,6 @@ fun HonorRollScreen(
                 }
             }
         }
-
-        if (canEdit) {
-            item {
-                val nonHonor = scopedEditableStudents.filter { !it.isOnHonorRoll }
-                if (nonHonor.isNotEmpty()) {
-                    Text(
-                        text = "ترشيح طلبة إضافيين للوحة الشرف (ضمن صلاحيتك):",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    nonHonor.forEach { s ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("${s.studentName} (${s.gradeClass} - ${s.sectionName})", style = MaterialTheme.typography.bodyMedium)
-                                TextButton(onClick = { editingStudent = s }) {
-                                    Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = GoldAccent)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("منح وسام الشرف", maxLines = 1, softWrap = false)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     if (editingStudent != null) {
@@ -333,7 +471,7 @@ fun HonorRollScreen(
 
         AlertDialog(
             onDismissRequest = { editingStudent = null },
-            title = { Text("تحديث وسام التميز: ${stu.studentName}") },
+            title = { Text("تحديث وسام التميز: ${stu.fullNameWithFather}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
@@ -372,6 +510,7 @@ fun HonorRollScreen(
                             honorTitle = honorTitle
                         )
                         editingStudent = null
+                        honorSearchQuery = ""
                     }
                 )
             },

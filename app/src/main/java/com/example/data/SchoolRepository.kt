@@ -1317,6 +1317,67 @@ class SchoolRepository(context: Context) {
     }
 
     /**
+     * Resolves a school's real name (`schoolName`) from local `schools/{schoolId}/settings` cache or registry.
+     */
+    fun resolveSchoolNameLocally(schoolId: String): String? {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return null
+
+        val rawSettings = prefs.getString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), null)
+        if (!rawSettings.isNullOrBlank()) {
+            try {
+                val obj = JSONObject(rawSettings)
+                val name = obj.optString("schoolName").trim()
+                if (name.isNotEmpty()) return name
+            } catch (_: Exception) {
+            }
+        }
+
+        val fromRegistry = loadRegisteredSchools()
+            .firstOrNull { it.schoolId == cleanSid }
+            ?.schoolName
+            ?.trim()
+        if (!fromRegistry.isNullOrEmpty()) return fromRegistry
+
+        return null
+    }
+
+    /**
+     * Fetches the school's real `schoolName` from `schools/{schoolId}/settings` in Firestore/RTDB
+     * (or falls back to local cache / schools registry).
+     */
+    suspend fun fetchSchoolNameFromSettings(schoolId: String): String? {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return null
+
+        resolveSchoolNameLocally(cleanSid)?.let { return it }
+
+        val settingsPayload = FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SETTINGS)
+        if (!settingsPayload.isNullOrBlank()) {
+            prefs.edit().putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), settingsPayload).apply()
+            try {
+                val obj = JSONObject(settingsPayload)
+                val name = obj.optString("schoolName").trim()
+                if (name.isNotEmpty()) return name
+            } catch (_: Exception) {
+            }
+        }
+
+        val registryPayload = FirebaseCloudSync.fetchGlobalCollectionPayload(
+            collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+            docName = "registry"
+        )
+        if (!registryPayload.isNullOrBlank()) {
+            prefs.edit().putString("global_registered_schools", registryPayload).apply()
+            val parsed = parseRegisteredSchoolsJson(registryPayload)
+            val matchedName = parsed.firstOrNull { it.schoolId == cleanSid }?.schoolName?.trim()
+            if (!matchedName.isNullOrEmpty()) return matchedName
+        }
+
+        return null
+    }
+
+    /**
      * Pulls a school's sub-collections from Firebase (Firestore/RTDB) into local storage
      * so that logging in with a prefixed username (e.g. 105-1) from any phone works immediately.
      */
