@@ -1490,16 +1490,18 @@ fun DailyAttendanceScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.20f)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // 1. رأس البطاقة: صورة الطالب + الاسم الثلاثي + الصف والشعبة + وسام الالتزام الذهبي بشكل أنيق
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.Top
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1510,12 +1512,13 @@ fun DailyAttendanceScreen(
                                     base64Data = stu.photoBase64,
                                     fallbackIcon = Icons.Filled.Person,
                                     contentDescription = stu.fullNameWithFather,
-                                    size = 46.dp
+                                    size = 48.dp
                                 )
-                                Column {
+                                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Text(
                                         text = stu.fullNameWithFather,
                                         style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
@@ -1523,12 +1526,15 @@ fun DailyAttendanceScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    if (stuBadges.isNotEmpty()) {
+                                        StudentAutoBadgesRow(badges = stuBadges)
+                                    }
                                 }
                             }
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 if (featureSettings.qrAttendanceEnabled) {
                                     IconButton(
@@ -1543,7 +1549,7 @@ fun DailyAttendanceScreen(
                                     }
                                 }
                                 NoWrapBadge(
-                                    text = "إجمالي الغياب: $totalAbsences يوم",
+                                    text = "الغياب: $totalAbsences يوم",
                                     icon = Icons.Filled.EventBusy,
                                     containerColor = if (totalAbsences > 0) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.14f),
                                     contentColor = if (totalAbsences > 0) DangerRed else SuccessGreen
@@ -1551,10 +1557,7 @@ fun DailyAttendanceScreen(
                             }
                         }
 
-                        if (stuBadges.isNotEmpty()) {
-                            StudentAutoBadgesRow(badges = stuBadges)
-                        }
-
+                        // 2. أزرار تسجيل الحضور (حاضر، غائب، متأخر، غائب بعذر): صف أفقي مدمج ومنسق بأيقونات واضحة لا تتداخل
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1582,11 +1585,12 @@ fun DailyAttendanceScreen(
                                             viewModel.recordStudentAttendance(stu, selectedDate, st)
                                         }
                                         .testTag("att_btn_${stu.id}_${st.name}"),
-                                    color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                    border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                        modifier = Modifier.padding(vertical = 9.dp, horizontal = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center
                                     ) {
@@ -1594,75 +1598,98 @@ fun DailyAttendanceScreen(
                                             imageVector = statusIcon,
                                             contentDescription = st.arabicLabel,
                                             tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(15.dp)
+                                            modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = st.arabicLabel,
-                                            style = MaterialTheme.typography.labelMedium,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
                                             color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
-                                            softWrap = false
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
                             }
                         }
 
-                        // Daily Follow-Up & Behavior Evaluation Chips (دفتر المتابعة اليومي والسلوك)
+                        // 3. خط فاصل ناعم وأنيق + 4. أزرار تقييم المتابعة والسلوك الصفي الفوري في صفين متوازيين (2×2) بأيقونات Vector نظيفة
                         if (canEdit && featureSettings.dailyBehaviorEnabled) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                thickness = 1.dp,
+                                color = DeepEmerald.copy(alpha = 0.16f)
+                            )
+
                             val teacherDefaultSubj = currentUser?.specialty?.split("،")?.firstOrNull()?.trim()?.ifBlank { "المتابعة اليومية" } ?: "المتابعة اليومية"
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
                                     text = "تقييم المتابعة والسلوك الصفي الفوري (يرسل إشعاراً لولي الأمر):",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = DeepForestGreen,
                                     fontWeight = FontWeight.Bold
                                 )
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    DailyBehaviorType.entries.forEach { behType ->
-                                        Surface(
-                                            modifier = Modifier
-                                                .clickable {
-                                                    viewModel.sendDailyBehaviorEvaluation(
-                                                        student = stu,
-                                                        behaviorType = behType,
-                                                        subjectName = teacherDefaultSubj
+                                DailyBehaviorType.entries.chunked(2).forEach { rowItems ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        rowItems.forEach { behType ->
+                                            val behIcon = when (behType) {
+                                                DailyBehaviorType.EXCELLENT_PARTICIPATION -> Icons.Filled.EmojiEvents
+                                                DailyBehaviorType.FORGOT_BOOK -> Icons.Filled.MenuBook
+                                                DailyBehaviorType.MISSED_HOMEWORK -> Icons.Filled.AssignmentLate
+                                                DailyBehaviorType.BEHAVIOR_NOTE -> Icons.Filled.Info
+                                            }
+                                            Surface(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .clickable {
+                                                        viewModel.sendDailyBehaviorEvaluation(
+                                                            student = stu,
+                                                            behaviorType = behType,
+                                                            subjectName = teacherDefaultSubj
+                                                        )
+                                                    }
+                                                    .testTag("behavior_chip_${stu.id}_${behType.name}"),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = if (behType.isPositive) {
+                                                    SuccessGreen.copy(alpha = 0.12f)
+                                                } else {
+                                                    DeepEmerald.copy(alpha = 0.08f)
+                                                },
+                                                border = androidx.compose.foundation.BorderStroke(
+                                                    1.dp,
+                                                    if (behType.isPositive) SuccessGreen.copy(alpha = 0.45f) else DeepEmerald.copy(alpha = 0.30f)
+                                                )
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = behIcon,
+                                                        contentDescription = null,
+                                                        tint = if (behType.isPositive) SuccessGreen else DeepEmerald,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = behType.arabicTitle,
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = DeepForestGreen,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        overflow = TextOverflow.Ellipsis
                                                     )
                                                 }
-                                                .testTag("behavior_chip_${stu.id}_${behType.name}"),
-                                            shape = RoundedCornerShape(50),
-                                            color = if (behType.isPositive) {
-                                                SuccessGreen.copy(alpha = 0.14f)
-                                            } else {
-                                                DeepEmerald.copy(alpha = 0.08f)
-                                            },
-                                            border = androidx.compose.foundation.BorderStroke(
-                                                1.dp,
-                                                if (behType.isPositive) SuccessGreen.copy(alpha = 0.5f) else DeepEmerald.copy(alpha = 0.35f)
-                                            )
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (behType.isPositive) Icons.Filled.AutoAwesome else Icons.Filled.Info,
-                                                    contentDescription = null,
-                                                    tint = DeepEmerald,
-                                                    modifier = Modifier.size(13.dp)
-                                                )
-                                                Text(
-                                                    text = behType.arabicTitle,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = DeepForestGreen
-                                                )
                                             }
                                         }
                                     }

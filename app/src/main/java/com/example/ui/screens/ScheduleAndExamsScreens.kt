@@ -1669,14 +1669,24 @@ fun ExamsAndGradesScreen(
                             finalExamScore = 0
                         )
                     }
-                    val overallAvg = if (allSubjectsReport.isEmpty()) 0 else allSubjectsReport.map { it.normalizedPercentage }.average().toInt()
+                    val allSubjectsCompleted = allSubjectsReport.isNotEmpty() && allSubjectsReport.all { it.isAllExamsCompleted }
+                    val completedSubjects = allSubjectsReport.filter { it.isAllExamsCompleted }
+                    val overallAvg = when {
+                        allSubjectsCompleted -> allSubjectsReport.map { it.normalizedPercentage }.average().toInt()
+                        completedSubjects.isNotEmpty() -> completedSubjects.map { it.normalizedPercentage }.average().toInt()
+                        allSubjectsReport.isNotEmpty() -> allSubjectsReport.map {
+                            if (it.maxScoreScale == 10) (it.annualEffortScore * 10).coerceIn(0, 100) else it.annualEffortScore.coerceIn(0, 100)
+                        }.average().toInt()
+                        else -> 0
+                    }
                     val overallRating = when {
+                        !allSubjectsCompleted -> "مستمر / متابع"
                         overallAvg >= 90 -> "ممتاز"
                         overallAvg >= 80 -> "جيد جداً"
                         overallAvg >= 70 -> "جيد"
                         overallAvg >= 60 -> "متوسط"
-                        overallAvg >= 50 -> "مقبول"
-                        else -> "غير مرصود / ضعيف"
+                        overallAvg >= 50 -> "ناجح (مقبول)"
+                        else -> "راسب"
                     }
 
                     Card(
@@ -1710,14 +1720,14 @@ fun ExamsAndGradesScreen(
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     NoWrapBadge(
-                                        text = "المعدل العام: $overallAvg%",
+                                        text = if (allSubjectsCompleted) "المعدل النهائي: $overallAvg%" else "مؤشر المتابعة: $overallAvg%",
                                         icon = Icons.Filled.AutoGraph,
                                         containerColor = MaterialTheme.colorScheme.primary,
                                         contentColor = Color.White
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     NoWrapBadge(
-                                        text = "التقدير: $overallRating",
+                                        text = "الحالة: $overallRating",
                                         icon = Icons.Filled.WorkspacePremium,
                                         containerColor = GoldAccent,
                                         contentColor = Color(0xFF451A03)
@@ -1751,48 +1761,101 @@ fun ExamsAndGradesScreen(
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(allSubjectsReport, key = { it.subjectName }) { g ->
+                            val statusColor = when {
+                                !g.isAllExamsCompleted -> DeepEmerald
+                                g.normalizedPercentage >= 50 -> SuccessGreen
+                                else -> DangerRed
+                            }
+                            val statusText = when {
+                                !g.isAllExamsCompleted -> "مستمر (${g.ratingLabel})"
+                                g.normalizedPercentage >= 50 -> "ناجح (${g.ratingLabel})"
+                                else -> "راسب"
+                            }
+
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                             ) {
                                 Column(
                                     modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Row(
+                                    // شريط علوي زمردي هادئ يعرض ملخص المادة والسعي والمعدل وحالة المتابعة
+                                    Surface(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = DeepEmerald.copy(alpha = 0.09f),
+                                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.24f))
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Filled.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(g.subjectName, style = MaterialTheme.typography.titleMedium)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MenuBook,
+                                                    contentDescription = null,
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Column {
+                                                    Text(
+                                                        text = g.subjectName,
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = DeepForestGreen
+                                                    )
+                                                    Text(
+                                                        text = "السعي: ${g.annualEffortScore}/${g.maxScoreScale}  •  المعدل: ${if (g.isAllExamsCompleted) "${g.finalAverage}/${g.maxScoreScale}" else "قيد الرصد"}",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        color = DeepEmerald
+                                                    )
+                                                }
+                                            }
+                                            NoWrapBadge(
+                                                text = statusText,
+                                                icon = if (!g.isAllExamsCompleted) Icons.Filled.TrendingUp else Icons.Filled.Stars,
+                                                containerColor = statusColor.copy(alpha = 0.15f),
+                                                contentColor = statusColor
+                                            )
                                         }
-                                        NoWrapBadge(
-                                            text = "المعدل: ${g.finalAverage}/${g.maxScoreScale} • ${g.ratingLabel}",
-                                            icon = Icons.Filled.Stars,
-                                            containerColor = if (g.normalizedPercentage >= 50) SuccessGreen.copy(alpha = 0.16f) else DangerRed.copy(alpha = 0.16f),
-                                            contentColor = if (g.normalizedPercentage >= 50) SuccessGreen else DangerRed
-                                        )
                                     }
 
-                                    Row(
+                                    // شبكة الدرجات النظيفة (Clean Grades Grid 2x3) مع عناوين مستقلة فوق كل خانة
+                                    Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        ScoreCell("يومي", g.dailyScore, Modifier.weight(1f))
-                                        ScoreCell("شهر 1", g.month1Score, Modifier.weight(1f))
-                                        ScoreCell("شهر 2", g.month2Score, Modifier.weight(1f))
-                                        ScoreCell("نصف السنة", g.midYearScore, Modifier.weight(1f))
-                                        ScoreCell("السعي", g.annualEffortScore, Modifier.weight(1f), highlight = true)
-                                        ScoreCell("النهائي", g.finalExamScore, Modifier.weight(1f), highlight = true)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            ScoreCell("يومي", g.dailyScore, Modifier.weight(1f))
+                                            ScoreCell("شهر 1", g.month1Score, Modifier.weight(1f))
+                                            ScoreCell("شهر 2", g.month2Score, Modifier.weight(1f))
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            ScoreCell("نصف السنة", g.midYearScore, Modifier.weight(1f))
+                                            ScoreCell("النهائي", g.finalExamScore, Modifier.weight(1f))
+                                            ScoreCell("السعي النهائي", g.annualEffortScore, Modifier.weight(1f), highlight = true)
+                                        }
                                     }
                                 }
                             }
@@ -1992,22 +2055,21 @@ fun ExamsAndGradesScreen(
                             val existingGrade = grades.firstOrNull {
                                 it.studentId == stu.id && it.subjectName == selectedSubject
                             }
-                            val defaultVal = if (selectedMaxScale == 10) 9 else 90
 
                             var dailyText by remember(existingGrade, selectedSubject, selectedMaxScale) {
-                                mutableStateOf((existingGrade?.dailyScore ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
+                                mutableStateOf((existingGrade?.dailyScore ?: 0).coerceAtMost(selectedMaxScale).toString())
                             }
                             var m1Text by remember(existingGrade, selectedSubject, selectedMaxScale) {
-                                mutableStateOf((existingGrade?.month1Score ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
+                                mutableStateOf((existingGrade?.month1Score ?: 0).coerceAtMost(selectedMaxScale).toString())
                             }
                             var m2Text by remember(existingGrade, selectedSubject, selectedMaxScale) {
-                                mutableStateOf((existingGrade?.month2Score ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
+                                mutableStateOf((existingGrade?.month2Score ?: 0).coerceAtMost(selectedMaxScale).toString())
                             }
                             var midText by remember(existingGrade, selectedSubject, selectedMaxScale) {
-                                mutableStateOf((existingGrade?.midYearScore ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
+                                mutableStateOf((existingGrade?.midYearScore ?: 0).coerceAtMost(selectedMaxScale).toString())
                             }
                             var finalText by remember(existingGrade, selectedSubject, selectedMaxScale) {
-                                mutableStateOf((existingGrade?.finalExamScore ?: defaultVal).coerceAtMost(selectedMaxScale).toString())
+                                mutableStateOf((existingGrade?.finalExamScore ?: 0).coerceAtMost(selectedMaxScale).toString())
                             }
                             var savedToast by remember { mutableStateOf(false) }
 
@@ -2032,16 +2094,29 @@ fun ExamsAndGradesScreen(
                                 finalExamScore = finVal
                             )
 
+                            val statusBadgeColor = when {
+                                !previewGrade.isAllExamsCompleted -> DeepEmerald
+                                previewGrade.normalizedPercentage >= 50 -> SuccessGreen
+                                else -> DangerRed
+                            }
+                            val statusBadgeLabel = when {
+                                !previewGrade.isAllExamsCompleted -> "الحالة: مستمر"
+                                previewGrade.normalizedPercentage >= 50 -> "الحالة: ناجح (${previewGrade.ratingLabel})"
+                                else -> "الحالة: راسب"
+                            }
+
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                             ) {
                                 Column(
                                     modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
+                                    // رأس بطاقة الطالب
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -2060,113 +2135,139 @@ fun ExamsAndGradesScreen(
                                             )
                                             Column {
                                                 Text(
-                                                    text = stu.studentName,
-                                                    style = MaterialTheme.typography.titleMedium
+                                                    text = stu.fullNameWithFather,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
-                                                    text = "مادة: $selectedSubject (من $selectedMaxScale) • ${stu.gradeClass} (${stu.sectionName})",
+                                                    text = "${stu.gradeClass} • شعبة (${stu.sectionName})",
                                                     style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.primary
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                         }
 
                                         NoWrapBadge(
-                                            text = "السعي: ${previewGrade.annualEffortScore}/$selectedMaxScale | المعدل: ${previewGrade.finalAverage}/$selectedMaxScale (${previewGrade.ratingLabel})",
-                                            icon = Icons.Filled.Calculate,
-                                            containerColor = if (previewGrade.normalizedPercentage >= 50) SuccessGreen.copy(alpha = 0.15f) else DangerRed.copy(alpha = 0.15f),
-                                            contentColor = if (previewGrade.normalizedPercentage >= 50) SuccessGreen else DangerRed
+                                            text = statusBadgeLabel,
+                                            icon = if (!previewGrade.isAllExamsCompleted) Icons.Filled.TrendingUp else Icons.Filled.Verified,
+                                            containerColor = statusBadgeColor.copy(alpha = 0.15f),
+                                            contentColor = statusBadgeColor
                                         )
                                     }
 
-                                    // Inline Grade Input Fields for this Subject (strictly clamped to selectedMaxScale)
-                                    Row(
+                                    // شريط علوي زمردي هادئ يعرض ملخص الطالب (المادة، السعي، المعدل)
+                                    Surface(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = DeepEmerald.copy(alpha = 0.09f),
+                                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.24f))
                                     ) {
-                                        OutlinedTextField(
-                                            value = dailyText,
-                                            onValueChange = { raw ->
-                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
-                                                val num = digits.toIntOrNull()
-                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MenuBook,
+                                                    contentDescription = null,
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Text(
+                                                    text = "المادة: $selectedSubject (من $selectedMaxScale)",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepForestGreen
+                                                )
+                                            }
+                                            Text(
+                                                text = "السعي: ${previewGrade.annualEffortScore}/$selectedMaxScale  |  المعدل: ${if (previewGrade.isAllExamsCompleted) "${previewGrade.finalAverage}/$selectedMaxScale" else "مستمر"}",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                    }
+
+                                    // شبكة الدرجات النظيفة (Clean Grades Grid 2x3) بعناوين مستقلة فوق كل خانة لمنع أي تداخل نصي
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            CleanGradeInputBox(
+                                                title = "يومي",
+                                                maxScale = selectedMaxScale,
+                                                value = dailyText,
+                                                onValueChange = { digits ->
                                                     dailyText = digits
                                                     savedToast = false
-                                                }
-                                            },
-                                            label = { Text("يومي (/$selectedMaxScale)") },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        OutlinedTextField(
-                                            value = m1Text,
-                                            onValueChange = { raw ->
-                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
-                                                val num = digits.toIntOrNull()
-                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            CleanGradeInputBox(
+                                                title = "شهر 1",
+                                                maxScale = selectedMaxScale,
+                                                value = m1Text,
+                                                onValueChange = { digits ->
                                                     m1Text = digits
                                                     savedToast = false
-                                                }
-                                            },
-                                            label = { Text("شهر 1 (/$selectedMaxScale)") },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        OutlinedTextField(
-                                            value = m2Text,
-                                            onValueChange = { raw ->
-                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
-                                                val num = digits.toIntOrNull()
-                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            CleanGradeInputBox(
+                                                title = "شهر 2",
+                                                maxScale = selectedMaxScale,
+                                                value = m2Text,
+                                                onValueChange = { digits ->
                                                     m2Text = digits
                                                     savedToast = false
-                                                }
-                                            },
-                                            label = { Text("شهر 2 (/$selectedMaxScale)") },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
 
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedTextField(
-                                            value = midText,
-                                            onValueChange = { raw ->
-                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
-                                                val num = digits.toIntOrNull()
-                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.Bottom
+                                        ) {
+                                            CleanGradeInputBox(
+                                                title = "نصف السنة",
+                                                maxScale = selectedMaxScale,
+                                                value = midText,
+                                                onValueChange = { digits ->
                                                     midText = digits
                                                     savedToast = false
-                                                }
-                                            },
-                                            label = { Text("نصف السنة (/$selectedMaxScale)") },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        ScoreCell(
-                                            label = "السعي (/$selectedMaxScale)",
-                                            score = previewGrade.annualEffortScore,
-                                            modifier = Modifier.weight(1f),
-                                            highlight = true
-                                        )
-                                        OutlinedTextField(
-                                            value = finalText,
-                                            onValueChange = { raw ->
-                                                val digits = raw.filter { c -> c.isDigit() }.take(3)
-                                                val num = digits.toIntOrNull()
-                                                if (digits.isEmpty() || (num != null && num <= selectedMaxScale)) {
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            CleanGradeInputBox(
+                                                title = "النهائي",
+                                                maxScale = selectedMaxScale,
+                                                value = finalText,
+                                                onValueChange = { digits ->
                                                     finalText = digits
                                                     savedToast = false
-                                                }
-                                            },
-                                            label = { Text("النهائي (/$selectedMaxScale)") },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f)
-                                        )
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            ScoreCell(
+                                                label = "السعي النهائي",
+                                                score = previewGrade.annualEffortScore,
+                                                modifier = Modifier.weight(1f),
+                                                highlight = true
+                                            )
+                                        }
                                     }
 
                                     VectorActionButton(
@@ -2369,40 +2470,102 @@ fun ExamsAndGradesScreen(
 }
 
 @Composable
+private fun CleanGradeInputBox(
+    title: String,
+    maxScale: Int,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "$title (/$maxScale)",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = DeepForestGreen,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        OutlinedTextField(
+            value = value,
+            onValueChange = { raw ->
+                val digits = raw.filter { c -> c.isDigit() }.take(3)
+                val num = digits.toIntOrNull()
+                if (digits.isEmpty() || (num != null && num <= maxScale)) {
+                    onValueChange(digits)
+                }
+            },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            ),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = DeepEmerald,
+                unfocusedBorderColor = DeepEmerald.copy(alpha = 0.28f),
+                focusedContainerColor = DeepEmerald.copy(alpha = 0.04f),
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
 private fun ScoreCell(
     label: String,
     score: Int,
     modifier: Modifier = Modifier,
     highlight: Boolean = false
 ) {
-    Surface(
+    Column(
         modifier = modifier,
-        shape = RoundedCornerShape(10.dp),
-        color = if (highlight) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (highlight) DeepEmerald else DeepForestGreen,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = if (highlight) DeepEmerald.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (highlight) DeepEmerald.copy(alpha = 0.45f) else DeepEmerald.copy(alpha = 0.22f)
+            )
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "$score",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                softWrap = false
-            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
+            ) {
+                Text(
+                    text = "$score",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (highlight) DeepEmerald else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
         }
     }
 }
+

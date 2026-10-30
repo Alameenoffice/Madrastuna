@@ -3106,6 +3106,43 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
+    fun updateParentReport(
+        reportId: String,
+        reportType: ReportType,
+        title: String,
+        details: String
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val cleanTitle = InputSanitizer.sanitize(title)
+        if (cleanTitle.isBlank()) {
+            showToastAlert("يرجى كتابة عنوان البلاغ الرسمي", isSuccess = false)
+            return
+        }
+        val cleanDetails = InputSanitizer.sanitize(details).ifBlank { cleanTitle }
+        val sid = _schoolConfig.value.schoolId
+        val updated = _reports.value.map { rep ->
+            if (rep.id == reportId) {
+                rep.copy(
+                    reportType = reportType,
+                    title = cleanTitle,
+                    details = cleanDetails
+                )
+            } else rep
+        }
+        _reports.value = updated
+        repo.saveReports(updated, sid)
+        showToastAlert("تم تحديث البلاغ الرسمي وحفظه في السحابة بنجاح", isSuccess = true)
+    }
+
+    fun deleteParentReport(reportId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _reports.value.filterNot { it.id == reportId }
+        _reports.value = updated
+        repo.saveReports(updated, sid)
+        showToastAlert("تم حذف البلاغ الرسمي نهائياً", isSuccess = true)
+    }
+
     fun sendDirectChatMessage(
         contact: ChatContactItem,
         messageText: String,
@@ -3223,6 +3260,48 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             body = ev.description,
             type = NotificationType.GENERAL
         )
+    }
+
+    fun updateSchoolEvent(
+        eventId: String,
+        title: String,
+        category: String,
+        description: String,
+        date: String,
+        location: String,
+        imageBase64: String
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val cleanTitle = InputSanitizer.sanitize(title)
+        if (cleanTitle.isBlank()) {
+            showToastAlert("يرجى إدخال عنوان الفعالية أو الخبر المدرسي", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val updated = _events.value.map { ev ->
+            if (ev.id == eventId) {
+                ev.copy(
+                    title = cleanTitle,
+                    category = InputSanitizer.sanitize(category).ifBlank { "فعالية مدرسية" },
+                    description = InputSanitizer.sanitize(description).ifBlank { cleanTitle },
+                    date = InputSanitizer.sanitize(date).ifBlank { ev.date },
+                    location = InputSanitizer.sanitize(location).ifBlank { "الموصل - زمار" },
+                    imageBase64 = imageBase64
+                )
+            } else ev
+        }
+        _events.value = updated
+        repo.saveEvents(updated, sid)
+        showToastAlert("تم تعديل الخبر / الفعالية وحفظ التغييرات بنجاح", isSuccess = true)
+    }
+
+    fun deleteSchoolEvent(eventId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _events.value.filterNot { it.id == eventId }
+        _events.value = updated
+        repo.saveEvents(updated, sid)
+        showToastAlert("تم حذف الفعالية / الخبر نهائياً", isSuccess = true)
     }
 
     /**

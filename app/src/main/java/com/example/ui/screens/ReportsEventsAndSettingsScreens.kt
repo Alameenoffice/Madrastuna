@@ -646,6 +646,8 @@ fun ReportsAndChatScreen(
         }
 
         if (selectedTab == 0) {
+            var reportBeingEdited by remember { mutableStateOf<ParentReport?>(null) }
+
             if (canSendReport) {
                 VectorActionButton(
                     text = "إرسال بلاغ رسمي جديد",
@@ -676,15 +678,17 @@ fun ReportsAndChatScreen(
                         ReportType.PARENT_SUMMONS -> Icons.Filled.NotificationImportant
                     }
 
+                    // بطاقة البلاغ الرسمي بخلفية بيضاء نقية وإطار زمردي رفيع
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f)),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -694,36 +698,72 @@ fun ReportsAndChatScreen(
                                 NoWrapBadge(
                                     text = rep.reportType.arabicLabel,
                                     icon = badgeIcon,
-                                    containerColor = badgeColor.copy(alpha = 0.16f),
+                                    containerColor = badgeColor.copy(alpha = 0.15f),
                                     contentColor = badgeColor
                                 )
-                                Text(
-                                    text = rep.createdAt,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Schedule,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = rep.createdAt,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepEmerald
+                                    )
+                                }
+                            }
+
+                            // اسم الطالب والصف وولي الأمر بوضوح تام
+                            Surface(
+                                color = DeepEmerald.copy(alpha = 0.07f),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Person,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "الطالب: ${rep.studentName} (${rep.gradeClass})  •  ولي الأمر: ${rep.parentName}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepForestGreen
+                                    )
+                                }
                             }
 
                             Text(
                                 text = rep.title,
                                 style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            Text(
-                                text = "الطالب: ${rep.studentName} (${rep.gradeClass}) • ولي الأمر: ${rep.parentName}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
+                                fontWeight = FontWeight.Bold,
+                                color = DeepForestGreen
                             )
 
                             Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                color = Color(0xFFF8FAFC),
                                 shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.14f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
                                     text = rep.details,
                                     style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFF1E293B),
                                     modifier = Modifier.padding(12.dp)
                                 )
                             }
@@ -746,10 +786,102 @@ fun ReportsAndChatScreen(
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 )
+
+                                // أزرار "تعديل" و "حذف" البلاغ المرسل
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { reportBeingEdited = rep },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("edit_report_${rep.id}"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DeepEmerald)
+                                    ) {
+                                        Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("تعديل البلاغ", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { viewModel.deleteParentReport(rep.id) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("delete_report_${rep.id}"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed)
+                                    ) {
+                                        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("حذف البلاغ", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            }
+
+            reportBeingEdited?.let { editingRep ->
+                var editType by remember(editingRep.id) { mutableStateOf(editingRep.reportType) }
+                var editTitle by remember(editingRep.id) { mutableStateOf(editingRep.title) }
+                var editDetails by remember(editingRep.id) { mutableStateOf(editingRep.details) }
+
+                AlertDialog(
+                    onDismissRequest = { reportBeingEdited = null },
+                    title = { Text("تعديل البلاغ الرسمي (${editingRep.studentName})") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("نوع البلاغ:", style = MaterialTheme.typography.labelLarge)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(ReportType.entries) { rt ->
+                                    FilterChip(
+                                        selected = editType == rt,
+                                        onClick = { editType = rt },
+                                        label = { Text(rt.arabicLabel, maxLines = 1, softWrap = false) }
+                                    )
+                                }
+                            }
+                            OutlinedTextField(
+                                value = editTitle,
+                                onValueChange = { editTitle = it },
+                                label = { Text("عنوان البلاغ") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editDetails,
+                                onValueChange = { editDetails = it },
+                                label = { Text("نص البلاغ والتفاصيل") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        VectorActionButton(
+                            text = "حفظ التعديلات",
+                            icon = Icons.Filled.Save,
+                            onClick = {
+                                if (editTitle.isNotBlank()) {
+                                    viewModel.updateParentReport(
+                                        reportId = editingRep.id,
+                                        reportType = editType,
+                                        title = editTitle,
+                                        details = editDetails.ifBlank { editTitle }
+                                    )
+                                    reportBeingEdited = null
+                                }
+                            }
+                        )
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { reportBeingEdited = null }) { Text("إلغاء") }
+                    }
+                )
             }
         } else {
             // =========================================================================
@@ -1199,6 +1331,7 @@ fun EventsAndNewsScreen(
     val events by viewModel.events.collectAsState()
 
     var showPublishEventDialog by remember { mutableStateOf(false) }
+    var eventBeingEdited by remember { mutableStateOf<SchoolEvent?>(null) }
     val canPublish = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
     LazyColumn(
@@ -1392,10 +1525,122 @@ fun EventsAndNewsScreen(
                                 testTag = "event_heart_button_${ev.id}"
                             )
                         }
+
+                        // زرا تحكم صغيرين وأنيقين أسفل كل بطاقة خبر/فعالية للمدير أو الناشر: "تعديل" و "حذف"
+                        if (canPublish) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { eventBeingEdited = ev },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("edit_event_${ev.id}"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = DeepEmerald)
+                                ) {
+                                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("تعديل", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { viewModel.deleteSchoolEvent(ev.id) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("delete_event_${ev.id}"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed)
+                                ) {
+                                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("حذف", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    eventBeingEdited?.let { editingEv ->
+        var editTitle by remember(editingEv.id) { mutableStateOf(editingEv.title) }
+        var editCategory by remember(editingEv.id) { mutableStateOf(editingEv.category) }
+        var editLocation by remember(editingEv.id) { mutableStateOf(editingEv.location) }
+        var editDate by remember(editingEv.id) { mutableStateOf(editingEv.date) }
+        var editDescription by remember(editingEv.id) { mutableStateOf(editingEv.description) }
+        var editImageBase64 by remember(editingEv.id) { mutableStateOf(editingEv.imageBase64) }
+
+        AlertDialog(
+            onDismissRequest = { eventBeingEdited = null },
+            title = { Text("تعديل الفعالية أو الخبر المدرسي") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editTitle,
+                        onValueChange = { editTitle = it },
+                        label = { Text("عنوان الخبر أو الفعالية") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editCategory,
+                        onValueChange = { editCategory = it },
+                        label = { Text("التصنيف") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editLocation,
+                        onValueChange = { editLocation = it },
+                        label = { Text("الموقع الجغرافي") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editDescription,
+                        onValueChange = { editDescription = it },
+                        label = { Text("تفاصيل الخبر أو الفعالية") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    CompressedPhotoPickerButton(
+                        label = "تحديث صورة الفعالية",
+                        currentBase64 = editImageBase64,
+                        onImageCompressed = { editImageBase64 = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "حفظ التعديلات",
+                    icon = Icons.Filled.Save,
+                    onClick = {
+                        if (editTitle.isNotBlank()) {
+                            viewModel.updateSchoolEvent(
+                                eventId = editingEv.id,
+                                title = editTitle,
+                                category = editCategory,
+                                description = editDescription.ifBlank { editTitle },
+                                date = editDate,
+                                location = editLocation.ifBlank { "الموصل - زمار" },
+                                imageBase64 = editImageBase64
+                            )
+                            eventBeingEdited = null
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { eventBeingEdited = null }) { Text("إلغاء") }
+            }
+        )
     }
 
     if (showPublishEventDialog) {

@@ -477,6 +477,10 @@ data class SubjectGrade(
     val maxScoreScale: Int = GradingRules.defaultMaxScoreForClass(gradeClass),
     val schoolId: String = ""
 ) {
+    // هل اكتملت جميع الامتحانات (شهر 1، شهر 2، نصف السنة، النهائي)؟
+    val isAllExamsCompleted: Boolean
+        get() = month1Score > 0 && month2Score > 0 && midYearScore > 0 && finalExamScore > 0
+
     // السعي السنوي (calculated according to maxScoreScale: 10 or 100)
     val annualEffortScore: Int
         get() = (((dailyScore + month1Score + month2Score) / 3.0 * 0.5) + (midYearScore * 0.5))
@@ -493,9 +497,18 @@ data class SubjectGrade(
     val normalizedPercentage: Int
         get() = if (maxScoreScale == 10) (finalAverage * 10).coerceIn(0, 100) else finalAverage.coerceIn(0, 100)
 
-    // التقدير التلقائي
+    // حالة الطالب الأكاديمية: لا يُحكم بالرسوب أو النجاح النهائي إلا بعد اكتمال جميع الامتحانات
+    val academicStatusLabel: String
+        get() = when {
+            !isAllExamsCompleted -> "مستمر"
+            normalizedPercentage >= 50 -> "ناجح"
+            else -> "راسب"
+        }
+
+    // التقدير التلقائي (لا يظهر "راسب" إطلاقاً أثناء العام الدراسي طالما لم تكتمل جميع الامتحانات)
     val ratingLabel: String
         get() = when {
+            !isAllExamsCompleted -> "مستمر"
             normalizedPercentage >= 90 -> "ممتاز"
             normalizedPercentage >= 80 -> "جيد جداً"
             normalizedPercentage >= 70 -> "جيد"
