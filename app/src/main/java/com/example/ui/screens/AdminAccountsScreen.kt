@@ -538,6 +538,7 @@ fun AdminAccountsScreen(
             )
         }
         var password by remember(currentEditing) { mutableStateOf(currentEditing?.password ?: (1000..9999).random().toString()) }
+        var teacherPhotoBase64 by remember(currentEditing) { mutableStateOf(currentEditing?.photoBase64 ?: "") }
 
         // Multi-select subjects from registeredSubjects
         val initialSubjects = remember(currentEditing) {
@@ -660,6 +661,26 @@ fun AdminAccountsScreen(
                         )
                     }
                     item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Base64AvatarImage(
+                                base64Data = teacherPhotoBase64,
+                                fallbackIcon = Icons.Filled.CoPresent,
+                                contentDescription = name.ifBlank { "صورة المعلم" },
+                                size = 48.dp
+                            )
+                            CompressedPhotoPickerButton(
+                                label = "اختر صورة المعلم",
+                                currentBase64 = teacherPhotoBase64,
+                                onImageCompressed = { teacherPhotoBase64 = it },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = username,
@@ -696,9 +717,26 @@ fun AdminAccountsScreen(
                             val specialtyStr = selectedSubjects.joinToString("، ")
                             val classesStr = selectedClassSections.joinToString("، ")
                             if (currentEditing == null) {
-                                viewModel.addTeacherAccount(name, specialtyStr, classesStr, phone, username, password)
+                                viewModel.addTeacherAccount(
+                                    fullName = name,
+                                    specialty = specialtyStr,
+                                    assignedClasses = classesStr,
+                                    phone = phone,
+                                    username = username,
+                                    password = password,
+                                    photoBase64 = teacherPhotoBase64
+                                )
                             } else {
-                                viewModel.updateTeacherAccount(currentEditing.id, name, specialtyStr, classesStr, phone, username, password)
+                                viewModel.updateTeacherAccount(
+                                    teacherId = currentEditing.id,
+                                    fullName = name,
+                                    specialty = specialtyStr,
+                                    assignedClasses = classesStr,
+                                    phone = phone,
+                                    username = username,
+                                    password = password,
+                                    photoBase64 = teacherPhotoBase64
+                                )
                             }
                             showTeacherDialog = false
                         }
@@ -882,12 +920,24 @@ fun AdminAccountsScreen(
                         }
                     }
                     item {
-                        CompressedPhotoPickerButton(
-                            label = "صورة الطالب (ضغط تلقائي 800px)",
-                            currentBase64 = photoBase64,
-                            onImageCompressed = { photoBase64 = it },
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth()
-                        )
+                        ) {
+                            Base64AvatarImage(
+                                base64Data = photoBase64,
+                                fallbackIcon = Icons.Filled.School,
+                                contentDescription = studentName.ifBlank { "صورة الطالب" },
+                                size = 48.dp
+                            )
+                            CompressedPhotoPickerButton(
+                                label = "اختر صورة الطالب",
+                                currentBase64 = photoBase64,
+                                onImageCompressed = { photoBase64 = it },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -967,7 +1017,8 @@ fun AdminAccountsScreen(
                                     studentUsername = sUser,
                                     studentPassword = sPass,
                                     parentUsername = pUser,
-                                    parentPassword = pPass
+                                    parentPassword = pPass,
+                                    photoBase64 = photoBase64
                                 )
                             }
                             showStudentDialog = false

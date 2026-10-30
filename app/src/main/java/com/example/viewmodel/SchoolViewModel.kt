@@ -370,105 +370,256 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Real-time monitor for Firebase collections:
-     * notifications, messages, schedules_homework, and reports under schools/{schoolId}/...
-     * Triggers external phone push notifications with sound and vibration when new items arrive.
+     * Real-time live cloud listener for ALL school sub-collections under schools/{schoolId}/...
+     * Automatically updates UI StateFlows in real time without logging out or manual refresh,
+     * and dispatches system push notifications ONLY to the strictly targeted user.
      */
     private fun startRealtimeCloudMonitor() {
         viewModelScope.launch {
             while (isActive) {
-                delay(18000L)
+                delay(2500L)
                 val sid = _schoolConfig.value.schoolId
                 val user = _currentUser.value
                 if (sid.isNotBlank() && user != null) {
                     try {
-                        // 1. Check notifications
-                        val remoteNotifsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
-                            sid,
-                            FirebaseConfigConstants.COL_NOTIFICATIONS
-                        )
-                        if (!remoteNotifsRaw.isNullOrBlank()) {
-                            val remoteNotifs = repo.parseNotificationsJson(remoteNotifsRaw, sid)
-                            val currentIds = _notifications.value.map { it.id }.toSet()
-                            val newNotifs = remoteNotifs.filter { it.id !in currentIds }
-                            if (newNotifs.isNotEmpty()) {
-                                _notifications.value = remoteNotifs
-                                val scopedNew = getScopedNotificationsForUser(user).filter { it.id in newNotifs.map { n -> n.id } }
-                                scopedNew.firstOrNull()?.let { latest ->
-                                    _latestBannerAlert.value = latest
-                                    SystemNotificationHelper.showSystemPushNotification(
-                                        appContext,
-                                        latest.title,
-                                        latest.body,
-                                        latest.id
-                                    )
+                        // 1. Live sync: honor_roll & students (including Honor Roll status, points, heart reactions, photos)
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HONOR_ROLL)) {
+                            val remoteStudentsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_HONOR_ROLL
+                            )
+                            if (!remoteStudentsRaw.isNullOrBlank() &&
+                                remoteStudentsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HONOR_ROLL)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HONOR_ROLL, remoteStudentsRaw)
+                                _students.value = repo.parseStudentsJson(remoteStudentsRaw, sid)
+                            }
+                        }
+
+                        // 2. Live sync: users (Teachers, Parents, Students, Admin accounts & photos)
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_USERS)) {
+                            val remoteUsersRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_USERS
+                            )
+                            if (!remoteUsersRaw.isNullOrBlank() &&
+                                remoteUsersRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_USERS)
+                            ) {
+                                val parsedAccounts = repo.parseAccountsJson(remoteUsersRaw, sid)
+                                if (parsedAccounts.isNotEmpty()) {
+                                    repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_USERS, remoteUsersRaw)
+                                    _accounts.value = parsedAccounts
+                                    _currentUser.value?.let { curr ->
+                                        parsedAccounts.firstOrNull { it.id == curr.id }?.let { refreshedUser ->
+                                            _currentUser.value = refreshedUser
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        // 2. Check messages
-                        val remoteMsgsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
-                            sid,
-                            FirebaseConfigConstants.COL_MESSAGES
-                        )
-                        if (!remoteMsgsRaw.isNullOrBlank()) {
-                            val remoteMsgs = repo.parseChatMessagesJson(remoteMsgsRaw, sid)
-                            val currentIds = _chatMessages.value.map { it.id }.toSet()
-                            val newMsgs = remoteMsgs.filter { it.id !in currentIds }
-                            if (newMsgs.isNotEmpty()) {
+                        // 3. Live sync: settings & subjects
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_SUBJECTS)) {
+                            val remoteSubjRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_SUBJECTS
+                            )
+                            if (!remoteSubjRaw.isNullOrBlank() &&
+                                remoteSubjRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SUBJECTS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SUBJECTS, remoteSubjRaw)
+                                _schoolConfig.value = repo.loadSchoolConfig(sid)
+                            }
+                        }
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_SETTINGS)) {
+                            val remoteCfgRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_SETTINGS
+                            )
+                            if (!remoteCfgRaw.isNullOrBlank() &&
+                                remoteCfgRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SETTINGS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SETTINGS, remoteCfgRaw)
+                                _schoolConfig.value = repo.parseSchoolConfigJson(remoteCfgRaw, sid)
+                            }
+                        }
+
+                        // 4. Live sync: events_gallery
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_EVENTS_GALLERY)) {
+                            val remoteEventsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_EVENTS_GALLERY
+                            )
+                            if (!remoteEventsRaw.isNullOrBlank() &&
+                                remoteEventsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_EVENTS_GALLERY)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_EVENTS_GALLERY, remoteEventsRaw)
+                                _events.value = repo.parseEventsJson(remoteEventsRaw, sid)
+                            }
+                        }
+
+                        // 5. Live sync: reports
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_REPORTS)) {
+                            val remoteRepRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_REPORTS
+                            )
+                            if (!remoteRepRaw.isNullOrBlank() &&
+                                remoteRepRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_REPORTS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_REPORTS, remoteRepRaw)
+                                _reports.value = repo.parseReportsJson(remoteRepRaw, sid)
+                            }
+                        }
+
+                        // 6. Live sync: messages (Direct Chat)
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_MESSAGES)) {
+                            val remoteMsgsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_MESSAGES
+                            )
+                            if (!remoteMsgsRaw.isNullOrBlank() &&
+                                remoteMsgsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_MESSAGES)
+                            ) {
+                                val remoteMsgs = repo.parseChatMessagesJson(remoteMsgsRaw, sid)
+                                val currentIds = _chatMessages.value.map { it.id }.toSet()
+                                val newMsgs = remoteMsgs.filter { it.id !in currentIds }
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_MESSAGES, remoteMsgsRaw)
                                 _chatMessages.value = remoteMsgs
-                                val newest = newMsgs.last()
-                                if (!newest.senderName.contains(user.fullName)) {
-                                    SystemNotificationHelper.showSystemPushNotification(
-                                        appContext,
-                                        "رسالة جديدة من ${newest.senderName}",
-                                        newest.messageText.ifBlank { "صورة مرفقة في المحادثة" },
-                                        newest.id
-                                    )
+
+                                if (newMsgs.isNotEmpty()) {
+                                    val newest = newMsgs.last()
+                                    val isSentByMe = newest.senderName.contains(user.fullName)
+                                    val isTargetedRecipient = when {
+                                        isSentByMe -> false
+                                        newest.senderRole == UserRole.ADMIN || newest.senderRole == UserRole.TEACHER ->
+                                            (user.role == UserRole.PARENT || user.role == UserRole.STUDENT) &&
+                                                user.linkedStudentId == newest.studentId
+                                        newest.senderRole == UserRole.PARENT || newest.senderRole == UserRole.STUDENT ->
+                                            user.role == UserRole.ADMIN
+                                        else -> false
+                                    }
+                                    if (isTargetedRecipient) {
+                                        SystemNotificationHelper.showSystemPushNotification(
+                                            appContext,
+                                            "رسالة جديدة من ${newest.senderName}",
+                                            newest.messageText.ifBlank { "صورة مرفقة في المحادثة" },
+                                            newest.id
+                                        )
+                                    }
                                 }
                             }
                         }
 
-                        // 3. Check schedules_homework
-                        val remoteHwRaw = FirebaseCloudSync.fetchSubCollectionPayload(
-                            sid,
-                            FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK
-                        )
-                        if (!remoteHwRaw.isNullOrBlank()) {
-                            val remoteHws = repo.parseHomeworksJson(remoteHwRaw, sid)
-                            val currentIds = _homeworks.value.map { it.id }.toSet()
-                            val newHws = remoteHws.filter { it.id !in currentIds }
-                            if (newHws.isNotEmpty()) {
-                                _homeworks.value = remoteHws
-                                val newest = newHws.first()
-                                SystemNotificationHelper.showSystemPushNotification(
-                                    appContext,
-                                    "واجب وتحضير جديد: ${newest.subjectName}",
-                                    "الصف ${newest.gradeClass} (${newest.sectionName}): ${newest.dailyPreparation}",
-                                    newest.id
-                                )
+                        // 7. Live sync: attendance
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ATTENDANCE)) {
+                            val remoteAttRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_ATTENDANCE
+                            )
+                            if (!remoteAttRaw.isNullOrBlank() &&
+                                remoteAttRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE, remoteAttRaw)
+                                _attendance.value = repo.parseAttendanceJson(remoteAttRaw, sid)
                             }
                         }
 
-                        // 4. Check reports
-                        val remoteRepRaw = FirebaseCloudSync.fetchSubCollectionPayload(
-                            sid,
-                            FirebaseConfigConstants.COL_REPORTS
-                        )
-                        if (!remoteRepRaw.isNullOrBlank()) {
-                            val remoteReps = repo.parseReportsJson(remoteRepRaw, sid)
-                            val currentIds = _reports.value.map { it.id }.toSet()
-                            val newReps = remoteReps.filter { it.id !in currentIds }
-                            if (newReps.isNotEmpty()) {
-                                _reports.value = remoteReps
-                                val newest = newReps.first()
-                                if (user.role == UserRole.ADMIN || user.linkedStudentId == newest.studentId) {
-                                    SystemNotificationHelper.showSystemPushNotification(
-                                        appContext,
-                                        "بلاغ رسمي (${newest.reportType.arabicLabel})",
-                                        "${newest.title} — الطالب: ${newest.studentName}",
-                                        newest.id
-                                    )
+                        // 8. Live sync: grades & exams
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_GRADES)) {
+                            val remoteGradesRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_GRADES
+                            )
+                            if (!remoteGradesRaw.isNullOrBlank() &&
+                                remoteGradesRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_GRADES)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_GRADES, remoteGradesRaw)
+                                _grades.value = repo.parseGradesJson(remoteGradesRaw, sid)
+                            }
+                        }
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_EXAMS)) {
+                            val remoteExamsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_EXAMS
+                            )
+                            if (!remoteExamsRaw.isNullOrBlank() &&
+                                remoteExamsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_EXAMS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_EXAMS, remoteExamsRaw)
+                                _examSchedules.value = repo.parseExamSchedulesJson(remoteExamsRaw, sid)
+                            }
+                        }
+
+                        // 9. Live sync: schedules_homework & schedules_periods
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)) {
+                            val remoteHwRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK
+                            )
+                            if (!remoteHwRaw.isNullOrBlank() &&
+                                remoteHwRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK, remoteHwRaw)
+                                _homeworks.value = repo.parseHomeworksJson(remoteHwRaw, sid)
+                            }
+                        }
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_SCHEDULES_PERIODS)) {
+                            val remotePeriodsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_SCHEDULES_PERIODS
+                            )
+                            if (!remotePeriodsRaw.isNullOrBlank() &&
+                                remotePeriodsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SCHEDULES_PERIODS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_SCHEDULES_PERIODS, remotePeriodsRaw)
+                                _schedules.value = repo.parseSchedulesJson(remotePeriodsRaw, sid)
+                            }
+                        }
+
+                        // 10. Live sync: tuition_fees
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_TUITION_FEES)) {
+                            val remoteTuitionRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_TUITION_FEES
+                            )
+                            if (!remoteTuitionRaw.isNullOrBlank() &&
+                                remoteTuitionRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_TUITION_FEES)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_TUITION_FEES, remoteTuitionRaw)
+                                _tuitions.value = repo.parseTuitionsJson(remoteTuitionRaw, sid)
+                            }
+                        }
+
+                        // 11. Live sync: notifications (strictly filtered for the target recipient only)
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_NOTIFICATIONS)) {
+                            val remoteNotifsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
+                                sid,
+                                FirebaseConfigConstants.COL_NOTIFICATIONS
+                            )
+                            if (!remoteNotifsRaw.isNullOrBlank() &&
+                                remoteNotifsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_NOTIFICATIONS)
+                            ) {
+                                val remoteNotifs = repo.parseNotificationsJson(remoteNotifsRaw, sid)
+                                val currentIds = _notifications.value.map { it.id }.toSet()
+                                val newNotifIds = remoteNotifs.filter { it.id !in currentIds }.map { it.id }.toSet()
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_NOTIFICATIONS, remoteNotifsRaw)
+                                _notifications.value = remoteNotifs
+
+                                if (newNotifIds.isNotEmpty()) {
+                                    val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
+                                    val targetedNew = remoteNotifs.filter { n ->
+                                        n.id in newNotifIds && n.isTargetedForUser(user, linkedStu)
+                                    }
+                                    targetedNew.firstOrNull()?.let { latest ->
+                                        _latestBannerAlert.value = latest
+                                        SystemNotificationHelper.showSystemPushNotification(
+                                            appContext,
+                                            latest.title,
+                                            latest.body,
+                                            latest.id
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -580,16 +731,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val schoolId = _schoolConfig.value.schoolId
         val all = _notifications.value.filter { it.schoolId.isEmpty() || it.schoolId == schoolId }
         if (user == null) return emptyList()
-        return when (user.role) {
-            UserRole.ADMIN -> all
-            UserRole.TEACHER -> {
-                val allowedStuIds = getScopedStudentsForUser(user).map { it.id }.toSet()
-                all.filter { it.targetStudentId.isEmpty() || it.targetStudentId in allowedStuIds }
-            }
-            UserRole.PARENT, UserRole.STUDENT -> {
-                all.filter { it.targetStudentId.isEmpty() || it.targetStudentId == user.linkedStudentId }
-            }
-        }
+        val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
+        return all.filter { notif -> notif.isTargetedForUser(user, linkedStu) }
     }
 
     fun toggleDarkMode() {
@@ -1097,7 +1240,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         assignedClasses: String,
         phone: String,
         username: String,
-        password: String
+        password: String,
+        photoBase64: String = ""
     ): UserAccount? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val cleanName = InputSanitizer.sanitize(fullName)
@@ -1127,6 +1271,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             specialty = InputSanitizer.sanitize(specialty),
             assignedClasses = InputSanitizer.sanitize(assignedClasses),
             address = "الموصل - زمار",
+            photoBase64 = photoBase64,
             schoolId = sid
         )
         val updated = listOf(newTeacher) + _accounts.value
@@ -1143,7 +1288,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         assignedClasses: String,
         phone: String,
         username: String,
-        password: String
+        password: String,
+        photoBase64: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
@@ -1158,12 +1304,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     phone = InputSanitizer.sanitize(phone).ifBlank { acc.phone },
                     username = prefixedUser.ifBlank { acc.username },
                     password = InputSanitizer.sanitize(password).ifBlank { acc.password },
+                    photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
                     schoolId = sid
                 )
             } else acc
         }
         _accounts.value = updated
         repo.saveAccounts(updated, sid)
+        _currentUser.value?.let { curr ->
+            if (curr.id == teacherId) {
+                _currentUser.value = updated.firstOrNull { it.id == teacherId } ?: curr
+            }
+        }
         showToastAlert("تم تحديث بيانات وصلاحيات المعلم بنجاح", isSuccess = true)
     }
 
@@ -1249,6 +1401,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             gradeClass = gradeClass,
             sectionName = sectionName,
             address = finalAddress,
+            photoBase64 = photoBase64,
             schoolId = sid
         )
         val studentAcc = UserAccount(
@@ -1302,7 +1455,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         studentUsername: String,
         studentPassword: String,
         parentUsername: String,
-        parentPassword: String
+        parentPassword: String,
+        photoBase64: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
@@ -1324,6 +1478,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     studentPassword = InputSanitizer.sanitize(studentPassword).ifBlank { s.studentPassword },
                     parentUsername = prefixedParUser.ifBlank { s.parentUsername },
                     parentPassword = InputSanitizer.sanitize(parentPassword).ifBlank { s.parentPassword },
+                    photoBase64 = photoBase64.ifBlank { s.photoBase64 },
                     schoolId = sid
                 )
             } else s
@@ -1342,6 +1497,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         gradeClass = gradeClass,
                         sectionName = sectionName,
                         address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
+                        photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
                         schoolId = sid
                     )
                 } else {
@@ -1353,6 +1509,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         gradeClass = gradeClass,
                         sectionName = sectionName,
                         address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
+                        photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
                         schoolId = sid
                     )
                 }
@@ -1360,7 +1517,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         _accounts.value = updatedAccounts
         repo.saveAccounts(updatedAccounts, sid)
-        showToastAlert("تم تحديث بيانات الطالب وولي الأمر بنجاح", isSuccess = true)
+        _currentUser.value?.let { curr ->
+            if (curr.linkedStudentId == studentId) {
+                _currentUser.value = updatedAccounts.firstOrNull { it.id == curr.id } ?: curr
+            }
+        }
+        showToastAlert("تم تحديث بيانات وصورة الطالب وولي الأمر بنجاح", isSuccess = true)
     }
 
     fun toggleStudentAndParentActive(studentId: String) {
@@ -1394,9 +1556,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         title: String,
         body: String,
         type: NotificationType,
-        targetStudentId: String = ""
+        targetStudentId: String = "",
+        targetUserId: String = "",
+        targetGradeClass: String = "",
+        targetSectionName: String = ""
     ) {
         val sid = _schoolConfig.value.schoolId
+        val senderId = _currentUser.value?.id.orEmpty()
         val timeLabel = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
         val notif = AppNotification(
             id = "notif_${UUID.randomUUID().toString().take(6)}",
@@ -1404,6 +1570,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             body = InputSanitizer.sanitize(body),
             type = type,
             targetStudentId = targetStudentId,
+            targetUserId = targetUserId,
+            targetGradeClass = targetGradeClass,
+            targetSectionName = targetSectionName,
+            senderUserId = senderId,
             createdAt = "الآن ($timeLabel)",
             isRead = false,
             schoolId = sid
@@ -1411,15 +1581,21 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val updated = listOf(notif) + _notifications.value
         _notifications.value = updated
         repo.saveNotifications(updated, sid)
-        _latestBannerAlert.value = notif
 
-        // Fire external Android System Push Notification with sound and vibration
-        SystemNotificationHelper.showSystemPushNotification(
-            context = appContext,
-            title = notif.title,
-            body = notif.body,
-            tagId = notif.id
-        )
+        // Only display banner & system push notification on this device if the logged-in user IS the target recipient
+        val currUser = _currentUser.value
+        if (currUser != null) {
+            val linkedStu = _students.value.firstOrNull { it.id == currUser.linkedStudentId }
+            if (notif.isTargetedForUser(currUser, linkedStu)) {
+                _latestBannerAlert.value = notif
+                SystemNotificationHelper.showSystemPushNotification(
+                    context = appContext,
+                    title = notif.title,
+                    body = notif.body,
+                    tagId = notif.id
+                )
+            }
+        }
     }
 
     fun markAllNotificationsRead() {
@@ -1557,7 +1733,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         pushNotification(
             title = "تحضير وواجب جديد: $subjectName",
             body = "للصف $gradeClass ($sectionName): $cleanPrep — الواجب: $homeworkDetails",
-            type = NotificationType.HOMEWORK
+            type = NotificationType.HOMEWORK,
+            targetGradeClass = gradeClass,
+            targetSectionName = sectionName
         )
     }
 
@@ -1598,7 +1776,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         pushNotification(
             title = "موعد امتحان جديد: $subjectName",
             body = "تم تحديد موعد $examType للصف $gradeClass يوم $dayName الموافق $examDate.",
-            type = NotificationType.GRADES
+            type = NotificationType.GRADES,
+            targetGradeClass = gradeClass
         )
     }
 
@@ -1689,6 +1868,31 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _students.value = updated
         repo.saveStudents(updated, sid)
         showToastAlert("تم تحديث لوحة الشرف للطالب بنجاح", isSuccess = true)
+    }
+
+    /**
+     * Interactive Heart Reaction on the Golden Honor Roll.
+     * Increments the student's live heartCount and syncs immediately to schools/{schoolId}/honor_roll in Firestore.
+     */
+    fun reactWithHeartToHonorStudent(studentId: String) {
+        if (!validateSessionAndSchoolAccess()) return
+        val sid = _schoolConfig.value.schoolId
+        val userId = _currentUser.value?.id.orEmpty()
+        val updated = _students.value.map { s ->
+            if (s.id == studentId) {
+                val updatedLikers = if (userId.isNotEmpty() && userId !in s.likedByUserIds) {
+                    s.likedByUserIds + userId
+                } else {
+                    s.likedByUserIds
+                }
+                s.copy(
+                    heartCount = s.heartCount + 1,
+                    likedByUserIds = updatedLikers
+                )
+            } else s
+        }
+        _students.value = updated
+        repo.saveStudents(updated, sid)
     }
 
     // =========================================================================
@@ -1825,12 +2029,25 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         showToastAlert("تم إرسال الرسالة في المحادثة المباشرة", isSuccess = true)
 
-        SystemNotificationHelper.showSystemPushNotification(
-            context = appContext,
-            title = "رسالة جديدة: ${msg.senderName}",
-            body = cleanText.ifBlank { "تم إرفاق صورة في محادثة الطالب ${student.studentName}" },
-            tagId = msg.id
-        )
+        // Strictly target the recipient only (Parent/Student of that student, or Admin if sent by Parent/Student)
+        if (user.role == UserRole.ADMIN || user.role == UserRole.TEACHER) {
+            pushNotification(
+                title = "رسالة جديدة من ${msg.senderName}",
+                body = cleanText.ifBlank { "تم إرفاق صورة في محادثة الطالب ${student.studentName}" },
+                type = NotificationType.REPORT,
+                targetStudentId = student.id
+            )
+        } else {
+            val adminAccount = _accounts.value.firstOrNull { it.role == UserRole.ADMIN }
+            if (adminAccount != null) {
+                pushNotification(
+                    title = "رسالة جديدة من ${msg.senderName}",
+                    body = cleanText.ifBlank { "تم إرفاق صورة في محادثة الطالب ${student.studentName}" },
+                    type = NotificationType.REPORT,
+                    targetUserId = adminAccount.id
+                )
+            }
+        }
     }
 
     // =========================================================================

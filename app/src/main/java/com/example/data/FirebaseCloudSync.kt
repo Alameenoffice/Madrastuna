@@ -11,6 +11,7 @@ import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Multi-Tenant Firebase Cloud Sync Manager (Firestore + Realtime Database REST API).
@@ -31,6 +32,18 @@ import java.net.URL
 object FirebaseCloudSync {
 
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val localWriteTimestamps = ConcurrentHashMap<String, Long>()
+
+    fun wasRecentlyWrittenLocally(
+        schoolId: String,
+        subCollection: String,
+        windowMs: Long = 4500L
+    ): Boolean {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSchoolId.isBlank()) return false
+        val lastWrite = localWriteTimestamps["$cleanSchoolId/$subCollection"] ?: return false
+        return (System.currentTimeMillis() - lastWrite) in 0..windowMs
+    }
 
     fun pushSubCollectionAsync(
         schoolId: String,
@@ -39,6 +52,8 @@ object FirebaseCloudSync {
     ) {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(schoolId)
         if (cleanSchoolId.isBlank()) return
+
+        localWriteTimestamps["$cleanSchoolId/$subCollection"] = System.currentTimeMillis()
 
         syncScope.launch {
             try {

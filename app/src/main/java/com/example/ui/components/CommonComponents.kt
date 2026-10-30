@@ -42,6 +42,7 @@ import com.example.ui.theme.GoldDeep
 import com.example.ui.theme.WhatsAppGreen
 import com.example.util.ExternalIntents
 import com.example.util.ImageCompressor
+import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -284,7 +285,7 @@ fun CompressedPhotoPickerButton(
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            text = if (currentBase64.isNotEmpty()) "$label (تم ضغط الصورة 800px)" else label,
+            text = if (currentBase64.isNotEmpty()) "تم اختيار الصورة • $label" else label,
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
             softWrap = false,
@@ -529,5 +530,140 @@ fun GoldenVectorMedal(
             maxLines = 1,
             softWrap = false
         )
+    }
+}
+
+/**
+ * Interactive Heart Reaction Button for the Golden Honor Roll (لوحة الشرف الذهبية)
+ * with live counter, elastic heart pulse, and floating mini-hearts & golden sparkles animation.
+ */
+@Composable
+fun HonorHeartReactionButton(
+    heartCount: Int,
+    isLikedByMe: Boolean,
+    onReact: () -> Unit,
+    modifier: Modifier = Modifier,
+    testTag: String = ""
+) {
+    var burstTrigger by remember { mutableIntStateOf(0) }
+    val heartScale = remember { Animatable(1f) }
+    val burstProgress = remember { Animatable(1f) }
+
+    LaunchedEffect(burstTrigger) {
+        if (burstTrigger > 0) {
+            launch {
+                heartScale.snapTo(0.8f)
+                heartScale.animateTo(
+                    targetValue = 1.38f,
+                    animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing)
+                )
+                heartScale.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                )
+            }
+            launch {
+                burstProgress.snapTo(0f)
+                burstProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
+                )
+            }
+        }
+    }
+
+    val isActive = isLikedByMe || heartCount > 0 || burstTrigger > 0
+    val crimsonHeart = Color(0xFFE11D48)
+    val softRoseBg = Color(0xFFFFE4E6)
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        // Floating mini-hearts & golden sparkles particle burst around the heart button
+        if (burstTrigger > 0 && burstProgress.value < 0.99f) {
+            val p = burstProgress.value
+            val alpha = (1f - p).coerceIn(0f, 1f)
+            Canvas(
+                modifier = Modifier
+                    .matchParentSize()
+                    .height(52.dp)
+            ) {
+                val cx = size.width * 0.28f
+                val cy = size.height * 0.5f
+                val angles = listOf(-135.0, -105.0, -75.0, -45.0, -15.0, 20.0, 160.0, -90.0)
+                angles.forEachIndexed { idx, deg ->
+                    val rad = Math.toRadians(deg)
+                    val dist = (18f + (idx % 3) * 12f) * p
+                    val px = cx + (dist * cos(rad)).toFloat()
+                    val py = cy + (dist * sin(rad)).toFloat() - (26f * p)
+                    if (idx % 2 == 0) {
+                        // Mini floating heart dot
+                        drawCircle(
+                            color = crimsonHeart.copy(alpha = alpha),
+                            radius = (5.5f - 2f * p).coerceAtLeast(2f),
+                            center = Offset(px, py)
+                        )
+                    } else {
+                        // Golden sparkle dot
+                        drawCircle(
+                            color = GoldAccent.copy(alpha = alpha),
+                            radius = (4.5f - 1.5f * p).coerceAtLeast(1.5f),
+                            center = Offset(px, py)
+                        )
+                    }
+                }
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = if (isActive) softRoseBg else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .border(
+                    width = 1.dp,
+                    color = if (isActive) crimsonHeart.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(50)
+                )
+                .clickable {
+                    burstTrigger++
+                    onReact()
+                }
+                .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = if (isActive) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = "تفاعل القلب",
+                    tint = if (isActive) crimsonHeart else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size((20f * heartScale.value).dp)
+                )
+                Text(
+                    text = if (heartCount > 0) "$heartCount" else "تشجيع",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isActive) Color(0xFF9F1239) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                if (heartCount > 0) {
+                    Text(
+                        text = "قلب",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFBE123C),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        }
     }
 }

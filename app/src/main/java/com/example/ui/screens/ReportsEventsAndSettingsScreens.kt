@@ -419,7 +419,7 @@ fun ReportsAndChatScreen(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "تم إرفاق صورة مضغوطة (800px • 0.65 JPEG) جاهزة للإرسال",
+                                            text = "تم إرفاق صورة جاهزة للإرسال",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer
                                         )
@@ -724,15 +724,15 @@ fun EventsAndNewsScreen(
                             )
                         }
                         NoWrapBadge(
-                            text = "ضغط تلقائي 800px • JPEG 0.65",
-                            icon = Icons.Filled.HighQuality,
+                            text = "توثيق الأنشطة والأخبار",
+                            icon = Icons.Filled.PhotoLibrary,
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = Color.White
                         )
                     }
 
                     Text(
-                        text = "يتم ضغط أي صورة مرفوعة من الهاتف تلقائياً (بحد أقصى عرض 800px وجودة 0.65 بصيغة Base64 JPEG) لتعمل فوراً وبأعلى كفاءة.",
+                        text = "تابع أحدث الفعاليات والأنشطة العلمية والثقافية والأخبار الرسمية للمدرسة.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -902,7 +902,7 @@ fun EventsAndNewsScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     CompressedPhotoPickerButton(
-                        label = "إرفاق صورة الفعالية (ضغط 800px • 0.7 JPEG)",
+                        label = "إرفاق صورة الفعالية",
                         currentBase64 = imageBase64,
                         onImageCompressed = { imageBase64 = it },
                         modifier = Modifier.fillMaxWidth()
@@ -1289,7 +1289,7 @@ fun SettingsScreen(
                     }
 
                     CompressedPhotoPickerButton(
-                        label = "تحديث شعار المدرسة (ضغط تلقائي 800px)",
+                        label = "تحديث شعار المدرسة",
                         currentBase64 = logoBase64,
                         onImageCompressed = { logoBase64 = it },
                         modifier = Modifier.fillMaxWidth()

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -87,28 +88,30 @@ fun HonorRollScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFFDE68A).copy(alpha = 0.22f),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.65f))
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.AutoAwesome,
-                                contentDescription = null,
-                                tint = Color(0xFFFDE68A),
-                                modifier = Modifier.size(22.dp)
-                            )
-                            NoWrapBadge(
-                                text = "لوحة الشرف الذهبية • ${schoolConfig.schoolName}",
-                                icon = Icons.Filled.EmojiEvents,
-                                containerColor = Color(0xFFFDE68A),
-                                contentColor = Color(0xFF451A03)
-                            )
-                            Icon(
-                                imageVector = Icons.Filled.AutoAwesome,
-                                contentDescription = null,
-                                tint = Color(0xFFFDE68A),
-                                modifier = Modifier.size(22.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.EmojiEvents,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFDE68A),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "لوحة الشرف الذهبية • ${schoolConfig.schoolName}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color(0xFFFDE68A),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
 
                         Text(
@@ -147,6 +150,7 @@ fun HonorRollScreen(
         itemsIndexed(honorStudents, key = { _, s -> s.id }) { index, stu ->
             val rank = index + 1
             val canEditThisStudent = canEdit && stu.id in scopedEditableStudents.map { it.id }
+            val isLikedByMe = currentUser?.id != null && currentUser?.id in stu.likedByUserIds
 
             Card(
                 modifier = Modifier
@@ -156,15 +160,15 @@ fun HonorRollScreen(
                         brush = Brush.linearGradient(
                             colors = listOf(GoldAccent, Color(0xFFFDE68A), GoldDeep)
                         ),
-                        shape = RoundedCornerShape(20.dp)
+                        shape = RoundedCornerShape(22.dp)
                     ),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -182,11 +186,11 @@ fun HonorRollScreen(
                                 base64Data = stu.photoBase64,
                                 fallbackIcon = Icons.Filled.School,
                                 contentDescription = stu.studentName,
-                                size = 54.dp,
+                                size = 60.dp,
                                 tint = GoldAccent
                             )
 
-                            Column {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(
                                     text = stu.studentName,
                                     style = MaterialTheme.typography.titleMedium,
@@ -197,9 +201,8 @@ fun HonorRollScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
                                 NoWrapBadge(
-                                    text = stu.honorTitle,
+                                    text = "سبب التكريم: ${stu.honorTitle}",
                                     icon = Icons.Filled.MilitaryTech,
                                     containerColor = GoldAccent.copy(alpha = 0.18f),
                                     contentColor = GoldDeep
@@ -217,7 +220,7 @@ fun HonorRollScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Stars,
+                                    imageVector = Icons.Filled.EmojiEvents,
                                     contentDescription = null,
                                     tint = GoldDeep,
                                     modifier = Modifier.size(18.dp)
@@ -231,6 +234,38 @@ fun HonorRollScreen(
                                 )
                             }
                         }
+                    }
+
+                    HorizontalDivider(color = GoldAccent.copy(alpha = 0.22f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.WorkspacePremium,
+                                contentDescription = null,
+                                tint = GoldDeep,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "شارِك التهنئة والتشجيع للطالب المتفوق",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        HonorHeartReactionButton(
+                            heartCount = stu.heartCount,
+                            isLikedByMe = isLikedByMe,
+                            onReact = { viewModel.reactWithHeartToHonorStudent(stu.id) },
+                            testTag = "honor_heart_button_${stu.id}"
+                        )
                     }
 
                     if (canEditThisStudent) {

@@ -38,6 +38,22 @@ class SchoolRepository(context: Context) {
         return FirebaseConfigConstants.schoolCollectionPath(sid, subCollection)
     }
 
+    fun getRawCachedSubCollection(schoolId: String, subCollection: String): String? {
+        if (schoolId.isBlank()) return null
+        return prefs.getString(scopedKey(schoolId, subCollection), null)
+    }
+
+    fun saveRawCachedSubCollection(schoolId: String, subCollection: String, jsonPayload: String) {
+        if (schoolId.isBlank()) return
+        val editor = prefs.edit().putString(scopedKey(schoolId, subCollection), jsonPayload)
+        if (subCollection == FirebaseConfigConstants.COL_SCHEDULES_PERIODS) {
+            editor.putString("${scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", jsonPayload)
+        } else if (subCollection == FirebaseConfigConstants.COL_EXAMS) {
+            editor.putString("${scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES)}_exams", jsonPayload)
+        }
+        editor.apply()
+    }
+
     // =========================================================================
     // SESSION MANAGEMENT & VALIDATION
     // =========================================================================
@@ -328,6 +344,8 @@ class SchoolRepository(context: Context) {
                         excellencePoints = o.optInt("excellencePoints", 90),
                         isOnHonorRoll = o.optBoolean("isOnHonorRoll", false),
                         honorTitle = o.optString("honorTitle", "وسام التفوق الذهبي"),
+                        heartCount = o.optInt("heartCount", 0),
+                        likedByUserIds = jsonArrayToList(o.optJSONArray("likedByUserIds")),
                         schoolId = itemSchoolId
                     )
                 )
@@ -359,6 +377,8 @@ class SchoolRepository(context: Context) {
                 put("excellencePoints", s.excellencePoints)
                 put("isOnHonorRoll", s.isOnHonorRoll)
                 put("honorTitle", InputSanitizer.sanitize(s.honorTitle))
+                put("heartCount", s.heartCount)
+                put("likedByUserIds", JSONArray(s.likedByUserIds))
                 put("schoolId", schoolId)
             })
         }
@@ -431,8 +451,13 @@ class SchoolRepository(context: Context) {
 
     fun loadSchedules(schoolId: String = getActiveSchoolId()): List<SchedulePeriod> {
         if (schoolId.isBlank()) return emptyList()
-        val raw = prefs.getString("${scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", null)
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_PERIODS), null)
+            ?: prefs.getString("${scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", null)
             ?: return emptyList()
+        return parseSchedulesJson(raw, schoolId)
+    }
+
+    fun parseSchedulesJson(raw: String, schoolId: String = getActiveSchoolId()): List<SchedulePeriod> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<SchedulePeriod>()
@@ -474,8 +499,12 @@ class SchoolRepository(context: Context) {
                 put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("${scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", arr.toString()).apply()
-        syncSchedulesAndHomeworksBundle(schoolId)
+        val jsonStr = arr.toString()
+        prefs.edit()
+            .putString(scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_PERIODS), jsonStr)
+            .putString("${scopedKey(schoolId, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", jsonStr)
+            .apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_SCHEDULES_PERIODS, jsonStr)
     }
 
     fun loadHomeworks(schoolId: String = getActiveSchoolId()): List<HomeworkItem> {
@@ -548,8 +577,13 @@ class SchoolRepository(context: Context) {
 
     fun loadExamSchedules(schoolId: String = getActiveSchoolId()): List<ExamScheduleItem> {
         if (schoolId.isBlank()) return emptyList()
-        val raw = prefs.getString("${scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES)}_exams", null)
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_EXAMS), null)
+            ?: prefs.getString("${scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES)}_exams", null)
             ?: return emptyList()
+        return parseExamSchedulesJson(raw, schoolId)
+    }
+
+    fun parseExamSchedulesJson(raw: String, schoolId: String = getActiveSchoolId()): List<ExamScheduleItem> {
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<ExamScheduleItem>()
@@ -593,7 +627,12 @@ class SchoolRepository(context: Context) {
                 put("schoolId", schoolId)
             })
         }
-        prefs.edit().putString("${scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES)}_exams", arr.toString()).apply()
+        val jsonStr = arr.toString()
+        prefs.edit()
+            .putString(scopedKey(schoolId, FirebaseConfigConstants.COL_EXAMS), jsonStr)
+            .putString("${scopedKey(schoolId, FirebaseConfigConstants.COL_GRADES)}_exams", jsonStr)
+            .apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_EXAMS, jsonStr)
     }
 
     fun loadGrades(schoolId: String = getActiveSchoolId()): List<SubjectGrade> {
@@ -938,7 +977,11 @@ class SchoolRepository(context: Context) {
                         title = o.optString("title"),
                         body = o.optString("body"),
                         type = NotificationType.valueOf(o.optString("type", NotificationType.GENERAL.name)),
-                        targetStudentId = o.optString("targetStudentId"),
+                        targetStudentId = o.optString("targetStudentId", ""),
+                        targetUserId = o.optString("targetUserId", ""),
+                        targetGradeClass = o.optString("targetGradeClass", ""),
+                        targetSectionName = o.optString("targetSectionName", ""),
+                        senderUserId = o.optString("senderUserId", ""),
                         createdAt = o.optString("createdAt"),
                         isRead = o.optBoolean("isRead", false),
                         schoolId = o.optString("schoolId", schoolId)
@@ -961,6 +1004,10 @@ class SchoolRepository(context: Context) {
                 put("body", InputSanitizer.sanitize(n.body))
                 put("type", n.type.name)
                 put("targetStudentId", n.targetStudentId)
+                put("targetUserId", n.targetUserId)
+                put("targetGradeClass", InputSanitizer.sanitize(n.targetGradeClass))
+                put("targetSectionName", InputSanitizer.sanitize(n.targetSectionName))
+                put("senderUserId", n.senderUserId)
                 put("createdAt", InputSanitizer.sanitize(n.createdAt))
                 put("isRead", n.isRead)
                 put("schoolId", schoolId)
@@ -1284,9 +1331,21 @@ class SchoolRepository(context: Context) {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK), it)
             }
         }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_PERIODS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_PERIODS), it)
+                editor.putString("${scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", it)
+            }
+        }
         FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_GRADES)?.let {
             if (it.isNotBlank()) {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_EXAMS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_EXAMS), it)
+                editor.putString("${scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES)}_exams", it)
             }
         }
         FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_TUITION_FEES)?.let {

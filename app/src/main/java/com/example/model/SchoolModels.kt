@@ -27,6 +27,8 @@ object FirebaseConfigConstants {
     const val COL_MESSAGES = "messages"
     const val COL_EVENTS_GALLERY = "events_gallery"
     const val COL_NOTIFICATIONS = "notifications"
+    const val COL_SCHEDULES_PERIODS = "schedules_periods"
+    const val COL_EXAMS = "exams"
 
     // Root collections for Developer Super-Admin Panel
     const val COL_SCHOOL_LICENSES = "school_licenses"
@@ -340,6 +342,8 @@ data class StudentRecord(
     val excellencePoints: Int = 95,
     val isOnHonorRoll: Boolean = false,
     val honorTitle: String = "وسام التفوق الذهبي",
+    val heartCount: Int = 0,
+    val likedByUserIds: List<String> = emptyList(),
     val schoolId: String = ""
 )
 
@@ -519,8 +523,51 @@ data class AppNotification(
     val title: String,
     val body: String,
     val type: NotificationType,
-    val targetStudentId: String = "", // empty means broadcast to school
+    val targetStudentId: String = "", // Specific student & his parent only
+    val targetUserId: String = "",    // Specific account ID only
+    val targetGradeClass: String = "", // Specific class (e.g. for Homework / Exam)
+    val targetSectionName: String = "", // Specific section (e.g. for Homework)
+    val senderUserId: String = "",    // Sender user ID (never notify the sender himself)
     val createdAt: String,
     val isRead: Boolean = false,
     val schoolId: String = ""
-)
+) {
+    /**
+     * Strict Notification Targeting Rule:
+     * - Never notify the sender who triggered the action.
+     * - If targetUserId is set: ONLY that exact user receives it.
+     * - If targetStudentId is set (grades, absence/lateness, report, tuition, private message):
+     *   ONLY that student and that student's parent receive it (never other parents, other students, or teachers).
+     * - If targetGradeClass is set (homework/daily preparation or class exam):
+     *   ONLY students and parents belonging to that exact gradeClass (and targetSectionName if specified) receive it.
+     * - Otherwise (general school announcement with no specific student/class target):
+     *   visible to members of the school.
+     */
+    fun isTargetedForUser(user: UserAccount, linkedStudent: StudentRecord?): Boolean {
+        if (senderUserId.isNotEmpty() && senderUserId == user.id) return false
+
+        if (targetUserId.isNotEmpty()) {
+            return user.id == targetUserId
+        }
+
+        if (targetStudentId.isNotEmpty()) {
+            return (user.role == UserRole.STUDENT || user.role == UserRole.PARENT) &&
+                user.linkedStudentId == targetStudentId
+        }
+
+        if (targetGradeClass.isNotEmpty()) {
+            if (user.role != UserRole.STUDENT && user.role != UserRole.PARENT) return false
+            val userClass = linkedStudent?.gradeClass?.ifBlank { user.gradeClass } ?: user.gradeClass
+            val userSection = linkedStudent?.sectionName?.ifBlank { user.sectionName } ?: user.sectionName
+            if (!userClass.trim().equals(targetGradeClass.trim(), ignoreCase = true)) return false
+            if (targetSectionName.isNotEmpty() &&
+                !userSection.trim().equals(targetSectionName.trim(), ignoreCase = true)
+            ) {
+                return false
+            }
+            return true
+        }
+
+        return true
+    }
+}

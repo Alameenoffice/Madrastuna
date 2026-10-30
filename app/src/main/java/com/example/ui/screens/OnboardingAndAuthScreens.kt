@@ -83,7 +83,7 @@ fun OnboardingScreen(
             OnboardingSlideData(
                 badge = "الشريحة 3 من 3 • التميز والتواصل المباشر",
                 title = "لوحة الشرف الذهبية والتواصل الفعال",
-                description = "احتفِ بأوائل الطلبة والمجتهدين في لوحة الشرف الذهبية، وتابع الأقساط الدراسية، البلاغات، ومعرض الفعاليات المدرسية بضغط صور ذكي.",
+                description = "احتفِ بأوائل الطلبة والمجتهدين في لوحة الشرف الذهبية، وتابع الأقساط الدراسية، البلاغات، ومعرض الفعاليات المدرسية المصور.",
                 highlights = listOf(
                     "لوحة شرف احتفالية بأوسمة فيكتور ذهبية للطلبة الأوائل",
                     "نظام أقساط ذكي يتفعل تلقائياً للمدارس الأهلية",
@@ -640,7 +640,7 @@ fun SchoolSetupScreen(
                     }
 
                     CompressedPhotoPickerButton(
-                        label = "رفع شعار المدرسة (ضغط تلقائي 800px)",
+                        label = "رفع شعار المدرسة",
                         currentBase64 = logoBase64,
                         onImageCompressed = { logoBase64 = it },
                         modifier = Modifier.fillMaxWidth()
