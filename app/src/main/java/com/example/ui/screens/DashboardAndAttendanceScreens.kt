@@ -91,7 +91,7 @@ fun DashboardScreen(
                         .testTag("dashboard_occasion_theme_banner"),
                     shape = RoundedCornerShape(18.dp),
                     color = DeepForestGreen,
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, GoldFoil)
+                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.55f))
                 ) {
                     Row(
                         modifier = Modifier
@@ -100,15 +100,25 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = occasionThemeConfig.customIconEmoji.ifBlank { occasionThemeConfig.themeType.iconEmoji },
-                            style = MaterialTheme.typography.headlineSmall
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = DeepEmerald.copy(alpha = 0.45f),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Icon(
+                                    imageVector = Icons.Filled.Celebration,
+                                    contentDescription = null,
+                                    tint = Color(0xFFA7F3D0),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = occasionThemeConfig.themeType.arabicTitle,
                                 style = MaterialTheme.typography.labelMedium,
-                                color = GoldFoil,
+                                color = Color(0xFFA7F3D0),
                                 fontWeight = FontWeight.ExtraBold
                             )
                             Text(
@@ -159,8 +169,8 @@ fun DashboardScreen(
                             NoWrapBadge(
                                 text = currentUser?.role?.arabicTitle ?: "مستخدم",
                                 icon = Icons.Filled.VerifiedUser,
-                                containerColor = GoldAccent,
-                                contentColor = Color(0xFF451A03)
+                                containerColor = Color.White.copy(alpha = 0.22f),
+                                contentColor = Color.White
                             )
                         }
 
@@ -276,12 +286,12 @@ fun DashboardScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = if (activeCall != null) {
-                                        "تم إبلاغ الإدارة بوصولك (${activeCall.requestedAt}) ✅"
+                                        "تم إبلاغ الإدارة بوصولك (${activeCall.requestedAt})"
                                     } else {
-                                        "الاستدعاء السريع عند الانصراف 🚗"
+                                        "الاستدعاء السريع عند الانصراف"
                                     },
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = if (activeCall != null) DeepForestGreen else WarmGoldLight,
+                                    color = if (activeCall != null) DeepForestGreen else Color(0xFFA7F3D0),
                                     fontWeight = FontWeight.ExtraBold
                                 )
                                 Text(
@@ -299,8 +309,8 @@ fun DashboardScreen(
                                 onClick = { viewModel.triggerParentDismissalCall(myStudent) },
                                 shape = RoundedCornerShape(50),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = GoldFoil,
-                                    contentColor = DeepForestGreen
+                                    containerColor = DeepEmerald,
+                                    contentColor = Color.White
                                 ),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                 modifier = Modifier.testTag("dashboard_parent_dismissal_call_btn")
@@ -348,7 +358,7 @@ fun DashboardScreen(
                                     color = if (beh.behaviorType.isPositive) {
                                         SuccessGreen.copy(alpha = 0.12f)
                                     } else {
-                                        WarningAmber.copy(alpha = 0.14f)
+                                        DeepEmerald.copy(alpha = 0.08f)
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -357,13 +367,24 @@ fun DashboardScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(
-                                            text = "${beh.behaviorType.emoji} ${beh.behaviorType.arabicTitle} • ${beh.subjectName}",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = DeepForestGreen,
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             modifier = Modifier.weight(1f)
-                                        )
+                                        ) {
+                                            Icon(
+                                                imageVector = if (beh.behaviorType.isPositive) Icons.Filled.AutoAwesome else Icons.Filled.Info,
+                                                contentDescription = null,
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = "${beh.behaviorType.arabicTitle} • ${beh.subjectName}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepForestGreen
+                                            )
+                                        }
                                         Text(
                                             text = beh.date,
                                             style = MaterialTheme.typography.labelSmall,
@@ -951,13 +972,13 @@ fun DailyAttendanceScreen(
                                         .testTag("attendance_parent_dismissal_call_btn"),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = GoldFoil,
-                                        contentColor = DeepForestGreen
+                                        containerColor = DeepEmerald,
+                                        contentColor = Color.White
                                     )
                                 ) {
                                     Icon(Icons.Filled.DirectionsCar, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("الاستدعاء السريع: أنا أمام المدرسة لاستلام ابني 🚗", fontWeight = FontWeight.ExtraBold)
+                                    Text("الاستدعاء السريع: أنا أمام المدرسة لاستلام ابني", fontWeight = FontWeight.ExtraBold)
                                 }
                             }
                         }
@@ -993,7 +1014,7 @@ fun DailyAttendanceScreen(
                                         color = if (beh.behaviorType.isPositive) {
                                             SuccessGreen.copy(alpha = 0.12f)
                                         } else {
-                                            WarningAmber.copy(alpha = 0.14f)
+                                            DeepEmerald.copy(alpha = 0.08f)
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
@@ -1004,7 +1025,7 @@ fun DailyAttendanceScreen(
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = "${beh.behaviorType.emoji} ${beh.behaviorType.arabicTitle}",
+                                                    text = beh.behaviorType.arabicTitle,
                                                     style = MaterialTheme.typography.labelLarge,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = DeepForestGreen
@@ -1597,20 +1618,31 @@ fun DailyAttendanceScreen(
                                             color = if (behType.isPositive) {
                                                 SuccessGreen.copy(alpha = 0.14f)
                                             } else {
-                                                WarningAmber.copy(alpha = 0.15f)
+                                                DeepEmerald.copy(alpha = 0.08f)
                                             },
                                             border = androidx.compose.foundation.BorderStroke(
                                                 1.dp,
-                                                if (behType.isPositive) SuccessGreen.copy(alpha = 0.5f) else WarningAmber.copy(alpha = 0.55f)
+                                                if (behType.isPositive) SuccessGreen.copy(alpha = 0.5f) else DeepEmerald.copy(alpha = 0.35f)
                                             )
                                         ) {
-                                            Text(
-                                                text = "${behType.emoji} ${behType.arabicTitle}",
+                                            Row(
                                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (behType.isPositive) DeepEmerald else Color(0xFF92400E)
-                                            )
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (behType.isPositive) Icons.Filled.AutoAwesome else Icons.Filled.Info,
+                                                    contentDescription = null,
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = behType.arabicTitle,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepForestGreen
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -2132,16 +2164,16 @@ private fun LostAndFoundRegistryDialog(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        text = if (item.isClaimed) "تم تسليمه لصاحبه ✅" else "موجود لدى الإدارة ⏳",
+                                        text = if (item.isClaimed) "تم تسليمه لصاحبه" else "موجود لدى الإدارة",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (item.isClaimed) SuccessGreen else WarningAmber,
+                                        color = if (item.isClaimed) SuccessGreen else DeepEmerald,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                                 if (canPublish) {
                                     TextButton(onClick = { onToggleStatus(item.id) }) {
                                         Text(
-                                            text = if (item.isClaimed) "إعادة كموجود" else "تم التسليم ✅",
+                                            text = if (item.isClaimed) "إعادة كموجود" else "تم التسليم",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold
                                         )

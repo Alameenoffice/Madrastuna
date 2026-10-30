@@ -845,31 +845,31 @@ enum class DailyBehaviorType(
     val arabicLabel: String,
     val notificationTitle: String,
     val isPositive: Boolean,
-    val emoji: String = "🌟"
+    val emoji: String = ""
 ) {
     EXCELLENT_PARTICIPATION(
-        arabicLabel = "مشارك ممتاز 🌟",
-        notificationTitle = "إشادة يومية: مشارك ممتاز 🌟",
+        arabicLabel = "مشارك ممتاز",
+        notificationTitle = "إشادة يومية: مشارك ممتاز",
         isPositive = true,
-        emoji = "🌟"
+        emoji = ""
     ),
     FORGOT_BOOK(
-        arabicLabel = "نسي الكتاب 📓",
-        notificationTitle = "ملاحظة متابعة: نسيان الكتاب المدرسي 📓",
+        arabicLabel = "نسي الكتاب",
+        notificationTitle = "ملاحظة متابعة: نسيان الكتاب المدرسي",
         isPositive = false,
-        emoji = "📓"
+        emoji = ""
     ),
     MISSED_HOMEWORK(
-        arabicLabel = "لم يحل الواجب ✍️",
-        notificationTitle = "تنبيه دراسي: عدم حل الواجب البيتي ✍️",
+        arabicLabel = "لم يحل الواجب",
+        notificationTitle = "تنبيه دراسي: عدم حل الواجب البيتي",
         isPositive = false,
-        emoji = "✍️"
+        emoji = ""
     ),
     BEHAVIOR_NOTE(
-        arabicLabel = "ملاحظة سلوكية ⚠️",
-        notificationTitle = "ملاحظة سلوكية داخل الصف ⚠️",
+        arabicLabel = "ملاحظة سلوكية",
+        notificationTitle = "ملاحظة سلوكية داخل الصف",
         isPositive = false,
-        emoji = "⚠️"
+        emoji = ""
     );
 
     val arabicTitle: String
@@ -894,8 +894,8 @@ data class DailyBehaviorLogItem(
  * 7.b Photo Homework Submission & Auto-Graded Quick Quizzes (تسليم الواجبات المصور والاختبارات السريعة)
  */
 enum class HomeworkSubmissionStatus(val arabicLabel: String) {
-    PENDING_REVIEW("قيد مراجعة المعلم ⏳"),
-    REVIEWED_CORRECTED("تمت المراجعة والتصحيح ✅")
+    PENDING_REVIEW("قيد مراجعة المعلم"),
+    REVIEWED_CORRECTED("تمت المراجعة والتصحيح")
 }
 
 data class HomeworkSubmissionItem(
@@ -962,7 +962,7 @@ data class DismissalCallItem(
     val parentName: String,
     val parentPhone: String,
     val requestedAtTime: String,
-    val status: String = "بانتظار خروج الطالب 🚗", // or "تم تسليم الطالب لولي الأمر ✅"
+    val status: String = "بانتظار خروج الطالب", // or "تم تسليم الطالب لولي الأمر"
     val isHandled: Boolean = false,
     val schoolId: String = ""
 ) {
@@ -974,8 +974,8 @@ data class DismissalCallItem(
 }
 
 enum class LostAndFoundStatus(val arabicLabel: String) {
-    AT_ADMINISTRATION("موجود في الإدارة 📦"),
-    RETURNED_TO_OWNER("تم التسليم لصاحبه ✅")
+    AT_ADMINISTRATION("موجود في الإدارة"),
+    RETURNED_TO_OWNER("تم التسليم لصاحبه")
 }
 
 data class LostAndFoundItem(
@@ -1040,31 +1040,31 @@ enum class OccasionThemeType(
     val arabicLabel: String,
     val badgeTitle: String,
     val bannerGreeting: String,
-    val emojiSymbol: String
+    val emojiSymbol: String = ""
 ) {
     OFFICIAL(
         arabicLabel = "الوضع الرسمي",
         badgeTitle = "الهوية الزمردية الملكية الرسمية",
         bannerGreeting = "أهلاً بكم في منصة مدرستي الذكية للتعليم الحديث",
-        emojiSymbol = "🏛️"
+        emojiSymbol = ""
     ),
     NEW_YEAR(
         arabicLabel = "رأس السنة",
         badgeTitle = "احتفالية العام الميلادي الجديد",
         bannerGreeting = "كل عام وأنتم بخير • عام دراسي مليء بالتفوق والنجاح",
-        emojiSymbol = "🎉"
+        emojiSymbol = ""
     ),
     RAMADAN_EID(
         arabicLabel = "رمضان والعيد",
         badgeTitle = "نفحات شهر رمضان المبارك والعيد السعيد",
         bannerGreeting = "رمضان كريم وكل عام وأسرتنا التربوية والطلابية بألف خير",
-        emojiSymbol = "🌙"
+        emojiSymbol = ""
     ),
     ACADEMIC_EXCELLENCE(
         arabicLabel = "تفوق العام الدراسي",
         badgeTitle = "موسم الحصاد والتفوق العلمي الذهبي",
         bannerGreeting = "نبارك لطلبتنا الأعزاء موسم التميز والتفوق الدراسي",
-        emojiSymbol = "🏆"
+        emojiSymbol = ""
     );
 
     val iconEmoji: String

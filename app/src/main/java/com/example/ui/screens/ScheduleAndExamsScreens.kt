@@ -257,9 +257,9 @@ fun ScheduleAndHomeworkScreen(
                     )
                     if (featureSettings.quickQuizzesEnabled) {
                         VectorActionButton(
-                            text = "نشر اختبار سريع ⚡",
+                            text = "نشر اختبار سريع",
                             icon = Icons.Filled.Quiz,
-                            containerColor = GoldDeep,
+                            containerColor = DeepEmerald,
                             onClick = { showPublishQuickQuizDialog = true },
                             modifier = Modifier.weight(1f),
                             testTag = "publish_quick_quiz_button"
@@ -278,7 +278,7 @@ fun ScheduleAndHomeworkScreen(
                 if (featureSettings.quickQuizzesEnabled && filteredQuickQuizzes.isNotEmpty()) {
                     item {
                         Text(
-                            text = "الاختبارات السريعة المؤقتة والتصحيح الفوري ⚡ (${filteredQuickQuizzes.size}):",
+                            text = "الاختبارات السريعة المؤقتة والتصحيح الفوري (${filteredQuickQuizzes.size}):",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.ExtraBold,
                             color = DeepEmerald
@@ -297,9 +297,9 @@ fun ScheduleAndHomeworkScreen(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = GoldAccent.copy(alpha = 0.10f)
+                                containerColor = Color(0xFFECFDF5)
                             ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f))
+                            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.45f))
                         ) {
                             Column(
                                 modifier = Modifier.padding(14.dp),
@@ -313,8 +313,8 @@ fun ScheduleAndHomeworkScreen(
                                     NoWrapBadge(
                                         text = "اختبار سريع • ${quiz.subjectName}",
                                         icon = Icons.Filled.Quiz,
-                                        containerColor = GoldAccent.copy(alpha = 0.25f),
-                                        contentColor = Color(0xFF78350F)
+                                        containerColor = DeepEmerald.copy(alpha = 0.14f),
+                                        contentColor = DeepEmerald
                                     )
                                     NoWrapBadge(
                                         text = "الدرجة: ${quiz.points}",
@@ -387,7 +387,7 @@ fun ScheduleAndHomeworkScreen(
                                         ) {
                                             Text(
                                                 text = if (quizAnsForStudent.isCorrect) {
-                                                    "إجابة صحيحة ممتازة! حصلت على (${quizAnsForStudent.earnedPoints} / ${quiz.points}) 🌟"
+                                                    "إجابة صحيحة ممتازة! حصلت على (${quizAnsForStudent.earnedPoints} / ${quiz.points})"
                                                 } else {
                                                     "إجابة غير صحيحة • الإجابة الصحيحة هي: ${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""}"
                                                 },
@@ -554,7 +554,7 @@ fun ScheduleAndHomeworkScreen(
                                                             )
                                                             Column {
                                                                 Text(
-                                                                    text = if (mySubmission.isReviewed) "تمت المراجعة والتصحيح ✅" else "تم إرسال صورة الحل للمعلم ⏳",
+                                                                    text = if (mySubmission.isReviewed) "تمت المراجعة والتصحيح" else "تم إرسال صورة الحل للمعلم",
                                                                     style = MaterialTheme.typography.labelMedium,
                                                                     fontWeight = FontWeight.ExtraBold,
                                                                     color = if (mySubmission.isReviewed) SuccessGreen else DeepEmerald
@@ -577,7 +577,7 @@ fun ScheduleAndHomeworkScreen(
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     CompressedPhotoPickerButton(
-                                                        label = if (pendingPhotoBase64.isEmpty()) "تصوير/إرفاق دفتر الحل 📸" else "جاهز للإرسال ✅",
+                                                        label = if (pendingPhotoBase64.isEmpty()) "تصوير/إرفاق دفتر الحل" else "جاهز للإرسال",
                                                         hasImage = pendingPhotoBase64.isNotEmpty(),
                                                         onPhotoSelected = { pendingPhotoBase64 = it },
                                                         modifier = Modifier.weight(1f)
@@ -646,7 +646,7 @@ fun ScheduleAndHomeworkScreen(
                                                                     fontWeight = FontWeight.Bold
                                                                 )
                                                                 Text(
-                                                                    text = if (sub.isReviewed) "تمت المراجعة ✅" else "بانتظار التصحيح ⏳ • ${sub.submittedAt}",
+                                                                    text = if (sub.isReviewed) "تمت المراجعة" else "بانتظار التصحيح • ${sub.submittedAt}",
                                                                     style = MaterialTheme.typography.labelSmall,
                                                                     color = if (sub.isReviewed) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant
                                                                 )
@@ -657,12 +657,14 @@ fun ScheduleAndHomeworkScreen(
                                                                 onClick = {
                                                                     viewModel.reviewHomeworkSubmission(
                                                                         submissionId = sub.id,
-                                                                        feedback = "أحسنت بارك الله بك، تمت مراجعة وتصحيح الواجب 🌟"
+                                                                        feedback = "أحسنت بارك الله بك، تمت مراجعة وتصحيح الواجب"
                                                                     )
                                                                 },
                                                                 modifier = Modifier.testTag("review_hw_sub_btn_${sub.id}")
                                                             ) {
-                                                                Text("تصحيح ✅", fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(16.dp))
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                                Text("تصحيح", fontWeight = FontWeight.Bold, color = DeepEmerald)
                                                             }
                                                         }
                                                     }
@@ -931,7 +933,7 @@ fun ScheduleAndHomeworkScreen(
 
         AlertDialog(
             onDismissRequest = { showPublishQuickQuizDialog = false },
-            title = { Text("نشر اختبار سريع مؤقت لـ ($selectedClass - $selectedSection) ⚡", fontWeight = FontWeight.ExtraBold) },
+            title = { Text("نشر اختبار سريع مؤقت لـ ($selectedClass - $selectedSection)", fontWeight = FontWeight.ExtraBold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1017,7 +1019,7 @@ fun ScheduleAndHomeworkScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
                     modifier = Modifier.testTag("confirm_publish_quick_quiz_btn")
                 ) {
-                    Text("نشر الاختبار للطلاب ⚡", fontWeight = FontWeight.Bold)
+                    Text("نشر الاختبار للطلاب", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {

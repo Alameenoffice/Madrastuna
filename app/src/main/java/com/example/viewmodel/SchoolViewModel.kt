@@ -78,6 +78,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _developerBroadcasts = MutableStateFlow(repo.loadDeveloperBroadcasts())
     val developerBroadcasts: StateFlow<List<DeveloperBroadcastItem>> = _developerBroadcasts.asStateFlow()
 
+    private val _dismissedBroadcastIds = MutableStateFlow(repo.loadDismissedBroadcastIds())
+    val dismissedBroadcastIds: StateFlow<Set<String>> = _dismissedBroadcastIds.asStateFlow()
+
     private val _isSideDrawerEnabled = MutableStateFlow(repo.isSideDrawerEnabled())
     val isSideDrawerEnabled: StateFlow<Boolean> = _isSideDrawerEnabled.asStateFlow()
 
@@ -301,12 +304,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     collectionName = FirebaseConfigConstants.COL_DEV_BROADCASTS,
                     docName = "registry"
                 )?.let { remoteJson ->
-                    val remoteBroadcasts = repo.parseDeveloperBroadcastsJson(remoteJson)
-                    if (remoteBroadcasts.isNotEmpty()) {
-                        val merged = (remoteBroadcasts + _developerBroadcasts.value)
-                            .distinctBy { it.id }
-                        _developerBroadcasts.value = merged
-                        repo.saveDeveloperBroadcasts(merged)
+                    if (remoteJson.isNotBlank()) {
+                        val remoteBroadcasts = repo.parseDeveloperBroadcastsJson(remoteJson)
+                        _developerBroadcasts.value = remoteBroadcasts
+                        repo.saveDeveloperBroadcastsLocalOnly(remoteBroadcasts)
                     }
                 }
 
@@ -479,6 +480,37 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         showToastAlert("تم إرسال التعميم الفوري لجميع مدراء المدارس المشتركة بنجاح", isSuccess = true)
+    }
+
+    fun updateDeveloperBroadcast(broadcastId: String, newTitle: String, newMessage: String) {
+        val cleanTitle = InputSanitizer.sanitize(newTitle)
+        val cleanMsg = InputSanitizer.sanitize(newMessage)
+        if (cleanTitle.isBlank() || cleanMsg.isBlank()) {
+            showToastAlert("يرجى إدخال عنوان ونص التعميم المحدث", isSuccess = false)
+            return
+        }
+        val updated = _developerBroadcasts.value.map { item ->
+            if (item.id == broadcastId) {
+                item.copy(title = cleanTitle, message = cleanMsg)
+            } else item
+        }
+        _developerBroadcasts.value = updated
+        repo.saveDeveloperBroadcasts(updated)
+        showToastAlert("تم تعديل وتحديث نص التعميم لدى جميع مدراء المدارس فوراً", isSuccess = true)
+    }
+
+    fun deleteDeveloperBroadcast(broadcastId: String) {
+        val updated = _developerBroadcasts.value.filterNot { it.id == broadcastId }
+        _developerBroadcasts.value = updated
+        repo.saveDeveloperBroadcasts(updated)
+        showToastAlert("تم حذف التعميم نهائياً وإزالته من شاشات جميع المدراء", isSuccess = true)
+    }
+
+    fun dismissDeveloperBroadcastForAdmin(broadcastId: String) {
+        if (broadcastId.isBlank()) return
+        val nextSet = _dismissedBroadcastIds.value + broadcastId
+        _dismissedBroadcastIds.value = nextSet
+        repo.saveDismissedBroadcastIds(nextSet)
     }
 
     fun verifyActivationCodeAndUnlockSetup(
@@ -858,10 +890,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 collectionName = FirebaseConfigConstants.COL_DEV_BROADCASTS,
                                 docName = "registry"
                             )?.let { remoteBcJson ->
-                                val parsedBc = repo.parseDeveloperBroadcastsJson(remoteBcJson)
-                                if (parsedBc.isNotEmpty() && parsedBc != _developerBroadcasts.value) {
-                                    _developerBroadcasts.value = parsedBc
-                                    repo.saveDeveloperBroadcasts(parsedBc)
+                                if (remoteBcJson.isNotBlank()) {
+                                    val parsedBc = repo.parseDeveloperBroadcastsJson(remoteBcJson)
+                                    if (parsedBc != _developerBroadcasts.value) {
+                                        _developerBroadcasts.value = parsedBc
+                                        repo.saveDeveloperBroadcastsLocalOnly(parsedBc)
+                                    }
                                 }
                             }
                         }
@@ -3377,7 +3411,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun reviewHomeworkSubmission(
         submissionId: String,
-        feedback: String = "أحسنت، تمت المراجعة والتصحيح ✅"
+        feedback: String = "أحسنت، تمت المراجعة والتصحيح"
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
@@ -3391,7 +3425,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 subjectName = sub.subjectName
                 sub.copy(
                     status = HomeworkSubmissionStatus.REVIEWED_CORRECTED,
-                    teacherFeedback = InputSanitizer.sanitize(feedback).ifBlank { "تمت المراجعة والتصحيح ✅" },
+                    teacherFeedback = InputSanitizer.sanitize(feedback).ifBlank { "تمت المراجعة والتصحيح" },
                     reviewedByTeacher = reviewer
                 )
             } else sub
@@ -3402,7 +3436,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         if (targetStudentId.isNotBlank()) {
             pushNotification(
-                title = "تم تصحيح ومراجعة الواجب ($subjectName) ✅",
+                title = "تم تصحيح ومراجعة الواجب ($subjectName)",
                 body = "راجع المعلم ($reviewer) حل الواجب المصور: $feedback",
                 type = NotificationType.HOMEWORK,
                 targetStudentId = targetStudentId
@@ -3499,7 +3533,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveQuickQuizzes(updated, sid)
 
         if (isCorrect) {
-            showToastAlert("إجابة صحيحة وممتازة! أحسنت التفوق 🌟", isSuccess = true)
+            showToastAlert("إجابة صحيحة وممتازة! أحسنت التفوق", isSuccess = true)
         } else {
             showToastAlert("تم تسجيل إجابتك وتصحيحها تلقائياً — راجع الإجابة النموذجية", isSuccess = false)
         }
@@ -3520,7 +3554,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             parentName = student.parentName.ifBlank { user.fullName },
             parentPhone = student.parentPhone.ifBlank { user.phone },
             requestedAtTime = timeNow,
-            status = "ولي الأمر أمام البوابة بانتظار خروج الطالب 🚗",
+            status = "ولي الأمر أمام البوابة بانتظار خروج الطالب",
             isHandled = false,
             schoolId = sid
         )
@@ -3531,7 +3565,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert("تم إرسال نداء الانصراف للإدارة والمدرسين: جاري تجهيز (${student.fullNameWithFather}) للخروج", isSuccess = true)
 
         pushNotification(
-            title = "نداء انصراف فوري 🚗: ${student.fullNameWithFather}",
+            title = "نداء انصراف فوري: ${student.fullNameWithFather}",
             body = "ولي أمر الطالب (${student.fullNameWithFather} - ${student.gradeClass} شعبة ${student.sectionName}) متواجد الآن أمام باب المدرسة لاستلامه.",
             type = NotificationType.ATTENDANCE,
             targetRole = UserRole.ADMIN.name
@@ -3547,7 +3581,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             if (c.id == callId) {
                 targetStuId = c.studentId
                 stuName = c.studentName
-                c.copy(status = "تم خروج وتسليم الطالب لولي الأمر بسلامة الله ✅", isHandled = true)
+                c.copy(status = "تم خروج وتسليم الطالب لولي الأمر بسلامة الله", isHandled = true)
             } else c
         }
         _dismissalCalls.value = updated
@@ -3556,7 +3590,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         if (targetStuId.isNotBlank()) {
             pushNotification(
-                title = "تم توجيه الطالب للبوابة: $stuName ✅",
+                title = "تم توجيه الطالب للبوابة: $stuName",
                 body = "تم إخراج الطالب ($stuName) لتسليمه إلى ولي أمره بسلامة الله.",
                 type = NotificationType.ATTENDANCE,
                 targetStudentId = targetStuId
@@ -3662,7 +3696,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert("تم إرسال رسالتك إلى صندوق المدير السري بنجاح (لا يطلع عليها سوى المدير حصراً)", isSuccess = true)
 
         pushNotification(
-            title = "صندوق المقترحات السري 🔒: $cleanTitle",
+            title = "صندوق المقترحات السري: $cleanTitle",
             body = "رسالة سرية جديدة من (${user.fullName} - ${user.role.arabicTitle}): $cleanMsg",
             type = NotificationType.REPORT,
             targetRole = UserRole.ADMIN.name

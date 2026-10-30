@@ -1562,6 +1562,21 @@ class SchoolRepository(context: Context) {
     }
 
     fun saveDeveloperBroadcasts(items: List<DeveloperBroadcastItem>) {
+        val jsonStr = serializeDeveloperBroadcastsJson(items)
+        prefs.edit().putString("global_developer_broadcasts", jsonStr).apply()
+        FirebaseCloudSync.pushGlobalCollectionAsync(
+            collectionName = FirebaseConfigConstants.COL_DEV_BROADCASTS,
+            docName = "registry",
+            jsonPayload = jsonStr
+        )
+    }
+
+    fun saveDeveloperBroadcastsLocalOnly(items: List<DeveloperBroadcastItem>) {
+        val jsonStr = serializeDeveloperBroadcastsJson(items)
+        prefs.edit().putString("global_developer_broadcasts", jsonStr).apply()
+    }
+
+    private fun serializeDeveloperBroadcastsJson(items: List<DeveloperBroadcastItem>): String {
         val arr = JSONArray()
         items.forEach { b ->
             arr.put(JSONObject().apply {
@@ -1573,13 +1588,15 @@ class SchoolRepository(context: Context) {
                 put("targetSchoolId", b.targetSchoolId)
             })
         }
-        val jsonStr = arr.toString()
-        prefs.edit().putString("global_developer_broadcasts", jsonStr).apply()
-        FirebaseCloudSync.pushGlobalCollectionAsync(
-            collectionName = FirebaseConfigConstants.COL_DEV_BROADCASTS,
-            docName = "registry",
-            jsonPayload = jsonStr
-        )
+        return arr.toString()
+    }
+
+    fun loadDismissedBroadcastIds(): Set<String> {
+        return prefs.getStringSet("dismissed_dev_broadcast_ids", emptySet())?.toSet() ?: emptySet()
+    }
+
+    fun saveDismissedBroadcastIds(ids: Set<String>) {
+        prefs.edit().putStringSet("dismissed_dev_broadcast_ids", ids).apply()
     }
 
     /**
@@ -2022,7 +2039,7 @@ class SchoolRepository(context: Context) {
                         parentName = o.optString("parentName"),
                         parentPhone = o.optString("parentPhone"),
                         requestedAtTime = o.optString("requestedAtTime"),
-                        status = o.optString("status", "بانتظار خروج الطالب 🚗"),
+                        status = o.optString("status", "بانتظار خروج الطالب"),
                         isHandled = o.optBoolean("isHandled", false),
                         schoolId = itemSid
                     )

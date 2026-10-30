@@ -104,47 +104,57 @@ fun StudentAutoBadgesRow(
     ) {
         badges.forEach { badge ->
             val bgColor = if (badge.isGoldAttendance) {
-                WarmGoldLight
+                Color(0xFFECFDF5)
             } else {
-                EmeraldAccent.copy(alpha = 0.14f)
+                DeepEmerald.copy(alpha = 0.08f)
             }
             val borderColor = if (badge.isGoldAttendance) {
-                GoldFoil
+                EmeraldAccent.copy(alpha = 0.45f)
             } else {
-                EmeraldAccent.copy(alpha = 0.55f)
+                DeepEmerald.copy(alpha = 0.28f)
             }
-            val contentColor = if (badge.isGoldAttendance) {
-                DeepForestGreen
+            val iconCircleBg = if (badge.isGoldAttendance) {
+                DeepEmerald.copy(alpha = 0.14f)
             } else {
-                DeepEmerald
+                EmeraldAccent.copy(alpha = 0.18f)
             }
             Surface(
                 shape = RoundedCornerShape(50),
                 color = bgColor,
-                border = BorderStroke(1.dp, borderColor)
+                border = BorderStroke(1.dp, borderColor),
+                shadowElevation = 0.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(
-                        imageVector = if (badge.isGoldAttendance) Icons.Default.EmojiEvents else Icons.Default.Star,
-                        contentDescription = badge.title,
-                        tint = if (badge.isGoldAttendance) GoldFoil else EmeraldAccent,
-                        modifier = Modifier.size(15.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(iconCircleBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (badge.isGoldAttendance) Icons.Default.Verified else Icons.Default.EmojiEvents,
+                            contentDescription = badge.title,
+                            tint = DeepEmerald,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                     Text(
                         text = badge.title,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.ExtraBold,
-                        color = contentColor
+                        color = DeepForestGreen
                     )
                     if (badge.subtitle.isNotBlank()) {
                         Text(
                             text = "• ${badge.subtitle}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.8f)
+                            color = DeepEmerald.copy(alpha = 0.85f),
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -684,10 +694,18 @@ fun QrAttendanceScannerDialog(
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                             modifier = Modifier.height(32.dp)
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = null,
+                                tint = DeepEmerald,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (showLiveCamera) "إخفاء الكاميرا" else "تشغيل الكاميرا 📷",
+                                text = if (showLiveCamera) "إخفاء الكاميرا" else "تشغيل الكاميرا",
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = DeepEmerald
                             )
                         }
                     }
@@ -699,7 +717,8 @@ fun QrAttendanceScannerDialog(
                             onQrCodeScanned = { scannedValue ->
                                 handleQrDetected(scannedValue)
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            students = students
                         )
                     }
                 }
@@ -807,7 +826,7 @@ fun QrAttendanceScannerDialog(
                                 contentColor = Color.White
                             )
                         ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = GoldFoil)
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFFA7F3D0))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("تسجيل", fontWeight = FontWeight.Bold)
                         }
@@ -1078,11 +1097,16 @@ fun ParentMultiChildSwitcherBar(
 fun AdminSubscriptionAndBroadcastBanner(
     schoolConfig: SchoolConfig,
     developerBroadcasts: List<DeveloperBroadcastItem>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dismissedBroadcastIds: Set<String> = emptySet(),
+    onDismissBroadcast: (String) -> Unit = {}
 ) {
     val daysRemaining = schoolConfig.daysUntilExpiry()
     val showExpiryWarning = schoolConfig.isWithinRenewalWarningWindow()
-    val latestBroadcast = developerBroadcasts.firstOrNull()
+    val visibleBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds) {
+        developerBroadcasts.filterNot { it.id in dismissedBroadcastIds }
+    }
+    val latestBroadcast = visibleBroadcasts.firstOrNull()
 
     if (!showExpiryWarning && latestBroadcast == null) return
 
@@ -1097,8 +1121,8 @@ fun AdminSubscriptionAndBroadcastBanner(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
-                color = if (isExpired) DangerRed.copy(alpha = 0.14f) else WarningAmber.copy(alpha = 0.16f),
-                border = BorderStroke(1.5.dp, if (isExpired) DangerRed else WarningAmber)
+                color = if (isExpired) DangerRed.copy(alpha = 0.12f) else DeepEmerald.copy(alpha = 0.10f),
+                border = BorderStroke(1.dp, if (isExpired) DangerRed else DeepEmerald.copy(alpha = 0.45f))
             ) {
                 Row(
                     modifier = Modifier
@@ -1110,8 +1134,8 @@ fun AdminSubscriptionAndBroadcastBanner(
                     Icon(
                         imageVector = Icons.Default.WarningAmber,
                         contentDescription = null,
-                        tint = if (isExpired) DangerRed else WarningAmber,
-                        modifier = Modifier.size(24.dp)
+                        tint = if (isExpired) DangerRed else DeepEmerald,
+                        modifier = Modifier.size(22.dp)
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -1136,24 +1160,34 @@ fun AdminSubscriptionAndBroadcastBanner(
 
         if (latestBroadcast != null) {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_developer_broadcast_banner"),
                 shape = RoundedCornerShape(14.dp),
-                color = WarmGoldLight,
-                border = BorderStroke(1.dp, GoldFoil)
+                color = Color(0xFFECFDF5),
+                border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.55f))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Campaign,
-                        contentDescription = null,
-                        tint = DeepEmerald,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(DeepEmerald.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = null,
+                            tint = DeepEmerald,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "تعميم مدراء المدارس: ${latestBroadcast.title}",
@@ -1165,6 +1199,19 @@ fun AdminSubscriptionAndBroadcastBanner(
                             text = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
                             style = MaterialTheme.typography.labelSmall,
                             color = DeepEmerald
+                        )
+                    }
+                    IconButton(
+                        onClick = { onDismissBroadcast(latestBroadcast.id) },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("dismiss_developer_broadcast_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "تجاهل وإغلاق التعميم",
+                            tint = DeepForestGreen.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }

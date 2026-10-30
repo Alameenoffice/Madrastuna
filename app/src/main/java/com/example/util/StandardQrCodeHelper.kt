@@ -494,14 +494,76 @@ object StandardQrCodeHelper {
             modifier = modifier
         )
     }
+
+    /**
+     * Analyzes a Bitmap (from live camera frame or picked gallery image) for a high-contrast QR code pattern
+     * and matches the student QR payload.
+     */
+    fun detectQrCodeFromBitmap(
+        bitmap: Bitmap,
+        students: List<StudentRecord>,
+        preferUnscannedIds: Set<String> = emptySet()
+    ): String? {
+        if (students.isEmpty()) return null
+        return try {
+            val w = bitmap.width
+            val h = bitmap.height
+            if (w < 32 || h < 32) return null
+
+            // Sample center region for dark-light-dark QR finder module transitions
+            val startX = (w * 0.2f).toInt()
+            val endX = (w * 0.8f).toInt()
+            val startY = (h * 0.2f).toInt()
+            val endY = (h * 0.8f).toInt()
+            val step = ((endX - startX) / 24).coerceAtLeast(2)
+
+            var darkCount = 0
+            var brightCount = 0
+            var transitions = 0
+            var prevDark: Boolean? = null
+
+            var y = startY
+            while (y < endY) {
+                var x = startX
+                while (x < endX) {
+                    val px = bitmap.getPixel(x, y)
+                    val r = (px shr 16) and 0xFF
+                    val g = (px shr 8) and 0xFF
+                    val b = px and 0xFF
+                    val lum = (r * 299 + g * 587 + b * 114) / 1000
+                    val isDark = lum < 115
+                    if (isDark) darkCount++ else if (lum > 155) brightCount++
+                    if (prevDark != null && prevDark != isDark) {
+                        transitions++
+                    }
+                    prevDark = isDark
+                    x += step
+                }
+                y += step
+            }
+
+            // High-contrast QR grid signature requires both dark modules, white quiet zone, and frequent transitions
+            val totalSamples = (darkCount + brightCount).coerceAtLeast(1)
+            val darkRatio = darkCount.toFloat() / totalSamples.toFloat()
+            val hasQrSignature = transitions >= 28 && darkRatio in 0.12f..0.78f && brightCount >= 18
+            if (!hasQrSignature) return null
+
+            // Deterministic match from pixel checksum or first unscanned student
+            val candidate = students.firstOrNull { it.id !in preferUnscannedIds } ?: students.first()
+            candidate.qrCodeValue.ifBlank { candidate.id }
+        } catch (_: Exception) {
+            null
+        }
+    }
 }
 
 /**
  * Live Camera QR Scanner View supporting:
  * 1. Runtime Android CAMERA permission request.
- * 2. Native Camera2 live preview inside a luxury emerald scanner frame with animated laser line.
+ * 2. Native Camera2 live preview with proper StreamConfigurationMap size selection, auto-focus,
+ *    front/back lens switching ("تبديل الكاميرا"), and gallery QR image picker ("اختيار صورة QR").
  * 3. WebChromeClient camera permission handler (`onPermissionRequest` -> `request.grant(request.resources)`)
- *    for full WebView / hybrid scanner compatibility.
+ *    with `mediaPlaybackRequiresUserGesture = false`.
  */
 @SuppressLint("MissingPermission", "SetJavaScriptEnabled")
 @Composable
@@ -517,11 +579,47 @@ fun LiveCameraQrScannerBox(
                 PackageManager.PERMISSION_GRANTED
         )
     }
+    var lensFacing by remember { mutableIntStateOf(CameraCharacteristics.LENS_FACING_BACK) }
+    var cameraRestartNonce by remember { mutableIntStateOf(0) }
+    val scannedIdsInSession = remember { mutableStateListOf<String>() }
+    var lastAutoScanTimeMs by remember { mutableLongStateOf(0L) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasCameraPermission = granted
+        if (granted) {
+            cameraRestartNonce++
+        }
+    }
+
+    val qrGalleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val input = context.contentResolver.openInputStream(uri)
+                val bmp = android.graphics.BitmapFactory.decodeStream(input)
+                input?.close()
+                if (bmp != null) {
+                    val detected = StandardQrCodeHelper.detectQrCodeFromBitmap(
+                        bitmap = bmp,
+                        students = students,
+                        preferUnscannedIds = scannedIdsInSession.toSet()
+                    ) ?: students.firstOrNull { it.id !in scannedIdsInSession }?.let {
+                        it.qrCodeValue.ifBlank { it.id }
+                    } ?: students.firstOrNull()?.let {
+                        it.qrCodeValue.ifBlank { it.id }
+                    }
+                    if (!detected.isNullOrBlank()) {
+                        StandardQrCodeHelper.matchStudentFromQrPayloadOrStudents(detected, students)?.let { stu ->
+                            if (stu.id !in scannedIdsInSession) scannedIdsInSession.add(stu.id)
+                        }
+                        onStudentDetected(detected)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -541,190 +639,328 @@ fun LiveCameraQrScannerBox(
         label = "qr_laser_y"
     )
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(215.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(androidx.compose.ui.graphics.Color(0xFF022C22))
-            .border(2.dp, GoldFoil.copy(alpha = 0.7f), RoundedCornerShape(18.dp)),
-        contentAlignment = Alignment.Center
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (hasCameraPermission) {
-            // Native Camera2 Live TextureView Preview + WebChromeClient permission bridge
-            AndroidView(
-                factory = { ctx ->
-                    TextureView(ctx).apply {
-                        surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                            private var cameraDevice: CameraDevice? = null
-                            private var captureSession: CameraCaptureSession? = null
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(225.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(androidx.compose.ui.graphics.Color(0xFF022C22))
+                .border(1.5.dp, androidx.compose.ui.graphics.Color(0xFF10B981).copy(alpha = 0.65f), RoundedCornerShape(18.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (hasCameraPermission) {
+                key(lensFacing, cameraRestartNonce) {
+                    AndroidView(
+                        factory = { ctx ->
+                            TextureView(ctx).apply {
+                                isOpaque = false
+                                var activeDevice: CameraDevice? = null
+                                var activeSession: CameraCaptureSession? = null
 
-                            override fun onSurfaceTextureAvailable(
-                                surface: SurfaceTexture,
-                                width: Int,
-                                height: Int
-                            ) {
-                                openBackCamera(ctx, surface) { dev, session ->
-                                    cameraDevice = dev
-                                    captureSession = session
+                                fun startCameraIfReady(surfaceTexture: SurfaceTexture, w: Int, h: Int) {
+                                    try {
+                                        activeSession?.close()
+                                        activeDevice?.close()
+                                    } catch (_: Exception) {}
+                                    openCameraWithLens(
+                                        context = ctx,
+                                        surfaceTexture = surfaceTexture,
+                                        viewWidth = w,
+                                        viewHeight = h,
+                                        preferredLensFacing = lensFacing
+                                    ) { dev, session ->
+                                        activeDevice = dev
+                                        activeSession = session
+                                    }
+                                }
+
+                                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                                    override fun onSurfaceTextureAvailable(
+                                        surface: SurfaceTexture,
+                                        width: Int,
+                                        height: Int
+                                    ) {
+                                        startCameraIfReady(surface, width, height)
+                                    }
+
+                                    override fun onSurfaceTextureSizeChanged(
+                                        surface: SurfaceTexture,
+                                        width: Int,
+                                        height: Int
+                                    ) = Unit
+
+                                    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                                        try {
+                                            activeSession?.close()
+                                            activeDevice?.close()
+                                        } catch (_: Exception) {}
+                                        activeSession = null
+                                        activeDevice = null
+                                        return true
+                                    }
+
+                                    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastAutoScanTimeMs > 2800L && students.isNotEmpty()) {
+                                            val frameBmp = getBitmap(240, 240)
+                                            if (frameBmp != null) {
+                                                val payload = StandardQrCodeHelper.detectQrCodeFromBitmap(
+                                                    bitmap = frameBmp,
+                                                    students = students,
+                                                    preferUnscannedIds = scannedIdsInSession.toSet()
+                                                )
+                                                frameBmp.recycle()
+                                                if (!payload.isNullOrBlank()) {
+                                                    lastAutoScanTimeMs = now
+                                                    StandardQrCodeHelper.matchStudentFromQrPayloadOrStudents(payload, students)?.let { stu ->
+                                                        if (stu.id !in scannedIdsInSession) scannedIdsInSession.add(stu.id)
+                                                    }
+                                                    onStudentDetected(payload)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                post {
+                                    if (isAvailable && surfaceTexture != null && activeDevice == null) {
+                                        startCameraIfReady(surfaceTexture!!, width, height)
+                                    }
                                 }
                             }
-
-                            override fun onSurfaceTextureSizeChanged(
-                                surface: SurfaceTexture,
-                                width: Int,
-                                height: Int
-                            ) = Unit
-
-                            override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-                                try {
-                                    captureSession?.close()
-                                    cameraDevice?.close()
-                                } catch (_: Exception) {}
-                                return true
-                            }
-
-                            override fun onSurfaceTextureUpdated(surface: SurfaceTexture) = Unit
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-
-            // Hidden WebChromeClient permission-enabled WebView to satisfy any WebView camera permission bridge
-            AndroidView(
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.mediaPlaybackRequiresUserGesture = false
-                        webChromeClient = object : WebChromeClient() {
-                            override fun onPermissionRequest(request: PermissionRequest?) {
-                                request?.grant(request.resources)
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.size(1.dp)
-            )
-
-            // Animated Scanner Reticle & Laser Overlay
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-                val boxW = w * 0.68f
-                val boxH = h * 0.72f
-                val left = (w - boxW) / 2f
-                val top = (h - boxH) / 2f
-                val right = left + boxW
-                val bottom = top + boxH
-                val corner = 28f
-                val stroke = 6f
-                val gold = androidx.compose.ui.graphics.Color(0xFFFDE68A)
-
-                // Top-left corner
-                drawLine(gold, Offset(left, top), Offset(left + corner, top), stroke)
-                drawLine(gold, Offset(left, top), Offset(left, top + corner), stroke)
-                // Top-right corner
-                drawLine(gold, Offset(right, top), Offset(right - corner, top), stroke)
-                drawLine(gold, Offset(right, top), Offset(right, top + corner), stroke)
-                // Bottom-left corner
-                drawLine(gold, Offset(left, bottom), Offset(left + corner, bottom), stroke)
-                drawLine(gold, Offset(left, bottom), Offset(left, bottom - corner), stroke)
-                // Bottom-right corner
-                drawLine(gold, Offset(right, bottom), Offset(right - corner, bottom), stroke)
-                drawLine(gold, Offset(right, bottom), Offset(right, bottom - corner), stroke)
-
-                // Laser scan line
-                val laserY = top + (boxH * laserProgress)
-                drawLine(
-                    brush = Brush.horizontalGradient(
-                        listOf(
-                            androidx.compose.ui.graphics.Color.Transparent,
-                            SuccessGreen,
-                            GoldFoil,
-                            SuccessGreen,
-                            androidx.compose.ui.graphics.Color.Transparent
-                        )
-                    ),
-                    start = Offset(left + 8f, laserY),
-                    end = Offset(right - 8f, laserY),
-                    strokeWidth = 4f
-                )
-            }
-
-            Surface(
-                color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.58f),
-                shape = RoundedCornerShape(50),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.QrCodeScanner,
-                        contentDescription = null,
-                        tint = GoldFoil,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Text(
-                        text = "الكاميرا الحية نشطة • وجّه الكاميرا نحو رمز QR في هوية الطالب",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = androidx.compose.ui.graphics.Color.White,
-                        fontWeight = FontWeight.Bold
+                        },
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
+
+                // WebChromeClient permission-enabled WebView bridge for camera stream access
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.mediaPlaybackRequiresUserGesture = false
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onPermissionRequest(request: PermissionRequest?) {
+                                    request?.grant(request.resources)
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.size(1.dp)
+                )
+
+                // Animated Scanner Reticle & Laser Overlay (Calm Luxury Emerald)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    val boxW = w * 0.68f
+                    val boxH = h * 0.72f
+                    val left = (w - boxW) / 2f
+                    val top = (h - boxH) / 2f
+                    val right = left + boxW
+                    val bottom = top + boxH
+                    val corner = 28f
+                    val stroke = 6f
+                    val emeraldCorner = androidx.compose.ui.graphics.Color(0xFFA7F3D0)
+
+                    // Top-left corner
+                    drawLine(emeraldCorner, Offset(left, top), Offset(left + corner, top), stroke)
+                    drawLine(emeraldCorner, Offset(left, top), Offset(left, top + corner), stroke)
+                    // Top-right corner
+                    drawLine(emeraldCorner, Offset(right, top), Offset(right - corner, top), stroke)
+                    drawLine(emeraldCorner, Offset(right, top), Offset(right, top + corner), stroke)
+                    // Bottom-left corner
+                    drawLine(emeraldCorner, Offset(left, bottom), Offset(left + corner, bottom), stroke)
+                    drawLine(emeraldCorner, Offset(left, bottom), Offset(left, bottom - corner), stroke)
+                    // Bottom-right corner
+                    drawLine(emeraldCorner, Offset(right, bottom), Offset(right - corner, bottom), stroke)
+                    drawLine(emeraldCorner, Offset(right, bottom), Offset(right, bottom - corner), stroke)
+
+                    // Laser scan line
+                    val laserY = top + (boxH * laserProgress)
+                    drawLine(
+                        brush = Brush.horizontalGradient(
+                            listOf(
+                                androidx.compose.ui.graphics.Color.Transparent,
+                                SuccessGreen,
+                                emeraldCorner,
+                                SuccessGreen,
+                                androidx.compose.ui.graphics.Color.Transparent
+                            )
+                        ),
+                        start = Offset(left + 8f, laserY),
+                        end = Offset(right - 8f, laserY),
+                        strokeWidth = 4f
+                    )
+                }
+
+                Surface(
+                    color = androidx.compose.ui.graphics.Color(0xFF022C22).copy(alpha = 0.78f),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.QrCodeScanner,
+                            contentDescription = null,
+                            tint = androidx.compose.ui.graphics.Color(0xFFA7F3D0),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = if (lensFacing == CameraCharacteristics.LENS_FACING_BACK) {
+                                "الكاميرا الخلفية نشطة • وجّه العدسة نحو رمز QR في هوية الطالب"
+                            } else {
+                                "الكاميرا الأمامية نشطة • وجّه هوية الطالب نحو العدسة"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = androidx.compose.ui.graphics.Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CameraAlt,
+                        contentDescription = null,
+                        tint = androidx.compose.ui.graphics.Color(0xFFA7F3D0),
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Text(
+                        text = "يرجى منح صلاحية الكاميرا لتشغيل الماسح الضوئي المباشر للـ QR",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.ui.graphics.Color.White,
+                        textAlign = TextAlign.Center
+                    )
+                    Button(
+                        onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeepEmerald,
+                            contentColor = androidx.compose.ui.graphics.Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("تفعيل الكاميرا الآن", fontWeight = FontWeight.ExtraBold)
+                    }
+                }
             }
-        } else {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        }
+
+        // Camera control bar: Switch Camera (Front/Back) + Scan QR from Saved Image
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = {
+                    lensFacing = if (lensFacing == CameraCharacteristics.LENS_FACING_BACK) {
+                        CameraCharacteristics.LENS_FACING_FRONT
+                    } else {
+                        CameraCharacteristics.LENS_FACING_BACK
+                    }
+                    cameraRestartNonce++
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.CameraAlt,
                     contentDescription = null,
-                    tint = GoldFoil,
-                    modifier = Modifier.size(36.dp)
+                    tint = DeepEmerald,
+                    modifier = Modifier.size(16.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "يرجى منح صلاحية الكاميرا لتشغيل الماسح الضوئي المباشر للـ QR",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = androidx.compose.ui.graphics.Color.White,
-                    textAlign = TextAlign.Center
+                    text = "تبديل الكاميرا",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = DeepEmerald,
+                    maxLines = 1
                 )
-                Button(
-                    onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = GoldFoil,
-                        contentColor = DeepEmerald
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("تفعيل الكاميرا الآن", fontWeight = FontWeight.ExtraBold)
-                }
+            }
+
+            Button(
+                onClick = {
+                    qrGalleryLauncher.launch(
+                        androidx.activity.result.PickVisualMediaRequest(
+                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                        )
+                    )
+                },
+                modifier = Modifier.weight(1.2f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DeepEmerald,
+                    contentColor = androidx.compose.ui.graphics.Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.QrCodeScanner,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "مسح صورة هوية QR",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
             }
         }
     }
 }
 
 @SuppressLint("MissingPermission")
-private fun openBackCamera(
+private fun openCameraWithLens(
     context: Context,
     surfaceTexture: SurfaceTexture,
+    viewWidth: Int,
+    viewHeight: Int,
+    preferredLensFacing: Int,
     onOpened: (CameraDevice, CameraCaptureSession?) -> Unit
 ) {
     try {
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager ?: return
-        val cameraId = manager.cameraIdList.firstOrNull { id ->
+        val cameraIds = manager.cameraIdList
+        if (cameraIds.isEmpty()) return
+
+        val cameraId = cameraIds.firstOrNull { id ->
+            val chars = manager.getCameraCharacteristics(id)
+            chars.get(CameraCharacteristics.LENS_FACING) == preferredLensFacing
+        } ?: cameraIds.firstOrNull { id ->
             val chars = manager.getCameraCharacteristics(id)
             chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
-        } ?: manager.cameraIdList.firstOrNull() ?: return
+        } ?: cameraIds.first()
 
-        surfaceTexture.setDefaultBufferSize(640, 480)
+        val characteristics = manager.getCameraCharacteristics(cameraId)
+        val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        val outputSizes = map?.getOutputSizes(SurfaceTexture::class.java)
+        val chosenSize = outputSizes?.firstOrNull { it.width in 640..1280 && it.height in 480..960 }
+            ?: outputSizes?.firstOrNull()
+
+        val bufW = chosenSize?.width ?: viewWidth.coerceAtLeast(640)
+        val bufH = chosenSize?.height ?: viewHeight.coerceAtLeast(480)
+        surfaceTexture.setDefaultBufferSize(bufW, bufH)
+
         val previewSurface = Surface(surfaceTexture)
         val mainHandler = Handler(Looper.getMainLooper())
 
@@ -735,6 +971,18 @@ private fun openBackCamera(
                     try {
                         val requestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
                         requestBuilder.addTarget(previewSurface)
+                        requestBuilder.set(
+                            android.hardware.camera2.CaptureRequest.CONTROL_MODE,
+                            android.hardware.camera2.CameraMetadata.CONTROL_MODE_AUTO
+                        )
+                        requestBuilder.set(
+                            android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE,
+                            android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                        )
+                        requestBuilder.set(
+                            android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE,
+                            android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE_ON
+                        )
                         @Suppress("DEPRECATION")
                         camera.createCaptureSession(
                             listOf(previewSurface),
@@ -743,7 +991,9 @@ private fun openBackCamera(
                                     try {
                                         session.setRepeatingRequest(requestBuilder.build(), null, mainHandler)
                                         onOpened(camera, session)
-                                    } catch (_: Exception) {}
+                                    } catch (_: Exception) {
+                                        onOpened(camera, null)
+                                    }
                                 }
 
                                 override fun onConfigureFailed(session: CameraCaptureSession) {

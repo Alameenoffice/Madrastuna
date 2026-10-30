@@ -380,15 +380,16 @@ fun HonorRollScreen(
                                 NoWrapBadge(
                                     text = "سبب التكريم: ${stu.honorTitle}",
                                     icon = Icons.Filled.MilitaryTech,
-                                    containerColor = GoldAccent.copy(alpha = 0.18f),
-                                    contentColor = GoldDeep
+                                    containerColor = Color(0xFFECFDF5),
+                                    contentColor = DeepEmerald
                                 )
                             }
                         }
 
                         Surface(
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFFEF3C7),
+                            color = Color(0xFFECFDF5),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.4f)),
                             modifier = Modifier.padding(start = 6.dp)
                         ) {
                             Column(
@@ -398,13 +399,14 @@ fun HonorRollScreen(
                                 Icon(
                                     imageVector = Icons.Filled.EmojiEvents,
                                     contentDescription = null,
-                                    tint = GoldDeep,
+                                    tint = DeepEmerald,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
                                     text = "${stu.excellencePoints} نقطة",
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = Color(0xFF78350F),
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     softWrap = false
                                 )

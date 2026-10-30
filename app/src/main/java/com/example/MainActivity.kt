@@ -245,9 +245,9 @@ fun MadrasatiRootApp(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald)
                     ) {
-                        Icon(Icons.Filled.Download, contentDescription = null, tint = GoldFoil)
+                        Icon(Icons.Filled.Download, contentDescription = null, tint = Color(0xFFA7F3D0))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("تحديث الآن 🚀", fontWeight = FontWeight.Bold)
+                        Text("تحديث الآن", fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
@@ -338,6 +338,7 @@ fun AuthenticatedMainPlatform(
     val allStudents by viewModel.students.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
+    val dismissedBroadcastIds by viewModel.dismissedBroadcastIds.collectAsState()
 
     val featureSettings = schoolConfig.featureSettings
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -432,10 +433,11 @@ fun AuthenticatedMainPlatform(
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            // Drawer Header with School Logo & User Info
+                            // Drawer Header with School Logo & User Info (No duplicate role title)
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
-                                color = DeepEmerald.copy(alpha = 0.7f),
+                                color = DeepEmerald.copy(alpha = 0.65f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.35f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -448,8 +450,13 @@ fun AuthenticatedMainPlatform(
                                         fallbackIcon = Icons.Filled.School,
                                         contentDescription = schoolConfig.schoolName,
                                         size = 48.dp,
-                                        tint = GoldFoil
+                                        tint = Color(0xFFA7F3D0)
                                     )
+                                    val userFullName = currentUser?.fullName?.trim().orEmpty()
+                                    val userRoleTitle = currentUser?.role?.arabicTitle?.trim().orEmpty()
+                                    val isDuplicateTitle = userFullName.isEmpty() ||
+                                        userFullName.equals(userRoleTitle, ignoreCase = true) ||
+                                        userFullName == "المدير" && userRoleTitle.contains("المدير")
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = schoolConfig.schoolName,
@@ -459,19 +466,30 @@ fun AuthenticatedMainPlatform(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Text(
-                                            text = currentUser?.fullName ?: "",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = WarmGoldLight,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = currentUser?.role?.arabicTitle ?: "",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFFA7F3D0)
-                                        )
+                                        if (isDuplicateTitle) {
+                                            Text(
+                                                text = userRoleTitle.ifBlank { userFullName },
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = Color(0xFFA7F3D0),
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        } else {
+                                            Text(
+                                                text = userFullName,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = Color.White.copy(alpha = 0.92f),
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = userRoleTitle,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFFA7F3D0)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -503,12 +521,12 @@ fun AuthenticatedMainPlatform(
                                             coroutineScope.launch { drawerState.close() }
                                         },
                                         colors = NavigationDrawerItemDefaults.colors(
-                                            selectedContainerColor = GoldFoil,
-                                            selectedTextColor = DeepForestGreen,
-                                            selectedIconColor = DeepForestGreen,
+                                            selectedContainerColor = DeepEmerald.copy(alpha = 0.85f),
+                                            selectedTextColor = Color.White,
+                                            selectedIconColor = Color(0xFFA7F3D0),
                                             unselectedContainerColor = Color.Transparent,
-                                            unselectedTextColor = Color.White,
-                                            unselectedIconColor = Color(0xFFA7F3D0)
+                                            unselectedTextColor = Color.White.copy(alpha = 0.88f),
+                                            unselectedIconColor = Color(0xFFA7F3D0).copy(alpha = 0.75f)
                                         ),
                                         modifier = Modifier.testTag("drawer_nav_${section.name}")
                                     )
@@ -772,11 +790,15 @@ fun AuthenticatedMainPlatform(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                // Admin 14-day Subscription Expiry Warning & Developer Broadcasts Banner
+                // Admin 14-day Subscription Expiry Warning & Developer Broadcasts Banner (STRICTLY ADMIN ONLY)
                 if (currentUser?.role == UserRole.ADMIN) {
                     AdminSubscriptionAndBroadcastBanner(
                         schoolConfig = schoolConfig,
-                        developerBroadcasts = developerBroadcasts
+                        developerBroadcasts = developerBroadcasts,
+                        dismissedBroadcastIds = dismissedBroadcastIds,
+                        onDismissBroadcast = { bcId ->
+                            viewModel.dismissDeveloperBroadcastForAdmin(bcId)
+                        }
                     )
                 }
 

@@ -162,8 +162,8 @@ fun OnboardingScreen(
             if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT) {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = GoldAccent.copy(alpha = 0.18f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent),
+                    color = Color(0xFFECFDF5),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.55f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -171,10 +171,15 @@ fun OnboardingScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
+                        Icon(
+                            imageVector = Icons.Filled.Celebration,
+                            contentDescription = null,
+                            tint = DeepEmerald,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "${occasionThemeConfig.occasionTheme.badgeEmoji} ${
-                                occasionThemeConfig.customGreeting.ifBlank { occasionThemeConfig.occasionTheme.greetingBanner }
-                            }",
+                            text = occasionThemeConfig.customGreeting.ifBlank { occasionThemeConfig.occasionTheme.greetingBanner },
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.ExtraBold,
                             color = DeepEmerald,
@@ -1468,30 +1473,125 @@ fun DeveloperControlPanelScreen(
                         )
                     }
 
+                    var editingBroadcast by remember { mutableStateOf<DeveloperBroadcastItem?>(null) }
+
                     if (developerBroadcasts.isNotEmpty()) {
-                        val latest = developerBroadcasts.first()
-                        Surface(
-                            color = WarmGoldLight,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                        HorizontalDivider(color = DeepEmerald.copy(alpha = 0.15f))
+                        Text(
+                            text = "التعاميم المرسلة لمدراء المدارس (${developerBroadcasts.size}):",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = DeepForestGreen,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        developerBroadcasts.forEach { bc ->
+                            Surface(
+                                color = Color(0xFFECFDF5),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.45f)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(
-                                    text = "آخر تعميم مرسل للمدراء: ${latest.title} (${latest.createdAt})",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = DeepForestGreen,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = latest.message,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = DeepEmerald
-                                )
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "${bc.title} (${bc.createdAt})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = DeepForestGreen,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                            Text(
+                                                text = bc.message,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            TextButton(
+                                                onClick = { editingBroadcast = bc },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.testTag("dev_edit_broadcast_btn_${bc.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Edit,
+                                                    contentDescription = "تعديل التعميم",
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("تعديل", style = MaterialTheme.typography.labelSmall, color = DeepEmerald, fontWeight = FontWeight.Bold)
+                                            }
+                                            TextButton(
+                                                onClick = { viewModel.deleteDeveloperBroadcast(bc.id) },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.testTag("dev_delete_broadcast_btn_${bc.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Delete,
+                                                    contentDescription = "حذف التعميم",
+                                                    tint = DangerRed,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("حذف", style = MaterialTheme.typography.labelSmall, color = DangerRed, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+                    }
+
+                    editingBroadcast?.let { targetBc ->
+                        var editedTitle by remember(targetBc.id) { mutableStateOf(targetBc.title) }
+                        var editedMsg by remember(targetBc.id) { mutableStateOf(targetBc.message) }
+                        AlertDialog(
+                            onDismissRequest = { editingBroadcast = null },
+                            title = {
+                                Text("تعديل تعميم مدراء المدارس", fontWeight = FontWeight.ExtraBold)
+                            },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    OutlinedTextField(
+                                        value = editedTitle,
+                                        onValueChange = { editedTitle = it },
+                                        label = { Text("عنوان التعميم") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = editedMsg,
+                                        onValueChange = { editedMsg = it },
+                                        label = { Text("نص التعميم") },
+                                        minLines = 3,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        viewModel.updateDeveloperBroadcast(targetBc.id, editedTitle, editedMsg)
+                                        editingBroadcast = null
+                                    },
+                                    enabled = editedTitle.isNotBlank() && editedMsg.isNotBlank(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+                                ) {
+                                    Text("حفظ التعديل", fontWeight = FontWeight.Bold)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { editingBroadcast = null }) {
+                                    Text("إلغاء")
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -1568,7 +1668,7 @@ fun DeveloperControlPanelScreen(
                     }
 
                     VectorActionButton(
-                        text = "نشر التحديث فوراً لجميع المستخدمين 🚀",
+                        text = "نشر التحديث فوراً لجميع المستخدمين",
                         icon = Icons.Filled.CloudUpload,
                         containerColor = DeepEmerald,
                         onClick = {
@@ -1601,7 +1701,7 @@ fun DeveloperControlPanelScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Filled.Celebration, contentDescription = null, tint = GoldDeep)
+                        Icon(Icons.Filled.Celebration, contentDescription = null, tint = DeepEmerald)
                         Column {
                             Text(
                                 text = "ثيم وأيقونة المناسبات المباشر (Occasion Theme)",
@@ -1626,7 +1726,14 @@ fun DeveloperControlPanelScreen(
                                         customOccasionGreeting = occ.greetingBanner
                                     }
                                 },
-                                label = { Text("${occ.badgeEmoji} ${occ.arabicLabel}") }
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                label = { Text(occ.arabicLabel) }
                             )
                         }
                     }
@@ -1641,9 +1748,9 @@ fun DeveloperControlPanelScreen(
                     )
 
                     VectorActionButton(
-                        text = "تفعيل ثيم المناسبة في جميع المدارس ✨",
+                        text = "تفعيل ثيم المناسبة في جميع المدارس",
                         icon = Icons.Filled.AutoAwesome,
-                        containerColor = GoldDeep,
+                        containerColor = DeepEmerald,
                         onClick = {
                             viewModel.updateGlobalOccasionTheme(
                                 occasionTheme = selectedOccasionTheme,
@@ -1825,10 +1932,10 @@ fun DeveloperControlPanelScreen(
                                                 onClick = {
                                                     val msg = buildString {
                                                         append("السلام عليكم ورحمة الله وبركاته\n")
-                                                        append("مرحباً بك في *منصة مدرستي الذكية* 🏫\n\n")
-                                                        append("🔑 *كود تفعيل تأسيس المدرسة لمرة واحدة:*\n")
+                                                        append("مرحباً بك في *منصة مدرستي الذكية*\n\n")
+                                                        append("*كود تفعيل تأسيس المدرسة لمرة واحدة:*\n")
                                                         append("*${lic.code}*\n\n")
-                                                        append("📌 *طريقة تأسيس المدرسة:*\n")
+                                                        append("*طريقة تأسيس المدرسة:*\n")
                                                         append("1. افتح تطبيق مدرستي على هاتفك.\n")
                                                         append("2. في شاشة تسجيل الدخول، اضغط *5 ضغطات متتالية* على شعار المنصة في الأعلى.\n")
                                                         append("3. أدخل كود التفعيل (*${lic.code}*) لتفتح لك شاشة تأسيس المدرسة وإنشاء حساب المدير.\n\n")

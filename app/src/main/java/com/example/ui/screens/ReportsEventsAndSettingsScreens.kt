@@ -1399,7 +1399,7 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = if (isSideDrawerEnabled) "مفعلة (تظهر أيقونة ☰ أعلى الشاشة للانتقال الفوري)" else "مخفية حالياً",
+                                text = if (isSideDrawerEnabled) "مفعلة (تظهر أيقونة القائمة الجانبية أعلى الشاشة للانتقال الفوري)" else "مخفية حالياً",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1462,7 +1462,7 @@ fun SettingsScreen(
                             }
                         }
                         NoWrapBadge(
-                            text = "سري 🔒",
+                            text = "سري للغاية",
                             icon = Icons.Filled.VerifiedUser,
                             containerColor = DeepEmerald.copy(alpha = 0.14f),
                             contentColor = DeepEmerald
@@ -1480,7 +1480,7 @@ fun SettingsScreen(
                                 .testTag("private_suggestion_input")
                         )
                         VectorActionButton(
-                            text = "إرسال المقترح السري لمدير المدرسة 🔒",
+                            text = "إرسال المقترح السري لمدير المدرسة",
                             icon = Icons.AutoMirrored.Filled.Send,
                             containerColor = DeepEmerald,
                             onClick = {
@@ -1578,60 +1578,117 @@ fun SettingsScreen(
                     }
 
                     val featureRows = listOf(
-                        Triple("ميزة الخطوط والنقل المدرسي 🚌", featureSettings.busAlertsEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة الخطوط والنقل المدرسي" to Icons.Filled.DirectionsBus,
+                            featureSettings.busAlertsEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(busAlertsEnabled = v))
                         },
-                        Triple("ميزة لوحة الشرف والتفاعل بالقلب 🏆", featureSettings.honorRollEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة لوحة الشرف والتفاعل بالقلب" to Icons.Filled.EmojiEvents,
+                            featureSettings.honorRollEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(honorRollEnabled = v))
                         },
-                        Triple("ميزة المراسلة والمحادثات المباشرة 💬", featureSettings.directChatEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة المراسلة والمحادثات المباشرة" to Icons.Filled.Forum,
+                            featureSettings.directChatEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(directChatEnabled = v))
                         },
-                        Triple("ميزة المكتبة الرقمية والملخصات 📚", featureSettings.studyLibraryEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة المكتبة الرقمية والملخصات" to Icons.Filled.MenuBook,
+                            featureSettings.studyLibraryEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(studyLibraryEnabled = v))
                         },
-                        Triple("ميزة طلبات الإجازة الإلكترونية 📝", featureSettings.leaveRequestsEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة طلبات الإجازة الإلكترونية" to Icons.Filled.EventNote,
+                            featureSettings.leaveRequestsEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(leaveRequestsEnabled = v))
                         },
-                        Triple("ميزة الماسح الضوئي للهويات (QR Attendance) 📷", featureSettings.qrScannerEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة الماسح الضوئي للهويات (QR Attendance)" to Icons.Filled.QrCodeScanner,
+                            featureSettings.qrScannerEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(qrScannerEnabled = v))
                         },
-                        Triple("ميزة الأقساط الدراسية والوصولات 💰", featureSettings.tuitionEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة الأقساط الدراسية والوصولات" to Icons.Filled.AccountBalanceWallet,
+                            featureSettings.tuitionEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(tuitionEnabled = v))
                         },
-                        Triple("ميزة تسليم الواجبات بالصورة 📸", featureSettings.homeworkSubmissionEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة تسليم الواجبات بالصورة" to Icons.Filled.CameraAlt,
+                            featureSettings.homeworkSubmissionEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(homeworkSubmissionEnabled = v))
                         },
-                        Triple("ميزة دفتر المتابعة اليومي والسلوك 🌟", featureSettings.dailyBehaviorEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة دفتر المتابعة اليومي والسلوك" to Icons.Filled.AutoAwesome,
+                            featureSettings.dailyBehaviorEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(dailyBehaviorEnabled = v))
                         },
-                        Triple("ميزة النداء الذكي للانصراف (استلام الأبناء) 🚗", featureSettings.dismissalCallEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة النداء الذكي للانصراف (استلام الأبناء)" to Icons.Filled.DirectionsCar,
+                            featureSettings.dismissalCallEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(dismissalCallEnabled = v))
                         },
-                        Triple("ميزة الاختبارات السريعة المؤقتة ⚡", featureSettings.quickQuizzesEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة الاختبارات السريعة المؤقتة" to Icons.Filled.Quiz,
+                            featureSettings.quickQuizzesEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(quickQuizzesEnabled = v))
                         },
-                        Triple("ميزة سجل المفقودات وصندوق المقترحات 🔎", featureSettings.lostAndFoundEnabled) { v: Boolean ->
+                        Triple(
+                            "ميزة سجل المفقودات وصندوق المقترحات" to Icons.Filled.Inventory2,
+                            featureSettings.lostAndFoundEnabled
+                        ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(
                                 featureSettings.copy(lostAndFoundEnabled = v, suggestionsBoxEnabled = v)
                             )
                         }
                     )
 
-                    featureRows.forEachIndexed { idx, (label, isChecked, onToggle) ->
+                    featureRows.forEachIndexed { idx, (labelAndIcon, isChecked, onToggle) ->
+                        val (label, featureIcon) = labelAndIcon
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 3.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = DeepEmerald.copy(alpha = 0.10f),
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Icon(
+                                            imageVector = featureIcon,
+                                            contentDescription = label,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                             Switch(
                                 checked = isChecked,
                                 onCheckedChange = onToggle,
