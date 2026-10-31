@@ -923,8 +923,8 @@ fun DailyAttendanceScreen(
             base
         } else {
             base.filter { stu ->
-                stu.gradeClass == selectedClass &&
-                    stu.sectionName == selectedSection &&
+                ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
+                    ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection) &&
                     (searchName.isBlank() ||
                         stu.studentName.contains(searchName, ignoreCase = true) ||
                         stu.fullNameWithFather.contains(searchName, ignoreCase = true))
@@ -1273,7 +1273,8 @@ fun DailyAttendanceScreen(
                                     onClick = {
                                         val monthPrefix = selectedDate.take(7)
                                         val classStudents = students.filter {
-                                            it.gradeClass == selectedClass && it.sectionName == selectedSection
+                                            ArabicTextNormalizer.matchesClass(it.gradeClass, selectedClass) &&
+                                                ArabicTextNormalizer.matchesSection(it.sectionName, selectedSection)
                                         }
                                         val res = DocumentAndIdExporter.exportMonthlyAttendanceReportPdf(
                                             context = context,
@@ -1547,7 +1548,7 @@ fun DailyAttendanceScreen(
             val visibleScopedStudents = scopedStudents.take(teacherStudentsVisibleCount)
             items(visibleScopedStudents, key = { it.id }) { stu ->
                 val currentEntry = attendance.firstOrNull {
-                    it.studentId == stu.id && it.date == selectedDate
+                    it.studentId == stu.id && it.date.trim() == selectedDate.trim()
                 }
                 val currentStatus = currentEntry?.status ?: AttendanceStatus.PRESENT
                 val totalAbsences = remember(attendance, stu.id) {
@@ -1665,7 +1666,9 @@ fun DailyAttendanceScreen(
                                         .weight(1f)
                                         .clip(RoundedCornerShape(10.dp))
                                         .clickable(enabled = canEdit) {
-                                            viewModel.recordStudentAttendance(stu, selectedDate, st)
+                                            if (currentEntry == null || currentStatus != st) {
+                                                viewModel.recordStudentAttendance(stu, selectedDate, st)
+                                            }
                                         }
                                         .testTag("att_btn_${stu.id}_${st.name}"),
                                     color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),

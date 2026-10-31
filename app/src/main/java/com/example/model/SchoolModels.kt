@@ -41,6 +41,7 @@ object FirebaseConfigConstants {
     const val COL_PRIVATE_SUGGESTIONS = "private_suggestions"
     const val COL_URGENT_ALERT = "urgent_alert"
     const val COL_STUDENT_ACTIVITIES = "student_activities"
+    const val COL_STUDENT_ACTIVITY_COMMENTS = "student_activity_comments"
     const val COL_ACTIVITY_REPORTS = "activity_reports"
     const val COL_USER_PROFILES = "user_profiles"
 
@@ -337,19 +338,31 @@ data class UserAccount(
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
+    val teacherAssignedClassesOnly: List<String>
+        get() = teacherClassSectionPairs.map { pair ->
+            if (pair.contains("-")) pair.substringBefore("-").trim() else pair.trim()
+        }.filter { it.isNotEmpty() }.distinctBy { ArabicTextNormalizer.normalizeClass(it) }
+
     fun canTeacherAccessClassSection(gradeClass: String, sectionName: String? = null): Boolean {
         if (role == UserRole.ADMIN) return true
         if (role != UserRole.TEACHER) return false
         val pairs = teacherClassSectionPairs
         if (pairs.isEmpty()) return true
+        if (pairs.any { ArabicTextNormalizer.isAllClassesToken(it) }) return true
+        val normTargetClass = ArabicTextNormalizer.normalizeClass(gradeClass)
+        val normTargetSec = sectionName?.let { ArabicTextNormalizer.normalizeSection(it) }.orEmpty()
         return pairs.any { item ->
-            if (item.contains("-")) {
+            if (ArabicTextNormalizer.isAllClassesToken(item)) {
+                true
+            } else if (item.contains("-")) {
                 val parts = item.split("-").map { it.trim() }
                 val cls = parts.getOrNull(0) ?: ""
-                val sec = parts.getOrNull(1)?.replace("شعبة", "")?.trim() ?: ""
-                cls == gradeClass && (sectionName == null || sec.isEmpty() || sec == sectionName)
+                val sec = parts.getOrNull(1) ?: ""
+                val classMatches = ArabicTextNormalizer.normalizeClass(cls) == normTargetClass
+                val secNorm = ArabicTextNormalizer.normalizeSection(sec)
+                classMatches && (sectionName == null || normTargetSec.isEmpty() || secNorm.isEmpty() || secNorm == normTargetSec || ArabicTextNormalizer.isAllClassesToken(sec))
             } else {
-                item == gradeClass
+                ArabicTextNormalizer.normalizeClass(item) == normTargetClass
             }
         }
     }
@@ -359,7 +372,84 @@ data class UserAccount(
         if (role != UserRole.TEACHER) return false
         val subs = teacherSubjectsList
         if (subs.isEmpty()) return true
-        return subs.any { it.equals(subjectName, ignoreCase = true) || subjectName.contains(it) || it.contains(subjectName) }
+        if (subs.any { ArabicTextNormalizer.isAllClassesToken(it) }) return true
+        val normSub = ArabicTextNormalizer.normalizeText(subjectName)
+        return subs.any {
+            val normAssigned = ArabicTextNormalizer.normalizeText(it)
+            normAssigned == normSub || normSub.contains(normAssigned) || normAssigned.contains(normSub)
+        }
+    }
+}
+
+object ArabicTextNormalizer {
+    fun normalizeText(input: String): String {
+        return input.trim()
+            .replace(Regex("[أإآٱ]"), "ا")
+            .replace("ة", "ه")
+            .replace("ى", "ي")
+            .replace("ؤ", "و")
+            .replace("ئ", "ي")
+            .replace("ـ", "")
+            .replace(Regex("\\s+"), " ")
+            .lowercase()
+    }
+
+    fun normalizeClass(gradeClass: String): String {
+        val cleaned = gradeClass.trim()
+            .replace("الصف", "")
+            .trim()
+        return normalizeText(cleaned)
+    }
+
+    fun normalizeSection(sectionName: String): String {
+        val cleaned = sectionName.trim()
+            .replace("شعبة", "")
+            .replace("الشعبة", "")
+            .replace("(", "")
+            .replace(")", "")
+            .trim()
+        return normalizeText(cleaned)
+    }
+
+    fun matchesClass(c1: String, c2: String): Boolean {
+        if (isAllClassesToken(c1) || isAllClassesToken(c2)) return true
+        val n1 = normalizeClass(c1)
+        val n2 = normalizeClass(c2)
+        return n1.isNotEmpty() && n1 == n2
+    }
+
+    fun matchesSection(s1: String, s2: String): Boolean {
+        if (isAllClassesToken(s1) || isAllClassesToken(s2)) return true
+        val n1 = normalizeSection(s1)
+        val n2 = normalizeSection(s2)
+        return n1.isNotEmpty() && n1 == n2
+    }
+
+    fun isAllClassesToken(token: String): Boolean {
+        val norm = normalizeText(token)
+        return norm == "الكل" ||
+            norm == "جميع الصفوف" ||
+            norm == "كل الصفوف" ||
+            norm == "جميع الشعب" ||
+            norm == "كل الشعب" ||
+            norm == "عام" ||
+            norm == "all"
+    }
+
+    fun normalizeDigitsToAscii(raw: String): String {
+        val arabicIndic = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+        val easternArabic = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹')
+        val sb = StringBuilder(raw.length)
+        for (ch in raw) {
+            val idx1 = arabicIndic.indexOf(ch)
+            val idx2 = easternArabic.indexOf(ch)
+            when {
+                idx1 >= 0 -> sb.append(('0'.code + idx1).toChar())
+                idx2 >= 0 -> sb.append(('0'.code + idx2).toChar())
+                else -> sb.append(ch)
+            }
+        }
+        return sb.toString()
     }
 }
 
@@ -458,9 +548,9 @@ data class ExamScheduleItem(
     val examType: String,
     val examDate: String,
     val dayName: String,
-    val timeSlot: String = "08:30 صباحاً",
+    val timeSlot: String = "",
     val topicsIncluded: String = "",
-    val hallNumber: String = "قاعة 1",
+    val hallNumber: String = "",
     val schoolId: String = ""
 ) {
     fun daysRemainingUntilExam(): Long? = DateCountdownHelper.daysUntilDate(examDate)
@@ -818,11 +908,32 @@ data class StudentAutoBadge(
 object DateCountdownHelper {
     fun daysUntilDate(dateStr: String): Long? {
         return try {
-            val clean = dateStr.trim().take(10)
-            if (clean.length < 8) return null
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-            sdf.isLenient = false
-            val targetDate = sdf.parse(clean) ?: return null
+            val ascii = ArabicTextNormalizer.normalizeDigitsToAscii(dateStr)
+                .trim()
+                .replace("/", "-")
+                .replace(".", "-")
+            // Extract YYYY-M-D or D-M-YYYY token
+            val regexYmd = Regex("(\\d{4})-(\\d{1,2})-(\\d{1,2})")
+            val regexDmy = Regex("(\\d{1,2})-(\\d{1,2})-(\\d{4})")
+            val ymdMatch = regexYmd.find(ascii)
+            val dmyMatch = if (ymdMatch == null) regexDmy.find(ascii) else null
+            val year: Int
+            val month: Int
+            val day: Int
+            when {
+                ymdMatch != null -> {
+                    year = ymdMatch.groupValues[1].toInt()
+                    month = ymdMatch.groupValues[2].toInt()
+                    day = ymdMatch.groupValues[3].toInt()
+                }
+                dmyMatch != null -> {
+                    day = dmyMatch.groupValues[1].toInt()
+                    month = dmyMatch.groupValues[2].toInt()
+                    year = dmyMatch.groupValues[3].toInt()
+                }
+                else -> return null
+            }
+            if (month !in 1..12 || day !in 1..31 || year < 2000) return null
             val todayCal = java.util.Calendar.getInstance().apply {
                 set(java.util.Calendar.HOUR_OF_DAY, 0)
                 set(java.util.Calendar.MINUTE, 0)
@@ -830,14 +941,12 @@ object DateCountdownHelper {
                 set(java.util.Calendar.MILLISECOND, 0)
             }
             val targetCal = java.util.Calendar.getInstance().apply {
-                time = targetDate
-                set(java.util.Calendar.HOUR_OF_DAY, 0)
-                set(java.util.Calendar.MINUTE, 0)
-                set(java.util.Calendar.SECOND, 0)
+                clear()
+                set(year, month - 1, day, 0, 0, 0)
                 set(java.util.Calendar.MILLISECOND, 0)
             }
             val diffMillis = targetCal.timeInMillis - todayCal.timeInMillis
-            java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diffMillis)
+            kotlin.math.round(diffMillis / 86_400_000.0).toLong()
         } catch (_: Exception) {
             null
         }

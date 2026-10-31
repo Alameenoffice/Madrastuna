@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -29,6 +32,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -49,9 +53,29 @@ import com.example.util.ImageCompressor
 import com.example.viewmodel.SchoolViewModel
 
 private val SoftMintBg = Color(0xFFD1FAE5)
-private val CardBorderColor = Color(0xFFCBD5E1)
+private val CardBorderColor = Color(0xFFA7F3D0).copy(alpha = 0.55f)
 private val TextPrimaryColor = Color(0xFF0F172A)
 private val TextSecondaryColor = Color(0xFF475569)
+
+fun formatActivityAuthorRoleLabel(
+    role: UserRole,
+    gradeClass: String,
+    authorUserId: String,
+    accounts: List<UserAccount>
+): String {
+    return when (role) {
+        UserRole.ADMIN -> "المدير"
+        UserRole.TEACHER -> {
+            val teacherAcc = accounts.firstOrNull { it.id == authorUserId }
+            val spec = teacherAcc?.teacherSubjectsList?.joinToString("، ")?.ifBlank { teacherAcc.specialty }
+                ?: ""
+            if (spec.isNotBlank()) "معلم • $spec" else "معلم"
+        }
+        UserRole.STUDENT, UserRole.PARENT -> {
+            if (gradeClass.isNotBlank()) "${role.arabicTitle} • $gradeClass" else role.arabicTitle
+        }
+    }
+}
 
 @Composable
 fun VectorHeartIcon(
@@ -120,17 +144,16 @@ fun VectorShieldModerationIcon(
             color = tint,
             style = Stroke(width = w * 0.09f, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
-        drawLine(
+        // Clean inner check emblem (no vertical line)
+        val checkPath = Path().apply {
+            moveTo(w * 0.34f, h * 0.52f)
+            lineTo(w * 0.46f, h * 0.64f)
+            lineTo(w * 0.67f, h * 0.40f)
+        }
+        drawPath(
+            path = checkPath,
             color = tint,
-            start = Offset(w * 0.5f, h * 0.32f),
-            end = Offset(w * 0.5f, h * 0.56f),
-            strokeWidth = w * 0.09f,
-            cap = StrokeCap.Round
-        )
-        drawCircle(
-            color = tint,
-            radius = w * 0.05f,
-            center = Offset(w * 0.5f, h * 0.68f)
+            style = Stroke(width = w * 0.085f, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
     }
 }
@@ -265,315 +288,328 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
         )
     }
 
-    Column(
+    var visibleFeedPostsCount by remember(selectedFeedFilter, selectedCategoryFilter) {
+        mutableIntStateOf(15)
+    }
+
+    // Single unified LazyColumn so the header and filters scroll smoothly with the posts
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Luxury Emerald Header Banner
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = DeepEmerald),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(DeepEmerald, EmeraldAccent, DeepForestGreen)
-                        )
-                    )
-                    .padding(18.dp)
+        // Luxury Emerald Header Banner inside unified LazyColumn
+        item(key = "student_activities_header_card") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = DeepEmerald),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(DeepEmerald, EmeraldAccent, DeepForestGreen)
+                            )
+                        )
+                        .padding(18.dp)
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White.copy(alpha = 0.15f),
-                            border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.5f)),
-                            modifier = Modifier.size(48.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                StudentActivitiesVectorIcon(tint = GoldAccent, size = 26.dp)
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "مجتمع ونشاطات الطلبة",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "منصة الإبداع العلمي، الفنون، والمشاريع الطلابية بإشراف تربوي",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.88f)
-                            )
-                        }
-                    }
-
-                    // My Creative Profile Button
-                    if (currentUser != null) {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color.White.copy(alpha = 0.16f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-                            modifier = Modifier
-                                .clickable {
-                                    selectedProfileUser = ProfileModalTarget(
-                                        userId = currentUser!!.id,
-                                        userName = currentUser!!.fullName,
-                                        userRole = currentUser!!.role,
-                                        userGrade = currentUser!!.gradeClass,
-                                        userPhotoBase64 = currentUser!!.photoBase64
-                                    )
-                                }
-                                .testTag("my_creative_profile_btn")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.5f)),
+                                modifier = Modifier.size(48.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Person,
-                                    contentDescription = "ملفي الإبداعي",
-                                    tint = GoldAccent,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    StudentActivitiesVectorIcon(tint = GoldAccent, size = 26.dp)
+                                }
+                            }
+                            Column {
                                 Text(
-                                    text = "ملفي الإبداعي",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "مجتمع ونشاطات الطلبة",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
                                     color = Color.White
                                 )
+                                Text(
+                                    text = "منصة الإبداع العلمي، الفنون، والمشاريع الطلابية بإشراف تربوي",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.88f)
+                                )
+                            }
+                        }
+
+                        // My Creative Profile Button
+                        if (currentUser != null) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.16f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                                modifier = Modifier
+                                    .clickable {
+                                        selectedProfileUser = ProfileModalTarget(
+                                            userId = currentUser!!.id,
+                                            userName = currentUser!!.fullName,
+                                            userRole = currentUser!!.role,
+                                            userGrade = if (currentUser!!.role == UserRole.STUDENT) currentUser!!.gradeClass else "",
+                                            userPhotoBase64 = currentUser!!.photoBase64
+                                        )
+                                    }
+                                    .testTag("my_creative_profile_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = "ملفي الإبداعي",
+                                        tint = GoldAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "ملفي الإبداعي",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                // Main Tabs Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
+                    // Main Tabs Row
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Tab 0: Creative Feed
-                        ActivityHeaderTabChip(
-                            title = "ساحة الإبداع (${approvedPosts.size})",
-                            selected = selectedMainTab == 0,
-                            onClick = { selectedMainTab = 0 }
-                        )
+                        item {
+                            ActivityHeaderTabChip(
+                                title = "ساحة الإبداع (${approvedPosts.size})",
+                                selected = selectedMainTab == 0,
+                                onClick = { selectedMainTab = 0 }
+                            )
+                        }
 
-                        // Tab 1: Pending Review Queue
                         val pendingLabel = if (canModerate) {
                             "قائمة المراجعة (${pendingPosts.size})"
                         } else {
                             "منشوراتي قيد المراجعة (${pendingPosts.size})"
                         }
                         if (canModerate || pendingPosts.isNotEmpty()) {
-                            ActivityHeaderTabChip(
-                                title = pendingLabel,
-                                selected = selectedMainTab == 1,
-                                badgeHighlight = canModerate && pendingPosts.isNotEmpty(),
-                                onClick = { selectedMainTab = 1 }
-                            )
-                        }
-
-                        // Tab 2: Admin Violation Reports Box
-                        if (isAdmin) {
-                            ActivityHeaderTabChip(
-                                title = "صندوق البلاغات ($unresolvedReportsCount)",
-                                selected = selectedMainTab == 2,
-                                badgeHighlight = unresolvedReportsCount > 0,
-                                onClick = { selectedMainTab = 2 }
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Sanction Warning Banner if current user is muted
-                if (myProfile.isPostingMuted() || myProfile.isInteractionMuted()) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = DangerRed.copy(alpha = 0.22f),
-                        border = BorderStroke(1.dp, Color(0xFFFFB4AB)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            VectorShieldModerationIcon(tint = Color(0xFFFFDAD6), size = 20.dp)
-                            Column {
-                                Text(
-                                    text = "تنبيه إداري على حسابك في مجتمع الطلبة",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                            item {
+                                ActivityHeaderTabChip(
+                                    title = pendingLabel,
+                                    selected = selectedMainTab == 1,
+                                    badgeHighlight = canModerate && pendingPosts.isNotEmpty(),
+                                    onClick = { selectedMainTab = 1 }
                                 )
-                                val statusMsg = buildString {
-                                    if (myProfile.isPostingMuted()) {
-                                        append("تم تعليق صلاحية النشر (${myProfile.remainingPostingBanLabel()}). ")
-                                    }
-                                    if (myProfile.isInteractionMuted()) {
-                                        append("تم تعليق التفاعل والتعليقات (${myProfile.remainingInteractionBanLabel()}).")
-                                    }
-                                }
-                                Text(
-                                    text = statusMsg,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.9f),
-                                    fontSize = 11.sp
+                            }
+                        }
+
+                        if (isAdmin) {
+                            item {
+                                ActivityHeaderTabChip(
+                                    title = "صندوق البلاغات ($unresolvedReportsCount)",
+                                    selected = selectedMainTab == 2,
+                                    badgeHighlight = unresolvedReportsCount > 0,
+                                    onClick = { selectedMainTab = 2 }
                                 )
                             }
                         }
                     }
-                }
 
-                // Publish New Activity Button
-                Button(
-                    onClick = {
-                        editingPost = null
-                        showCreatePostDialog = true
-                    },
-                    enabled = !myProfile.isPostingMuted(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = GoldAccent,
-                        contentColor = DeepForestGreen,
-                        disabledContainerColor = Color.White.copy(alpha = 0.2f),
-                        disabledContentColor = Color.White.copy(alpha = 0.6f)
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("publish_student_activity_btn")
-                ) {
-                    Icon(
-                        Icons.Default.AddCircleOutline,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (myProfile.isPostingMuted()) {
-                            "النشر معلق مؤقتاً بقرار إداري (${myProfile.remainingPostingBanLabel()})"
-                        } else if (canModerate) {
-                            "نشر نشاط أو إبداع جديد (نشر فوري معتمد)"
-                        } else {
-                            "شارك إبداعك أو مشروعك العلمي (يُنشر بعد موافقة الإدارة)"
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Sanction Warning Banner if current user is muted
+                    if (myProfile.isPostingMuted() || myProfile.isInteractionMuted()) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = DangerRed.copy(alpha = 0.22f),
+                            border = BorderStroke(1.dp, Color(0xFFFFB4AB)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                VectorShieldModerationIcon(tint = Color(0xFFFFDAD6), size = 20.dp)
+                                Column {
+                                    Text(
+                                        text = "تنبيه إداري على حسابك في مجتمع الطلبة",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    val statusMsg = buildString {
+                                        if (myProfile.isPostingMuted()) {
+                                            append("تم تعليق صلاحية النشر (${myProfile.remainingPostingBanLabel()}). ")
+                                        }
+                                        if (myProfile.isInteractionMuted()) {
+                                            append("تم تعليق التفاعل والتعليقات (${myProfile.remainingInteractionBanLabel()}).")
+                                        }
+                                    }
+                                    Text(
+                                        text = statusMsg,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.9f),
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Publish New Activity Button
+                    Button(
+                        onClick = {
+                            editingPost = null
+                            showCreatePostDialog = true
                         },
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 13.sp
-                    )
+                        enabled = !myProfile.isPostingMuted(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GoldAccent,
+                            contentColor = DeepForestGreen,
+                            disabledContainerColor = Color.White.copy(alpha = 0.2f),
+                            disabledContentColor = Color.White.copy(alpha = 0.6f)
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("publish_student_activity_btn")
+                    ) {
+                        Icon(
+                            Icons.Default.AddCircleOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (myProfile.isPostingMuted()) {
+                                "النشر معلق مؤقتاً بقرار إداري (${myProfile.remainingPostingBanLabel()})"
+                            } else if (canModerate) {
+                                "نشر نشاط أو إبداع جديد (نشر فوري معتمد)"
+                            } else {
+                                "شارك إبداعك أو مشروعك العلمي (يُنشر بعد موافقة الإدارة)"
+                            },
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
         }
 
-        // Main Body according to selectedMainTab
+        // Main Body inside the same unified LazyColumn according to selectedMainTab
         when (selectedMainTab) {
             0 -> {
-                // Feed Sort & Category Filters
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    // Engagement Sort Chips
-                    Row(
+                // Feed Sort & Category Filters (Smooth circular chips without sharp gray borders)
+                item(key = "feed_filters_section") {
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val sortTabs = listOf(
                             "الأكثر تفاعلاً وتميزاً",
                             "الأحدث",
                             "منشورات من أتابعهم (${followedIds.size})"
                         )
-                        sortTabs.forEachIndexed { idx, label ->
-                            FilterChip(
-                                selected = selectedFeedFilter == idx,
-                                onClick = { selectedFeedFilter = idx },
-                                label = {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(sortTabs.size) { idx ->
+                                val label = sortTabs[idx]
+                                val isSelected = selectedFeedFilter == idx
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isSelected) DeepEmerald else SoftMintBg.copy(alpha = 0.45f),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) DeepEmerald else EmeraldAccent.copy(alpha = 0.30f)
+                                    ),
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { selectedFeedFilter = idx }
+                                ) {
                                     Text(
                                         text = label,
                                         fontSize = 11.sp,
-                                        fontWeight = if (selectedFeedFilter == idx) FontWeight.ExtraBold else FontWeight.Medium
+                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                        color = if (isSelected) Color.White else DeepEmerald,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                                     )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = DeepEmerald,
-                                    selectedLabelColor = Color.White
-                                )
-                            )
+                                }
+                            }
                         }
-                    }
 
-                    // Category Filter Row
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    ) {
-                        items(categories) { cat ->
-                            val isSelected = selectedCategoryFilter == cat
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = if (isSelected) GoldAccent.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface,
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) DeepEmerald else CardBorderColor
-                                ),
-                                modifier = Modifier.clickable { selectedCategoryFilter = cat }
-                            ) {
-                                Text(
-                                    text = cat,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                    color = if (isSelected) DeepEmerald else TextSecondaryColor,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
+                        // Category Filter Row (Smooth Pill / CircleShape without gray outlines)
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(categories) { cat ->
+                                val isSelected = selectedCategoryFilter == cat
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isSelected) GoldAccent.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) DeepEmerald else EmeraldAccent.copy(alpha = 0.25f)
+                                    ),
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { selectedCategoryFilter = cat }
+                                ) {
+                                    Text(
+                                        text = cat,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                        color = if (isSelected) DeepEmerald else TextSecondaryColor,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
                 if (approvedPosts.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    item(key = "empty_approved_posts") {
                         Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
                             shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, CardBorderColor)
                         ) {
                             Column(
-                                modifier = Modifier.padding(28.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(28.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 StudentActivitiesVectorIcon(tint = DeepEmerald, size = 44.dp)
@@ -596,161 +632,170 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         }
                     }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(approvedPosts, key = { it.id }) { post ->
-                            StudentActivityPostCard(
-                                post = post,
-                                currentUser = currentUser,
-                                isAuthorFollowed = post.authorUserId in followedIds,
-                                isHighlighted = post.id == highlightedPostId,
-                                isInteractionMuted = myProfile.isInteractionMuted(),
-                                viewModel = viewModel,
-                                onOpenAuthorProfile = { target ->
-                                    selectedProfileUser = target
-                                },
-                                onEditPost = {
-                                    editingPost = post
-                                    showCreatePostDialog = true
-                                },
-                                onReportTarget = { target ->
-                                    reportingTarget = target
-                                },
-                                onOpenAdminSanction = { target ->
-                                    sanctionTarget = target
-                                }
-                            )
-                        }
-                        item { Spacer(modifier = Modifier.height(24.dp)) }
+                    val displayedPosts = approvedPosts.take(visibleFeedPostsCount)
+                    items(displayedPosts, key = { it.id }) { post ->
+                        StudentActivityPostCard(
+                            post = post,
+                            currentUser = currentUser,
+                            accounts = accounts,
+                            isAuthorFollowed = post.authorUserId in followedIds,
+                            isHighlighted = post.id == highlightedPostId,
+                            isInteractionMuted = myProfile.isInteractionMuted(),
+                            viewModel = viewModel,
+                            onOpenAuthorProfile = { target ->
+                                selectedProfileUser = target
+                            },
+                            onEditPost = {
+                                editingPost = post
+                                showCreatePostDialog = true
+                            },
+                            onReportTarget = { target ->
+                                reportingTarget = target
+                            },
+                            onOpenAdminSanction = { target ->
+                                sanctionTarget = target
+                            }
+                        )
                     }
+                    if (approvedPosts.size > visibleFeedPostsCount) {
+                        item(key = "load_more_posts_btn") {
+                            OutlinedButton(
+                                onClick = { visibleFeedPostsCount += 15 },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = CircleShape,
+                                border = BorderStroke(1.dp, DeepEmerald)
+                            ) {
+                                Text(
+                                    text = "عرض المزيد من النشاطات (${approvedPosts.size - visibleFeedPostsCount} متبقية)",
+                                    color = DeepEmerald,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+                    }
+                    item { Spacer(modifier = Modifier.height(24.dp)) }
                 }
             }
 
             1 -> {
                 // Pending Moderation Queue (for Admin & Teacher, or Student's own pending posts)
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    item {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = SoftMintBg.copy(alpha = 0.45f)),
-                            border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.35f))
+                item(key = "moderation_queue_header") {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = SoftMintBg.copy(alpha = 0.45f)),
+                        border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                VectorShieldModerationIcon(tint = DeepEmerald, size = 22.dp)
-                                Column {
-                                    Text(
-                                        text = if (canModerate) {
-                                            "قائمة مراجعة واعتماد نشاطات الطلبة"
-                                        } else {
-                                            "منشوراتك قيد المراجعة الإدارية"
-                                        },
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = DeepEmerald
-                                    )
-                                    Text(
-                                        text = if (canModerate) {
-                                            "راجع المشاركات الطلابية قبل ظهورها في الساحة العامة لضمان جودة المحتوى التربوي والعلمي."
-                                        } else {
-                                            "يتم فحص المنشورات من قبل إدارة المدرسة أو المعلم المشرف قبل نشرها للجميع."
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextSecondaryColor
-                                    )
-                                }
+                            VectorShieldModerationIcon(tint = DeepEmerald, size = 22.dp)
+                            Column {
+                                Text(
+                                    text = if (canModerate) {
+                                        "قائمة مراجعة واعتماد نشاطات الطلبة"
+                                    } else {
+                                        "منشوراتك قيد المراجعة الإدارية"
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepEmerald
+                                )
+                                Text(
+                                    text = if (canModerate) {
+                                        "راجع المشاركات الطلابية قبل ظهورها في الساحة العامة لضمان جودة المحتوى التربوي والعلمي."
+                                    } else {
+                                        "يتم فحص المنشورات من قبل إدارة المدرسة أو المعلم المشرف قبل نشرها للجميع."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondaryColor
+                                )
                             }
                         }
                     }
+                }
 
-                    if (pendingPosts.isEmpty()) {
-                        item {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                border = BorderStroke(1.dp, CardBorderColor)
+                if (pendingPosts.isEmpty()) {
+                    item(key = "empty_pending_posts") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, CardBorderColor)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(28.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(28.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Default.CheckCircleOutline,
-                                        contentDescription = null,
-                                        tint = SuccessGreen,
-                                        modifier = Modifier.size(40.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = "لا توجد منشورات معلقة بانتظار المراجعة حالياً",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
+                                Icon(
+                                    Icons.Default.CheckCircleOutline,
+                                    contentDescription = null,
+                                    tint = SuccessGreen,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "لا توجد منشورات معلقة بانتظار المراجعة حالياً",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             }
                         }
-                    } else {
-                        items(pendingPosts, key = { it.id }) { post ->
-                            PendingActivityModerationCard(
-                                post = post,
-                                canModerate = canModerate,
-                                isOwner = post.authorUserId == myUserId,
-                                onApprove = {
-                                    viewModel.reviewStudentActivityPost(
-                                        postId = post.id,
-                                        approve = true
+                    }
+                } else {
+                    items(pendingPosts, key = { "pending_${it.id}" }) { post ->
+                        PendingActivityModerationCard(
+                            post = post,
+                            accounts = accounts,
+                            canModerate = canModerate,
+                            isOwner = post.authorUserId == myUserId,
+                            onApprove = {
+                                viewModel.reviewStudentActivityPost(
+                                    postId = post.id,
+                                    approve = true
+                                )
+                            },
+                            onReject = {
+                                viewModel.reviewStudentActivityPost(
+                                    postId = post.id,
+                                    approve = false
+                                )
+                            },
+                            onDelete = {
+                                viewModel.deleteStudentActivityPost(post.id)
+                            },
+                            onSanctionAuthor = if (isAdmin) {
+                                {
+                                    sanctionTarget = SanctionModalTarget(
+                                        userId = post.authorUserId,
+                                        studentId = post.authorStudentId,
+                                        userName = post.authorName,
+                                        userRole = post.authorRole
                                     )
-                                },
-                                onReject = {
-                                    viewModel.reviewStudentActivityPost(
-                                        postId = post.id,
-                                        approve = false
-                                    )
-                                },
-                                onDelete = {
-                                    viewModel.deleteStudentActivityPost(post.id)
-                                },
-                                onSanctionAuthor = if (isAdmin) {
-                                    {
-                                        sanctionTarget = SanctionModalTarget(
-                                            userId = post.authorUserId,
-                                            studentId = post.authorStudentId,
-                                            userName = post.authorName,
-                                            userRole = post.authorRole
-                                        )
-                                    }
-                                } else null
-                            )
-                        }
+                                }
+                            } else null
+                        )
                     }
                 }
             }
 
             2 -> {
-                // Admin Violation Reports & Sanctions Center
-                AdminViolationReportsListSection(
-                    reports = violationReports,
-                    profilesAndSanctionsMap = profilesAndSanctionsMap,
-                    accounts = accounts,
-                    viewModel = viewModel,
-                    onOpenSanctionModal = { target ->
-                        sanctionTarget = target
-                    }
-                )
+                // Admin Violation Reports & Sanctions Center inside the unified LazyColumn
+                item(key = "admin_violation_reports_section") {
+                    AdminViolationReportsListSection(
+                        reports = violationReports,
+                        profilesAndSanctionsMap = profilesAndSanctionsMap,
+                        accounts = accounts,
+                        viewModel = viewModel,
+                        onOpenSanctionModal = { target ->
+                            sanctionTarget = target
+                        }
+                    )
+                }
             }
         }
     }
@@ -794,6 +839,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
         UserCreativeProfileModalDialog(
             target = target,
             currentUser = currentUser,
+            accounts = accounts,
             allPosts = allPosts,
             viewModel = viewModel,
             onDismiss = { selectedProfileUser = null },
@@ -915,6 +961,7 @@ data class SanctionModalTarget(
 fun StudentActivityPostCard(
     post: StudentActivityPost,
     currentUser: UserAccount?,
+    accounts: List<UserAccount>,
     isAuthorFollowed: Boolean,
     isHighlighted: Boolean,
     isInteractionMuted: Boolean,
@@ -927,10 +974,20 @@ fun StudentActivityPostCard(
     val myUserId = currentUser?.id ?: ""
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val isOwner = post.authorUserId == myUserId
-    val canModifyPost = isOwner || isAdmin
+    val canEditPost = isOwner
+    val canDeletePost = isOwner || isAdmin
     val isLikedByMe = myUserId.isNotBlank() && post.likedByUserIds.contains(myUserId)
+    val heartScale by animateFloatAsState(
+        targetValue = if (isLikedByMe) 1.18f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "heart_scale"
+    )
 
     var showCommentsSection by remember(isHighlighted) { mutableStateOf(isHighlighted) }
+    var visibleCommentsCount by remember(post.id) { mutableIntStateOf(4) }
     var newCommentText by remember { mutableStateOf("") }
     var replyingToCommentId by remember { mutableStateOf<String?>(null) }
     var replyText by remember { mutableStateOf("") }
@@ -938,6 +995,16 @@ fun StudentActivityPostCard(
     var editingCommentValue by remember { mutableStateOf("") }
     var editingReplyKey by remember { mutableStateOf<Pair<String, String>?>(null) }
     var editingReplyValue by remember { mutableStateOf("") }
+
+    val formattedAuthorSubtitle = remember(post.authorRole, post.authorGradeClass, post.authorUserId, accounts, post.createdAt) {
+        val rolePart = formatActivityAuthorRoleLabel(
+            role = post.authorRole,
+            gradeClass = post.authorGradeClass,
+            authorUserId = post.authorUserId,
+            accounts = accounts
+        )
+        "$rolePart • ${post.createdAt}"
+    }
 
     Card(
         modifier = Modifier
@@ -969,7 +1036,7 @@ fun StudentActivityPostCard(
                                     userId = post.authorUserId,
                                     userName = post.authorName,
                                     userRole = post.authorRole,
-                                    userGrade = post.authorGradeClass,
+                                    userGrade = if (post.authorRole == UserRole.STUDENT) post.authorGradeClass else "",
                                     userPhotoBase64 = post.authorPhotoBase64
                                 )
                             )
@@ -1017,13 +1084,7 @@ fun StudentActivityPostCard(
                             }
                         }
                         Text(
-                            text = buildString {
-                                append(post.authorRole.arabicTitle)
-                                if (post.authorGradeClass.isNotBlank()) {
-                                    append(" • ${post.authorGradeClass}")
-                                }
-                                append(" • ${post.createdAt}")
-                            },
+                            text = formattedAuthorSubtitle,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp
@@ -1107,7 +1168,7 @@ fun StudentActivityPostCard(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Heart Button (Vector SVG)
+                    // Heart Button (Vector SVG with smooth spring scale animation)
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = if (isLikedByMe) Color(0xFFFFEBEE) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -1116,6 +1177,8 @@ fun StudentActivityPostCard(
                             if (isLikedByMe) Color(0xFFE53935) else CardBorderColor
                         ),
                         modifier = Modifier
+                            .graphicsLayer(scaleX = heartScale, scaleY = heartScale)
+                            .clip(RoundedCornerShape(50))
                             .clickable(enabled = !isInteractionMuted) {
                                 viewModel.toggleStudentActivityHeart(post.id)
                             }
@@ -1149,6 +1212,7 @@ fun StudentActivityPostCard(
                             if (showCommentsSection) DeepEmerald else CardBorderColor
                         ),
                         modifier = Modifier
+                            .clip(RoundedCornerShape(50))
                             .clickable { showCommentsSection = !showCommentsSection }
                             .testTag("comments_toggle_${post.id}")
                     ) {
@@ -1173,12 +1237,12 @@ fun StudentActivityPostCard(
                     }
                 }
 
-                // Right Side: Edit / Delete / Report / Admin Sanction
+                // Right Side: Edit (Owner ONLY) / Delete (Owner or Admin) / Report / Admin Sanction
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (canModifyPost) {
+                    if (canEditPost) {
                         IconButton(
                             onClick = onEditPost,
                             modifier = Modifier.size(34.dp)
@@ -1190,6 +1254,8 @@ fun StudentActivityPostCard(
                                 modifier = Modifier.size(18.dp)
                             )
                         }
+                    }
+                    if (canDeletePost) {
                         IconButton(
                             onClick = { viewModel.deleteStudentActivityPost(post.id) },
                             modifier = Modifier.size(34.dp)
@@ -1221,7 +1287,7 @@ fun StudentActivityPostCard(
                             },
                             modifier = Modifier.size(34.dp)
                         ) {
-                            VectorFlagReportIcon(tint = WarningAmber, size = 17.dp)
+                            VectorFlagReportIcon(tint = GoldDeep, size = 17.dp)
                         }
                     }
 
@@ -1285,9 +1351,17 @@ fun StudentActivityPostCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
-                        post.comments.forEach { comment ->
+                        val displayedComments = post.comments.take(visibleCommentsCount)
+                        displayedComments.forEach { comment ->
                             val isCommentOwner = comment.authorUserId == myUserId
-                            val canModifyComment = isCommentOwner || isAdmin
+                            val canEditComment = isCommentOwner
+                            val canDeleteComment = isCommentOwner || isAdmin
+                            val commentRoleLabel = formatActivityAuthorRoleLabel(
+                                role = comment.authorRole,
+                                gradeClass = comment.authorGradeClass,
+                                authorUserId = comment.authorUserId,
+                                accounts = accounts
+                            )
 
                             Card(
                                 shape = RoundedCornerShape(14.dp),
@@ -1311,7 +1385,7 @@ fun StudentActivityPostCard(
                                                             userId = comment.authorUserId,
                                                             userName = comment.authorName,
                                                             userRole = comment.authorRole,
-                                                            userGrade = comment.authorGradeClass,
+                                                            userGrade = if (comment.authorRole == UserRole.STUDENT) comment.authorGradeClass else "",
                                                             userPhotoBase64 = comment.authorPhotoBase64
                                                         )
                                                     )
@@ -1324,7 +1398,7 @@ fun StudentActivityPostCard(
                                                 color = DeepEmerald
                                             )
                                             Text(
-                                                text = "• ${comment.authorRole.arabicTitle}",
+                                                text = "• $commentRoleLabel",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 fontSize = 10.sp
@@ -1348,7 +1422,7 @@ fun StudentActivityPostCard(
                                                     }
                                                 )
                                             }
-                                            if (canModifyComment) {
+                                            if (canEditComment) {
                                                 Text(
                                                     text = "تعديل",
                                                     style = MaterialTheme.typography.labelSmall,
@@ -1358,6 +1432,8 @@ fun StudentActivityPostCard(
                                                         editingCommentValue = comment.text
                                                     }
                                                 )
+                                            }
+                                            if (canDeleteComment) {
                                                 Text(
                                                     text = "حذف",
                                                     style = MaterialTheme.typography.labelSmall,
@@ -1386,7 +1462,7 @@ fun StudentActivityPostCard(
                                                         )
                                                     }
                                                 ) {
-                                                    VectorFlagReportIcon(tint = WarningAmber, size = 14.dp)
+                                                    VectorFlagReportIcon(tint = GoldDeep, size = 14.dp)
                                                 }
                                             }
                                             if (isAdmin && !isCommentOwner) {
@@ -1452,7 +1528,14 @@ fun StudentActivityPostCard(
                                         ) {
                                             comment.replies.forEach { reply ->
                                                 val isReplyOwner = reply.authorUserId == myUserId
-                                                val canModifyReply = isReplyOwner || isAdmin
+                                                val canEditReply = isReplyOwner
+                                                val canDeleteReply = isReplyOwner || isAdmin
+                                                val replyRoleLabel = formatActivityAuthorRoleLabel(
+                                                    role = reply.authorRole,
+                                                    gradeClass = "",
+                                                    authorUserId = reply.authorUserId,
+                                                    accounts = accounts
+                                                )
 
                                                 Surface(
                                                     shape = RoundedCornerShape(10.dp),
@@ -1466,7 +1549,7 @@ fun StudentActivityPostCard(
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
                                                             Text(
-                                                                text = "${reply.authorName} (${reply.authorRole.arabicTitle})",
+                                                                text = "${reply.authorName} ($replyRoleLabel)",
                                                                 style = MaterialTheme.typography.labelSmall,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 color = DeepEmerald,
@@ -1477,7 +1560,7 @@ fun StudentActivityPostCard(
                                                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                                                 verticalAlignment = Alignment.CenterVertically
                                                             ) {
-                                                                if (canModifyReply) {
+                                                                if (canEditReply) {
                                                                     Text(
                                                                         text = "تعديل",
                                                                         style = MaterialTheme.typography.labelSmall,
@@ -1488,6 +1571,8 @@ fun StudentActivityPostCard(
                                                                             editingReplyValue = reply.text
                                                                         }
                                                                     )
+                                                                }
+                                                                if (canDeleteReply) {
                                                                     Text(
                                                                         text = "حذف",
                                                                         style = MaterialTheme.typography.labelSmall,
@@ -1520,7 +1605,7 @@ fun StudentActivityPostCard(
                                                                         }
                                                                     ) {
                                                                         VectorFlagReportIcon(
-                                                                            tint = WarningAmber,
+                                                                            tint = GoldDeep,
                                                                             size = 13.dp
                                                                         )
                                                                     }
@@ -1616,6 +1701,19 @@ fun StudentActivityPostCard(
                                 }
                             }
                         }
+                        if (post.comments.size > visibleCommentsCount) {
+                            TextButton(
+                                onClick = { visibleCommentsCount += 6 },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text(
+                                    text = "عرض المزيد من التعليقات (${post.comments.size - visibleCommentsCount} متبقية)",
+                                    color = DeepEmerald,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
                     }
 
                     // Add New Top-Level Comment Input
@@ -1674,6 +1772,7 @@ fun StudentActivityPostCard(
 @Composable
 private fun PendingActivityModerationCard(
     post: StudentActivityPost,
+    accounts: List<UserAccount>,
     canModerate: Boolean,
     isOwner: Boolean,
     onApprove: () -> Unit,
@@ -1681,6 +1780,12 @@ private fun PendingActivityModerationCard(
     onDelete: () -> Unit,
     onSanctionAuthor: (() -> Unit)?
 ) {
+    val roleSubtitle = formatActivityAuthorRoleLabel(
+        role = post.authorRole,
+        gradeClass = post.authorGradeClass,
+        authorUserId = post.authorUserId,
+        accounts = accounts
+    )
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -1708,7 +1813,7 @@ private fun PendingActivityModerationCard(
                         color = DeepEmerald
                     )
                     Text(
-                        text = "${post.authorRole.arabicTitle} • ${post.authorGradeClass} • ${post.createdAt}",
+                        text = "$roleSubtitle • ${post.createdAt}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1843,69 +1948,66 @@ private fun AdminViolationReportsListSection(
         }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+    Column(
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Active Sanctions Summary Card
         if (activeSanctionedProfiles.isNotEmpty()) {
-            item {
-                Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "الحسابات الخاضعة لإجراءات رقابية أو إنذارات (${activeSanctionedProfiles.size})",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = DeepEmerald
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        activeSanctionedProfiles.forEach { prof ->
-                            val matchedAcc = accounts.firstOrNull { it.id == prof.userId }
-                            val displayUserName = matchedAcc?.fullName ?: prof.userId
-                            val displayRole = matchedAcc?.role?.arabicTitle ?: "عضو"
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "$displayUserName ($displayRole)",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = buildString {
-                                            if (prof.isPostingMuted()) {
-                                                append("النشر: ${prof.remainingPostingBanLabel()} • ")
-                                            }
-                                            if (prof.isInteractionMuted()) {
-                                                append("التفاعل: ${prof.remainingInteractionBanLabel()} • ")
-                                            }
-                                            append("عدد الإنذارات: ${prof.warningCount}")
-                                        },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = DangerRed,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.liftAdminUserSanctions(prof.userId, displayUserName)
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "الحسابات الخاضعة لإجراءات رقابية أو إنذارات (${activeSanctionedProfiles.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepEmerald
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    activeSanctionedProfiles.forEach { prof ->
+                        val matchedAcc = accounts.firstOrNull { it.id == prof.userId }
+                        val displayUserName = matchedAcc?.fullName ?: prof.userId
+                        val displayRole = matchedAcc?.role?.arabicTitle ?: "عضو"
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "$displayUserName ($displayRole)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = buildString {
+                                        if (prof.isPostingMuted()) {
+                                            append("النشر: ${prof.remainingPostingBanLabel()} • ")
+                                        }
+                                        if (prof.isInteractionMuted()) {
+                                            append("التفاعل: ${prof.remainingInteractionBanLabel()} • ")
+                                        }
+                                        append("عدد الإنذارات: ${prof.warningCount}")
                                     },
-                                    border = BorderStroke(1.dp, DeepEmerald),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text("رفع الحظر", fontSize = 11.sp, color = DeepEmerald)
-                                }
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = DangerRed,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.liftAdminUserSanctions(prof.userId, displayUserName)
+                                },
+                                border = BorderStroke(1.dp, DeepEmerald),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("رفع الحظر", fontSize = 11.sp, color = DeepEmerald)
                             }
                         }
                     }
@@ -1914,32 +2016,30 @@ private fun AdminViolationReportsListSection(
         }
 
         if (reports.isEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, CardBorderColor)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, CardBorderColor)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(28.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        VectorShieldModerationIcon(tint = DeepEmerald, size = 40.dp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "صندوق بلاغات نشاطات الطلبة خالٍ من المخالفات",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
+                    VectorShieldModerationIcon(tint = DeepEmerald, size = 40.dp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "صندوق بلاغات نشاطات الطلبة خالٍ من المخالفات",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         } else {
-            items(reports, key = { it.id }) { report ->
+            reports.forEach { report ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
@@ -2250,6 +2350,7 @@ private fun CreateOrEditStudentActivityDialog(
 private fun UserCreativeProfileModalDialog(
     target: ProfileModalTarget,
     currentUser: UserAccount?,
+    accounts: List<UserAccount>,
     allPosts: List<StudentActivityPost>,
     viewModel: SchoolViewModel,
     onDismiss: () -> Unit,
@@ -2277,6 +2378,14 @@ private fun UserCreativeProfileModalDialog(
 
     var isEditingBio by remember { mutableStateOf(false) }
     var bioInput by remember(profileData.bio) { mutableStateOf(profileData.bio) }
+    val profileRoleSubtitle = remember(target, accounts) {
+        formatActivityAuthorRoleLabel(
+            role = target.userRole,
+            gradeClass = target.userGrade,
+            authorUserId = target.userId,
+            accounts = accounts
+        )
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -2345,10 +2454,7 @@ private fun UserCreativeProfileModalDialog(
                             color = Color.White
                         )
                         Text(
-                            text = buildString {
-                                append(target.userRole.arabicTitle)
-                                if (target.userGrade.isNotBlank()) append(" • ${target.userGrade}")
-                            },
+                            text = profileRoleSubtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.88f)
                         )
@@ -2517,16 +2623,18 @@ private fun UserCreativeProfileModalDialog(
                                         )
                                         if (isMyOwnProfile || isAdmin) {
                                             Row {
-                                                IconButton(
-                                                    onClick = { onEditPost(post) },
-                                                    modifier = Modifier.size(30.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.Edit,
-                                                        contentDescription = "تعديل",
-                                                        tint = DeepEmerald,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
+                                                if (isMyOwnProfile) {
+                                                    IconButton(
+                                                        onClick = { onEditPost(post) },
+                                                        modifier = Modifier.size(30.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.Edit,
+                                                            contentDescription = "تعديل",
+                                                            tint = DeepEmerald,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
                                                 }
                                                 IconButton(
                                                     onClick = {

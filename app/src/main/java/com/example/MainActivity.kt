@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -354,6 +355,89 @@ fun MadrasatiRootApp(
                                 contentDescription = "إغلاق التنبيه",
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Global Calm Luxury Emerald Network Connectivity Guard Banner
+        val isNetworkOnline by viewModel.isNetworkOnline.collectAsState()
+        AnimatedVisibility(
+            visible = !isNetworkOnline,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .zIndex(98f)
+        ) {
+            Surface(
+                color = DeepForestGreen,
+                shape = RoundedCornerShape(18.dp),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, GoldAccent.copy(alpha = 0.75f)),
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("network_connectivity_guard_banner")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CloudOff,
+                            contentDescription = "انقطاع الاتصال بالإنترنت",
+                            tint = GoldAccent,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "لا يوجد اتصال بالإنترنت حالياً",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "يرجى التحقق من الشبكة — ستتم المزامنة السحابية تلقائياً فور عودة الاتصال",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFA7F3D0),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = GoldAccent,
+                        modifier = Modifier
+                            .clickable { viewModel.triggerImmediateCloudResync() }
+                            .testTag("network_retry_sync_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "إعادة المحاولة",
+                                tint = DeepForestGreen,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "إعادة المحاولة",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
                             )
                         }
                     }

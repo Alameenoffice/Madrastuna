@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
@@ -106,7 +109,8 @@ fun ScheduleAndHomeworkScreen(
 
     val filteredHomeworks = remember(homeworks, selectedClass, selectedSection, currentUser) {
         homeworks.filter { hw ->
-            val clsMatch = hw.gradeClass == selectedClass && hw.sectionName == selectedSection
+            val clsMatch = ArabicTextNormalizer.matchesClass(hw.gradeClass, selectedClass) &&
+                ArabicTextNormalizer.matchesSection(hw.sectionName, selectedSection)
             val subjMatch = if (currentUser?.role == UserRole.TEACHER) {
                 currentUser?.canTeacherAccessSubject(hw.subjectName) == true
             } else true
@@ -122,23 +126,23 @@ fun ScheduleAndHomeworkScreen(
 
     val filteredQuickQuizzes = remember(quickQuizzes, selectedClass, selectedSection) {
         quickQuizzes.filter { q ->
-            q.gradeClass == selectedClass &&
-                (q.sectionName == "الكل" || q.sectionName == selectedSection)
+            ArabicTextNormalizer.matchesClass(q.gradeClass, selectedClass) &&
+                (q.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(q.sectionName, selectedSection))
         }
     }
 
     val filteredPeriods = remember(schedules, selectedClass, selectedSection, selectedDay) {
         schedules.filter {
-            it.gradeClass == selectedClass &&
-                it.sectionName == selectedSection &&
+            ArabicTextNormalizer.matchesClass(it.gradeClass, selectedClass) &&
+                ArabicTextNormalizer.matchesSection(it.sectionName, selectedSection) &&
                 it.dayOfWeek == selectedDay
         }.sortedBy { it.periodNumber }
     }
 
     val filteredStudyMaterials = remember(studyMaterials, selectedClass, selectedSection) {
         studyMaterials.filter { mat ->
-            mat.gradeClass == selectedClass &&
-                (mat.sectionName == "الكل" || mat.sectionName == selectedSection)
+            ArabicTextNormalizer.matchesClass(mat.gradeClass, selectedClass) &&
+                (mat.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(mat.sectionName, selectedSection))
         }
     }
 
@@ -2092,8 +2096,8 @@ fun ExamsAndGradesScreen(
                 // =============================================================
                 val classSectionStudents = remember(students, selectedClass, selectedSection, searchStudentName, currentUser) {
                     viewModel.getScopedStudentsForUser(currentUser).filter { stu ->
-                        stu.gradeClass == selectedClass &&
-                            stu.sectionName == selectedSection &&
+                        ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
+                            ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection) &&
                             (searchStudentName.isBlank() || stu.studentName.contains(searchStudentName, ignoreCase = true))
                     }
                 }
@@ -2681,7 +2685,9 @@ fun ExamsAndGradesScreen(
             }
 
             val scopedExams = remember(examSchedules, allowedClasses) {
-                examSchedules.filter { it.gradeClass in allowedClasses }
+                examSchedules.filter { ex ->
+                    allowedClasses.any { cls -> ArabicTextNormalizer.matchesClass(ex.gradeClass, cls) }
+                }
             }
 
             LazyColumn(
@@ -2690,14 +2696,15 @@ fun ExamsAndGradesScreen(
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 items(scopedExams, key = { it.id }) { ex ->
-                    val daysRemaining = ex.daysRemainingUntilExam() ?: -1L
+                    val daysRemaining = ex.daysRemainingUntilExam()
                     val countdownText = when {
+                        daysRemaining == null -> "موعد مجدول"
                         daysRemaining > 0L -> "قادم (بعد $daysRemaining يوم)"
                         daysRemaining == 0L -> "اليوم"
                         else -> "منتهي"
                     }
                     val countdownColor = when {
-                        daysRemaining > 0L -> DeepEmerald
+                        daysRemaining == null || daysRemaining > 0L -> DeepEmerald
                         daysRemaining == 0L -> DangerRed
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
@@ -2738,12 +2745,27 @@ fun ExamsAndGradesScreen(
                                     )
                                 }
                             }
-                            Text(
-                                text = ex.examType,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = ex.examType,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (ex.timeSlot.isNotBlank()) {
+                                    NoWrapBadge(
+                                        text = "الوقت: ${ex.timeSlot}",
+                                        icon = Icons.Filled.Schedule,
+                                        containerColor = DeepEmerald.copy(alpha = 0.12f),
+                                        contentColor = DeepEmerald
+                                    )
+                                }
+                            }
                             Text(
                                 text = "المادة الداخلة في الامتحان: ${ex.topicsIncluded}",
                                 style = MaterialTheme.typography.bodySmall,
@@ -2806,8 +2828,14 @@ fun ExamsAndGradesScreen(
         var dayName by remember(currentEditing, date) {
             mutableStateOf(currentEditing?.dayName?.ifBlank { ArabicCalendarDateHelper.arabicDayOfWeek(date) } ?: ArabicCalendarDateHelper.arabicDayOfWeek(date))
         }
+        var timeSlot by remember(currentEditing) {
+            mutableStateOf(currentEditing?.timeSlot ?: "")
+        }
         var topics by remember(currentEditing) {
             mutableStateOf(currentEditing?.topicsIncluded ?: "الفصل الأول والثاني")
+        }
+        val presetExamTimes = remember {
+            listOf("08:00 صباحاً", "08:30 صباحاً", "09:00 صباحاً", "10:00 صباحاً", "11:00 صباحاً")
         }
 
         AlertDialog(
@@ -2819,7 +2847,10 @@ fun ExamsAndGradesScreen(
                 Text(if (currentEditing != null) "تعديل موعد الامتحان" else "إضافة موعد امتحان جديد")
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text("الصف الدراسي:", style = MaterialTheme.typography.labelLarge)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(allowedClasses) { cOpt ->
@@ -2856,6 +2887,24 @@ fun ExamsAndGradesScreen(
                         }
                     )
                     OutlinedTextField(
+                        value = timeSlot,
+                        onValueChange = { timeSlot = it },
+                        label = { Text("وقت الامتحان (اختياري — مثلاً: 08:30 صباحاً)") },
+                        leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null, tint = DeepEmerald) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(presetExamTimes) { tOpt ->
+                            val isSelected = timeSlot == tOpt
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { timeSlot = if (isSelected) "" else tOpt },
+                                label = { Text(tOpt, maxLines = 1, softWrap = false, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
                         value = topics,
                         onValueChange = { topics = it },
                         label = { Text("المادة الداخلة في الامتحان") },
@@ -2876,7 +2925,8 @@ fun ExamsAndGradesScreen(
                                 examType = examType,
                                 examDate = date,
                                 dayName = dayName,
-                                topicsIncluded = topics
+                                topicsIncluded = topics,
+                                timeSlot = timeSlot
                             )
                         } else {
                             viewModel.addExamSchedule(
@@ -2885,7 +2935,7 @@ fun ExamsAndGradesScreen(
                                 examType = examType,
                                 examDate = date,
                                 dayName = dayName,
-                                timeSlot = "",
+                                timeSlot = timeSlot,
                                 topicsIncluded = topics,
                                 hallNumber = ""
                             )

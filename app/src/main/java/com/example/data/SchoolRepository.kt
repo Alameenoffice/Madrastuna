@@ -643,24 +643,33 @@ class SchoolRepository(context: Context) {
     fun parseAttendanceJson(raw: String, schoolId: String = getActiveSchoolId()): List<AttendanceEntry> {
         return try {
             val arr = JSONArray(raw)
-            val list = mutableListOf<AttendanceEntry>()
+            val dedupMap = linkedMapOf<String, AttendanceEntry>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                list.add(
-                    AttendanceEntry(
-                        id = o.optString("id"),
-                        studentId = o.optString("studentId"),
-                        studentName = o.optString("studentName"),
-                        gradeClass = o.optString("gradeClass"),
-                        sectionName = o.optString("sectionName"),
-                        date = o.optString("date"),
-                        status = AttendanceStatus.valueOf(o.optString("status", AttendanceStatus.PRESENT.name)),
-                        note = o.optString("note"),
-                        schoolId = o.optString("schoolId", schoolId)
-                    )
+                val stuId = o.optString("studentId").trim()
+                val cleanDate = o.optString("date").trim()
+                if (stuId.isEmpty() || cleanDate.isEmpty()) continue
+                val deterministicId = "attendance_${cleanDate}_${stuId}"
+                val entry = AttendanceEntry(
+                    id = deterministicId,
+                    studentId = stuId,
+                    studentName = o.optString("studentName"),
+                    gradeClass = o.optString("gradeClass"),
+                    sectionName = o.optString("sectionName"),
+                    date = cleanDate,
+                    status = runCatching {
+                        AttendanceStatus.valueOf(o.optString("status", AttendanceStatus.PRESENT.name))
+                    }.getOrDefault(AttendanceStatus.PRESENT),
+                    note = o.optString("note"),
+                    schoolId = o.optString("schoolId", schoolId)
                 )
+                // Keep first occurrence (latest prepended record) per (studentId, date)
+                val key = "${stuId}__${cleanDate}"
+                if (!dedupMap.containsKey(key)) {
+                    dedupMap[key] = entry
+                }
             }
-            list
+            dedupMap.values.toList()
         } catch (e: Exception) {
             emptyList()
         }
@@ -668,8 +677,23 @@ class SchoolRepository(context: Context) {
 
     fun saveAttendance(entries: List<AttendanceEntry>, schoolId: String = getActiveSchoolId()) {
         if (schoolId.isBlank()) return
-        val arr = JSONArray()
+        val dedupMap = linkedMapOf<String, AttendanceEntry>()
         entries.forEach { e ->
+            val stuId = e.studentId.trim()
+            val cleanDate = e.date.trim()
+            if (stuId.isNotEmpty() && cleanDate.isNotEmpty()) {
+                val key = "${stuId}__${cleanDate}"
+                if (!dedupMap.containsKey(key)) {
+                    dedupMap[key] = e.copy(
+                        id = "attendance_${cleanDate}_${stuId}",
+                        studentId = stuId,
+                        date = cleanDate
+                    )
+                }
+            }
+        }
+        val arr = JSONArray()
+        dedupMap.values.forEach { e ->
             arr.put(JSONObject().apply {
                 put("id", e.id)
                 put("studentId", e.studentId)
@@ -2570,7 +2594,87 @@ class SchoolRepository(context: Context) {
         if (schoolId.isBlank()) return emptyList()
         val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES), null)
             ?: return emptyList()
-        return parseStudentActivityPostsJson(raw, schoolId)
+        val posts = parseStudentActivityPostsJson(raw, schoolId)
+        val subComments = loadStudentActivityCommentsSubCollection(schoolId)
+        return mergeCommentsIntoPosts(posts, subComments)
+    }
+
+    fun loadStudentActivityCommentsSubCollection(schoolId: String = getActiveSchoolId()): List<StudentActivityComment> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS), null)
+            ?: return emptyList()
+        return parseStudentActivityCommentsJson(raw)
+    }
+
+    fun parseStudentActivityCommentsJson(raw: String): List<StudentActivityComment> {
+        return try {
+            val commentsArr = JSONArray(raw)
+            val commentsList = mutableListOf<StudentActivityComment>()
+            for (cIdx in 0 until commentsArr.length()) {
+                val co = commentsArr.getJSONObject(cIdx)
+                val cRole = runCatching {
+                    UserRole.valueOf(co.optString("authorRole", UserRole.STUDENT.name))
+                }.getOrDefault(UserRole.STUDENT)
+
+                val repliesArr = co.optJSONArray("replies") ?: JSONArray()
+                val repliesList = mutableListOf<StudentActivityReply>()
+                for (rIdx in 0 until repliesArr.length()) {
+                    val ro = repliesArr.getJSONObject(rIdx)
+                    val rRole = runCatching {
+                        UserRole.valueOf(ro.optString("authorRole", UserRole.STUDENT.name))
+                    }.getOrDefault(UserRole.STUDENT)
+                    repliesList.add(
+                        StudentActivityReply(
+                            id = ro.optString("id"),
+                            commentId = ro.optString("commentId"),
+                            postId = ro.optString("postId"),
+                            authorUserId = ro.optString("authorUserId"),
+                            authorName = ro.optString("authorName"),
+                            authorRole = rRole,
+                            authorGradeClass = if (rRole == UserRole.ADMIN || rRole == UserRole.TEACHER) "" else ro.optString("authorGradeClass", ""),
+                            authorPhotoBase64 = ro.optString("authorPhotoBase64", ""),
+                            text = ro.optString("text"),
+                            createdAt = ro.optString("createdAt"),
+                            createdAtMillis = ro.optLong("createdAtMillis", System.currentTimeMillis())
+                        )
+                    )
+                }
+
+                commentsList.add(
+                    StudentActivityComment(
+                        id = co.optString("id"),
+                        postId = co.optString("postId"),
+                        authorUserId = co.optString("authorUserId"),
+                        authorName = co.optString("authorName"),
+                        authorRole = cRole,
+                        authorGradeClass = if (cRole == UserRole.ADMIN || cRole == UserRole.TEACHER) "" else co.optString("authorGradeClass", ""),
+                        authorPhotoBase64 = co.optString("authorPhotoBase64", ""),
+                        text = co.optString("text"),
+                        createdAt = co.optString("createdAt"),
+                        createdAtMillis = co.optLong("createdAtMillis", System.currentTimeMillis()),
+                        replies = repliesList
+                    )
+                )
+            }
+            commentsList
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun mergeCommentsIntoPosts(
+        posts: List<StudentActivityPost>,
+        subCollectionComments: List<StudentActivityComment>
+    ): List<StudentActivityPost> {
+        if (subCollectionComments.isEmpty()) return posts
+        val groupedByPost = subCollectionComments.groupBy { it.postId }
+        return posts.map { post ->
+            val externalComments = groupedByPost[post.id].orEmpty()
+            val merged = (post.comments + externalComments)
+                .distinctBy { it.id }
+                .sortedBy { it.createdAtMillis }
+            post.copy(comments = merged)
+        }
     }
 
     fun parseStudentActivityPostsJson(raw: String, schoolId: String = getActiveSchoolId()): List<StudentActivityPost> {
@@ -2590,56 +2694,14 @@ class SchoolRepository(context: Context) {
                     UserRole.valueOf(o.optString("authorRole", UserRole.STUDENT.name))
                 }.getOrDefault(UserRole.STUDENT)
 
-                val likedList = jsonArrayToList(o.optJSONArray("likedByUserIds")).distinct()
-                val heartCount = if (likedList.isNotEmpty()) likedList.size else o.optInt("heartCount", 0)
+                val likedList = jsonArrayToList(o.optJSONArray("likedByUserIds")).distinct().takeLast(500)
+                val heartCount = maxOf(likedList.size, o.optInt("heartCount", 0))
 
-                val commentsArr = o.optJSONArray("comments") ?: JSONArray()
-                val commentsList = mutableListOf<StudentActivityComment>()
-                for (cIdx in 0 until commentsArr.length()) {
-                    val co = commentsArr.getJSONObject(cIdx)
-                    val cRole = runCatching {
-                        UserRole.valueOf(co.optString("authorRole", UserRole.STUDENT.name))
-                    }.getOrDefault(UserRole.STUDENT)
-
-                    val repliesArr = co.optJSONArray("replies") ?: JSONArray()
-                    val repliesList = mutableListOf<StudentActivityReply>()
-                    for (rIdx in 0 until repliesArr.length()) {
-                        val ro = repliesArr.getJSONObject(rIdx)
-                        val rRole = runCatching {
-                            UserRole.valueOf(ro.optString("authorRole", UserRole.STUDENT.name))
-                        }.getOrDefault(UserRole.STUDENT)
-                        repliesList.add(
-                            StudentActivityReply(
-                                id = ro.optString("id"),
-                                commentId = ro.optString("commentId"),
-                                postId = ro.optString("postId"),
-                                authorUserId = ro.optString("authorUserId"),
-                                authorName = ro.optString("authorName"),
-                                authorRole = rRole,
-                                authorGradeClass = ro.optString("authorGradeClass", ""),
-                                authorPhotoBase64 = ro.optString("authorPhotoBase64", ""),
-                                text = ro.optString("text"),
-                                createdAt = ro.optString("createdAt"),
-                                createdAtMillis = ro.optLong("createdAtMillis", System.currentTimeMillis())
-                            )
-                        )
-                    }
-
-                    commentsList.add(
-                        StudentActivityComment(
-                            id = co.optString("id"),
-                            postId = co.optString("postId"),
-                            authorUserId = co.optString("authorUserId"),
-                            authorName = co.optString("authorName"),
-                            authorRole = cRole,
-                            authorGradeClass = co.optString("authorGradeClass", ""),
-                            authorPhotoBase64 = co.optString("authorPhotoBase64", ""),
-                            text = co.optString("text"),
-                            createdAt = co.optString("createdAt"),
-                            createdAtMillis = co.optLong("createdAtMillis", System.currentTimeMillis()),
-                            replies = repliesList
-                        )
-                    )
+                val legacyCommentsArr = o.optJSONArray("comments")
+                val legacyComments = if (legacyCommentsArr != null) {
+                    parseStudentActivityCommentsJson(legacyCommentsArr.toString())
+                } else {
+                    emptyList()
                 }
 
                 list.add(
@@ -2650,8 +2712,8 @@ class SchoolRepository(context: Context) {
                         authorStudentId = o.optString("authorStudentId", ""),
                         authorName = o.optString("authorName"),
                         authorRole = authorRole,
-                        authorGradeClass = o.optString("authorGradeClass", ""),
-                        authorSectionName = o.optString("authorSectionName", ""),
+                        authorGradeClass = if (authorRole == UserRole.ADMIN || authorRole == UserRole.TEACHER) "" else o.optString("authorGradeClass", ""),
+                        authorSectionName = if (authorRole == UserRole.ADMIN || authorRole == UserRole.TEACHER) "" else o.optString("authorSectionName", ""),
                         authorPhotoBase64 = o.optString("authorPhotoBase64", ""),
                         category = o.optString("category", "موهبة وإبداع علمي"),
                         title = o.optString("title"),
@@ -2663,11 +2725,12 @@ class SchoolRepository(context: Context) {
                         createdAtMillis = o.optLong("createdAtMillis", System.currentTimeMillis()),
                         heartCount = heartCount,
                         likedByUserIds = likedList,
-                        comments = commentsList
+                        comments = legacyComments
                     )
                 )
             }
-            list
+            val subComments = loadStudentActivityCommentsSubCollection(schoolId)
+            mergeCommentsIntoPosts(list, subComments)
         } catch (_: Exception) {
             emptyList()
         }
@@ -2675,36 +2738,42 @@ class SchoolRepository(context: Context) {
 
     fun saveStudentActivityPosts(posts: List<StudentActivityPost>, schoolId: String = getActiveSchoolId()) {
         if (schoolId.isBlank()) return
-        val arr = JSONArray()
-        posts.forEach { p ->
-            val cleanLikes = p.likedByUserIds.filter { it.isNotBlank() }.distinct()
-            val finalHearts = if (cleanLikes.isNotEmpty() || p.heartCount == 0) cleanLikes.size else p.heartCount
+        val postsArr = JSONArray()
+        val allCommentsArr = JSONArray()
 
-            val commentsArr = JSONArray()
+        posts.forEach { p ->
+            val cleanLikes = p.likedByUserIds.filter { it.isNotBlank() }.distinct().takeLast(500)
+            val finalHearts = if (cleanLikes.isNotEmpty() || p.heartCount == 0) cleanLikes.size else maxOf(cleanLikes.size, p.heartCount)
+            val safeAuthorClass = if (p.authorRole == UserRole.ADMIN || p.authorRole == UserRole.TEACHER) "" else InputSanitizer.sanitize(p.authorGradeClass)
+            val safeAuthorSec = if (p.authorRole == UserRole.ADMIN || p.authorRole == UserRole.TEACHER) "" else InputSanitizer.sanitize(p.authorSectionName)
+
             p.comments.forEach { c ->
                 val repliesArr = JSONArray()
                 c.replies.forEach { r ->
+                    val safeReplyClass = if (r.authorRole == UserRole.ADMIN || r.authorRole == UserRole.TEACHER) "" else InputSanitizer.sanitize(r.authorGradeClass)
                     repliesArr.put(JSONObject().apply {
                         put("id", r.id)
                         put("commentId", r.commentId)
-                        put("postId", r.postId)
+                        put("postId", p.id)
                         put("authorUserId", r.authorUserId)
                         put("authorName", InputSanitizer.sanitize(r.authorName))
                         put("authorRole", r.authorRole.name)
-                        put("authorGradeClass", InputSanitizer.sanitize(r.authorGradeClass))
+                        put("authorGradeClass", safeReplyClass)
                         put("authorPhotoBase64", r.authorPhotoBase64)
                         put("text", InputSanitizer.sanitize(r.text))
                         put("createdAt", r.createdAt)
                         put("createdAtMillis", r.createdAtMillis)
                     })
                 }
-                commentsArr.put(JSONObject().apply {
+                val safeCommentClass = if (c.authorRole == UserRole.ADMIN || c.authorRole == UserRole.TEACHER) "" else InputSanitizer.sanitize(c.authorGradeClass)
+                allCommentsArr.put(JSONObject().apply {
                     put("id", c.id)
-                    put("postId", c.postId)
+                    put("postId", p.id)
+                    put("schoolId", schoolId)
                     put("authorUserId", c.authorUserId)
                     put("authorName", InputSanitizer.sanitize(c.authorName))
                     put("authorRole", c.authorRole.name)
-                    put("authorGradeClass", InputSanitizer.sanitize(c.authorGradeClass))
+                    put("authorGradeClass", safeCommentClass)
                     put("authorPhotoBase64", c.authorPhotoBase64)
                     put("text", InputSanitizer.sanitize(c.text))
                     put("createdAt", c.createdAt)
@@ -2713,15 +2782,16 @@ class SchoolRepository(context: Context) {
                 })
             }
 
-            arr.put(JSONObject().apply {
+            // Store post document WITHOUT embedding the heavy comments array inside the post document
+            postsArr.put(JSONObject().apply {
                 put("id", p.id)
                 put("schoolId", schoolId)
                 put("authorUserId", p.authorUserId)
                 put("authorStudentId", p.authorStudentId)
                 put("authorName", InputSanitizer.sanitize(p.authorName))
                 put("authorRole", p.authorRole.name)
-                put("authorGradeClass", InputSanitizer.sanitize(p.authorGradeClass))
-                put("authorSectionName", InputSanitizer.sanitize(p.authorSectionName))
+                put("authorGradeClass", safeAuthorClass)
+                put("authorSectionName", safeAuthorSec)
                 put("authorPhotoBase64", p.authorPhotoBase64)
                 put("category", InputSanitizer.sanitize(p.category))
                 put("title", InputSanitizer.sanitize(p.title))
@@ -2733,12 +2803,17 @@ class SchoolRepository(context: Context) {
                 put("createdAtMillis", p.createdAtMillis)
                 put("heartCount", finalHearts)
                 put("likedByUserIds", JSONArray(cleanLikes))
-                put("comments", commentsArr)
             })
         }
-        val jsonStr = arr.toString()
-        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES), jsonStr).apply()
-        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES, jsonStr)
+
+        val postsJsonStr = postsArr.toString()
+        val commentsJsonStr = allCommentsArr.toString()
+        prefs.edit()
+            .putString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES), postsJsonStr)
+            .putString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS), commentsJsonStr)
+            .apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES, postsJsonStr)
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS, commentsJsonStr)
     }
 
     fun loadActivityViolationReports(schoolId: String = getActiveSchoolId()): List<StudentActivityViolationReport> {

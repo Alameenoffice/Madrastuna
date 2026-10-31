@@ -22,8 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.model.*
 import com.example.ui.components.*
-import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.WhatsAppGreen
+import com.example.ui.theme.*
 import com.example.util.ExternalIntents
 import com.example.viewmodel.SchoolViewModel
 
@@ -627,7 +626,7 @@ fun AdminAccountsScreen(
 
         // Multi-select subjects from registeredSubjects
         val initialSubjects = remember(currentEditing) {
-            currentEditing?.teacherSubjectsList?.toSet() ?: setOf(registeredSubjects.firstOrNull() ?: "الرياضيات")
+            currentEditing?.teacherSubjectsList?.toSet() ?: emptySet()
         }
         var selectedSubjects by remember(currentEditing) { mutableStateOf(initialSubjects) }
 
@@ -638,8 +637,7 @@ fun AdminAccountsScreen(
             }
         }
         val initialClassSections = remember(currentEditing, allClassSectionOptions) {
-            val existing = currentEditing?.teacherClassSectionPairs?.toSet() ?: emptySet()
-            if (existing.isNotEmpty()) existing else setOfNotNull(allClassSectionOptions.firstOrNull())
+            currentEditing?.teacherClassSectionPairs?.toSet() ?: emptySet()
         }
         var selectedClassSections by remember(currentEditing) { mutableStateOf(initialClassSections) }
 
@@ -667,11 +665,34 @@ fun AdminAccountsScreen(
                         )
                     }
                     item {
-                        Text(
-                            text = "اختر المواد الدراسية المسندة للمعلم (اختيار متعدد):",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "اختر المواد الدراسية المسندة للمعلم:",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(
+                                onClick = {
+                                    selectedSubjects = if (selectedSubjects.size == registeredSubjects.size) {
+                                        emptySet()
+                                    } else {
+                                        registeredSubjects.toSet()
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (selectedSubjects.size == registeredSubjects.size) "إلغاء تحديد الكل" else "تحديد الكل",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = DeepEmerald
+                                )
+                            }
+                        }
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -682,7 +703,7 @@ fun AdminAccountsScreen(
                                 FilterChip(
                                     selected = isChecked,
                                     onClick = {
-                                        selectedSubjects = if (isChecked && selectedSubjects.size > 1) {
+                                        selectedSubjects = if (isChecked) {
                                             selectedSubjects - subj
                                         } else {
                                             selectedSubjects + subj
@@ -702,11 +723,34 @@ fun AdminAccountsScreen(
                     }
 
                     item {
-                        Text(
-                            text = "اختر الصفوف والشعب المسندة من الصفوف المسجلة (اختيار متعدد):",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "اختر الصفوف والشعب المسندة للمعلم:",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            TextButton(
+                                onClick = {
+                                    selectedClassSections = if (selectedClassSections.size == allClassSectionOptions.size) {
+                                        emptySet()
+                                    } else {
+                                        allClassSectionOptions.toSet()
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (selectedClassSections.size == allClassSectionOptions.size) "إلغاء تحديد الكل" else "تحديد الكل",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = DeepEmerald
+                                )
+                            }
+                        }
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -717,7 +761,7 @@ fun AdminAccountsScreen(
                                 FilterChip(
                                     selected = isChecked,
                                     onClick = {
-                                        selectedClassSections = if (isChecked && selectedClassSections.size > 1) {
+                                        selectedClassSections = if (isChecked) {
                                             selectedClassSections - pairLabel
                                         } else {
                                             selectedClassSections + pairLabel
@@ -900,28 +944,15 @@ fun AdminAccountsScreen(
                             value = studentName,
                             onValueChange = {
                                 studentName = it
-                                // Auto-extract father's name if parentName is still blank and user typed 2+ words
-                                val tokens = it.trim().split("\\s+".toRegex()).filter { t -> t.isNotBlank() }
-                                if (parentName.isBlank() && tokens.size >= 2) {
-                                    val candidateFather = tokens.drop(1).joinToString(" ")
-                                    val existingMatch = viewModel.findExistingParentMatch(
-                                        studentNameInput = it,
-                                        parentNameInput = candidateFather,
-                                        parentPhoneInput = parentPhone,
-                                        excludeStudentId = currentStu?.id
-                                    )
-                                    if (existingMatch != null) {
-                                        parentName = existingMatch.parentName
-                                    }
-                                }
+                                // Only link when full 4-part name is entered and confirmed via the banner button
                             },
-                            label = { Text("اسم الطالب الرباعي") },
+                            label = { Text("اسم الطالب الرباعي الكامل") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
 
-                    // Smart Parent Auto-Link Interactive Banner (الاكتشاف التلقائي لولي الأمر وربط الإخوة)
+                    // Smart Parent Auto-Link Interactive Banner (الاكتشاف التلقائي لولي الأمر وربط الإخوة بعد اكتمال الاسم الرباعي)
                     if (matchedParent != null) {
                         item {
                             Surface(
@@ -932,11 +963,11 @@ fun AdminAccountsScreen(
                                 color = if (isLinkedToExistingParent) {
                                     Color(0xFF065F46).copy(alpha = 0.14f)
                                 } else {
-                                    Color(0xFFD97706).copy(alpha = 0.14f)
+                                    GoldAccent.copy(alpha = 0.18f)
                                 },
                                 border = androidx.compose.foundation.BorderStroke(
                                     1.5.dp,
-                                    if (isLinkedToExistingParent) Color(0xFF059669) else Color(0xFFD97706)
+                                    if (isLinkedToExistingParent) Color(0xFF059669) else DeepEmerald
                                 )
                             ) {
                                 Column(
@@ -952,7 +983,7 @@ fun AdminAccountsScreen(
                                         Icon(
                                             imageVector = if (isLinkedToExistingParent) Icons.Filled.CheckCircle else Icons.Filled.FamilyRestroom,
                                             contentDescription = null,
-                                            tint = if (isLinkedToExistingParent) Color(0xFF059669) else Color(0xFFB45309),
+                                            tint = if (isLinkedToExistingParent) Color(0xFF059669) else DeepEmerald,
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Text(

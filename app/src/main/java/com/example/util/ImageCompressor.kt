@@ -86,9 +86,16 @@ object ImageCompressor {
                 paint
             )
 
+            var quality = JPEG_QUALITY
             val outputStream = ByteArrayOutputStream()
-            canvasBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
-            val jpegBytes = outputStream.toByteArray()
+            canvasBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+            var jpegBytes = outputStream.toByteArray()
+            while (jpegBytes.size > 95 * 1024 && quality > 45) {
+                quality -= 10
+                outputStream.reset()
+                canvasBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+                jpegBytes = outputStream.toByteArray()
+            }
             outputStream.close()
 
             if (originalBitmap != canvasBitmap) {

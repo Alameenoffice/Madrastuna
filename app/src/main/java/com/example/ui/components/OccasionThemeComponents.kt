@@ -1328,20 +1328,14 @@ fun LiveOccasionBannerCard(
                             Text(
                                 text = config.effectiveTitle,
                                 color = Color(0xFFFDE68A),
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                             )
                         }
                     }
-                    Text(
-                        text = config.effectiveTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                     Text(
                         text = config.effectiveBannerText,
                         style = MaterialTheme.typography.bodySmall,
