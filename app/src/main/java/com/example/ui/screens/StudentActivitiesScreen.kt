@@ -47,6 +47,7 @@ import com.example.model.*
 import com.example.ui.components.Base64AvatarImage
 import com.example.ui.components.CompressedPhotoPickerButton
 import com.example.ui.components.GlobalImageLightboxController
+import com.example.ui.components.HonorHeartReactionButton
 import com.example.ui.components.StudentActivitiesVectorIcon
 import com.example.ui.theme.*
 import com.example.util.ImageCompressor
@@ -1168,40 +1169,17 @@ fun StudentActivityPostCard(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Heart Button (Vector SVG with smooth spring scale animation)
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = if (isLikedByMe) Color(0xFFFFEBEE) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isLikedByMe) Color(0xFFE53935) else CardBorderColor
-                        ),
-                        modifier = Modifier
-                            .graphicsLayer(scaleX = heartScale, scaleY = heartScale)
-                            .clip(RoundedCornerShape(50))
-                            .clickable(enabled = !isInteractionMuted) {
+                    // Heart Button identical to Honor Roll & Events Gallery (HonorHeartReactionButton)
+                    HonorHeartReactionButton(
+                        heartCount = post.heartCount,
+                        isLikedByMe = isLikedByMe,
+                        onReact = {
+                            if (!isInteractionMuted) {
                                 viewModel.toggleStudentActivityHeart(post.id)
                             }
-                            .testTag("like_post_${post.id}")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            VectorHeartIcon(
-                                isFilled = isLikedByMe,
-                                tint = if (isLikedByMe) Color(0xFFE53935) else TextSecondaryColor,
-                                size = 18.dp
-                            )
-                            Text(
-                                text = "${post.heartCount}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isLikedByMe) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
+                        },
+                        testTag = "like_post_${post.id}"
+                    )
 
                     // Comments Toggle Button
                     Surface(

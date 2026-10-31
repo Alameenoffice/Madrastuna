@@ -202,7 +202,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     val loginConnectingMessage: StateFlow<String?> = _loginConnectingMessage.asStateFlow()
 
     val availableClasses: List<String>
-        get() = _schoolConfig.value.registeredClasses.ifEmpty { SchoolStage.SECONDARY.defaultClasses }
+        get() = (_schoolConfig.value.schoolStage.defaultClasses + _schoolConfig.value.registeredClasses)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { ArabicTextNormalizer.normalizeClass(it) }
+            .ifEmpty { SchoolStage.SECONDARY.defaultClasses }
 
     val availableSections: List<String>
         get() = _schoolConfig.value.registeredSections.ifEmpty { listOf("أ", "ب", "ج") }
@@ -267,22 +271,28 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         if (sid.isNotBlank()) {
             viewModelScope.launch {
                 try {
-                    FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_HONOR_ROLL)?.let {
-                        if (it.isNotBlank()) {
-                            repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HONOR_ROLL, it)
-                            _students.value = repo.parseStudentsJson(it, sid)
+                    if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HONOR_ROLL)) {
+                        FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_HONOR_ROLL)?.let {
+                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HONOR_ROLL)) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HONOR_ROLL, it)
+                                _students.value = repo.parseStudentsJson(it, sid)
+                            }
                         }
                     }
-                    FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_ATTENDANCE)?.let {
-                        if (it.isNotBlank()) {
-                            repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE, it)
-                            _attendance.value = repo.parseAttendanceJson(it, sid)
+                    if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ATTENDANCE)) {
+                        FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_ATTENDANCE)?.let {
+                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ATTENDANCE)) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE, it)
+                                _attendance.value = repo.parseAttendanceJson(it, sid)
+                            }
                         }
                     }
-                    FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)?.let {
-                        if (it.isNotBlank()) {
-                            repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES, it)
-                            _studentActivityPosts.value = repo.parseStudentActivityPostsJson(it, sid)
+                    if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)) {
+                        FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)?.let {
+                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES, it)
+                                _studentActivityPosts.value = repo.parseStudentActivityPostsJson(it, sid)
+                            }
                         }
                     }
                 } catch (_: Exception) {
@@ -856,6 +866,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 FirebaseConfigConstants.COL_ATTENDANCE
                             )
                             if (!remoteAttRaw.isNullOrBlank() &&
+                                !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ATTENDANCE) &&
                                 remoteAttRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE)
                             ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE, remoteAttRaw)
@@ -2785,14 +2796,16 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val sid = _schoolConfig.value.schoolId
-        val cleanDate = InputSanitizer.sanitize(date).trim()
+        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(InputSanitizer.sanitize(date).trim())
+        val cleanStudentId = student.id.trim()
         val cleanNote = InputSanitizer.sanitize(note).trim()
-        val deterministicId = "attendance_${cleanDate}_${student.id}"
+        val deterministicId = "attendance_${cleanDate}_$cleanStudentId"
 
         // Idempotent guard: if the student already has this exact status for this date,
         // do NOT re-insert, do NOT increment absence counters, and do NOT send duplicate notifications!
         val existingEntry = _attendance.value.firstOrNull {
-            it.studentId == student.id && it.date.trim() == cleanDate
+            it.studentId.trim() == cleanStudentId &&
+                ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate
         }
         if (existingEntry != null &&
             existingEntry.status == status &&
@@ -2804,7 +2817,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val entry = AttendanceEntry(
             id = deterministicId,
-            studentId = student.id,
+            studentId = cleanStudentId,
             studentName = student.studentName,
             gradeClass = student.gradeClass,
             sectionName = student.sectionName,
@@ -2815,7 +2828,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
 
         val filtered = _attendance.value.filterNot {
-            it.studentId == student.id && it.date.trim() == cleanDate
+            it.studentId.trim() == cleanStudentId &&
+                ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate
         }
         val updated = listOf(entry) + filtered
         _attendance.value = updated
@@ -2828,7 +2842,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 title = "تنبيه ${status.arabicLabel}: ${student.studentName}",
                 body = "تم رصد حالة (${status.arabicLabel}) للطالب ${student.studentName} في الصف ${student.gradeClass} (${student.sectionName}) بتاريخ $cleanDate.",
                 type = NotificationType.ATTENDANCE,
-                targetStudentId = student.id,
+                targetStudentId = cleanStudentId,
                 targetSection = AppSection.ATTENDANCE.name,
                 targetTab = 0,
                 targetItemId = deterministicId
@@ -3156,9 +3170,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun getTotalAbsenceDays(studentId: String): Int {
         // Group by canonical date so a single day can NEVER be counted more than once,
         // and only count the date if the canonical (latest) status for that date is ABSENT.
+        val cleanId = studentId.trim()
         return _attendance.value
-            .filter { it.studentId == studentId && it.date.isNotBlank() }
-            .groupBy { it.date.trim() }
+            .filter { it.studentId.trim() == cleanId && it.date.isNotBlank() }
+            .groupBy { ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) }
             .count { (_, entriesForDate) ->
                 entriesForDate.first().status == AttendanceStatus.ABSENT
             }

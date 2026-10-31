@@ -193,7 +193,7 @@ enum class AttendanceStatus(val arabicLabel: String) {
     PRESENT("حاضر"),
     ABSENT("غائب"),
     LATE("متأخر"),
-    EXCUSED("مجاز (غائب بعذر)")
+    EXCUSED("مجاز")
 }
 
 enum class ReportType(val arabicLabel: String) {
@@ -342,6 +342,13 @@ data class UserAccount(
         get() = teacherClassSectionPairs.map { pair ->
             if (pair.contains("-")) pair.substringBefore("-").trim() else pair.trim()
         }.filter { it.isNotEmpty() }.distinctBy { ArabicTextNormalizer.normalizeClass(it) }
+
+    val teacherAssignedSectionsOnly: List<String>
+        get() = teacherClassSectionPairs.mapNotNull { pair ->
+            if (pair.contains("-")) {
+                pair.substringAfter("-").replace("شعبة", "").trim().takeIf { it.isNotEmpty() }
+            } else null
+        }.distinctBy { ArabicTextNormalizer.normalizeSection(it) }
 
     fun canTeacherAccessClassSection(gradeClass: String, sectionName: String? = null): Boolean {
         if (role == UserRole.ADMIN) return true

@@ -182,79 +182,50 @@ fun ModernCalendarDatePickerField(
 
     Surface(
         modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .height(48.dp)
+            .clip(RoundedCornerShape(12.dp))
             .clickable { showPickerModal = true }
             .testTag(testTag),
-        shape = RoundedCornerShape(14.dp),
-        color = DeepEmerald.copy(alpha = 0.05f),
-        border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.35f))
+        shape = RoundedCornerShape(12.dp),
+        color = DeepEmerald.copy(alpha = 0.06f),
+        border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.38f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 11.dp),
+                .height(48.dp)
+                .padding(horizontal = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = DeepEmerald.copy(alpha = 0.14f),
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.CalendarMonth,
-                            contentDescription = null,
-                            tint = DeepEmerald,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                Column {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = if (showDayNameBadge) "$dayName • $displayDate" else displayDate,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = DeepForestGreen
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Filled.CalendarMonth,
+                    contentDescription = label,
+                    tint = DeepEmerald,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = displayDate,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepForestGreen,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = DeepEmerald,
-                contentColor = Color.White
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.EventAvailable,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = "اختيار التاريخ",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
+            Icon(
+                imageVector = Icons.Filled.EventAvailable,
+                contentDescription = label,
+                tint = DeepEmerald,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 
@@ -646,50 +617,67 @@ fun UrgentSchoolAlertModalDialog(
 }
 
 /**
- * Custom Crisp Linear Vector SVG Icon for "نشاطات الطلبة" (Student Creative Community)
+ * Custom Crisp Linear Vector SVG Icon for "نشاطات الطلبة" (Smart Creative Idea Lightbulb - no stars)
  */
+val StudentActivitiesLinearVector: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "StudentActivitiesSmartBulbVector",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.9f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            // Smart Lightbulb Dome & Neck
+            moveTo(9f, 16.2f)
+            lineTo(8.3f, 14.4f)
+            curveTo(6.9f, 13.1f, 6.2f, 11.4f, 6.2f, 9.5f)
+            curveTo(6.2f, 6.3f, 8.8f, 3.8f, 12f, 3.8f)
+            curveTo(15.2f, 3.8f, 17.8f, 6.3f, 17.8f, 9.5f)
+            curveTo(17.8f, 11.4f, 17.1f, 13.1f, 15.7f, 14.4f)
+            lineTo(15f, 16.2f)
+            close()
+
+            // Inner Creative Filament
+            moveTo(10.3f, 11.2f)
+            lineTo(12f, 9.2f)
+            lineTo(13.7f, 11.2f)
+            moveTo(12f, 9.2f)
+            lineTo(12f, 14.2f)
+
+            // Base Screw Threads
+            moveTo(9.4f, 19f)
+            lineTo(14.6f, 19f)
+            moveTo(10.4f, 21.5f)
+            lineTo(13.6f, 21.5f)
+
+            // Subtle Idea Rays (Top & Sides)
+            moveTo(12f, 1.4f)
+            lineTo(12f, 2.3f)
+            moveTo(4.2f, 5.2f)
+            lineTo(5.1f, 5.9f)
+            moveTo(19.8f, 5.2f)
+            lineTo(18.9f, 5.9f)
+        }
+    }.build()
+}
+
 @Composable
 fun StudentActivitiesVectorIcon(
     tint: Color = DeepEmerald,
     size: Dp = 22.dp,
     modifier: Modifier = Modifier
 ) {
-    val vector = remember {
-        ImageVector.Builder(
-            name = "StudentActivitiesVector",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f
-        ).apply {
-            // Creative bulb / star crest frame
-            path(
-                stroke = SolidColor(Color.White),
-                strokeLineWidth = 1.9f,
-                strokeLineCap = StrokeCap.Round,
-                strokeLineJoin = StrokeJoin.Round
-            ) {
-                moveTo(12f, 2.5f)
-                lineTo(14.4f, 7.4f)
-                lineTo(19.8f, 8.2f)
-                lineTo(15.9f, 12.0f)
-                lineTo(16.8f, 17.4f)
-                lineTo(12f, 14.8f)
-                lineTo(7.2f, 17.4f)
-                lineTo(8.1f, 12.0f)
-                lineTo(4.2f, 8.2f)
-                lineTo(9.6f, 7.4f)
-                close()
-                // Pedestal base lines
-                moveTo(6f, 21f)
-                lineTo(18f, 21f)
-            }
-        }.build()
-    }
     Icon(
-        imageVector = vector,
+        imageVector = StudentActivitiesLinearVector,
         contentDescription = null,
         tint = tint,
         modifier = modifier.size(size)
     )
 }
+

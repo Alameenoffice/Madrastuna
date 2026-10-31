@@ -11,12 +11,20 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -31,10 +39,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,6 +64,7 @@ import com.example.ui.components.DigitalStudentIdDialog
 import com.example.ui.components.GlobalImageLightboxDialog
 import com.example.ui.components.ParentMultiChildSwitcherBar
 import com.example.ui.components.ProgressiveInfiniteScrollFooter
+import com.example.ui.components.StudentActivitiesLinearVector
 import com.example.ui.components.UrgentSchoolAlertModalDialog
 import com.example.ui.components.VectorActionButton
 import com.example.ui.screens.*
@@ -362,80 +379,181 @@ fun MadrasatiRootApp(
             }
         }
 
-        // Global Calm Luxury Emerald Network Connectivity Guard Banner
+        // Full-Screen Offline Blocker (شاشة كاملة مانعة للتفاعل عند انقطاع الاتصال بالإنترنت)
         val isNetworkOnline by viewModel.isNetworkOnline.collectAsState()
         AnimatedVisibility(
             visible = !isNetworkOnline,
-            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            enter = fadeIn(animationSpec = tween(250)),
+            exit = fadeOut(animationSpec = tween(200)),
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .zIndex(98f)
+                .fillMaxSize()
+                .zIndex(99999f)
         ) {
-            Surface(
-                color = DeepForestGreen,
-                shape = RoundedCornerShape(18.dp),
-                border = androidx.compose.foundation.BorderStroke(1.2.dp, GoldAccent.copy(alpha = 0.75f)),
-                shadowElevation = 8.dp,
+            val infiniteTransition = rememberInfiniteTransition(label = "offline_pulse_transition")
+            val pulseRadiusScale by infiniteTransition.animateFloat(
+                initialValue = 0.85f,
+                targetValue = 1.25f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1600, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "pulse_radius_scale"
+            )
+            val pulseAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.25f,
+                targetValue = 0.65f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1600, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "pulse_alpha"
+            )
+
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("network_connectivity_guard_banner")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.CloudOff,
-                            contentDescription = "انقطاع الاتصال بالإنترنت",
-                            tint = GoldAccent,
-                            modifier = Modifier.size(22.dp)
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF022C22).copy(alpha = 0.98f),
+                                Color(0xFF064E3B).copy(alpha = 0.97f),
+                                Color(0xFF022C22).copy(alpha = 0.99f)
+                            )
                         )
-                        Column {
-                            Text(
-                                text = "لا يوجد اتصال بالإنترنت حالياً",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "يرجى التحقق من الشبكة — ستتم المزامنة السحابية تلقائياً فور عودة الاتصال",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFA7F3D0),
-                                fontSize = 11.sp
-                            )
-                        }
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures { /* Block all underlying clicks/touches while offline */ }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = GoldAccent,
+                    .testTag("network_connectivity_guard_banner"),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF064E3B)
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.5.dp,
+                        GoldAccent.copy(alpha = 0.75f)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+                ) {
+                    Column(
                         modifier = Modifier
-                            .clickable { viewModel.triggerImmediateCloudResync() }
-                            .testTag("network_retry_sync_button")
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        // Interactive Animated Vector SVG Offline Illustration in Emerald & Gold
+                        Box(
+                            modifier = Modifier.size(136.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val cx = size.width / 2f
+                                val cy = size.height / 2f
+                                val baseR = size.minDimension * 0.34f
+
+                                // Outer Pulsing Gold & Emerald Radar Waves
+                                drawCircle(
+                                    color = GoldAccent.copy(alpha = pulseAlpha * 0.35f),
+                                    radius = baseR * 1.28f * pulseRadiusScale,
+                                    center = Offset(cx, cy),
+                                    style = Stroke(width = 3.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = Color(0xFF34D399).copy(alpha = pulseAlpha * 0.45f),
+                                    radius = baseR * 1.05f * pulseRadiusScale,
+                                    center = Offset(cx, cy),
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = Color(0xFF022C22),
+                                    radius = baseR * 0.92f,
+                                    center = Offset(cx, cy)
+                                )
+                                drawCircle(
+                                    color = GoldAccent.copy(alpha = 0.85f),
+                                    radius = baseR * 0.92f,
+                                    center = Offset(cx, cy),
+                                    style = Stroke(width = 2.2.dp.toPx())
+                                )
+
+                                // Linear Vector SVG Cloud + Signal Arcs + Slash in Gold & White
+                                val w = size.width
+                                val h = size.height
+                                val cloudPath = Path().apply {
+                                    moveTo(w * 0.35f, h * 0.58f)
+                                    lineTo(w * 0.65f, h * 0.58f)
+                                    cubicTo(w * 0.72f, h * 0.58f, w * 0.75f, h * 0.53f, w * 0.74f, h * 0.47f)
+                                    cubicTo(w * 0.73f, h * 0.42f, w * 0.68f, h * 0.39f, w * 0.63f, h * 0.40f)
+                                    cubicTo(w * 0.60f, h * 0.33f, w * 0.52f, h * 0.30f, w * 0.45f, h * 0.34f)
+                                    cubicTo(w * 0.39f, h * 0.37f, w * 0.36f, h * 0.43f, w * 0.36f, h * 0.46f)
+                                    cubicTo(w * 0.31f, h * 0.47f, w * 0.29f, h * 0.52f, w * 0.31f, h * 0.56f)
+                                    close()
+                                }
+                                drawPath(
+                                    path = cloudPath,
+                                    color = Color.White,
+                                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                )
+                                // Diagonal Offline Slash in Royal Gold
+                                drawLine(
+                                    color = GoldAccent,
+                                    start = Offset(w * 0.33f, h * 0.33f),
+                                    end = Offset(w * 0.67f, h * 0.67f),
+                                    strokeWidth = 3.5.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "انقطع الاتصال بالإنترنت",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = GoldAccent,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Text(
+                            text = "انقطع الاتصال بالإنترنت — المنصة تعمل سحابياً، يرجى التحقق من الشبكة وستعود للعمل تلقائياً فور توفر الاتصال",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.94f),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 24.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Button(
+                            onClick = { viewModel.triggerImmediateCloudResync() },
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = GoldAccent,
+                                contentColor = DeepForestGreen
+                            ),
+                            contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("network_retry_sync_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
-                                contentDescription = "إعادة المحاولة",
+                                contentDescription = "إعادة الفحص الآن",
                                 tint = DeepForestGreen,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(20.dp)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "إعادة المحاولة",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = "إعادة الفحص الآن",
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = DeepForestGreen
                             )
@@ -528,7 +646,7 @@ fun AuthenticatedMainPlatform(
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
             if (featureSettings.studentActivitiesEnabled) {
-                add(AppSection.STUDENT_ACTIVITIES to Icons.Filled.AutoAwesome)
+                add(AppSection.STUDENT_ACTIVITIES to StudentActivitiesLinearVector)
             }
             if (featureSettings.honorRollEnabled) {
                 add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
@@ -557,7 +675,7 @@ fun AuthenticatedMainPlatform(
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.MenuBook)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
             if (featureSettings.studentActivitiesEnabled) {
-                add(AppSection.STUDENT_ACTIVITIES to Icons.Filled.AutoAwesome)
+                add(AppSection.STUDENT_ACTIVITIES to StudentActivitiesLinearVector)
             } else if (featureSettings.honorRollEnabled) {
                 add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
             } else {

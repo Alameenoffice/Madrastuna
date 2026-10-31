@@ -50,6 +50,7 @@ fun ScheduleAndHomeworkScreen(
     val featureSettings by viewModel.featureSettings.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val students by viewModel.students.collectAsState()
     val schedules by viewModel.schedules.collectAsState()
     val homeworks by viewModel.homeworks.collectAsState()
     val homeworkSubmissions by viewModel.homeworkSubmissions.collectAsState()
@@ -59,20 +60,20 @@ fun ScheduleAndHomeworkScreen(
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val canPublish = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
-    val activeStudent = remember(currentUser, selectedParentChildId) {
+    val activeStudent = remember(currentUser, students, selectedParentChildId) {
         viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
     }
 
-    val allowedClasses = remember(schoolConfig, currentUser, selectedParentChildId) {
+    val allowedClasses = remember(schoolConfig, currentUser, students, selectedParentChildId) {
         viewModel.getAllowedClassesForUser(currentUser)
     }
-    var selectedClass by remember(allowedClasses) {
+    var selectedClass by remember(currentUser?.id, allowedClasses) {
         mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
     }
-    val allowedSections = remember(schoolConfig, currentUser, selectedClass, selectedParentChildId) {
+    val allowedSections = remember(schoolConfig, currentUser, students, selectedClass, selectedParentChildId) {
         viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
     }
-    var selectedSection by remember(allowedSections) {
+    var selectedSection by remember(currentUser?.id, selectedClass, allowedSections) {
         mutableStateOf(allowedSections.firstOrNull() ?: "أ")
     }
     val allowedSubjects = remember(schoolConfig, selectedClass, currentUser) {
@@ -1762,22 +1763,22 @@ fun ExamsAndGradesScreen(
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
-    val allowedClasses = remember(schoolConfig, currentUser, selectedParentChildId) {
+    val allowedClasses = remember(schoolConfig, currentUser, students, selectedParentChildId) {
         viewModel.getAllowedClassesForUser(currentUser)
     }
-    var selectedClass by remember(allowedClasses) {
+    var selectedClass by remember(currentUser?.id, allowedClasses) {
         mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
     }
-    val allowedSections = remember(schoolConfig, currentUser, selectedClass, selectedParentChildId) {
+    val allowedSections = remember(schoolConfig, currentUser, students, selectedClass, selectedParentChildId) {
         viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
     }
-    var selectedSection by remember(allowedSections) {
+    var selectedSection by remember(currentUser?.id, selectedClass, allowedSections) {
         mutableStateOf(allowedSections.firstOrNull() ?: "أ")
     }
     val allowedSubjects = remember(schoolConfig, selectedClass, currentUser) {
         viewModel.getSubjectsForClass(selectedClass, currentUser)
     }
-    var selectedSubject by remember(allowedSubjects) {
+    var selectedSubject by remember(currentUser?.id, selectedClass, allowedSubjects) {
         mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات")
     }
     var selectedMaxScale by remember(selectedClass) {

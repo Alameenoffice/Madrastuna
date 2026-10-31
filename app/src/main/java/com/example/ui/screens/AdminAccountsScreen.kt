@@ -37,9 +37,21 @@ fun AdminAccountsScreen(
     val accounts by viewModel.accounts.collectAsState()
     val students by viewModel.students.collectAsState()
 
-    val registeredClasses = schoolConfig.registeredClasses.ifEmpty { SchoolStage.SECONDARY.defaultClasses }
-    val registeredSections = schoolConfig.registeredSections.ifEmpty { listOf("أ", "ب", "ج") }
-    val registeredSubjects = schoolConfig.registeredSubjects.ifEmpty { SchoolStage.SECONDARY.defaultSubjects }
+    val registeredClasses = remember(schoolConfig, students) {
+        (schoolConfig.schoolStage.defaultClasses + schoolConfig.registeredClasses + students.map { it.gradeClass.trim() })
+            .filter { it.isNotBlank() }
+            .distinctBy { ArabicTextNormalizer.normalizeClass(it) }
+    }
+    val registeredSections = remember(schoolConfig, students) {
+        (schoolConfig.registeredSections.ifEmpty { listOf("أ", "ب", "ج") } + students.map { it.sectionName.trim() })
+            .filter { it.isNotBlank() }
+            .distinctBy { ArabicTextNormalizer.normalizeSection(it) }
+    }
+    val registeredSubjects = remember(schoolConfig) {
+        (schoolConfig.schoolStage.defaultSubjects + schoolConfig.registeredSubjects)
+            .filter { it.isNotBlank() }
+            .distinctBy { ArabicTextNormalizer.normalizeText(it) }
+    }
 
     // Search & Filters (شريط بحث فوري + فلتر حسب الدور + فلتر حسب الصف)
     var searchQuery by remember { mutableStateOf("") }
@@ -630,16 +642,27 @@ fun AdminAccountsScreen(
         }
         var selectedSubjects by remember(currentEditing) { mutableStateOf(initialSubjects) }
 
-        // Multi-select class-section combinations from registeredClasses × registeredSections
-        val allClassSectionOptions = remember(registeredClasses, registeredSections) {
-            registeredClasses.flatMap { cls ->
-                registeredSections.map { sec -> "$cls - $sec" }
+        // Separate multi-select for Official Classes and Official Sections (matching Attendance & Exams 100%)
+        val initialTeacherClasses = remember(currentEditing, registeredClasses) {
+            val existingCls = currentEditing?.teacherAssignedClassesOnly.orEmpty()
+            registeredClasses.filter { regCls ->
+                existingCls.any { ArabicTextNormalizer.matchesClass(it, regCls) }
+            }.toSet()
+        }
+        var selectedTeacherClasses by remember(currentEditing) { mutableStateOf(initialTeacherClasses) }
+
+        val initialTeacherSections = remember(currentEditing, registeredSections) {
+            val existingSecs = currentEditing?.teacherAssignedSectionsOnly.orEmpty()
+            val matchedSecs = registeredSections.filter { regSec ->
+                existingSecs.any { ArabicTextNormalizer.matchesSection(it, regSec) }
+            }.toSet()
+            if (matchedSecs.isEmpty() && currentEditing != null && currentEditing.teacherAssignedClassesOnly.isNotEmpty()) {
+                registeredSections.toSet()
+            } else {
+                matchedSecs
             }
         }
-        val initialClassSections = remember(currentEditing, allClassSectionOptions) {
-            currentEditing?.teacherClassSectionPairs?.toSet() ?: emptySet()
-        }
-        var selectedClassSections by remember(currentEditing) { mutableStateOf(initialClassSections) }
+        var selectedTeacherSections by remember(currentEditing) { mutableStateOf(initialTeacherSections) }
 
         AlertDialog(
             onDismissRequest = { showTeacherDialog = false },
@@ -729,22 +752,22 @@ fun AdminAccountsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "اختر الصفوف والشعب المسندة للمعلم:",
+                                text = "اختر الصفوف الدراسية المسندة للمعلم:",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.secondary
                             )
                             TextButton(
                                 onClick = {
-                                    selectedClassSections = if (selectedClassSections.size == allClassSectionOptions.size) {
+                                    selectedTeacherClasses = if (selectedTeacherClasses.size == registeredClasses.size) {
                                         emptySet()
                                     } else {
-                                        allClassSectionOptions.toSet()
+                                        registeredClasses.toSet()
                                     }
                                 },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = if (selectedClassSections.size == allClassSectionOptions.size) "إلغاء تحديد الكل" else "تحديد الكل",
+                                    text = if (selectedTeacherClasses.size == registeredClasses.size) "إلغاء تحديد الكل" else "تحديد الكل",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = DeepEmerald
@@ -756,18 +779,76 @@ fun AdminAccountsScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            allClassSectionOptions.forEach { pairLabel ->
-                                val isChecked = pairLabel in selectedClassSections
+                            registeredClasses.forEach { clsLabel ->
+                                val isChecked = clsLabel in selectedTeacherClasses
                                 FilterChip(
                                     selected = isChecked,
                                     onClick = {
-                                        selectedClassSections = if (isChecked) {
-                                            selectedClassSections - pairLabel
+                                        selectedTeacherClasses = if (isChecked) {
+                                            selectedTeacherClasses - clsLabel
                                         } else {
-                                            selectedClassSections + pairLabel
+                                            selectedTeacherClasses + clsLabel
                                         }
                                     },
-                                    label = { Text(pairLabel, maxLines = 1, softWrap = false) },
+                                    label = { Text(clsLabel, maxLines = 1, softWrap = false) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (isChecked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "اختر الشعب المسندة للمعلم:",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            TextButton(
+                                onClick = {
+                                    selectedTeacherSections = if (selectedTeacherSections.size == registeredSections.size) {
+                                        emptySet()
+                                    } else {
+                                        registeredSections.toSet()
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (selectedTeacherSections.size == registeredSections.size) "إلغاء تحديد الكل" else "تحديد الكل",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = DeepEmerald
+                                )
+                            }
+                        }
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            registeredSections.forEach { secLabel ->
+                                val isChecked = secLabel in selectedTeacherSections
+                                FilterChip(
+                                    selected = isChecked,
+                                    onClick = {
+                                        selectedTeacherSections = if (isChecked) {
+                                            selectedTeacherSections - secLabel
+                                        } else {
+                                            selectedTeacherSections + secLabel
+                                        }
+                                    },
+                                    label = { Text("شعبة $secLabel", maxLines = 1, softWrap = false) },
                                     leadingIcon = {
                                         Icon(
                                             imageVector = if (isChecked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank,
@@ -844,7 +925,10 @@ fun AdminAccountsScreen(
                     onClick = {
                         if (name.isNotBlank()) {
                             val specialtyStr = selectedSubjects.joinToString("، ")
-                            val classesStr = selectedClassSections.joinToString("، ")
+                            val targetSecs = selectedTeacherSections.ifEmpty { registeredSections.toSet() }
+                            val classesStr = selectedTeacherClasses.flatMap { cls ->
+                                targetSecs.map { sec -> "$cls - $sec" }
+                            }.joinToString("، ")
                             if (currentEditing == null) {
                                 viewModel.addTeacherAccount(
                                     fullName = name,

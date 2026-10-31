@@ -574,7 +574,7 @@ fun DashboardScreen(
                     }
                     add(Triple(AppSection.REPORTS_CHAT, Icons.Filled.Forum, if (isParentOrStudent) "بلاغات الطالب ومراسلة الإدارة" else "البلاغات الرسمية والمراسلة المباشرة"))
                     if (featureSettings.studentActivitiesEnabled) {
-                        add(Triple(AppSection.STUDENT_ACTIVITIES, Icons.Filled.AutoAwesome, "مجتمع ونشاطات الطلبة والإبداعات العلمية"))
+                        add(Triple(AppSection.STUDENT_ACTIVITIES, StudentActivitiesLinearVector, "مجتمع ونشاطات الطلبة والإبداعات العلمية"))
                     }
                     if (featureSettings.eventsGalleryEnabled) {
                         add(Triple(AppSection.EVENTS_NEWS, Icons.Filled.Newspaper, "معرض الفعاليات والأخبار (عام)"))
@@ -881,17 +881,28 @@ fun DailyAttendanceScreen(
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
-    val allowedClasses = remember(schoolConfig, currentUser, selectedParentChildId) {
+    val allowedClasses = remember(schoolConfig, currentUser, students, selectedParentChildId) {
         viewModel.getAllowedClassesForUser(currentUser)
     }
-    var selectedClass by remember(allowedClasses) {
+    var selectedClass by remember(currentUser?.id, allowedClasses) {
         mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
     }
-    val allowedSections = remember(schoolConfig, currentUser, selectedClass, selectedParentChildId) {
+    val allowedSections = remember(schoolConfig, currentUser, students, selectedClass, selectedParentChildId) {
         viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
     }
-    var selectedSection by remember(allowedSections) {
+    var selectedSection by remember(currentUser?.id, selectedClass, allowedSections) {
         mutableStateOf(allowedSections.firstOrNull() ?: "أ")
+    }
+
+    LaunchedEffect(allowedClasses) {
+        if (selectedClass !in allowedClasses && allowedClasses.isNotEmpty()) {
+            selectedClass = allowedClasses.first()
+        }
+    }
+    LaunchedEffect(allowedSections) {
+        if (selectedSection !in allowedSections && allowedSections.isNotEmpty()) {
+            selectedSection = allowedSections.first()
+        }
     }
 
     var selectedDate by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
@@ -1333,6 +1344,7 @@ fun DailyAttendanceScreen(
                         }
 
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1340,15 +1352,28 @@ fun DailyAttendanceScreen(
                                 selectedDateIso = selectedDate,
                                 label = "تاريخ الرصد",
                                 onDateSelected = { selectedIso, _ -> selectedDate = selectedIso },
-                                modifier = Modifier.weight(1.1f)
+                                modifier = Modifier.weight(0.95f)
                             )
                             OutlinedTextField(
                                 value = searchName,
                                 onValueChange = { searchName = it },
-                                label = { Text("بحث باسم الطالب...") },
-                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                                placeholder = {
+                                    Text(
+                                        text = "بحث باسم الطالب...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Search,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
                                 singleLine = true,
-                                modifier = Modifier.weight(1.1f),
+                                modifier = Modifier.weight(1.15f),
                                 shape = RoundedCornerShape(12.dp)
                             )
                         }
@@ -1547,10 +1572,20 @@ fun DailyAttendanceScreen(
             // Student Attendance Cards for the selected Class & Section (6 by 6 progressive loading)
             val visibleScopedStudents = scopedStudents.take(teacherStudentsVisibleCount)
             items(visibleScopedStudents, key = { it.id }) { stu ->
+                val cleanSelDate = ArabicTextNormalizer.normalizeDigitsToAscii(selectedDate.trim())
                 val currentEntry = attendance.firstOrNull {
-                    it.studentId == stu.id && it.date.trim() == selectedDate.trim()
+                    it.studentId.trim() == stu.id.trim() &&
+                        ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanSelDate
                 }
-                val currentStatus = currentEntry?.status ?: AttendanceStatus.PRESENT
+                var optimisticStatus by remember(stu.id, cleanSelDate) {
+                    mutableStateOf<AttendanceStatus?>(null)
+                }
+                LaunchedEffect(currentEntry?.status) {
+                    if (currentEntry != null) {
+                        optimisticStatus = currentEntry.status
+                    }
+                }
+                val currentStatus = optimisticStatus ?: currentEntry?.status ?: AttendanceStatus.PRESENT
                 val totalAbsences = remember(attendance, stu.id) {
                     viewModel.getTotalAbsenceDays(stu.id)
                 }
@@ -1641,7 +1676,7 @@ fun DailyAttendanceScreen(
                             }
                         }
 
-                        // 2. أزرار تسجيل الحضور (حاضر، غائب، متأخر، غائب بعذر): صف أفقي مدمج ومنسق بأيقونات واضحة لا تتداخل
+                        // 2. أزرار تسجيل الحضور (حاضر، غائب، متأخر، مجاز): صف أفقي مدمج ومنسق بأيقونات واضحة وتلوين فوري
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1666,9 +1701,8 @@ fun DailyAttendanceScreen(
                                         .weight(1f)
                                         .clip(RoundedCornerShape(10.dp))
                                         .clickable(enabled = canEdit) {
-                                            if (currentEntry == null || currentStatus != st) {
-                                                viewModel.recordStudentAttendance(stu, selectedDate, st)
-                                            }
+                                            optimisticStatus = st
+                                            viewModel.recordStudentAttendance(stu, selectedDate, st)
                                         }
                                         .testTag("att_btn_${stu.id}_${st.name}"),
                                     color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),

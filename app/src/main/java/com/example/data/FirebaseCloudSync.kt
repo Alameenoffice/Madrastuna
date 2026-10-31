@@ -33,11 +33,12 @@ object FirebaseCloudSync {
 
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val localWriteTimestamps = ConcurrentHashMap<String, Long>()
+    private val localWrittenPayloads = ConcurrentHashMap<String, String>()
 
     fun wasRecentlyWrittenLocally(
         schoolId: String,
         subCollection: String,
-        windowMs: Long = 4500L
+        windowMs: Long = 15000L
     ): Boolean {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(schoolId)
         if (cleanSchoolId.isBlank()) return false
@@ -53,11 +54,29 @@ object FirebaseCloudSync {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(schoolId)
         if (cleanSchoolId.isBlank()) return
 
-        localWriteTimestamps["$cleanSchoolId/$subCollection"] = System.currentTimeMillis()
+        val key = "$cleanSchoolId/$subCollection"
+        val writeTs = System.currentTimeMillis()
+        localWriteTimestamps[key] = writeTs
+        localWrittenPayloads[key] = jsonPayload
 
         syncScope.launch {
             try {
-                // 1. Sync to Firestore under schools/{schoolId}/{subCollection}/state
+                val nowTs = System.currentTimeMillis()
+                localWriteTimestamps[key] = nowTs
+
+                // 1. Sync to Firebase Realtime Database under schools/{schoolId}/{subCollection}.json (native HTTP PUT)
+                val rtdbUrl =
+                    "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/$subCollection.json"
+                val rtdbBody = JSONObject().apply {
+                    put("schoolId", cleanSchoolId)
+                    put("updatedAt", nowTs)
+                    put("payloadJson", jsonPayload)
+                }.toString()
+
+                executeHttpWrite(rtdbUrl, "PUT", rtdbBody)
+                localWriteTimestamps[key] = System.currentTimeMillis()
+
+                // 2. Sync to Firestore under schools/{schoolId}/{subCollection}/state
                 val firestoreUrl =
                     "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/$subCollection/state?key=${FirebaseConfigConstants.API_KEY}"
 
@@ -65,23 +84,13 @@ object FirebaseCloudSync {
                     put("fields", JSONObject().apply {
                         put("schoolId", JSONObject().put("stringValue", cleanSchoolId))
                         put("collection", JSONObject().put("stringValue", subCollection))
-                        put("updatedAt", JSONObject().put("integerValue", System.currentTimeMillis().toString()))
+                        put("updatedAt", JSONObject().put("integerValue", nowTs.toString()))
                         put("payloadJson", JSONObject().put("stringValue", jsonPayload))
                     })
                 }.toString()
 
                 executeHttpWrite(firestoreUrl, "PATCH", firestoreBody)
-
-                // 2. Mirror to Firebase Realtime Database under schools/{schoolId}/{subCollection}.json
-                val rtdbUrl =
-                    "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/$subCollection.json"
-                val rtdbBody = JSONObject().apply {
-                    put("schoolId", cleanSchoolId)
-                    put("updatedAt", System.currentTimeMillis())
-                    put("payloadJson", jsonPayload)
-                }.toString()
-
-                executeHttpWrite(rtdbUrl, "PUT", rtdbBody)
+                localWriteTimestamps[key] = System.currentTimeMillis()
 
                 // 3. When saving settings or feature_settings, also persist directly under schools/{schoolId}/settings/config
                 if (subCollection == FirebaseConfigConstants.COL_SETTINGS ||
@@ -119,7 +128,7 @@ object FirebaseCloudSync {
                     val configFirestoreBody = JSONObject().apply {
                         put("fields", JSONObject().apply {
                             put("schoolId", JSONObject().put("stringValue", cleanSchoolId))
-                            put("updatedAt", JSONObject().put("integerValue", System.currentTimeMillis().toString()))
+                            put("updatedAt", JSONObject().put("integerValue", nowTs.toString()))
                             put("enabledFeatures", JSONObject().put("mapValue", JSONObject().put("fields", enabledFeaturesFirestoreMap)))
                             if (subCollection == FirebaseConfigConstants.COL_FEATURE_SETTINGS) {
                                 put("featureSettingsJson", JSONObject().put("stringValue", jsonPayload))
@@ -135,7 +144,7 @@ object FirebaseCloudSync {
                         "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/settings/config.json"
                     val configRtdbBody = JSONObject().apply {
                         put("schoolId", cleanSchoolId)
-                        put("updatedAt", System.currentTimeMillis())
+                        put("updatedAt", nowTs)
                         put("payloadJson", jsonPayload)
                     }.toString()
                     executeHttpWrite(configRtdbUrl, "PUT", configRtdbBody)
@@ -153,7 +162,32 @@ object FirebaseCloudSync {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(schoolId)
         if (cleanSchoolId.isBlank()) return@withContext null
 
-        // Try Firestore first
+        val key = "$cleanSchoolId/$subCollection"
+        val lastLocalWriteTs = localWriteTimestamps[key] ?: 0L
+        if (wasRecentlyWrittenLocally(cleanSchoolId, subCollection)) {
+            return@withContext localWrittenPayloads[key]
+        }
+
+        var rtdbPayload = ""
+        var rtdbUpdatedAt = 0L
+
+        // 1. Check Realtime Database first (native PUT is instantaneous and never blocked by X-HTTP-Method-Override)
+        try {
+            val rtdbUrl =
+                "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/$subCollection.json"
+            val response = executeHttpGet(rtdbUrl)
+            if (!response.isNullOrBlank() && response != "null") {
+                val root = JSONObject(response)
+                rtdbPayload = root.optString("payloadJson", "")
+                rtdbUpdatedAt = root.optLong("updatedAt", 0L)
+            }
+        } catch (_: Exception) {
+        }
+
+        var firestorePayload = ""
+        var firestoreUpdatedAt = 0L
+
+        // 2. Check Firestore
         try {
             val firestoreUrl =
                 "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/$subCollection/state?key=${FirebaseConfigConstants.API_KEY}"
@@ -161,11 +195,34 @@ object FirebaseCloudSync {
             if (!response.isNullOrBlank()) {
                 val root = JSONObject(response)
                 val fields = root.optJSONObject("fields")
-                val payloadObj = fields?.optJSONObject("payloadJson")
-                val payload = payloadObj?.optString("stringValue", "") ?: ""
-                if (payload.isNotBlank()) return@withContext payload
+                firestorePayload = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
+                firestoreUpdatedAt = fields?.optJSONObject("updatedAt")?.optString("integerValue", "0")?.toLongOrNull() ?: 0L
             }
         } catch (_: Exception) {
+        }
+
+        // If a local write occurred while HTTP GET was in flight, never return stale remote data
+        if (wasRecentlyWrittenLocally(cleanSchoolId, subCollection)) {
+            return@withContext localWrittenPayloads[key]
+        }
+
+        // Pick whichever remote source has the newer timestamp (preferring RTDB when equal or newer)
+        val chosenPayload = when {
+            rtdbPayload.isNotBlank() && firestorePayload.isNotBlank() -> {
+                if (rtdbUpdatedAt >= firestoreUpdatedAt) rtdbPayload else firestorePayload
+            }
+            rtdbPayload.isNotBlank() -> rtdbPayload
+            firestorePayload.isNotBlank() -> firestorePayload
+            else -> ""
+        }
+        val chosenTs = maxOf(rtdbUpdatedAt, firestoreUpdatedAt)
+
+        if (chosenPayload.isNotBlank()) {
+            // If we have a local write timestamp that is newer than the remote document's updatedAt, keep local payload!
+            if (lastLocalWriteTs > 0L && chosenTs in 1 until lastLocalWriteTs) {
+                return@withContext localWrittenPayloads[key] ?: chosenPayload
+            }
+            return@withContext chosenPayload
         }
 
         // If fetching feature_settings, also check schools/{schoolId}/settings/config in Firestore
@@ -184,19 +241,6 @@ object FirebaseCloudSync {
                 }
             } catch (_: Exception) {
             }
-        }
-
-        // Fallback to Realtime Database
-        try {
-            val rtdbUrl =
-                "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/$subCollection.json"
-            val response = executeHttpGet(rtdbUrl)
-            if (!response.isNullOrBlank() && response != "null") {
-                val root = JSONObject(response)
-                val payload = root.optString("payloadJson", "")
-                if (payload.isNotBlank()) return@withContext payload
-            }
-        } catch (_: Exception) {
         }
 
         null
