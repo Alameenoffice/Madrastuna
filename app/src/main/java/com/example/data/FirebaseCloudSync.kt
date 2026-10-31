@@ -149,6 +149,29 @@ object FirebaseCloudSync {
                     }.toString()
                     executeHttpWrite(configRtdbUrl, "PUT", configRtdbBody)
                 }
+
+                // 4. When saving holidays, also persist directly under schools/{schoolId}/settings/holidays
+                if (subCollection == FirebaseConfigConstants.COL_HOLIDAYS) {
+                    val holidaysFirestoreUrl =
+                        "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/settings/holidays?key=${FirebaseConfigConstants.API_KEY}"
+                    val holidaysFirestoreBody = JSONObject().apply {
+                        put("fields", JSONObject().apply {
+                            put("schoolId", JSONObject().put("stringValue", cleanSchoolId))
+                            put("updatedAt", JSONObject().put("integerValue", nowTs.toString()))
+                            put("payloadJson", JSONObject().put("stringValue", jsonPayload))
+                        })
+                    }.toString()
+                    executeHttpWrite(holidaysFirestoreUrl, "PATCH", holidaysFirestoreBody)
+
+                    val holidaysRtdbUrl =
+                        "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/settings/holidays.json"
+                    val holidaysRtdbBody = JSONObject().apply {
+                        put("schoolId", cleanSchoolId)
+                        put("updatedAt", nowTs)
+                        put("payloadJson", jsonPayload)
+                    }.toString()
+                    executeHttpWrite(holidaysRtdbUrl, "PUT", holidaysRtdbBody)
+                }
             } catch (_: Exception) {
                 // Offline-tolerant: local school-scoped persistence remains intact
             }
@@ -236,6 +259,22 @@ object FirebaseCloudSync {
                     val fields = root.optJSONObject("fields")
                     val featStr = fields?.optJSONObject("featureSettingsJson")?.optString("stringValue", "") ?: ""
                     if (featStr.isNotBlank()) return@withContext featStr
+                    val payloadStr = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
+                    if (payloadStr.isNotBlank()) return@withContext payloadStr
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        // If fetching holidays, also check schools/{schoolId}/settings/holidays in Firestore
+        if (subCollection == FirebaseConfigConstants.COL_HOLIDAYS) {
+            try {
+                val holidaysUrl =
+                    "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/settings/holidays?key=${FirebaseConfigConstants.API_KEY}"
+                val response = executeHttpGet(holidaysUrl)
+                if (!response.isNullOrBlank()) {
+                    val root = JSONObject(response)
+                    val fields = root.optJSONObject("fields")
                     val payloadStr = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
                     if (payloadStr.isNotBlank()) return@withContext payloadStr
                 }

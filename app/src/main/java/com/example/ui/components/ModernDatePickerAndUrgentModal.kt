@@ -57,6 +57,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Button
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -69,8 +75,10 @@ import com.example.ui.theme.DeepEmerald
 import com.example.ui.theme.DeepForestGreen
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.GoldDeep
+import com.example.ui.theme.GoldLight
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 /**
@@ -128,6 +136,11 @@ object ArabicCalendarDateHelper {
     }
 
     fun arabicDayOfWeek(dateIso: String): String = getArabicDayName(dateIso)
+
+    fun formatFullArabicDateWithDay(dateIso: String): String {
+        val cleanIso = dateIso.trim().take(10)
+        return "${getArabicDayName(cleanIso)} • $cleanIso"
+    }
 
     fun parseYearMonthDay(dateIso: String): Triple<Int, Int, Int> {
         return try {
@@ -617,11 +630,12 @@ fun UrgentSchoolAlertModalDialog(
 }
 
 /**
- * Custom Crisp Linear Vector SVG Icon for "نشاطات الطلبة" (Smart Creative Idea Lightbulb - no stars)
+ * Custom Crisp Linear Vector SVG Icon for "نشاطات الطلبة" (Social Network / Community Hub)
+ * Interconnected people community nodes + interactive sharing/chat bubble lines (Zero lightbulb / Zero stars)
  */
 val StudentActivitiesLinearVector: ImageVector by lazy {
     ImageVector.Builder(
-        name = "StudentActivitiesSmartBulbVector",
+        name = "StudentActivitiesSocialCommunityHubVector",
         defaultWidth = 24.dp,
         defaultHeight = 24.dp,
         viewportWidth = 24f,
@@ -629,40 +643,47 @@ val StudentActivitiesLinearVector: ImageVector by lazy {
     ).apply {
         path(
             stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.9f,
+            strokeLineWidth = 1.85f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
         ) {
-            // Smart Lightbulb Dome & Neck
-            moveTo(9f, 16.2f)
-            lineTo(8.3f, 14.4f)
-            curveTo(6.9f, 13.1f, 6.2f, 11.4f, 6.2f, 9.5f)
-            curveTo(6.2f, 6.3f, 8.8f, 3.8f, 12f, 3.8f)
-            curveTo(15.2f, 3.8f, 17.8f, 6.3f, 17.8f, 9.5f)
-            curveTo(17.8f, 11.4f, 17.1f, 13.1f, 15.7f, 14.4f)
-            lineTo(15f, 16.2f)
+            // Central Community Person Head (Circle)
+            moveTo(9.2f, 10.2f)
+            curveTo(10.86f, 10.2f, 12.2f, 8.86f, 12.2f, 7.2f)
+            curveTo(12.2f, 5.54f, 10.86f, 4.2f, 9.2f, 4.2f)
+            curveTo(7.54f, 4.2f, 6.2f, 5.54f, 6.2f, 7.2f)
+            curveTo(6.2f, 8.86f, 7.54f, 10.2f, 9.2f, 10.2f)
             close()
 
-            // Inner Creative Filament
-            moveTo(10.3f, 11.2f)
-            lineTo(12f, 9.2f)
-            lineTo(13.7f, 11.2f)
-            moveTo(12f, 9.2f)
-            lineTo(12f, 14.2f)
+            // Central Community Person Shoulders
+            moveTo(3.4f, 19.6f)
+            curveTo(3.4f, 16.4f, 5.9f, 13.9f, 9.2f, 13.9f)
+            curveTo(12.5f, 13.9f, 15.0f, 16.4f, 15.0f, 19.6f)
 
-            // Base Screw Threads
-            moveTo(9.4f, 19f)
-            lineTo(14.6f, 19f)
-            moveTo(10.4f, 21.5f)
-            lineTo(13.6f, 21.5f)
+            // Secondary Connected Peer Head (Right)
+            moveTo(16.6f, 11.4f)
+            curveTo(17.85f, 11.4f, 18.85f, 10.4f, 18.85f, 9.15f)
+            curveTo(18.85f, 7.9f, 17.85f, 6.9f, 16.6f, 6.9f)
+            curveTo(15.6f, 6.9f, 14.75f, 7.55f, 14.45f, 8.45f)
 
-            // Subtle Idea Rays (Top & Sides)
-            moveTo(12f, 1.4f)
-            lineTo(12f, 2.3f)
-            moveTo(4.2f, 5.2f)
-            lineTo(5.1f, 5.9f)
-            moveTo(19.8f, 5.2f)
-            lineTo(18.9f, 5.9f)
+            // Secondary Connected Peer Shoulders
+            moveTo(16.4f, 14.5f)
+            curveTo(19.0f, 14.7f, 21.0f, 16.7f, 21.0f, 19.4f)
+
+            // Interactive Sharing / Social Chat Bubble Badge (Top-Right Hub)
+            moveTo(15.2f, 2.5f)
+            lineTo(20.2f, 2.5f)
+            curveTo(21.1f, 2.5f, 21.8f, 3.2f, 21.8f, 4.1f)
+            lineTo(21.8f, 6.2f)
+            curveTo(21.8f, 7.1f, 21.1f, 7.8f, 20.2f, 7.8f)
+            lineTo(17.6f, 7.8f)
+            lineTo(15.8f, 9.2f)
+            lineTo(15.8f, 7.8f)
+            lineTo(15.2f, 7.8f)
+            curveTo(14.3f, 7.8f, 13.6f, 7.1f, 13.6f, 6.2f)
+            lineTo(13.6f, 4.1f)
+            curveTo(13.6f, 3.2f, 14.3f, 2.5f, 15.2f, 2.5f)
+            close()
         }
     }.build()
 }
@@ -680,4 +701,440 @@ fun StudentActivitiesVectorIcon(
         modifier = modifier.size(size)
     )
 }
+
+/**
+ * Calm Royal Emerald & Gold Holiday Status Banner displayed in Dashboard & Attendance Screen
+ * whenever the selected date or today is a weekly or official school holiday.
+ */
+@Composable
+fun OfficialHolidayBannerCard(
+    holidayLabel: String,
+    dateIso: String,
+    isAdmin: Boolean = false,
+    onManageHolidaysClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("official_holiday_banner_card"),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.Transparent,
+        border = BorderStroke(1.2.dp, GoldAccent.copy(alpha = 0.55f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color(0xFF042F2E),
+                            DeepEmerald,
+                            Color(0xFF065F46)
+                        )
+                    )
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = GoldAccent.copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f)),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = GoldAccent,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "اليوم عطلة ($holidayLabel)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "التاريخ: ${ArabicCalendarDateHelper.formatFullArabicDateWithDay(dateIso)} • يوم عطلة رسمية (موثق في السجل)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GoldLight,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    if (isAdmin && onManageHolidaysClick != null) {
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onManageHolidaysClick() }
+                                .testTag("banner_manage_holidays_btn"),
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.White.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f))
+                        ) {
+                            Text(
+                                text = "إدارة العطل",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = GoldAccent,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Modal Dialog for the School Principal to manage:
+ * 1) Fixed Weekly Days Off (أيام العطلة الأسبوعية الثابتة: الأحد..السبت)
+ * 2) Official / Emergency Holidays on specific dates (تثبيت يوم معين كعطلة رسمية/طارئة)
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SchoolHolidaysManagementModalDialog(
+    holidaysConfig: com.example.model.SchoolHolidaysConfig,
+    onToggleWeeklyDay: (String) -> Unit,
+    onSaveOfficialHoliday: (holidayId: String?, dateIso: String, title: String) -> Unit,
+    onDeleteOfficialHoliday: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val allWeekDays = remember {
+        listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت")
+    }
+    var selectedHolidayDate by remember {
+        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
+    }
+    var holidayTitleInput by remember { mutableStateOf("عطلة رسمية") }
+    var editingHolidayId by remember { mutableStateOf<String?>(null) }
+
+    val quickOccasionPresets = remember {
+        listOf("عطلة رسمية", "مناسبة وطنية", "عطلة جوية", "عطلة نصف السنة", "مناسبة دينية")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = DeepEmerald.copy(alpha = 0.14f),
+                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.5f)),
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.CalendarMonth,
+                            contentDescription = null,
+                            tint = DeepEmerald,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Column {
+                    Text(
+                        text = "إدارة العطل الأسبوعية والرسمية",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepEmerald
+                    )
+                    Text(
+                        text = "توثيق تلقائي في سجلات حضور جميع الطلبة ومنع احتساب الغياب",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 1. أيام العطلة الأسبوعية الثابتة
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = DeepEmerald.copy(alpha = 0.06f),
+                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "1. أيام العطلة الأسبوعية الثابتة:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepEmerald
+                        )
+                        Text(
+                            text = "اضغط لتحديد أو إلغاء أيام العطلة الأسبوعية للمدرسة (تُقفل أزرار الحضور تلقائياً في هذه الأيام):",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            allWeekDays.forEach { dayLabel ->
+                                val normDay = com.example.model.ArabicTextNormalizer.normalizeText(dayLabel)
+                                val isSelected = holidaysConfig.weeklyDaysOff.any {
+                                    com.example.model.ArabicTextNormalizer.normalizeText(it) == normDay
+                                }
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { onToggleWeeklyDay(dayLabel) }
+                                        .testTag("weekly_holiday_chip_$dayLabel"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) DeepEmerald else MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) GoldAccent else DeepEmerald.copy(alpha = 0.25f)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = GoldAccent,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = dayLabel,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. تثبيت يوم معين كعطلة رسمية / طارئة
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = GoldAccent.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (editingHolidayId == null) "2. تثبيت يوم معين كعطلة رسمية / طارئة:" else "2. تعديل بيانات العطلة الرسمية:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepEmerald
+                        )
+
+                        ModernCalendarDatePickerField(
+                            selectedDateIso = selectedHolidayDate,
+                            onDateSelected = { selectedIso, _ -> selectedHolidayDate = selectedIso },
+                            label = "تاريخ العطلة",
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = holidayTitleInput,
+                            onValueChange = { holidayTitleInput = it },
+                            label = { Text("سبب / مسمى العطلة الرسمية") },
+                            placeholder = { Text("مثال: عطلة رسمية، مناسبة وطنية، عطلة جوية...") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("official_holiday_title_input")
+                        )
+
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            quickOccasionPresets.forEach { preset ->
+                                val active = holidayTitleInput.trim() == preset
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { holidayTitleInput = preset },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (active) DeepEmerald.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f))
+                                ) {
+                                    Text(
+                                        text = preset,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = DeepEmerald,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    onSaveOfficialHoliday(editingHolidayId, selectedHolidayDate, holidayTitleInput)
+                                    editingHolidayId = null
+                                    holidayTitleInput = "عطلة رسمية"
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = DeepEmerald,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("save_official_holiday_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = GoldAccent,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (editingHolidayId == null) "تثبيت وتوثيق العطلة في السجل" else "حفظ تعديل العطلة",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                            if (editingHolidayId != null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        editingHolidayId = null
+                                        holidayTitleInput = "عطلة رسمية"
+                                    },
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("إلغاء", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. قائمة العطل الرسمية المثبتة
+                if (holidaysConfig.officialHolidays.isNotEmpty()) {
+                    Text(
+                        text = "العطل الرسمية والطارئة المثبتة (${holidaysConfig.officialHolidays.size}):",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepEmerald
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        holidaysConfig.officialHolidays.forEach { item ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepEmerald
+                                        )
+                                        Text(
+                                            text = ArabicCalendarDateHelper.formatFullArabicDateWithDay(item.dateIso),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Surface(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    editingHolidayId = item.id
+                                                    selectedHolidayDate = item.dateIso
+                                                    holidayTitleInput = item.title
+                                                },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = DeepEmerald.copy(alpha = 0.10f)
+                                        ) {
+                                            Text(
+                                                text = "تعديل",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onDeleteOfficialHoliday(item.id) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "حذف العطلة",
+                                                tint = DangerRed,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إغلاق", fontWeight = FontWeight.Bold, color = DeepEmerald)
+            }
+        }
+    )
+}
+
 

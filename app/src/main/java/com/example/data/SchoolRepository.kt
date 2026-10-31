@@ -154,6 +154,13 @@ class SchoolRepository(context: Context) {
                 loadUrgentSchoolAlert(resolvedSchoolId)
             }
 
+            val holidaysObj = obj.optJSONObject("holidaysConfig") ?: obj.optJSONObject("holidays")
+            val parsedHolidaysConfig = if (holidaysObj != null) {
+                parseHolidaysConfigObject(holidaysObj, resolvedSchoolId)
+            } else {
+                loadHolidaysConfig(resolvedSchoolId)
+            }
+
             SchoolConfig(
                 schoolId = resolvedSchoolId,
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
@@ -172,7 +179,8 @@ class SchoolRepository(context: Context) {
                 phone = obj.optString("phone", "07512362567"),
                 subscriptionExpiryDate = obj.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                 featureSettings = parsedFeatures,
-                urgentAlert = parsedUrgentAlert
+                urgentAlert = parsedUrgentAlert,
+                holidaysConfig = parsedHolidaysConfig
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -236,6 +244,88 @@ class SchoolRepository(context: Context) {
         saveSchoolConfig(currentCfg.copy(schoolId = sid, urgentAlert = alert.copy(schoolId = sid)))
     }
 
+    fun loadHolidaysConfig(schoolId: String = getActiveSchoolId()): SchoolHolidaysConfig {
+        val sid = schoolId.ifBlank { getActiveSchoolId() }
+        if (sid.isBlank()) return SchoolHolidaysConfig()
+        val raw = prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_HOLIDAYS), null)
+            ?: return SchoolHolidaysConfig(schoolId = sid)
+        return parseHolidaysConfigJson(raw, sid)
+    }
+
+    fun parseHolidaysConfigJson(raw: String, fallbackSchoolId: String = getActiveSchoolId()): SchoolHolidaysConfig {
+        return try {
+            val obj = JSONObject(raw)
+            parseHolidaysConfigObject(obj, fallbackSchoolId)
+        } catch (_: Exception) {
+            SchoolHolidaysConfig(schoolId = fallbackSchoolId)
+        }
+    }
+
+    private fun parseHolidaysConfigObject(obj: JSONObject, fallbackSchoolId: String): SchoolHolidaysConfig {
+        val weeklyDays = if (obj.has("weeklyDaysOff")) {
+            jsonArrayToList(obj.optJSONArray("weeklyDaysOff"))
+        } else {
+            listOf("الجمعة", "السبت")
+        }
+        val officialArr = obj.optJSONArray("officialHolidays")
+        val officialList = mutableListOf<OfficialHolidayItem>()
+        if (officialArr != null) {
+            for (i in 0 until officialArr.length()) {
+                val o = officialArr.optJSONObject(i) ?: continue
+                val dateIso = o.optString("dateIso", "").trim()
+                if (dateIso.isNotBlank()) {
+                    officialList.add(
+                        OfficialHolidayItem(
+                            id = o.optString("id", "hol_${dateIso}"),
+                            dateIso = dateIso,
+                            title = o.optString("title", "عطلة رسمية").ifBlank { "عطلة رسمية" },
+                            createdAt = o.optString("createdAt", ""),
+                            schoolId = o.optString("schoolId", fallbackSchoolId).ifBlank { fallbackSchoolId }
+                        )
+                    )
+                }
+            }
+        }
+        return SchoolHolidaysConfig(
+            weeklyDaysOff = weeklyDays,
+            officialHolidays = officialList.distinctBy { it.dateIso }.sortedByDescending { it.dateIso },
+            updatedAt = obj.optLong("updatedAt", 0L),
+            schoolId = obj.optString("schoolId", fallbackSchoolId).ifBlank { fallbackSchoolId }
+        )
+    }
+
+    private fun holidaysConfigToJsonObject(cfg: SchoolHolidaysConfig, schoolId: String): JSONObject {
+        val sid = schoolId.ifBlank { cfg.schoolId }
+        val officialArr = JSONArray()
+        cfg.officialHolidays.distinctBy { it.dateIso }.forEach { item ->
+            officialArr.put(JSONObject().apply {
+                put("id", item.id.ifBlank { "hol_${item.dateIso}" })
+                put("dateIso", InputSanitizer.sanitize(item.dateIso.trim()))
+                put("title", InputSanitizer.sanitize(item.title.ifBlank { "عطلة رسمية" }))
+                put("createdAt", item.createdAt)
+                put("schoolId", sid)
+            })
+        }
+        return JSONObject().apply {
+            put("schoolId", sid)
+            put("weeklyDaysOff", JSONArray(cfg.weeklyDaysOff))
+            put("officialHolidays", officialArr)
+            put("updatedAt", if (cfg.updatedAt > 0L) cfg.updatedAt else System.currentTimeMillis())
+        }
+    }
+
+    fun saveHolidaysConfig(cfg: SchoolHolidaysConfig, schoolId: String = getActiveSchoolId()) {
+        val sid = schoolId.ifBlank { cfg.schoolId }.ifBlank { getActiveSchoolId() }
+        if (sid.isBlank()) return
+        val stamped = cfg.copy(schoolId = sid, updatedAt = System.currentTimeMillis())
+        val holObj = holidaysConfigToJsonObject(stamped, sid)
+        val holStr = holObj.toString()
+        prefs.edit().putString(scopedKey(sid, FirebaseConfigConstants.COL_HOLIDAYS), holStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_HOLIDAYS, holStr)
+        val currentCfg = loadSchoolConfig(sid)
+        saveSchoolConfig(currentCfg.copy(schoolId = sid, holidaysConfig = stamped))
+    }
+
     fun saveSchoolConfig(config: SchoolConfig) {
         val sid = config.schoolId.ifBlank { getActiveSchoolId() }.ifBlank {
             generateUniqueThreeDigitSchoolCode()
@@ -244,6 +334,7 @@ class SchoolRepository(context: Context) {
 
         val featJson = featureSettingsToJsonObject(config.featureSettings)
         val urgentAlertJson = urgentSchoolAlertToJsonObject(config.urgentAlert, sid)
+        val holidaysJson = holidaysConfigToJsonObject(config.holidaysConfig, sid)
         val obj = JSONObject().apply {
             put("schoolId", sid)
             put("isSetupCompleted", config.isSetupCompleted)
@@ -263,18 +354,22 @@ class SchoolRepository(context: Context) {
             put("featureSettings", featJson)
             put("enabledFeatures", featJson)
             put("urgentAlert", urgentAlertJson)
+            put("holidaysConfig", holidaysJson)
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
         val urgentStr = urgentAlertJson.toString()
+        val holStr = holidaysJson.toString()
         prefs.edit()
             .putString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), jsonStr)
             .putString(scopedKey(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS), featStr)
             .putString(scopedKey(sid, FirebaseConfigConstants.COL_URGENT_ALERT), urgentStr)
+            .putString(scopedKey(sid, FirebaseConfigConstants.COL_HOLIDAYS), holStr)
             .apply()
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_SETTINGS, jsonStr)
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS, featStr)
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_URGENT_ALERT, urgentStr)
+        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_HOLIDAYS, holStr)
 
         if (config.subjectConfigs.isNotEmpty()) {
             saveSubjectConfigs(config.subjectConfigs, sid)
@@ -658,7 +753,8 @@ class SchoolRepository(context: Context) {
                     sectionName = o.optString("sectionName"),
                     date = cleanDate,
                     status = runCatching {
-                        AttendanceStatus.valueOf(o.optString("status", AttendanceStatus.PRESENT.name))
+                        val rawStatus = o.optString("status", AttendanceStatus.PRESENT.name).trim().uppercase()
+                        AttendanceStatus.valueOf(rawStatus)
                     }.getOrDefault(AttendanceStatus.PRESENT),
                     note = o.optString("note"),
                     schoolId = o.optString("schoolId", schoolId)
@@ -2013,6 +2109,11 @@ class SchoolRepository(context: Context) {
         FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_USER_PROFILES)?.let {
             if (it.isNotBlank()) {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_USER_PROFILES), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_HOLIDAYS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_HOLIDAYS), it)
             }
         }
 

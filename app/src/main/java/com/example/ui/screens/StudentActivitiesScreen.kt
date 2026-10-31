@@ -482,42 +482,84 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         }
                     }
 
-                    // Publish New Activity Button
-                    Button(
-                        onClick = {
-                            editingPost = null
-                            showCreatePostDialog = true
-                        },
-                        enabled = !myProfile.isPostingMuted(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = GoldAccent,
-                            contentColor = DeepForestGreen,
-                            disabledContainerColor = Color.White.copy(alpha = 0.2f),
-                            disabledContentColor = Color.White.copy(alpha = 0.6f)
-                        ),
-                        shape = RoundedCornerShape(14.dp),
+                    // Publish New Activity Button (Soft Royal Emerald & Gold Luxury Capsule)
+                    val isMuted = myProfile.isPostingMuted()
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp)
-                            .testTag("publish_student_activity_btn")
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable(enabled = !isMuted) {
+                                editingPost = null
+                                showCreatePostDialog = true
+                            }
+                            .testTag("publish_student_activity_btn"),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.Transparent,
+                        border = BorderStroke(
+                            1.2.dp,
+                            if (isMuted) Color.White.copy(alpha = 0.25f) else GoldAccent.copy(alpha = 0.65f)
+                        )
                     ) {
-                        Icon(
-                            Icons.Default.AddCircleOutline,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (myProfile.isPostingMuted()) {
-                                "النشر معلق مؤقتاً بقرار إداري (${myProfile.remainingPostingBanLabel()})"
-                            } else if (canModerate) {
-                                "نشر نشاط أو إبداع جديد (نشر فوري معتمد)"
-                            } else {
-                                "شارك إبداعك أو مشروعك العلمي (يُنشر بعد موافقة الإدارة)"
-                            },
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 13.sp
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    if (isMuted) {
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                Color.White.copy(alpha = 0.12f),
+                                                Color.White.copy(alpha = 0.08f)
+                                            )
+                                        )
+                                    } else {
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                Color(0xFF043D2E),
+                                                Color(0xFF0D6B4E),
+                                                Color(0xFF157A58)
+                                            )
+                                        )
+                                    }
+                                )
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = GoldAccent.copy(alpha = 0.20f),
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.AddCircleOutline,
+                                            contentDescription = null,
+                                            tint = if (isMuted) Color.White.copy(alpha = 0.6f) else GoldAccent,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = if (isMuted) {
+                                        "النشر معلق مؤقتاً بقرار إداري (${myProfile.remainingPostingBanLabel()})"
+                                    } else if (canModerate) {
+                                        "نشر نشاط أو إبداع جديد (نشر فوري معتمد)"
+                                    } else {
+                                        "شارك إبداعك أو مشروعك العلمي (يُنشر بعد موافقة الإدارة)"
+                                    },
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = if (isMuted) Color.White.copy(alpha = 0.65f) else Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
             }

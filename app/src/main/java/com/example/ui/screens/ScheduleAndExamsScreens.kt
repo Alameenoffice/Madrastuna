@@ -2095,11 +2095,16 @@ fun ExamsAndGradesScreen(
                 // STEPS A, B, C: ADMIN & TEACHER GRADE ENTRY BY
                 // (1) الصف -> (2) الشعبة -> (3) المادة الدراسية -> (4) البحث بالاسم -> رصد وحفظ
                 // =============================================================
-                val classSectionStudents = remember(students, selectedClass, selectedSection, searchStudentName, currentUser) {
-                    viewModel.getScopedStudentsForUser(currentUser).filter { stu ->
+                val allTeacherScopedStudents = remember(students, currentUser) {
+                    viewModel.getScopedStudentsForUser(currentUser)
+                }
+                val classSectionStudents = remember(allTeacherScopedStudents, selectedClass, selectedSection, searchStudentName) {
+                    allTeacherScopedStudents.filter { stu ->
                         ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
                             ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection) &&
-                            (searchStudentName.isBlank() || stu.studentName.contains(searchStudentName, ignoreCase = true))
+                            (searchStudentName.isBlank() ||
+                                stu.studentName.contains(searchStudentName, ignoreCase = true) ||
+                                stu.fullNameWithFather.contains(searchStudentName, ignoreCase = true))
                     }
                 }
 
@@ -2120,11 +2125,27 @@ fun ExamsAndGradesScreen(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text(
-                                    text = "أولاً: اختر الصف والشعبة والمادة الدراسية",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "أولاً: اختر الصف والشعبة والمادة الدراسية",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    NoWrapBadge(
+                                        text = if (currentUser?.role == UserRole.TEACHER) {
+                                            "طلابك في الصف: ${classSectionStudents.size}"
+                                        } else {
+                                            "طلاب الصف: ${classSectionStudents.size}"
+                                        },
+                                        icon = Icons.Filled.Groups,
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
 
                                 // 1. Registered Class Selector
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

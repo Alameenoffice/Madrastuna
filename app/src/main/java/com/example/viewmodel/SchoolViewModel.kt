@@ -132,6 +132,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _showUrgentAlertModal = MutableStateFlow(false)
     val showUrgentAlertModal: StateFlow<Boolean> = _showUrgentAlertModal.asStateFlow()
 
+    private val _holidaysConfig = MutableStateFlow(_schoolConfig.value.holidaysConfig)
+    val holidaysConfig: StateFlow<SchoolHolidaysConfig> = _holidaysConfig.asStateFlow()
+
+    private val _showHolidaysModal = MutableStateFlow(false)
+    val showHolidaysModal: StateFlow<Boolean> = _showHolidaysModal.asStateFlow()
+
     private val _deepLinkTarget = MutableStateFlow<DeepLinkNavigationTarget?>(null)
     val deepLinkTarget: StateFlow<DeepLinkNavigationTarget?> = _deepLinkTarget.asStateFlow()
 
@@ -295,6 +301,16 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
                     }
+                    if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HOLIDAYS)) {
+                        FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_HOLIDAYS)?.let {
+                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HOLIDAYS)) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HOLIDAYS, it)
+                                val parsedHol = repo.parseHolidaysConfigJson(it, sid)
+                                _holidaysConfig.value = parsedHol
+                                _schoolConfig.value = _schoolConfig.value.copy(holidaysConfig = parsedHol)
+                            }
+                        }
+                    }
                 } catch (_: Exception) {
                 }
             }
@@ -349,6 +365,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val loadedCfg = repo.loadSchoolConfig(schoolId)
         _schoolConfig.value = loadedCfg
         _featureSettings.value = loadedCfg.featureSettings
+        _holidaysConfig.value = loadedCfg.holidaysConfig
         _accounts.value = repo.loadAccounts(schoolId)
         _students.value = repo.loadStudents(schoolId)
         _attendance.value = repo.loadAttendance(schoolId)
@@ -788,6 +805,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 val parsedCfg = repo.parseSchoolConfigJson(remoteCfgRaw, sid)
                                 _schoolConfig.value = parsedCfg
                                 _featureSettings.value = parsedCfg.featureSettings
+                                _holidaysConfig.value = parsedCfg.holidaysConfig
                                 enforceActiveSectionFeatureVisibility(parsedCfg.featureSettings)
                             }
                         }
@@ -1041,6 +1059,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 val parsedUrg = repo.parseUrgentSchoolAlertJson(remoteUrgRaw, sid)
                                 if (parsedUrg != _schoolConfig.value.urgentAlert) {
                                     _schoolConfig.value = _schoolConfig.value.copy(urgentAlert = parsedUrg)
+                                }
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HOLIDAYS)) {
+                            val remoteHolRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_HOLIDAYS)
+                            if (!remoteHolRaw.isNullOrBlank() &&
+                                remoteHolRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HOLIDAYS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HOLIDAYS, remoteHolRaw)
+                                val parsedHol = repo.parseHolidaysConfigJson(remoteHolRaw, sid)
+                                if (parsedHol != _holidaysConfig.value) {
+                                    _holidaysConfig.value = parsedHol
+                                    _schoolConfig.value = _schoolConfig.value.copy(holidaysConfig = parsedHol)
                                 }
                             }
                         }
@@ -1620,6 +1652,195 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun closeUrgentSchoolAlertModal() {
         _showUrgentAlertModal.value = false
+    }
+
+    fun openHolidaysManagementModal() {
+        _showHolidaysModal.value = true
+    }
+
+    fun closeHolidaysManagementModal() {
+        _showHolidaysModal.value = false
+    }
+
+    private fun resolveCanonicalArabicDayOfWeek(dateIso: String): String {
+        val clean = ArabicTextNormalizer.normalizeDigitsToAscii(dateIso.trim())
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val d = sdf.parse(clean) ?: Date()
+            val cal = java.util.Calendar.getInstance().apply { time = d }
+            when (cal.get(java.util.Calendar.DAY_OF_WEEK)) {
+                java.util.Calendar.SUNDAY -> "الأحد"
+                java.util.Calendar.MONDAY -> "الإثنين"
+                java.util.Calendar.TUESDAY -> "الثلاثاء"
+                java.util.Calendar.WEDNESDAY -> "الأربعاء"
+                java.util.Calendar.THURSDAY -> "الخميس"
+                java.util.Calendar.FRIDAY -> "الجمعة"
+                java.util.Calendar.SATURDAY -> "السبت"
+                else -> "الأحد"
+            }
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    fun getHolidayLabelForDate(dateIso: String): String? {
+        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(dateIso.trim())
+        if (cleanDate.isBlank()) return null
+        val cfg = _holidaysConfig.value
+        val official = cfg.officialHolidays.firstOrNull {
+            ArabicTextNormalizer.normalizeDigitsToAscii(it.dateIso.trim()) == cleanDate
+        }
+        if (official != null) {
+            return official.title.ifBlank { "عطلة رسمية" }
+        }
+        val dayName = resolveCanonicalArabicDayOfWeek(cleanDate)
+        if (dayName.isNotBlank()) {
+            val normDay = ArabicTextNormalizer.normalizeText(dayName)
+            val isWeeklyOff = cfg.weeklyDaysOff.any {
+                ArabicTextNormalizer.normalizeText(it) == normDay
+            }
+            if (isWeeklyOff) {
+                return "عطلة أسبوعية - $dayName"
+            }
+        }
+        return null
+    }
+
+    fun isDateHoliday(dateIso: String): Boolean = getHolidayLabelForDate(dateIso) != null
+
+    private fun documentHolidayInStudentRecords(dateIso: String, holidayTitle: String) {
+        val sid = _schoolConfig.value.schoolId
+        if (sid.isBlank()) return
+        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(dateIso.trim())
+        val schoolStudents = _students.value.filter { (it.schoolId.isEmpty() || it.schoolId == sid) && it.isActive }
+        if (schoolStudents.isEmpty()) return
+
+        val holidayEntries = schoolStudents.map { stu ->
+            val stuId = stu.id.trim()
+            AttendanceEntry(
+                id = "attendance_${cleanDate}_$stuId",
+                studentId = stuId,
+                studentName = stu.studentName,
+                gradeClass = stu.gradeClass,
+                sectionName = stu.sectionName,
+                date = cleanDate,
+                status = AttendanceStatus.HOLIDAY,
+                note = "يوم عطلة رسمية ($holidayTitle) - موثق في السجل",
+                schoolId = sid
+            )
+        }
+        val remaining = _attendance.value.filterNot {
+            ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate
+        }
+        val updated = holidayEntries + remaining
+        _attendance.value = updated
+        repo.saveAttendance(updated, sid)
+    }
+
+    fun toggleWeeklyHolidayDay(dayName: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val normTarget = ArabicTextNormalizer.normalizeText(dayName)
+        val currentDays = _holidaysConfig.value.weeklyDaysOff
+        val exists = currentDays.any { ArabicTextNormalizer.normalizeText(it) == normTarget }
+        val nextDays = if (exists) {
+            currentDays.filterNot { ArabicTextNormalizer.normalizeText(it) == normTarget }
+        } else {
+            currentDays + dayName
+        }
+        val nextCfg = _holidaysConfig.value.copy(
+            weeklyDaysOff = nextDays,
+            updatedAt = System.currentTimeMillis(),
+            schoolId = sid
+        )
+        _holidaysConfig.value = nextCfg
+        _schoolConfig.value = _schoolConfig.value.copy(holidaysConfig = nextCfg)
+        repo.saveHolidaysConfig(nextCfg, sid)
+
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val todayDayName = resolveCanonicalArabicDayOfWeek(todayIso)
+        if (!exists && ArabicTextNormalizer.normalizeText(todayDayName) == normTarget) {
+            documentHolidayInStudentRecords(todayIso, "عطلة أسبوعية - $dayName")
+        }
+        showToastAlert(
+            if (!exists) "تم اعتماد يوم ($dayName) كعطلة أسبوعية للمدرسة"
+            else "تم إلغاء يوم ($dayName) من أيام العطلة الأسبوعية",
+            isSuccess = true
+        )
+    }
+
+    fun addOrUpdateOfficialHoliday(holidayId: String?, dateIso: String, title: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(InputSanitizer.sanitize(dateIso).trim())
+        val cleanTitle = InputSanitizer.sanitize(title).trim().ifBlank { "عطلة رسمية" }
+        if (cleanDate.isBlank()) {
+            showToastAlert("يرجى اختيار تاريخ العطلة الرسمية", isSuccess = false)
+            return
+        }
+        val nowLabel = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val item = OfficialHolidayItem(
+            id = holidayId?.takeIf { it.isNotBlank() } ?: "hol_$cleanDate",
+            dateIso = cleanDate,
+            title = cleanTitle,
+            createdAt = nowLabel,
+            schoolId = sid
+        )
+        val filtered = _holidaysConfig.value.officialHolidays.filterNot {
+            it.id == item.id || ArabicTextNormalizer.normalizeDigitsToAscii(it.dateIso.trim()) == cleanDate
+        }
+        val nextList = (listOf(item) + filtered).sortedByDescending { it.dateIso }
+        val nextCfg = _holidaysConfig.value.copy(
+            officialHolidays = nextList,
+            updatedAt = System.currentTimeMillis(),
+            schoolId = sid
+        )
+        _holidaysConfig.value = nextCfg
+        _schoolConfig.value = _schoolConfig.value.copy(holidaysConfig = nextCfg)
+        repo.saveHolidaysConfig(nextCfg, sid)
+
+        // Document the official holiday in all active students' attendance logs for this date
+        documentHolidayInStudentRecords(cleanDate, cleanTitle)
+
+        pushNotification(
+            title = "إعلان عطلة رسمية: $cleanTitle",
+            body = "تعلن إدارة (${_schoolConfig.value.schoolName}) أن يوم ($cleanDate) عطلة رسمية بمناسبة ($cleanTitle). تم توثيق العطلة في سجلات جميع الطلبة.",
+            type = NotificationType.GENERAL,
+            targetSection = AppSection.ATTENDANCE.name,
+            targetTab = 0,
+            targetItemId = item.id
+        )
+
+        showToastAlert("تم تثبيت وتوثيق عطلة ($cleanTitle) ليوم $cleanDate في سجلات جميع الطلبة", isSuccess = true)
+    }
+
+    fun deleteOfficialHoliday(holidayId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val target = _holidaysConfig.value.officialHolidays.firstOrNull { it.id == holidayId } ?: return
+        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(target.dateIso.trim())
+        val nextList = _holidaysConfig.value.officialHolidays.filterNot { it.id == holidayId }
+        val nextCfg = _holidaysConfig.value.copy(
+            officialHolidays = nextList,
+            updatedAt = System.currentTimeMillis(),
+            schoolId = sid
+        )
+        _holidaysConfig.value = nextCfg
+        _schoolConfig.value = _schoolConfig.value.copy(holidaysConfig = nextCfg)
+        repo.saveHolidaysConfig(nextCfg, sid)
+
+        // Remove auto-documented HOLIDAY entries for that date if it is not a weekly holiday
+        if (getHolidayLabelForDate(cleanDate) == null) {
+            val cleanedAtt = _attendance.value.filterNot {
+                ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate &&
+                    it.status == AttendanceStatus.HOLIDAY
+            }
+            if (cleanedAtt.size != _attendance.value.size) {
+                _attendance.value = cleanedAtt
+                repo.saveAttendance(cleanedAtt, sid)
+            }
+        }
+        showToastAlert("تم حذف العطلة الرسمية (${target.title}) ليوم $cleanDate", isSuccess = true)
     }
 
     fun clearDeepLinkTarget() {
@@ -2797,6 +3018,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         val sid = _schoolConfig.value.schoolId
         val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(InputSanitizer.sanitize(date).trim())
+        val holidayReason = getHolidayLabelForDate(cleanDate)
+        if (status != AttendanceStatus.HOLIDAY && holidayReason != null) {
+            showToastAlert("اليوم عطلة ($holidayReason) — السجل مقفل وموثق كعطلة رسمية لجميع الطلبة", isSuccess = false)
+            return
+        }
         val cleanStudentId = student.id.trim()
         val cleanNote = InputSanitizer.sanitize(note).trim()
         val deterministicId = "attendance_${cleanDate}_$cleanStudentId"
@@ -3169,13 +3395,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun getTotalAbsenceDays(studentId: String): Int {
         // Group by canonical date so a single day can NEVER be counted more than once,
-        // and only count the date if the canonical (latest) status for that date is ABSENT.
+        // and only count the date if the canonical (latest) status for that date is ABSENT
+        // and the date is NOT a weekly or official school holiday.
         val cleanId = studentId.trim()
         return _attendance.value
             .filter { it.studentId.trim() == cleanId && it.date.isNotBlank() }
             .groupBy { ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) }
-            .count { (_, entriesForDate) ->
-                entriesForDate.first().status == AttendanceStatus.ABSENT
+            .count { (dateKey, entriesForDate) ->
+                entriesForDate.first().status == AttendanceStatus.ABSENT &&
+                    getHolidayLabelForDate(dateKey) == null
             }
     }
 

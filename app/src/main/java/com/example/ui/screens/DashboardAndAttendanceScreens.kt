@@ -54,6 +54,12 @@ fun DashboardScreen(
     val dismissalCalls by viewModel.dismissalCalls.collectAsState()
     val featureSettings by viewModel.featureSettings.collectAsState()
     val dismissedUrgentAlertSig by viewModel.dismissedUrgentAlertSignature.collectAsState()
+    val holidaysConfig by viewModel.holidaysConfig.collectAsState()
+
+    val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
+    val todayHolidayLabel = remember(holidaysConfig, todayIso) {
+        viewModel.getHolidayLabelForDate(todayIso)
+    }
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isTeacher = currentUser?.role == UserRole.TEACHER
@@ -113,6 +119,18 @@ fun DashboardScreen(
                 LiveOccasionBannerCard(
                     config = occasionThemeConfig,
                     modifier = Modifier.testTag("dashboard_occasion_theme_banner")
+                )
+            }
+        }
+
+        // Official / Weekly Holiday Banner when today is a holiday
+        if (todayHolidayLabel != null) {
+            item {
+                OfficialHolidayBannerCard(
+                    holidayLabel = todayHolidayLabel,
+                    dateIso = todayIso,
+                    isAdmin = isAdmin,
+                    onManageHolidaysClick = { viewModel.openHolidaysManagementModal() }
                 )
             }
         }
@@ -222,7 +240,14 @@ fun DashboardScreen(
         item {
             if (isParentOrStudent && myStudent != null) {
                 // PRIVATE STUDENT-ONLY DASHBOARD STATS (Strictly NO general school stats!)
-                val myTodayStatus = attendance.firstOrNull { it.studentId == myStudent.id }?.status ?: AttendanceStatus.PRESENT
+                val myTodayStatus = if (todayHolidayLabel != null) {
+                    AttendanceStatus.HOLIDAY
+                } else {
+                    attendance.firstOrNull {
+                        it.studentId == myStudent.id &&
+                            ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == todayIso
+                    }?.status ?: AttendanceStatus.PRESENT
+                }
                 val myTotalAbsences = viewModel.getTotalAbsenceDays(myStudent.id)
                 val myClassHomeworks = homeworks.filter {
                     it.gradeClass == myStudent.gradeClass && it.sectionName == myStudent.sectionName
@@ -405,10 +430,14 @@ fun DashboardScreen(
                     ) {
                         SmartStatCard(
                             title = "حالة الحضور اليوم",
-                            value = myTodayStatus.arabicLabel,
-                            subtitle = "إجمالي أيام غيابه: $myTotalAbsences يوم",
+                            value = if (todayHolidayLabel != null) "عطلة رسمية" else myTodayStatus.arabicLabel,
+                            subtitle = if (todayHolidayLabel != null) todayHolidayLabel else "إجمالي أيام غيابه: $myTotalAbsences يوم",
                             icon = Icons.Filled.FactCheck,
-                            accentColor = if (myTodayStatus == AttendanceStatus.ABSENT) DangerRed else PrimaryLight,
+                            accentColor = when {
+                                todayHolidayLabel != null || myTodayStatus == AttendanceStatus.HOLIDAY -> GoldAccent
+                                myTodayStatus == AttendanceStatus.ABSENT -> DangerRed
+                                else -> PrimaryLight
+                            },
                             modifier = Modifier.weight(1f),
                             onClick = { viewModel.navigateToSection(AppSection.ATTENDANCE) }
                         )
@@ -462,14 +491,31 @@ fun DashboardScreen(
             } else {
                 // ADMIN OR SCOPED TEACHER DASHBOARD STATS
                 val scopedStudentIds = scopedStudents.map { it.id }.toSet()
-                val scopedAttendance = attendance.filter { it.studentId in scopedStudentIds }
+                val scopedAttendance = attendance.filter {
+                    it.studentId in scopedStudentIds &&
+                        ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == todayIso
+                }
                 val presentCount = scopedAttendance.count { it.status == AttendanceStatus.PRESENT }
                 val absentCount = scopedAttendance.count { it.status == AttendanceStatus.ABSENT }
-                val honorCount = students.count { it.isOnHonorRoll }
+                val scopedHomeworks = remember(homeworks, currentUser, isTeacher) {
+                    if (isTeacher && currentUser != null) {
+                        homeworks.filter { hw ->
+                            currentUser!!.canTeacherAccessClassSection(hw.gradeClass, hw.sectionName) &&
+                                currentUser!!.canTeacherAccessSubject(hw.subjectName)
+                        }
+                    } else {
+                        homeworks
+                    }
+                }
+                val honorCount = if (isTeacher) {
+                    scopedStudents.count { it.isOnHonorRoll }
+                } else {
+                    students.count { it.isOnHonorRoll }
+                }
                 val teachersCount = accounts.count { it.role == UserRole.TEACHER }
 
                 Text(
-                    text = if (isTeacher) "إحصائيات صفوفك وطلابك المسندين" else "لوحة الإحصائيات العامة للمدرسة",
+                    text = if (isTeacher) "إحصائيات صفوفك وطلابك المسندين فقط" else "لوحة الإحصائيات العامة للمدرسة",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -483,7 +529,7 @@ fun DashboardScreen(
                         SmartStatCard(
                             title = if (isTeacher) "طلابي المسندون" else "إجمالي الطلبة",
                             value = "${scopedStudents.size} طالب",
-                            subtitle = if (isTeacher) "ضمن شعبك المسندة" else "الكادر التدريسي: $teachersCount",
+                            subtitle = if (isTeacher) "المسجلون في صفوفك وشعبك" else "الكادر التدريسي: $teachersCount",
                             icon = Icons.Filled.Groups,
                             accentColor = PrimaryLight,
                             modifier = Modifier.weight(1f),
@@ -491,10 +537,10 @@ fun DashboardScreen(
                         )
                         SmartStatCard(
                             title = "سجل الحضور اليومي",
-                            value = "$presentCount حاضر",
-                            subtitle = "حالات الغياب: $absentCount",
+                            value = if (todayHolidayLabel != null) "عطلة رسمية" else "$presentCount حاضر",
+                            subtitle = if (todayHolidayLabel != null) todayHolidayLabel else "حالات الغياب: $absentCount",
                             icon = Icons.Filled.FactCheck,
-                            accentColor = InfoBlue,
+                            accentColor = if (todayHolidayLabel != null) GoldAccent else InfoBlue,
                             modifier = Modifier.weight(1f),
                             onClick = { viewModel.navigateToSection(AppSection.ATTENDANCE) }
                         )
@@ -506,8 +552,8 @@ fun DashboardScreen(
                     ) {
                         SmartStatCard(
                             title = "الواجبات والتحضير",
-                            value = "${homeworks.size} واجب",
-                            subtitle = "محدث للصفوف المسجلة",
+                            value = "${scopedHomeworks.size} واجب",
+                            subtitle = if (isTeacher) "ضمن موادك وصفوفك المسندة" else "محدث للصفوف المسجلة",
                             icon = Icons.Filled.MenuBook,
                             accentColor = SecondaryLight,
                             modifier = Modifier.weight(1f),
@@ -517,7 +563,7 @@ fun DashboardScreen(
                             SmartStatCard(
                                 title = "لوحة الشرف الذهبية",
                                 value = "$honorCount متفوق",
-                                subtitle = "أوائل الصفوف",
+                                subtitle = if (isTeacher) "ضمن طلابك المسندين" else "أوائل الصفوف",
                                 icon = Icons.Filled.EmojiEvents,
                                 accentColor = GoldAccent,
                                 modifier = Modifier.weight(1f),
@@ -876,9 +922,11 @@ fun DailyAttendanceScreen(
     val dismissalCalls by viewModel.dismissalCalls.collectAsState()
     val lostAndFoundItems by viewModel.lostAndFoundItems.collectAsState()
     val featureSettings by viewModel.featureSettings.collectAsState()
+    val holidaysConfig by viewModel.holidaysConfig.collectAsState()
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isAdmin = currentUser?.role == UserRole.ADMIN
+    val isTeacher = currentUser?.role == UserRole.TEACHER
     val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
     val allowedClasses = remember(schoolConfig, currentUser, students, selectedParentChildId) {
@@ -906,6 +954,9 @@ fun DailyAttendanceScreen(
     }
 
     var selectedDate by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
+    val selectedDateHolidayLabel = remember(holidaysConfig, selectedDate) {
+        viewModel.getHolidayLabelForDate(selectedDate)
+    }
     var searchName by remember { mutableStateOf("") }
     var showQrScannerDialog by remember { mutableStateOf(false) }
     var showLeaveRequestDialog by remember { mutableStateOf(false) }
@@ -928,12 +979,15 @@ fun DailyAttendanceScreen(
         }
     }
 
-    val scopedStudents = remember(students, currentUser, selectedClass, selectedSection, searchName, selectedParentChildId) {
-        val base = viewModel.getScopedStudentsForUser(currentUser)
+    val allTeacherAssignedStudents = remember(students, currentUser, selectedParentChildId) {
+        viewModel.getScopedStudentsForUser(currentUser)
+    }
+
+    val scopedStudents = remember(allTeacherAssignedStudents, isParentOrStudent, selectedClass, selectedSection, searchName) {
         if (isParentOrStudent) {
-            base
+            allTeacherAssignedStudents
         } else {
-            base.filter { stu ->
+            allTeacherAssignedStudents.filter { stu ->
                 ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
                     ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection) &&
                     (searchName.isBlank() ||
@@ -950,13 +1004,51 @@ fun DailyAttendanceScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
+        if (selectedDateHolidayLabel != null) {
+            item {
+                OfficialHolidayBannerCard(
+                    holidayLabel = selectedDateHolidayLabel,
+                    dateIso = selectedDate,
+                    isAdmin = isAdmin,
+                    onManageHolidaysClick = { viewModel.openHolidaysManagementModal() }
+                )
+            }
+        }
+
         if (isParentOrStudent) {
             // Strict Privacy View for Parent & Student: ONLY their own student's attendance & leave requests!
             val myStu = scopedStudents.firstOrNull()
             if (myStu != null) {
                 val myTotalAbsences = viewModel.getTotalAbsenceDays(myStu.id)
-                val myRecords = attendance.filter { it.studentId == myStu.id }
-                val todayStatus = myRecords.firstOrNull { it.date == selectedDate }?.status ?: AttendanceStatus.PRESENT
+                val rawMyRecords = attendance.filter { it.studentId == myStu.id }
+                val cleanSel = ArabicTextNormalizer.normalizeDigitsToAscii(selectedDate.trim())
+                val myRecords = if (selectedDateHolidayLabel != null && rawMyRecords.none {
+                        ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanSel
+                    }
+                ) {
+                    listOf(
+                        AttendanceEntry(
+                            id = "ATT_HOLIDAY_${myStu.id}_$cleanSel",
+                            studentId = myStu.id,
+                            studentName = myStu.fullNameWithFather,
+                            gradeClass = myStu.gradeClass,
+                            sectionName = myStu.sectionName,
+                            date = cleanSel,
+                            status = AttendanceStatus.HOLIDAY,
+                            note = "يوم عطلة رسمية ($selectedDateHolidayLabel) — موثق في السجل"
+                        )
+                    ) + rawMyRecords
+                } else {
+                    rawMyRecords
+                }
+                val todayStatus = if (selectedDateHolidayLabel != null) {
+                    AttendanceStatus.HOLIDAY
+                } else {
+                    myRecords.firstOrNull {
+                        ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) ==
+                            ArabicTextNormalizer.normalizeDigitsToAscii(selectedDate.trim())
+                    }?.status ?: AttendanceStatus.PRESENT
+                }
                 val myLeaveRequests = leaveRequests.filter { it.studentId == myStu.id }
                 val myBadges = viewModel.getStudentAutoBadges(myStu.id)
                 val myBehaviors = dailyBehaviors.filter { it.studentId == myStu.id }
@@ -1180,15 +1272,23 @@ fun DailyAttendanceScreen(
                                     Text(rec.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
+                            val recordHolidayLabel = viewModel.getHolidayLabelForDate(rec.date)
+                            val effectiveStatus = if (recordHolidayLabel != null) AttendanceStatus.HOLIDAY else rec.status
                             NoWrapBadge(
-                                text = rec.status.arabicLabel,
-                                icon = Icons.Filled.FactCheck,
-                                containerColor = when (rec.status) {
+                                text = if (effectiveStatus == AttendanceStatus.HOLIDAY) {
+                                    "يوم عطلة رسمية (موثق في السجل)"
+                                } else {
+                                    effectiveStatus.arabicLabel
+                                },
+                                icon = if (effectiveStatus == AttendanceStatus.HOLIDAY) Icons.Filled.EventAvailable else Icons.Filled.FactCheck,
+                                containerColor = when (effectiveStatus) {
+                                    AttendanceStatus.HOLIDAY -> GoldFoil.copy(alpha = 0.18f)
                                     AttendanceStatus.ABSENT -> DangerRed.copy(alpha = 0.15f)
                                     AttendanceStatus.EXCUSED -> InfoBlue.copy(alpha = 0.15f)
                                     else -> SuccessGreen.copy(alpha = 0.15f)
                                 },
-                                contentColor = when (rec.status) {
+                                contentColor = when (effectiveStatus) {
+                                    AttendanceStatus.HOLIDAY -> DeepForestGreen
                                     AttendanceStatus.ABSENT -> DangerRed
                                     AttendanceStatus.EXCUSED -> InfoBlue
                                     else -> SuccessGreen
@@ -1416,6 +1516,66 @@ fun DailyAttendanceScreen(
                                     onClick = { selectedSection = sec },
                                     label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
                                 )
+                            }
+                        }
+
+                        // Scoped Student Count Indicator + Admin Holidays Management Shortcut
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = DeepEmerald.copy(alpha = 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Groups,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = if (isTeacher) {
+                                            "طلابك في ($selectedClass - شعبة $selectedSection): ${scopedStudents.size} طالب (إجمالي طلابك المسندين: ${allTeacherAssignedStudents.size})"
+                                        } else {
+                                            "عدد طلاب ($selectedClass - شعبة $selectedSection): ${scopedStudents.size} طالب"
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = DeepForestGreen,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                if (isAdmin) {
+                                    TextButton(
+                                        onClick = { viewModel.openHolidaysManagementModal() },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.testTag("attendance_open_holidays_modal_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.EventAvailable,
+                                            contentDescription = null,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "إدارة العطل الرسمية",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = DeepEmerald,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1676,60 +1836,100 @@ fun DailyAttendanceScreen(
                             }
                         }
 
-                        // 2. أزرار تسجيل الحضور (حاضر، غائب، متأخر، مجاز): صف أفقي مدمج ومنسق بأيقونات واضحة وتلوين فوري
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            AttendanceStatus.entries.forEach { st ->
-                                val isSelected = currentStatus == st
-                                val statusColor = when (st) {
-                                    AttendanceStatus.PRESENT -> SuccessGreen
-                                    AttendanceStatus.ABSENT -> DangerRed
-                                    AttendanceStatus.LATE -> WarningAmber
-                                    AttendanceStatus.EXCUSED -> InfoBlue
-                                }
-                                val statusIcon = when (st) {
-                                    AttendanceStatus.PRESENT -> Icons.Filled.CheckCircle
-                                    AttendanceStatus.ABSENT -> Icons.Filled.Cancel
-                                    AttendanceStatus.LATE -> Icons.Filled.Schedule
-                                    AttendanceStatus.EXCUSED -> Icons.Filled.AssignmentLate
-                                }
-
-                                Surface(
+                        // 2. أزرار تسجيل الحضور (حاضر، غائب، متأخر، مجاز) أو شارة "يوم عطلة رسمية (موثق في السجل)" عند العطل
+                        if (selectedDateHolidayLabel != null || currentStatus == AttendanceStatus.HOLIDAY) {
+                            val holidayNoteText = selectedDateHolidayLabel
+                                ?: currentEntry?.note?.takeIf { it.isNotBlank() }
+                                ?: "عطلة رسمية"
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("att_holiday_locked_badge_${stu.id}"),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFF064E3B).copy(alpha = 0.08f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, GoldFoil.copy(alpha = 0.65f))
+                            ) {
+                                Row(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable(enabled = canEdit) {
-                                            optimisticStatus = st
-                                            viewModel.recordStudentAttendance(stu, selectedDate, st)
-                                        }
-                                        .testTag("att_btn_${stu.id}_${st.name}"),
-                                    color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                                    border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
-                                    shape = RoundedCornerShape(10.dp)
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 9.dp, horizontal = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
+                                    Icon(
+                                        imageVector = Icons.Filled.EventAvailable,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "يوم عطلة رسمية (موثق في السجل) • $holidayNoteText",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                AttendanceStatus.manualSelectableStatuses.forEach { st ->
+                                    val isSelected = currentStatus == st
+                                    val statusColor = when (st) {
+                                        AttendanceStatus.PRESENT -> SuccessGreen
+                                        AttendanceStatus.ABSENT -> DangerRed
+                                        AttendanceStatus.LATE -> WarningAmber
+                                        AttendanceStatus.EXCUSED -> InfoBlue
+                                        AttendanceStatus.HOLIDAY -> GoldAccent
+                                    }
+                                    val statusIcon = when (st) {
+                                        AttendanceStatus.PRESENT -> Icons.Filled.CheckCircle
+                                        AttendanceStatus.ABSENT -> Icons.Filled.Cancel
+                                        AttendanceStatus.LATE -> Icons.Filled.Schedule
+                                        AttendanceStatus.EXCUSED -> Icons.Filled.AssignmentLate
+                                        AttendanceStatus.HOLIDAY -> Icons.Filled.EventAvailable
+                                    }
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable(enabled = canEdit) {
+                                                optimisticStatus = st
+                                                viewModel.recordStudentAttendance(stu, selectedDate, st)
+                                            }
+                                            .testTag("att_btn_${stu.id}_${st.name}"),
+                                        color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
+                                        shape = RoundedCornerShape(10.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = statusIcon,
-                                            contentDescription = st.arabicLabel,
-                                            tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = st.arabicLabel,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(vertical = 9.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = statusIcon,
+                                                contentDescription = st.arabicLabel,
+                                                tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = st.arabicLabel,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                             }

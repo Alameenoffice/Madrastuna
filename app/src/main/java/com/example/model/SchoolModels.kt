@@ -44,6 +44,7 @@ object FirebaseConfigConstants {
     const val COL_STUDENT_ACTIVITY_COMMENTS = "student_activity_comments"
     const val COL_ACTIVITY_REPORTS = "activity_reports"
     const val COL_USER_PROFILES = "user_profiles"
+    const val COL_HOLIDAYS = "holidays"
 
     // Root collections for Developer Super-Admin Panel
     const val COL_SCHOOL_LICENSES = "school_licenses"
@@ -193,7 +194,17 @@ enum class AttendanceStatus(val arabicLabel: String) {
     PRESENT("حاضر"),
     ABSENT("غائب"),
     LATE("متأخر"),
-    EXCUSED("مجاز")
+    EXCUSED("مجاز"),
+    HOLIDAY("عطلة رسمية");
+
+    companion object {
+        val manualSelectableStatuses: List<AttendanceStatus> = listOf(
+            PRESENT,
+            ABSENT,
+            LATE,
+            EXCUSED
+        )
+    }
 }
 
 enum class ReportType(val arabicLabel: String) {
@@ -271,6 +282,21 @@ data class UrgentSchoolAlert(
     val signatureKey: String = ""
 )
 
+data class OfficialHolidayItem(
+    val id: String,
+    val dateIso: String,
+    val title: String = "عطلة رسمية",
+    val createdAt: String = "",
+    val schoolId: String = ""
+)
+
+data class SchoolHolidaysConfig(
+    val weeklyDaysOff: List<String> = listOf("الجمعة", "السبت"),
+    val officialHolidays: List<OfficialHolidayItem> = emptyList(),
+    val updatedAt: Long = 0L,
+    val schoolId: String = ""
+)
+
 data class SchoolConfig(
     val schoolId: String = "",
     val isSetupCompleted: Boolean = false,
@@ -289,7 +315,8 @@ data class SchoolConfig(
     val phone: String = "07512362567",
     val subscriptionExpiryDate: String = "2027-10-29",
     val featureSettings: SchoolFeatureSettings = SchoolFeatureSettings(),
-    val urgentAlert: UrgentSchoolAlert = UrgentSchoolAlert()
+    val urgentAlert: UrgentSchoolAlert = UrgentSchoolAlert(),
+    val holidaysConfig: SchoolHolidaysConfig = SchoolHolidaysConfig()
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -339,39 +366,67 @@ data class UserAccount(
             .filter { it.isNotEmpty() }
 
     val teacherAssignedClassesOnly: List<String>
-        get() = teacherClassSectionPairs.map { pair ->
-            if (pair.contains("-")) pair.substringBefore("-").trim() else pair.trim()
-        }.filter { it.isNotEmpty() }.distinctBy { ArabicTextNormalizer.normalizeClass(it) }
+        get() = teacherClassSectionPairs.mapNotNull { pair ->
+            val raw = if (pair.contains("-")) pair.substringBefore("-").trim() else pair.trim()
+            val cleanedSec = raw.replace("شعبة", "").replace("الشعبة", "").trim()
+            // Ignore standalone section tokens like "أ", "ب", "شعبة أ"
+            if (raw.isEmpty() || (!pair.contains("-") && (raw.startsWith("شعبة") || cleanedSec.length <= 2))) {
+                null
+            } else {
+                raw
+            }
+        }.distinctBy { ArabicTextNormalizer.normalizeClass(it) }
 
     val teacherAssignedSectionsOnly: List<String>
         get() = teacherClassSectionPairs.mapNotNull { pair ->
             if (pair.contains("-")) {
-                pair.substringAfter("-").replace("شعبة", "").trim().takeIf { it.isNotEmpty() }
-            } else null
+                pair.substringAfter("-").replace("شعبة", "").replace("الشعبة", "").trim().takeIf { it.isNotEmpty() }
+            } else {
+                val raw = pair.trim()
+                val cleanedSec = raw.replace("شعبة", "").replace("الشعبة", "").trim()
+                if (raw.startsWith("شعبة") || (cleanedSec.isNotEmpty() && cleanedSec.length <= 2)) {
+                    cleanedSec
+                } else null
+            }
         }.distinctBy { ArabicTextNormalizer.normalizeSection(it) }
 
     fun canTeacherAccessClassSection(gradeClass: String, sectionName: String? = null): Boolean {
         if (role == UserRole.ADMIN) return true
         if (role != UserRole.TEACHER) return false
         val pairs = teacherClassSectionPairs
-        if (pairs.isEmpty()) return true
+        if (pairs.isEmpty()) return false
         if (pairs.any { ArabicTextNormalizer.isAllClassesToken(it) }) return true
+
         val normTargetClass = ArabicTextNormalizer.normalizeClass(gradeClass)
         val normTargetSec = sectionName?.let { ArabicTextNormalizer.normalizeSection(it) }.orEmpty()
-        return pairs.any { item ->
-            if (ArabicTextNormalizer.isAllClassesToken(item)) {
-                true
-            } else if (item.contains("-")) {
+
+        val dashPairs = pairs.filter { it.contains("-") }
+        if (dashPairs.isNotEmpty()) {
+            val matchedDash = dashPairs.any { item ->
                 val parts = item.split("-").map { it.trim() }
                 val cls = parts.getOrNull(0) ?: ""
                 val sec = parts.getOrNull(1) ?: ""
-                val classMatches = ArabicTextNormalizer.normalizeClass(cls) == normTargetClass
+                val classMatches = ArabicTextNormalizer.normalizeClass(cls) == normTargetClass || ArabicTextNormalizer.isAllClassesToken(cls)
                 val secNorm = ArabicTextNormalizer.normalizeSection(sec)
                 classMatches && (sectionName == null || normTargetSec.isEmpty() || secNorm.isEmpty() || secNorm == normTargetSec || ArabicTextNormalizer.isAllClassesToken(sec))
-            } else {
-                ArabicTextNormalizer.normalizeClass(item) == normTargetClass
+            }
+            if (matchedDash) return true
+        }
+
+        val standaloneClasses = teacherAssignedClassesOnly
+        val standaloneSections = teacherAssignedSectionsOnly
+        if (standaloneClasses.isNotEmpty()) {
+            val classMatches = standaloneClasses.any {
+                ArabicTextNormalizer.isAllClassesToken(it) || ArabicTextNormalizer.normalizeClass(it) == normTargetClass
+            }
+            if (!classMatches) return false
+            if (sectionName == null || normTargetSec.isEmpty() || standaloneSections.isEmpty()) return true
+            return standaloneSections.any {
+                ArabicTextNormalizer.isAllClassesToken(it) || ArabicTextNormalizer.normalizeSection(it) == normTargetSec
             }
         }
+
+        return false
     }
 
     fun canTeacherAccessSubject(subjectName: String): Boolean {

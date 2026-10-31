@@ -64,6 +64,7 @@ import com.example.ui.components.DigitalStudentIdDialog
 import com.example.ui.components.GlobalImageLightboxDialog
 import com.example.ui.components.ParentMultiChildSwitcherBar
 import com.example.ui.components.ProgressiveInfiniteScrollFooter
+import com.example.ui.components.SchoolHolidaysManagementModalDialog
 import com.example.ui.components.StudentActivitiesLinearVector
 import com.example.ui.components.UrgentSchoolAlertModalDialog
 import com.example.ui.components.VectorActionButton
@@ -74,6 +75,7 @@ import com.example.ui.theme.DeepForestGreen
 import com.example.ui.theme.EmeraldAccent
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.GoldFoil
+import com.example.ui.theme.GoldLight
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.WarmGoldLight
@@ -379,34 +381,53 @@ fun MadrasatiRootApp(
             }
         }
 
-        // Full-Screen Offline Blocker (شاشة كاملة مانعة للتفاعل عند انقطاع الاتصال بالإنترنت)
+        // Full-Screen Offline Experience (بتصميم مطابق لفخامة شاشة الترحيب Onboarding/Splash بدون صندوق قاتم أو لون برتقالي)
         val isNetworkOnline by viewModel.isNetworkOnline.collectAsState()
+        val isDarkOffline by viewModel.isDarkMode.collectAsState()
         AnimatedVisibility(
             visible = !isNetworkOnline,
-            enter = fadeIn(animationSpec = tween(250)),
-            exit = fadeOut(animationSpec = tween(200)),
+            enter = fadeIn(animationSpec = tween(280)),
+            exit = fadeOut(animationSpec = tween(220)),
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(99999f)
         ) {
-            val infiniteTransition = rememberInfiniteTransition(label = "offline_pulse_transition")
-            val pulseRadiusScale by infiniteTransition.animateFloat(
-                initialValue = 0.85f,
-                targetValue = 1.25f,
+            val infiniteTransition = rememberInfiniteTransition(label = "offline_splash_lottie_scene")
+            val floatOffset by infiniteTransition.animateFloat(
+                initialValue = -9f,
+                targetValue = 9f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(1600, easing = FastOutSlowInEasing),
+                    animation = tween(2200, easing = FastOutSlowInEasing),
                     repeatMode = RepeatMode.Reverse
                 ),
-                label = "pulse_radius_scale"
+                label = "offline_float_offset"
             )
-            val pulseAlpha by infiniteTransition.animateFloat(
-                initialValue = 0.25f,
-                targetValue = 0.65f,
+            val pulseWave by infiniteTransition.animateFloat(
+                initialValue = 0.86f,
+                targetValue = 1.22f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(1600, easing = FastOutSlowInEasing),
+                    animation = tween(1900, easing = FastOutSlowInEasing),
                     repeatMode = RepeatMode.Reverse
                 ),
-                label = "pulse_alpha"
+                label = "offline_pulse_wave"
+            )
+            val orbitAngle by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(12000, easing = androidx.compose.animation.core.LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "offline_orbit_angle"
+            )
+            val signalSweep by infiniteTransition.animateFloat(
+                initialValue = 0.25f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1500, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "offline_signal_sweep"
             )
 
             Box(
@@ -414,149 +435,318 @@ fun MadrasatiRootApp(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF022C22).copy(alpha = 0.98f),
-                                Color(0xFF064E3B).copy(alpha = 0.97f),
-                                Color(0xFF022C22).copy(alpha = 0.99f)
-                            )
+                            colors = if (isDarkOffline) {
+                                listOf(
+                                    Color(0xFF031F18),
+                                    Color(0xFF063729),
+                                    Color(0xFF04261D)
+                                )
+                            } else {
+                                listOf(
+                                    Color(0xFFEFFBF5),
+                                    Color(0xFFF7FDF9),
+                                    Color(0xFFFFFFFF)
+                                )
+                            }
                         )
                     )
                     .pointerInput(Unit) {
                         detectTapGestures { /* Block all underlying clicks/touches while offline */ }
                     }
-                    .testTag("network_connectivity_guard_banner"),
-                contentAlignment = Alignment.Center
+                    .testTag("network_connectivity_guard_banner")
             ) {
-                Card(
+                // Soft Ambient Glows (إضاءة محيطية ناعمة مطابقة لشاشة الترحيب)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFF10B981).copy(alpha = if (isDarkOffline) 0.16f else 0.12f),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.85f, size.height * 0.15f),
+                            radius = size.minDimension * 0.65f
+                        ),
+                        center = Offset(size.width * 0.85f, size.height * 0.15f),
+                        radius = size.minDimension * 0.65f
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                GoldAccent.copy(alpha = if (isDarkOffline) 0.12f else 0.10f),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.15f, size.height * 0.82f),
+                            radius = size.minDimension * 0.60f
+                        ),
+                        center = Offset(size.width * 0.15f, size.height * 0.82f),
+                        radius = size.minDimension * 0.60f
+                    )
+                }
+
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF064E3B)
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.5.dp,
-                        GoldAccent.copy(alpha = 0.75f)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+                        .fillMaxSize()
+                        .padding(horizontal = 28.dp, vertical = 36.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    // Top Luxury Capsule Badge (مطابق لترويسة شاشة الترحيب)
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (isDarkOffline) Color.White.copy(alpha = 0.08f) else DeepEmerald.copy(alpha = 0.09f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isDarkOffline) GoldAccent.copy(alpha = 0.35f) else DeepEmerald.copy(alpha = 0.22f)
+                        )
                     ) {
-                        // Interactive Animated Vector SVG Offline Illustration in Emerald & Gold
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(GoldAccent)
+                            )
+                            Text(
+                                text = "نظام الحماية والمزامنة السحابية",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isDarkOffline) GoldLight else DeepEmerald,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+
+                    // Center Multi-Layer JSON/Lottie-Style Animated Scene + Concise Typography
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Box(
-                            modifier = Modifier.size(136.dp),
+                            modifier = Modifier
+                                .size(228.dp)
+                                .clip(RoundedCornerShape(36.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            Color(0xFF042F2E),
+                                            DeepEmerald,
+                                            Color(0xFF0D9488)
+                                        )
+                                    )
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 val cx = size.width / 2f
                                 val cy = size.height / 2f
-                                val baseR = size.minDimension * 0.34f
 
-                                // Outer Pulsing Gold & Emerald Radar Waves
+                                // Multi-layer animated radar waves searching for signal
                                 drawCircle(
-                                    color = GoldAccent.copy(alpha = pulseAlpha * 0.35f),
-                                    radius = baseR * 1.28f * pulseRadiusScale,
-                                    center = Offset(cx, cy),
-                                    style = Stroke(width = 3.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = Color(0xFF34D399).copy(alpha = pulseAlpha * 0.45f),
-                                    radius = baseR * 1.05f * pulseRadiusScale,
-                                    center = Offset(cx, cy),
-                                    style = Stroke(width = 2.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = Color(0xFF022C22),
-                                    radius = baseR * 0.92f,
+                                    color = Color.White.copy(alpha = 0.07f),
+                                    radius = size.minDimension * 0.44f * pulseWave,
                                     center = Offset(cx, cy)
                                 )
                                 drawCircle(
-                                    color = GoldAccent.copy(alpha = 0.85f),
-                                    radius = baseR * 0.92f,
+                                    color = Color(0xFF34D399).copy(alpha = 0.22f * signalSweep),
+                                    radius = size.minDimension * 0.38f * pulseWave,
                                     center = Offset(cx, cy),
                                     style = Stroke(width = 2.2.dp.toPx())
                                 )
-
-                                // Linear Vector SVG Cloud + Signal Arcs + Slash in Gold & White
-                                val w = size.width
-                                val h = size.height
-                                val cloudPath = Path().apply {
-                                    moveTo(w * 0.35f, h * 0.58f)
-                                    lineTo(w * 0.65f, h * 0.58f)
-                                    cubicTo(w * 0.72f, h * 0.58f, w * 0.75f, h * 0.53f, w * 0.74f, h * 0.47f)
-                                    cubicTo(w * 0.73f, h * 0.42f, w * 0.68f, h * 0.39f, w * 0.63f, h * 0.40f)
-                                    cubicTo(w * 0.60f, h * 0.33f, w * 0.52f, h * 0.30f, w * 0.45f, h * 0.34f)
-                                    cubicTo(w * 0.39f, h * 0.37f, w * 0.36f, h * 0.43f, w * 0.36f, h * 0.46f)
-                                    cubicTo(w * 0.31f, h * 0.47f, w * 0.29f, h * 0.52f, w * 0.31f, h * 0.56f)
-                                    close()
-                                }
-                                drawPath(
-                                    path = cloudPath,
-                                    color = Color.White,
-                                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                drawCircle(
+                                    color = GoldAccent.copy(alpha = 0.32f * signalSweep),
+                                    radius = size.minDimension * 0.30f * (2f - pulseWave * 0.75f),
+                                    center = Offset(cx, cy),
+                                    style = Stroke(width = 2.dp.toPx())
                                 )
-                                // Diagonal Offline Slash in Royal Gold
-                                drawLine(
+
+                                // Orbiting golden & emerald smart nodes
+                                val rad1 = Math.toRadians(orbitAngle.toDouble())
+                                val rad2 = Math.toRadians((orbitAngle + 120f).toDouble())
+                                val rad3 = Math.toRadians((orbitAngle + 240f).toDouble())
+                                val orbitR = size.minDimension * 0.37f
+
+                                drawCircle(
+                                    color = GoldAccent.copy(alpha = 0.85f),
+                                    radius = 5.5.dp.toPx(),
+                                    center = Offset(
+                                        cx + (kotlin.math.cos(rad1) * orbitR).toFloat(),
+                                        cy + (kotlin.math.sin(rad1) * orbitR).toFloat()
+                                    )
+                                )
+                                drawCircle(
+                                    color = Color(0xFF6EE7B7).copy(alpha = 0.80f),
+                                    radius = 4.5.dp.toPx(),
+                                    center = Offset(
+                                        cx + (kotlin.math.cos(rad2) * orbitR).toFloat(),
+                                        cy + (kotlin.math.sin(rad2) * orbitR).toFloat()
+                                    )
+                                )
+                                drawCircle(
+                                    color = Color.White.copy(alpha = 0.70f),
+                                    radius = 4.dp.toPx(),
+                                    center = Offset(
+                                        cx + (kotlin.math.cos(rad3) * orbitR).toFloat(),
+                                        cy + (kotlin.math.sin(rad3) * orbitR).toFloat()
+                                    )
+                                )
+
+                                // Floating glassmorphic card backdrop
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.11f),
+                                    topLeft = Offset(cx - 64.dp.toPx(), cy - 64.dp.toPx() + floatOffset),
+                                    size = androidx.compose.ui.geometry.Size(128.dp.toPx(), 128.dp.toPx()),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(28.dp.toPx(), 28.dp.toPx())
+                                )
+                                drawRoundRect(
+                                    color = GoldAccent.copy(alpha = 0.42f),
+                                    topLeft = Offset(cx - 64.dp.toPx(), cy - 64.dp.toPx() + floatOffset),
+                                    size = androidx.compose.ui.geometry.Size(128.dp.toPx(), 128.dp.toPx()),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(28.dp.toPx(), 28.dp.toPx()),
+                                    style = Stroke(width = 1.4.dp.toPx())
+                                )
+
+                                // Animated 3D-style Signal Waves & Smart Hub Node
+                                val waveCenterY = cy + floatOffset + 12.dp.toPx()
+                                drawArc(
+                                    color = Color.White.copy(alpha = 0.35f + 0.55f * signalSweep),
+                                    startAngle = 215f,
+                                    sweepAngle = 110f,
+                                    useCenter = false,
+                                    topLeft = Offset(cx - 38.dp.toPx(), waveCenterY - 38.dp.toPx()),
+                                    size = androidx.compose.ui.geometry.Size(76.dp.toPx(), 76.dp.toPx()),
+                                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
+                                )
+                                drawArc(
+                                    color = Color(0xFFA7F3D0).copy(alpha = 0.45f + 0.50f * (1f - signalSweep * 0.5f)),
+                                    startAngle = 220f,
+                                    sweepAngle = 100f,
+                                    useCenter = false,
+                                    topLeft = Offset(cx - 25.dp.toPx(), waveCenterY - 25.dp.toPx()),
+                                    size = androidx.compose.ui.geometry.Size(50.dp.toPx(), 50.dp.toPx()),
+                                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
+                                )
+                                drawArc(
                                     color = GoldAccent,
-                                    start = Offset(w * 0.33f, h * 0.33f),
-                                    end = Offset(w * 0.67f, h * 0.67f),
-                                    strokeWidth = 3.5.dp.toPx(),
-                                    cap = StrokeCap.Round
+                                    startAngle = 225f,
+                                    sweepAngle = 90f,
+                                    useCenter = false,
+                                    topLeft = Offset(cx - 13.dp.toPx(), waveCenterY - 13.dp.toPx()),
+                                    size = androidx.compose.ui.geometry.Size(26.dp.toPx(), 26.dp.toPx()),
+                                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
+                                )
+                                // Glowing Hub Core Dot
+                                drawCircle(
+                                    color = GoldAccent,
+                                    radius = 5.5.dp.toPx(),
+                                    center = Offset(cx, waveCenterY + 4.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = Color.White,
+                                    radius = 2.4.dp.toPx(),
+                                    center = Offset(cx, waveCenterY + 4.dp.toPx())
                                 )
                             }
                         }
 
                         Text(
-                            text = "انقطع الاتصال بالإنترنت",
-                            style = MaterialTheme.typography.titleLarge,
+                            text = "انقطع الاتصال بالشبكة مؤقتاً",
+                            style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.ExtraBold,
-                            color = GoldAccent,
+                            color = if (isDarkOffline) Color.White else DeepForestGreen,
                             textAlign = TextAlign.Center
                         )
 
                         Text(
-                            text = "انقطع الاتصال بالإنترنت — المنصة تعمل سحابياً، يرجى التحقق من الشبكة وستعود للعمل تلقائياً فور توفر الاتصال",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White.copy(alpha = 0.94f),
+                            text = "يرجى التحقق من اتصال جهازك بالإنترنت لاستئناف المزامنة السحابية الفورية.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isDarkOffline) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
-                            lineHeight = 24.sp
+                            lineHeight = 25.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp)
                         )
+                    }
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                    // Bottom Luxury Capsule Emerald/Gold Action Button
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(24.dp)
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(DeepEmerald)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(GoldAccent.copy(alpha = 0.65f))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(DeepEmerald.copy(alpha = 0.30f))
+                            )
+                        }
 
-                        Button(
-                            onClick = { viewModel.triggerImmediateCloudResync() },
-                            shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = GoldAccent,
-                                contentColor = DeepForestGreen
-                            ),
-                            contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+                        Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp)
-                                .testTag("network_retry_sync_button")
+                                .height(54.dp)
+                                .clip(RoundedCornerShape(50))
+                                .clickable { viewModel.triggerImmediateCloudResync() }
+                                .testTag("network_retry_sync_button"),
+                            shape = RoundedCornerShape(50),
+                            color = Color.Transparent,
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, GoldAccent.copy(alpha = 0.65f)),
+                            shadowElevation = 8.dp
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = "إعادة الفحص الآن",
-                                tint = DeepForestGreen,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "إعادة الفحص الآن",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = DeepForestGreen
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFF042F2E),
+                                                DeepEmerald,
+                                                Color(0xFF0D9488)
+                                            )
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = "إعادة الفحص الآن",
+                                        tint = GoldAccent,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "إعادة الفحص الآن",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -611,6 +801,8 @@ fun AuthenticatedMainPlatform(
     }
 
     val showUrgentAlertModal by viewModel.showUrgentAlertModal.collectAsState()
+    val showHolidaysModal by viewModel.showHolidaysModal.collectAsState()
+    val holidaysConfig by viewModel.holidaysConfig.collectAsState()
 
     var idCardDialogStudent by remember { mutableStateOf<StudentRecord?>(null) }
     var showNotificationsSheet by remember { mutableStateOf(false) }
@@ -689,197 +881,349 @@ fun AuthenticatedMainPlatform(
         gesturesEnabled = isSideDrawerEnabled,
         drawerContent = {
             if (isSideDrawerEnabled) {
+                val academicGroupSections = remember {
+                    listOf(
+                        AppSection.DASHBOARD to Icons.Filled.Dashboard,
+                        AppSection.ATTENDANCE to Icons.Filled.HowToReg,
+                        AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth,
+                        AppSection.EXAMS_GRADES to Icons.Filled.Assessment
+                    )
+                }
+                val communityGroupSections = remember(schoolConfig.schoolType, featureSettings, currentUser) {
+                    buildList {
+                        if (featureSettings.studentActivitiesEnabled) {
+                            add(AppSection.STUDENT_ACTIVITIES to StudentActivitiesLinearVector)
+                        }
+                        if (featureSettings.honorRollEnabled) {
+                            add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
+                        }
+                        add(AppSection.REPORTS_CHAT to Icons.Filled.Forum)
+                        if (featureSettings.eventsGalleryEnabled) {
+                            add(AppSection.EVENTS_NEWS to Icons.Filled.PhotoLibrary)
+                        }
+                        if (schoolConfig.schoolType == SchoolType.PRIVATE &&
+                            featureSettings.tuitionEnabled &&
+                            currentUser?.role != UserRole.TEACHER
+                        ) {
+                            add(AppSection.TUITION_FEES to Icons.Filled.AccountBalanceWallet)
+                        }
+                    }
+                }
+
                 ModalDrawerSheet(
-                    drawerContainerColor = DeepForestGreen,
+                    drawerContainerColor = Color.Transparent,
                     drawerContentColor = Color.White,
-                    modifier = Modifier.width(300.dp)
+                    drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+                    modifier = Modifier.width(310.dp)
                 ) {
-                    Column(
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.SpaceBetween
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF022C22),
+                                        Color(0xFF064E3B),
+                                        Color(0xFF042F2E)
+                                    )
+                                )
+                            )
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            // Drawer Header with School Logo & User Info (No duplicate role title)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // ب) رأس القائمة الفخم (Premium Profile & School Header)
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
-                                color = DeepEmerald.copy(alpha = 0.65f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(20.dp),
+                                color = Color.White.copy(alpha = 0.07f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent.copy(alpha = 0.38f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(12.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Base64AvatarImage(
-                                        base64Data = schoolConfig.logoBase64,
-                                        fallbackIcon = Icons.Filled.School,
-                                        contentDescription = schoolConfig.schoolName,
-                                        size = 48.dp,
-                                        tint = Color(0xFFA7F3D0)
-                                    )
-                                    val userFullName = currentUser?.fullName?.trim().orEmpty()
-                                    val userRoleTitle = currentUser?.role?.arabicTitle?.trim().orEmpty()
-                                    val isDuplicateTitle = userFullName.isEmpty() ||
-                                        userFullName.equals(userRoleTitle, ignoreCase = true) ||
-                                        userFullName == "المدير" && userRoleTitle.contains("المدير")
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = schoolConfig.schoolName,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        if (isDuplicateTitle) {
-                                            Text(
-                                                text = userRoleTitle.ifBlank { userFullName },
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = Color(0xFFA7F3D0),
-                                                fontWeight = FontWeight.Bold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        } else {
-                                            Text(
-                                                text = userFullName,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = Color.White.copy(alpha = 0.92f),
-                                                fontWeight = FontWeight.Bold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = userRoleTitle,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFFA7F3D0)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = DeepEmerald.copy(alpha = 0.55f),
+                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.80f)),
+                                        modifier = Modifier.size(50.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Base64AvatarImage(
+                                                base64Data = currentUser?.photoBase64?.ifBlank { schoolConfig.logoBase64 }.orEmpty(),
+                                                fallbackIcon = Icons.Filled.School,
+                                                contentDescription = schoolConfig.schoolName,
+                                                size = 46.dp,
+                                                tint = GoldLight
                                             )
                                         }
                                     }
-                                }
-                            }
 
-                            HorizontalDivider(color = EmeraldAccent.copy(alpha = 0.25f))
+                                    val userFullName = currentUser?.fullName?.trim().orEmpty()
+                                    val userRoleTitle = currentUser?.role?.arabicTitle?.trim().orEmpty()
+                                    val displayUserName = userFullName.ifBlank { userRoleTitle }
 
-                            // Principal's Urgent School Alert Tool inside Side Drawer ("إدارة التنبيه العاجل")
-                            if (currentUser?.role == UserRole.ADMIN) {
-                                val hasActiveUrgent = schoolConfig.urgentAlert.isActive &&
-                                    schoolConfig.urgentAlert.message.isNotBlank()
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (hasActiveUrgent) {
-                                        DangerRed.copy(alpha = 0.24f)
-                                    } else {
-                                        DeepEmerald.copy(alpha = 0.55f)
-                                    },
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        1.dp,
-                                        if (hasActiveUrgent) Color(0xFFFCA5A5) else GoldAccent.copy(alpha = 0.55f)
-                                    ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            coroutineScope.launch { drawerState.close() }
-                                            viewModel.openUrgentSchoolAlertModal()
-                                        }
-                                        .testTag("drawer_urgent_school_alert_button")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.weight(1f)
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Campaign,
-                                                contentDescription = "إدارة التنبيه العاجل",
-                                                tint = if (hasActiveUrgent) Color(0xFFFCA5A5) else GoldAccent,
-                                                modifier = Modifier.size(22.dp)
+                                            Text(
+                                                text = displayUserName,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
-                                            Column {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = GoldAccent.copy(alpha = 0.20f),
+                                                border = androidx.compose.foundation.BorderStroke(0.8.dp, GoldAccent.copy(alpha = 0.55f))
+                                            ) {
                                                 Text(
-                                                    text = "إدارة التنبيه العاجل",
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color.White
-                                                )
-                                                Text(
-                                                    text = if (hasActiveUrgent) "تنبيه عاجل مفعّل حالياً" else "بث أو إيقاف تنبيه للمدرسة",
+                                                    text = userRoleTitle,
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    color = Color(0xFFA7F3D0)
+                                                    color = GoldLight,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                                 )
                                             }
                                         }
-                                        if (hasActiveUrgent) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(9.dp)
-                                                    .clip(CircleShape)
-                                                    .background(DangerRed)
+                                        Text(
+                                            text = schoolConfig.schoolName,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = Color(0xFFA7F3D0),
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .clip(CircleShape)
+                                            .clickable { coroutineScope.launch { drawerState.close() } }
+                                            .testTag("drawer_close_btn"),
+                                        shape = CircleShape,
+                                        color = Color.White.copy(alpha = 0.10f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Close,
+                                                contentDescription = "إغلاق القائمة الجانبية",
+                                                tint = Color.White.copy(alpha = 0.90f),
+                                                modifier = Modifier.size(16.dp)
                                             )
                                         }
                                     }
                                 }
                             }
 
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // ج) تنظيم العناصر في مجموعات مقسمة داخل حاويات زجاجية ناعمة
                             LazyColumn(
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.weight(1f, fill = false)
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                items(allSections, key = { "drawer_${it.first.name}" }) { (section, icon) ->
-                                    val selected = activeSection == section
-                                    NavigationDrawerItem(
-                                        label = {
-                                            Text(
-                                                text = section.arabicTitle,
-                                                fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium
+                                // المجموعة الأولى: الأقسام التعليمية
+                                item(key = "drawer_group_academic") {
+                                    LuxuryDrawerGroupCard(
+                                        groupTitle = "الأقسام التعليمية"
+                                    ) {
+                                        academicGroupSections.forEach { (section, icon) ->
+                                            LuxuryDrawerMenuItem(
+                                                title = section.arabicTitle,
+                                                icon = icon,
+                                                selected = activeSection == section,
+                                                testTag = "drawer_nav_${section.name}",
+                                                onClick = {
+                                                    viewModel.navigateToSection(section)
+                                                    coroutineScope.launch { drawerState.close() }
+                                                }
                                             )
-                                        },
-                                        icon = {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = section.arabicTitle
+                                        }
+                                    }
+                                }
+
+                                // المجموعة الثانية: المجتمع والتواصل
+                                item(key = "drawer_group_community") {
+                                    LuxuryDrawerGroupCard(
+                                        groupTitle = "المجتمع والتواصل"
+                                    ) {
+                                        communityGroupSections.forEach { (section, icon) ->
+                                            LuxuryDrawerMenuItem(
+                                                title = section.arabicTitle,
+                                                icon = icon,
+                                                selected = activeSection == section,
+                                                testTag = "drawer_nav_${section.name}",
+                                                onClick = {
+                                                    viewModel.navigateToSection(section)
+                                                    coroutineScope.launch { drawerState.close() }
+                                                }
                                             )
-                                        },
-                                        selected = selected,
-                                        onClick = {
-                                            viewModel.navigateToSection(section)
-                                            coroutineScope.launch { drawerState.close() }
-                                        },
-                                        colors = NavigationDrawerItemDefaults.colors(
-                                            selectedContainerColor = DeepEmerald.copy(alpha = 0.85f),
-                                            selectedTextColor = Color.White,
-                                            selectedIconColor = Color(0xFFA7F3D0),
-                                            unselectedContainerColor = Color.Transparent,
-                                            unselectedTextColor = Color.White.copy(alpha = 0.88f),
-                                            unselectedIconColor = Color(0xFFA7F3D0).copy(alpha = 0.75f)
-                                        ),
-                                        modifier = Modifier.testTag("drawer_nav_${section.name}")
-                                    )
+                                        }
+                                    }
+                                }
+
+                                // المجموعة الثالثة: أدوات الإدارة السريعة (للمدير)
+                                if (currentUser?.role == UserRole.ADMIN) {
+                                    item(key = "drawer_group_admin_tools") {
+                                        val hasActiveUrgent = schoolConfig.urgentAlert.isActive &&
+                                            schoolConfig.urgentAlert.message.isNotBlank()
+                                        LuxuryDrawerGroupCard(
+                                            groupTitle = "أدوات الإدارة السريعة"
+                                        ) {
+                                            LuxuryDrawerMenuItem(
+                                                title = "بث تنبيه عاجل",
+                                                subtitle = if (hasActiveUrgent) "تنبيه عاجل مفعّل حالياً" else "نشر أو إيقاف تنبيه للمدرسة",
+                                                icon = Icons.Filled.Campaign,
+                                                selected = hasActiveUrgent,
+                                                accentGold = true,
+                                                statusDotColor = if (hasActiveUrgent) DangerRed else null,
+                                                testTag = "drawer_urgent_school_alert_button",
+                                                onClick = {
+                                                    coroutineScope.launch { drawerState.close() }
+                                                    viewModel.openUrgentSchoolAlertModal()
+                                                }
+                                            )
+                                            LuxuryDrawerMenuItem(
+                                                title = "إدارة العطل الرسمية",
+                                                subtitle = "العطل الأسبوعية والرسمية وتوثيق السجل",
+                                                icon = Icons.Filled.EventAvailable,
+                                                selected = false,
+                                                accentGold = true,
+                                                testTag = "drawer_holidays_management_button",
+                                                onClick = {
+                                                    coroutineScope.launch { drawerState.close() }
+                                                    viewModel.openHolidaysManagementModal()
+                                                }
+                                            )
+                                            LuxuryDrawerMenuItem(
+                                                title = AppSection.ADMIN_ACCOUNTS.arabicTitle,
+                                                subtitle = "إدارة الأساتذة والطلبة وأولياء الأمور",
+                                                icon = Icons.Filled.ManageAccounts,
+                                                selected = activeSection == AppSection.ADMIN_ACCOUNTS,
+                                                accentGold = false,
+                                                testTag = "drawer_nav_${AppSection.ADMIN_ACCOUNTS.name}",
+                                                onClick = {
+                                                    viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS)
+                                                    coroutineScope.launch { drawerState.close() }
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                             }
-                        }
 
-                        // Drawer Footer Logout
-                        OutlinedButton(
-                            onClick = {
-                                coroutineScope.launch { drawerState.close() }
-                                viewModel.logout()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFCA5A5))
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("تسجيل الخروج من الحساب", fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // د) تذييل القائمة الجانبية (Sticky Drawer Footer)
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // زر الإعدادات الكبسولي
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .clickable {
+                                                viewModel.navigateToSection(AppSection.SETTINGS)
+                                                coroutineScope.launch { drawerState.close() }
+                                            }
+                                            .testTag("drawer_nav_${AppSection.SETTINGS.name}"),
+                                        shape = RoundedCornerShape(50),
+                                        color = if (activeSection == AppSection.SETTINGS) {
+                                            Color(0xFF10B981).copy(alpha = 0.28f)
+                                        } else {
+                                            Color.White.copy(alpha = 0.08f)
+                                        },
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            if (activeSection == AppSection.SETTINGS) GoldAccent.copy(alpha = 0.70f)
+                                            else Color.White.copy(alpha = 0.16f)
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Settings,
+                                                contentDescription = "الإعدادات",
+                                                tint = GoldLight,
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "الإعدادات",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+
+                                    // زر تسجيل الخروج الكبسولي
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .clickable {
+                                                coroutineScope.launch { drawerState.close() }
+                                                viewModel.logout()
+                                            }
+                                            .testTag("drawer_logout_btn"),
+                                        shape = RoundedCornerShape(50),
+                                        color = DangerRed.copy(alpha = 0.18f),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            Color(0xFFFCA5A5).copy(alpha = 0.40f)
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.Logout,
+                                                contentDescription = "تسجيل الخروج",
+                                                tint = Color(0xFFFCA5A5),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "تسجيل الخروج",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFFECACA),
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1264,6 +1608,19 @@ fun AuthenticatedMainPlatform(
         )
     }
 
+    // Principal's Weekly & Official Holidays Management Modal Dialog
+    if (showHolidaysModal && currentUser?.role == UserRole.ADMIN) {
+        SchoolHolidaysManagementModalDialog(
+            holidaysConfig = holidaysConfig,
+            onToggleWeeklyDay = { day -> viewModel.toggleWeeklyHolidayDay(day) },
+            onSaveOfficialHoliday = { id, dateIso, title ->
+                viewModel.addOrUpdateOfficialHoliday(id, dateIso, title)
+            },
+            onDeleteOfficialHoliday = { id -> viewModel.deleteOfficialHoliday(id) },
+            onDismiss = { viewModel.closeHolidaysManagementModal() }
+        )
+    }
+
     // Full Notification History Dialog (سجل الإشعارات الفورية الكامل)
     if (showNotificationsSheet) {
         AlertDialog(
@@ -1442,3 +1799,131 @@ fun AuthenticatedMainPlatform(
         )
     }
 }
+
+@Composable
+private fun LuxuryDrawerGroupCard(
+    groupTitle: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.05f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = groupTitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = GoldLight.copy(alpha = 0.90f),
+                fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun LuxuryDrawerMenuItem(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    testTag: String,
+    subtitle: String? = null,
+    accentGold: Boolean = false,
+    statusDotColor: Color? = null,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .testTag(testTag),
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) {
+            Color(0xFF10B981).copy(alpha = 0.22f)
+        } else {
+            Color.Transparent
+        },
+        border = if (selected) {
+            androidx.compose.foundation.BorderStroke(1.dp, GoldAccent.copy(alpha = 0.55f))
+        } else null
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // 36.dp rounded-12.dp glowing icon container
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = when {
+                    selected -> GoldAccent.copy(alpha = 0.24f)
+                    accentGold -> GoldAccent.copy(alpha = 0.15f)
+                    else -> Color(0xFF10B981).copy(alpha = 0.18f)
+                },
+                border = androidx.compose.foundation.BorderStroke(
+                    0.8.dp,
+                    if (selected || accentGold) GoldAccent.copy(alpha = 0.45f)
+                    else Color(0xFF34D399).copy(alpha = 0.30f)
+                ),
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = title,
+                        tint = if (selected || accentGold) GoldAccent else Color(0xFFA7F3D0),
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFA7F3D0).copy(alpha = 0.85f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (statusDotColor != null) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(statusDotColor)
+                )
+            } else if (selected) {
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(18.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(GoldAccent)
+                )
+            }
+        }
+    }
+}
+
