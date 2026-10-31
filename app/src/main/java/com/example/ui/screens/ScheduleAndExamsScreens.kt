@@ -104,6 +104,12 @@ fun ScheduleAndHomeworkScreen(
             clsMatch && subjMatch
         }
     }
+    var homeworksVisibleCount by remember(selectedClass, selectedSection, filteredHomeworks.size) {
+        mutableStateOf(6)
+    }
+    val displayedHomeworks = remember(filteredHomeworks, homeworksVisibleCount) {
+        filteredHomeworks.take(homeworksVisibleCount)
+    }
 
     val filteredQuickQuizzes = remember(quickQuizzes, selectedClass, selectedSection) {
         quickQuizzes.filter { q ->
@@ -520,7 +526,7 @@ fun ScheduleAndHomeworkScreen(
                         }
                     }
                 } else {
-                    items(filteredHomeworks, key = { it.id }) { hw ->
+                    items(displayedHomeworks, key = { it.id }) { hw ->
                         val hwSubs = remember(homeworkSubmissions, hw.id) {
                             homeworkSubmissions.filter { it.homeworkId == hw.id }
                         }
@@ -1008,6 +1014,19 @@ fun ScheduleAndHomeworkScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+                    if (displayedHomeworks.size < filteredHomeworks.size) {
+                        item {
+                            ProgressiveInfiniteScrollFooter(
+                                visibleCount = displayedHomeworks.size,
+                                totalCount = filteredHomeworks.size,
+                                step = 6,
+                                itemLabel = "واجب",
+                                onLoadMore = {
+                                    homeworksVisibleCount = (homeworksVisibleCount + 6).coerceAtMost(filteredHomeworks.size)
+                                }
+                            )
                         }
                     }
                 }

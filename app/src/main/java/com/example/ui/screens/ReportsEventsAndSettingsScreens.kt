@@ -661,12 +661,17 @@ fun ReportsAndChatScreen(
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
+            var reportsVisibleCount by remember(visibleReports.size) { mutableStateOf(6) }
+            val displayedReports = remember(visibleReports, reportsVisibleCount) {
+                visibleReports.take(reportsVisibleCount)
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
-                items(visibleReports, key = { it.id }) { rep ->
+                items(displayedReports, key = { it.id }) { rep ->
                     val badgeColor = when (rep.reportType) {
                         ReportType.APPRECIATION -> SuccessGreen
                         ReportType.ACADEMIC_NOTE -> InfoBlue
@@ -824,6 +829,19 @@ fun ReportsAndChatScreen(
                                 }
                             }
                         }
+                    }
+                }
+                if (displayedReports.size < visibleReports.size) {
+                    item {
+                        ProgressiveInfiniteScrollFooter(
+                            visibleCount = displayedReports.size,
+                            totalCount = visibleReports.size,
+                            step = 6,
+                            itemLabel = "بلاغ",
+                            onLoadMore = {
+                                reportsVisibleCount = (reportsVisibleCount + 6).coerceAtMost(visibleReports.size)
+                            }
+                        )
                     }
                 }
             }
@@ -997,6 +1015,12 @@ fun ReportsAndChatScreen(
                         }
                     }
                 } else {
+                    var contactsVisibleCount by remember(chatSearchQuery, selectedRoleFilter, selectedClassFilter) {
+                        mutableStateOf(6)
+                    }
+                    val displayedChatContacts = remember(filteredChatContacts, contactsVisibleCount) {
+                        filteredChatContacts.take(contactsVisibleCount)
+                    }
                     LazyColumn(
                         modifier = Modifier
                             .weight(1f)
@@ -1004,7 +1028,7 @@ fun ReportsAndChatScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
-                        items(filteredChatContacts, key = { it.accountId }) { contact ->
+                        items(displayedChatContacts, key = { it.accountId }) { contact ->
                             val roleColor = when (contact.role) {
                                 UserRole.ADMIN -> DeepEmerald
                                 UserRole.TEACHER -> InfoBlue
@@ -1131,6 +1155,19 @@ fun ReportsAndChatScreen(
                                         )
                                     }
                                 }
+                            }
+                        }
+                        if (displayedChatContacts.size < filteredChatContacts.size) {
+                            item {
+                                ProgressiveInfiniteScrollFooter(
+                                    visibleCount = displayedChatContacts.size,
+                                    totalCount = filteredChatContacts.size,
+                                    step = 6,
+                                    itemLabel = "جهة اتصال",
+                                    onLoadMore = {
+                                        contactsVisibleCount = (contactsVisibleCount + 6).coerceAtMost(filteredChatContacts.size)
+                                    }
+                                )
                             }
                         }
                     }
@@ -1336,6 +1373,8 @@ fun EventsAndNewsScreen(
     var eventBeingEdited by remember { mutableStateOf<SchoolEvent?>(null) }
     val canPublish = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
 
+    var eventsVisibleCount by remember(events.size) { mutableStateOf(6) }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1399,7 +1438,8 @@ fun EventsAndNewsScreen(
             }
         }
 
-        items(events, key = { it.id }) { ev ->
+        val displayedEvents = events.take(eventsVisibleCount)
+        items(displayedEvents, key = { it.id }) { ev ->
             val decodedBitmap = remember(ev.imageBase64) {
                 ImageCompressor.decodeBase64ToImageBitmap(ev.imageBase64)
             }
@@ -1567,6 +1607,19 @@ fun EventsAndNewsScreen(
                         }
                     }
                 }
+            }
+        }
+        if (displayedEvents.size < events.size) {
+            item {
+                ProgressiveInfiniteScrollFooter(
+                    visibleCount = displayedEvents.size,
+                    totalCount = events.size,
+                    step = 6,
+                    itemLabel = "فعالية",
+                    onLoadMore = {
+                        eventsVisibleCount = (eventsVisibleCount + 6).coerceAtMost(events.size)
+                    }
+                )
             }
         }
     }
@@ -2191,7 +2244,7 @@ fun SettingsScreen(
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(homeworkSubmissionEnabled = v))
                         },
                         Triple(
-                            "ميزة دفتر المتابعة اليومي والسلوك" to Icons.Filled.AutoAwesome,
+                            "ميزة دفتر المتابعة اليومي والسلوك" to ClipboardCheckVectorIcon,
                             featureSettings.dailyBehaviorEnabled
                         ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(featureSettings.copy(dailyBehaviorEnabled = v))

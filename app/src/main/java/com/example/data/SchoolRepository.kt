@@ -147,6 +147,13 @@ class SchoolRepository(context: Context) {
                 loadFeatureSettings(resolvedSchoolId)
             }
 
+            val urgentAlertObj = obj.optJSONObject("urgentAlert")
+            val parsedUrgentAlert = if (urgentAlertObj != null) {
+                parseUrgentSchoolAlertObject(urgentAlertObj, resolvedSchoolId)
+            } else {
+                loadUrgentSchoolAlert(resolvedSchoolId)
+            }
+
             SchoolConfig(
                 schoolId = resolvedSchoolId,
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
@@ -164,11 +171,69 @@ class SchoolRepository(context: Context) {
                 academicYear = obj.optString("academicYear", "2026 - 2027"),
                 phone = obj.optString("phone", "07512362567"),
                 subscriptionExpiryDate = obj.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
-                featureSettings = parsedFeatures
+                featureSettings = parsedFeatures,
+                urgentAlert = parsedUrgentAlert
             )
         } catch (e: Exception) {
             SchoolConfig()
         }
+    }
+
+    fun loadUrgentSchoolAlert(schoolId: String = getActiveSchoolId()): UrgentSchoolAlert {
+        val sid = schoolId.ifBlank { getActiveSchoolId() }
+        if (sid.isBlank()) return UrgentSchoolAlert()
+        val raw = prefs.getString(scopedKey(sid, FirebaseConfigConstants.COL_URGENT_ALERT), null)
+            ?: return UrgentSchoolAlert(schoolId = sid)
+        return parseUrgentSchoolAlertJson(raw, sid)
+    }
+
+    fun parseUrgentSchoolAlertJson(raw: String, fallbackSchoolId: String = getActiveSchoolId()): UrgentSchoolAlert {
+        return try {
+            val obj = JSONObject(raw)
+            parseUrgentSchoolAlertObject(obj, fallbackSchoolId)
+        } catch (_: Exception) {
+            UrgentSchoolAlert(schoolId = fallbackSchoolId)
+        }
+    }
+
+    private fun parseUrgentSchoolAlertObject(obj: JSONObject, fallbackSchoolId: String): UrgentSchoolAlert {
+        val msg = obj.optString("message", "")
+        val active = obj.optBoolean("isActive", false) && msg.isNotBlank()
+        return UrgentSchoolAlert(
+            id = obj.optString("id", "urgent_alert"),
+            schoolId = obj.optString("schoolId", fallbackSchoolId).ifBlank { fallbackSchoolId },
+            message = msg,
+            updatedAt = obj.optString("updatedAt", ""),
+            authorName = obj.optString("authorName", "إدارة المدرسة"),
+            isActive = active,
+            signatureKey = obj.optString("signatureKey", "${obj.optString("updatedAt", "")}_${msg.hashCode()}")
+        )
+    }
+
+    private fun urgentSchoolAlertToJsonObject(alert: UrgentSchoolAlert, schoolId: String): JSONObject {
+        val sid = schoolId.ifBlank { alert.schoolId }
+        val active = alert.isActive && alert.message.isNotBlank()
+        val sig = alert.signatureKey.ifBlank { "${alert.updatedAt}_${alert.message.hashCode()}" }
+        return JSONObject().apply {
+            put("id", alert.id.ifBlank { "urgent_alert" })
+            put("schoolId", sid)
+            put("message", InputSanitizer.sanitize(alert.message))
+            put("updatedAt", alert.updatedAt)
+            put("authorName", InputSanitizer.sanitize(alert.authorName.ifBlank { "إدارة المدرسة" }))
+            put("isActive", active)
+            put("signatureKey", sig)
+        }
+    }
+
+    fun saveUrgentSchoolAlert(alert: UrgentSchoolAlert, schoolId: String = getActiveSchoolId()) {
+        val sid = schoolId.ifBlank { alert.schoolId }.ifBlank { getActiveSchoolId() }
+        if (sid.isBlank()) return
+        val alertObj = urgentSchoolAlertToJsonObject(alert.copy(schoolId = sid), sid)
+        val alertStr = alertObj.toString()
+        prefs.edit().putString(scopedKey(sid, FirebaseConfigConstants.COL_URGENT_ALERT), alertStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_URGENT_ALERT, alertStr)
+        val currentCfg = loadSchoolConfig(sid)
+        saveSchoolConfig(currentCfg.copy(schoolId = sid, urgentAlert = alert.copy(schoolId = sid)))
     }
 
     fun saveSchoolConfig(config: SchoolConfig) {
@@ -178,6 +243,7 @@ class SchoolRepository(context: Context) {
         setActiveSchoolId(sid)
 
         val featJson = featureSettingsToJsonObject(config.featureSettings)
+        val urgentAlertJson = urgentSchoolAlertToJsonObject(config.urgentAlert, sid)
         val obj = JSONObject().apply {
             put("schoolId", sid)
             put("isSetupCompleted", config.isSetupCompleted)
@@ -196,15 +262,19 @@ class SchoolRepository(context: Context) {
             put("subscriptionExpiryDate", config.subscriptionExpiryDate.ifBlank { "2027-10-29" })
             put("featureSettings", featJson)
             put("enabledFeatures", featJson)
+            put("urgentAlert", urgentAlertJson)
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
+        val urgentStr = urgentAlertJson.toString()
         prefs.edit()
             .putString(scopedKey(sid, FirebaseConfigConstants.COL_SETTINGS), jsonStr)
             .putString(scopedKey(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS), featStr)
+            .putString(scopedKey(sid, FirebaseConfigConstants.COL_URGENT_ALERT), urgentStr)
             .apply()
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_SETTINGS, jsonStr)
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS, featStr)
+        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_URGENT_ALERT, urgentStr)
 
         if (config.subjectConfigs.isNotEmpty()) {
             saveSubjectConfigs(config.subjectConfigs, sid)
@@ -2336,15 +2406,18 @@ class SchoolRepository(context: Context) {
             } catch (_: Exception) {
                 OccasionThemeType.OFFICIAL
             }
+            val iconKey = OccasionIconKey.fromKey(o.optString("selectedIconKey", OccasionIconKey.CROWN.name))
             OccasionThemeConfig(
+                isActive = o.optBoolean("isActive", false),
                 themeType = tType,
+                selectedIconKey = iconKey.name,
                 customTitle = o.optString("customTitle", ""),
                 customBannerText = o.optString("customBannerText", ""),
                 customIconBase64 = o.optString("customIconBase64", ""),
                 customIconUrl = o.optString("customIconUrl", ""),
                 primaryColorHex = o.optString("primaryColorHex", tType.defaultPrimaryHex),
                 gradientColorHex = o.optString("gradientColorHex", tType.defaultGradientHex),
-                launcherAliasName = o.optString("launcherAliasName", tType.launcherAliasName),
+                launcherAliasName = o.optString("launcherAliasName", iconKey.launcherAliasName),
                 updatedAt = o.optString("updatedAt", "2026-10-29")
             )
         } catch (_: Exception) {
@@ -2353,15 +2426,18 @@ class SchoolRepository(context: Context) {
     }
 
     fun saveOccasionThemeConfig(config: OccasionThemeConfig) {
+        val iconKey = OccasionIconKey.fromKey(config.selectedIconKey)
         val obj = JSONObject().apply {
+            put("isActive", config.isActive)
             put("themeType", config.themeType.name)
+            put("selectedIconKey", iconKey.name)
             put("customTitle", InputSanitizer.sanitize(config.customTitle))
             put("customBannerText", InputSanitizer.sanitize(config.customBannerText))
             put("customIconBase64", config.customIconBase64)
             put("customIconUrl", config.customIconUrl.trim())
             put("primaryColorHex", config.primaryColorHex.ifBlank { config.themeType.defaultPrimaryHex })
             put("gradientColorHex", config.gradientColorHex.ifBlank { config.themeType.defaultGradientHex })
-            put("launcherAliasName", config.launcherAliasName.ifBlank { config.themeType.launcherAliasName })
+            put("launcherAliasName", config.launcherAliasName.ifBlank { iconKey.launcherAliasName })
             put("updatedAt", config.updatedAt)
         }
         val jsonStr = obj.toString()

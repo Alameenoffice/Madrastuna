@@ -159,10 +159,7 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT ||
-                occasionThemeConfig.customBannerText.isNotBlank() ||
-                occasionThemeConfig.customIconBase64.isNotBlank()
-            ) {
+            if (occasionThemeConfig.isActive) {
                 LiveOccasionBannerCard(config = occasionThemeConfig)
                 Spacer(modifier = Modifier.height(10.dp))
             }
@@ -943,25 +940,25 @@ fun UnifiedLoginScreen(
                         .testTag("platform_logo_five_taps"),
                     contentAlignment = Alignment.BottomEnd
                 ) {
-                    if (schoolConfig.logoBase64.isBlank() &&
-                        (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL || occasionThemeConfig.customIconBase64.isNotBlank())
-                    ) {
+                    if (schoolConfig.logoBase64.isBlank() && occasionThemeConfig.isActive) {
                         OccasionVectorEmblem(
                             themeType = occasionThemeConfig.themeType,
+                            iconKey = OccasionIconKey.fromKey(occasionThemeConfig.selectedIconKey),
                             customIconBase64 = occasionThemeConfig.customIconBase64,
                             size = 84.dp
                         )
                     } else {
                         Base64AvatarImage(
-                            base64Data = schoolConfig.logoBase64.ifBlank { occasionThemeConfig.customIconBase64 },
+                            base64Data = schoolConfig.logoBase64,
                             fallbackIcon = Icons.Filled.School,
                             contentDescription = discoveredSchoolName ?: schoolConfig.schoolName,
                             size = 84.dp,
                             tint = MaterialTheme.colorScheme.primary
                         )
-                        if (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL) {
+                        if (occasionThemeConfig.isActive) {
                             OccasionVectorEmblem(
                                 themeType = occasionThemeConfig.themeType,
+                                iconKey = OccasionIconKey.fromKey(occasionThemeConfig.selectedIconKey),
                                 customIconBase64 = occasionThemeConfig.customIconBase64,
                                 size = 30.dp
                             )
@@ -989,10 +986,7 @@ fun UnifiedLoginScreen(
                     textAlign = TextAlign.Center
                 )
 
-                if (occasionThemeConfig.occasionTheme != OccasionThemeType.DEFAULT ||
-                    occasionThemeConfig.customBannerText.isNotBlank() ||
-                    occasionThemeConfig.customIconBase64.isNotBlank()
-                ) {
+                if (occasionThemeConfig.isActive) {
                     Spacer(modifier = Modifier.height(10.dp))
                     LiveOccasionBannerCard(config = occasionThemeConfig)
                 }
@@ -1268,14 +1262,20 @@ fun DeveloperControlPanelScreen(
     var updateDownloadUrl by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.downloadUrl) }
     var isForceUpdate by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.isForceUpdate) }
 
-    var selectedOccasionTheme by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.occasionTheme) }
-    var customOccasionTitle by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customTitle.ifBlank { occasionThemeConfig.occasionTheme.badgeTitle }) }
-    var customOccasionGreeting by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customGreeting.ifBlank { occasionThemeConfig.occasionTheme.greetingBanner }) }
+    var isOccasionBannerActive by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.isActive) }
+    var selectedOccasionIconKey by remember(occasionThemeConfig) {
+        mutableStateOf(OccasionIconKey.fromKey(occasionThemeConfig.selectedIconKey))
+    }
+    var customOccasionTitle by remember(occasionThemeConfig) {
+        mutableStateOf(occasionThemeConfig.customTitle)
+    }
+    var customOccasionGreeting by remember(occasionThemeConfig) {
+        mutableStateOf(occasionThemeConfig.customBannerText)
+    }
     var customOccasionIconBase64 by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customIconBase64) }
     var customOccasionIconUrl by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.customIconUrl) }
     var customPrimaryHex by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.effectivePrimaryHex) }
     var customGradientHex by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.effectiveGradientHex) }
-    var selectedLauncherAlias by remember(occasionThemeConfig) { mutableStateOf(occasionThemeConfig.effectiveAliasName) }
 
     BackHandler {
         viewModel.exitDeveloperPanel()
@@ -1795,7 +1795,7 @@ fun DeveloperControlPanelScreen(
                 }
             }
 
-            // Developer Upgrade B: Royal Occasion Theme & Dynamic Launcher Icon + Custom Manual Theme Builder
+            // Developer Upgrade B: Manual Occasion Theme + Vector SVG Icon Library + Default Hidden Toggle
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -1811,100 +1811,132 @@ fun DeveloperControlPanelScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(Icons.Filled.Celebration, contentDescription = null, tint = DeepEmerald)
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "ثيم وأيقونة المناسبات الملكية المباشرة (Occasion Theme & Icon)",
+                                text = "ثيم المناسبات الموحد (إدخال يدوي + مكتبة أيقونات Vector)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold
                             )
                             Text(
-                                text = "اختر بطاقة المناسبة لتغيير الشريط الاحتفالي وأيقونة التطبيق في كل المدارس وعلى شاشة الهاتف",
+                                text = "مخفي افتراضياً عن المستخدمين ولا يظهر فوق بطاقة الترحيب إلا عند تفعيله يدوياً",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    // Luxury Visual Theme Cards List
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OccasionThemeType.entries.forEach { occ ->
-                            LuxuryOccasionThemeCard(
-                                themeType = occ,
-                                isSelected = selectedOccasionTheme == occ,
-                                customIconBase64 = customOccasionIconBase64,
-                                onClick = {
-                                    selectedOccasionTheme = occ
-                                    if (occ != OccasionThemeType.CUSTOM_MANUAL) {
-                                        customOccasionTitle = occ.badgeTitle
-                                        customOccasionGreeting = occ.bannerGreeting
-                                        customPrimaryHex = occ.defaultPrimaryHex
-                                        customGradientHex = occ.defaultGradientHex
-                                        selectedLauncherAlias = occ.launcherAliasName
-                                        if (occ == OccasionThemeType.OFFICIAL) {
-                                            customOccasionIconBase64 = ""
-                                            customOccasionIconUrl = ""
-                                        }
+                    // Toggle Switch: إظهار / إخفاء شريط المناسبة في المدارس
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isOccasionBannerActive) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isOccasionBannerActive) Color(0xFF10B981) else MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "إظهار / إخفاء شريط المناسبة في المدارس",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isOccasionBannerActive) Color(0xFF064E3B) else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (isOccasionBannerActive) {
+                                        "الحالة الحالية: الشريط ظاهر ومفعل في جميع المدارس"
+                                    } else {
+                                        "الحالة الحالية: الشريط مخفي افتراضياً (الوضع الرسمي النظيف)"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isOccasionBannerActive) Color(0xFF047857) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = isOccasionBannerActive,
+                                onCheckedChange = { checked ->
+                                    isOccasionBannerActive = checked
+                                    if (checked) {
+                                        viewModel.updateGlobalOccasionTheme(
+                                            themeType = OccasionThemeType.CUSTOM_MANUAL,
+                                            customTitle = customOccasionTitle.ifBlank { "مناسبة خاصة" },
+                                            customBannerText = customOccasionGreeting.ifBlank { "أطيب التهاني والتبريكات لجميع منتسبي المدرسة" },
+                                            customIconBase64 = customOccasionIconBase64,
+                                            customIconUrl = customOccasionIconUrl,
+                                            primaryColorHex = customPrimaryHex,
+                                            gradientColorHex = customGradientHex,
+                                            launcherAliasName = selectedOccasionIconKey.launcherAliasName,
+                                            selectedIconKey = selectedOccasionIconKey.name,
+                                            isActive = true
+                                        )
+                                    } else {
+                                        viewModel.toggleGlobalOccasionThemeActive(false)
                                     }
-                                }
+                                },
+                                modifier = Modifier.testTag("dev_toggle_occasion_active_switch")
                             )
                         }
                     }
 
                     HorizontalDivider()
 
-                    // Custom Manual Theme & Live Customization Section (إنشاء وتخصيص ثيم يدوي مخصص)
-                    Text(
-                        text = if (selectedOccasionTheme == OccasionThemeType.CUSTOM_MANUAL) {
-                            "إنشاء ثيم يدوي مخصص (Custom Manual Theme)"
-                        } else {
-                            "تخصيص عنوان وتهنئة وألوان وأيقونة المناسبة المحددة"
-                        },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = DeepEmerald
-                    )
-
                     // Live Banner Preview inside Developer Panel
                     val previewConfig = OccasionThemeConfig(
-                        themeType = selectedOccasionTheme,
-                        customTitle = customOccasionTitle.ifBlank { selectedOccasionTheme.badgeTitle },
-                        customBannerText = customOccasionGreeting.ifBlank { selectedOccasionTheme.bannerGreeting },
+                        isActive = isOccasionBannerActive,
+                        themeType = OccasionThemeType.CUSTOM_MANUAL,
+                        selectedIconKey = selectedOccasionIconKey.name,
+                        customTitle = customOccasionTitle.ifBlank { "عنوان المناسبة (معاينة حية)" },
+                        customBannerText = customOccasionGreeting.ifBlank { "عبارة التهنئة الترحيبية لجميع منتسبي المدارس" },
                         customIconBase64 = customOccasionIconBase64,
                         customIconUrl = customOccasionIconUrl,
                         primaryColorHex = customPrimaryHex,
                         gradientColorHex = customGradientHex,
-                        launcherAliasName = selectedLauncherAlias
+                        launcherAliasName = selectedOccasionIconKey.launcherAliasName
                     )
-                    if (selectedOccasionTheme != OccasionThemeType.OFFICIAL ||
-                        customOccasionGreeting.isNotBlank() ||
-                        customOccasionIconBase64.isNotBlank()
-                    ) {
-                        LiveOccasionBannerCard(
-                            config = previewConfig.copy(
-                                themeType = if (selectedOccasionTheme == OccasionThemeType.OFFICIAL) OccasionThemeType.CUSTOM_MANUAL else selectedOccasionTheme
-                            )
-                        )
-                    }
+                    Text(
+                        text = "معاينة فورية لشكل شريط المناسبة عند التفعيل:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald
+                    )
+                    LiveOccasionBannerCard(
+                        config = previewConfig,
+                        forcePreview = true
+                    )
 
+                    // 1) حقل نصي: عنوان المناسبة
                     OutlinedTextField(
                         value = customOccasionTitle,
                         onValueChange = { customOccasionTitle = it },
-                        label = { Text("عنوان المناسبة (مثال: يوم المعلم / ذكرى التأسيس)") },
-                        placeholder = { Text(selectedOccasionTheme.badgeTitle) },
+                        label = { Text("1. عنوان المناسبة (مثال: عيد الفطر السعيد / يوم المعلم / تفوق دراسي)") },
+                        placeholder = { Text("اكتب عنوان المناسبة هنا...") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dev_occasion_title_input")
                     )
 
+                    // 2) حقل نصي: عبارة التهنئة
                     OutlinedTextField(
                         value = customOccasionGreeting,
                         onValueChange = { customOccasionGreeting = it },
-                        label = { Text("عبارة التهنئة الترحيبية لجميع المدارس") },
-                        placeholder = { Text(selectedOccasionTheme.bannerGreeting) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("2. عبارة التهنئة الترحيبية") },
+                        placeholder = { Text("اكتب عبارة التهنئة التي ستظهر تحت عنوان المناسبة...") },
+                        singleLine = false,
+                        maxLines = 2,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dev_occasion_greeting_input")
                     )
 
-                    // Royal Color Palette Presets
+                    // 3) لون التدرج (أزرار ألوان ملكية أنيقة)
                     val royalColorPresets = remember {
                         listOf(
                             Triple("الزمردي الملكي", "#064E3B", "#059669"),
@@ -1917,7 +1949,7 @@ fun DeveloperControlPanelScreen(
                     }
 
                     Text(
-                        text = "اختر تدرج الألوان الملكي للشريط والهوية:",
+                        text = "3. لون التدرج (أزرار ألوان ملكية أنيقة):",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1957,7 +1989,24 @@ fun DeveloperControlPanelScreen(
                         }
                     }
 
-                    // Custom Image / Icon Upload from Device or URL
+                    // 4) قائمة/شبكة أيقونات Vector SVG فخمة (11 أيقونة) أو رفع صورة مخصصة من الجهاز
+                    Text(
+                        text = "4. مكتبة أيقونات المناسبة الفخمة (Vector SVG) بضغطة زر:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OccasionVectorIconSelectorGrid(
+                        selectedIconKey = selectedOccasionIconKey,
+                        hasCustomImage = customOccasionIconBase64.isNotBlank(),
+                        onSelectIcon = { iconKey ->
+                            selectedOccasionIconKey = iconKey
+                            customOccasionIconBase64 = ""
+                        }
+                    )
+
+                    // أو زر "رفع صورة/أيقونة مخصصة من الجهاز"
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1965,9 +2014,9 @@ fun DeveloperControlPanelScreen(
                     ) {
                         CompressedPhotoPickerButton(
                             label = if (customOccasionIconBase64.isBlank()) {
-                                "رفع أيقونة/صورة للمناسبة من الجهاز"
+                                "أو رفع صورة/أيقونة مخصصة من الجهاز"
                             } else {
-                                "تغيير أيقونة المناسبة المرفوعة"
+                                "تغيير الأيقونة المخصصة المرفوعة"
                             },
                             currentBase64 = customOccasionIconBase64,
                             isAvatar = true,
@@ -1984,7 +2033,7 @@ fun DeveloperControlPanelScreen(
                             ) {
                                 Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("مسح الأيقونة")
+                                Text("العودة لأيقونة Vector")
                             }
                         }
                     }
@@ -1994,19 +2043,22 @@ fun DeveloperControlPanelScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         VectorActionButton(
-                            text = "تفعيل الثيم والأيقونة في جميع المدارس",
-                            icon = Icons.Filled.AutoAwesome,
+                            text = "نشر وإظهار شريط المناسبة في المدارس",
+                            icon = Icons.Filled.CheckCircle,
                             containerColor = DeepEmerald,
                             onClick = {
+                                isOccasionBannerActive = true
                                 viewModel.updateGlobalOccasionTheme(
-                                    themeType = selectedOccasionTheme,
-                                    customTitle = customOccasionTitle,
-                                    customBannerText = customOccasionGreeting,
+                                    themeType = OccasionThemeType.CUSTOM_MANUAL,
+                                    customTitle = customOccasionTitle.ifBlank { "مناسبة خاصة" },
+                                    customBannerText = customOccasionGreeting.ifBlank { "أطيب التهاني والتبريكات لجميع منتسبي المدرسة" },
                                     customIconBase64 = customOccasionIconBase64,
                                     customIconUrl = customOccasionIconUrl,
                                     primaryColorHex = customPrimaryHex,
                                     gradientColorHex = customGradientHex,
-                                    launcherAliasName = selectedLauncherAlias
+                                    launcherAliasName = selectedOccasionIconKey.launcherAliasName,
+                                    selectedIconKey = selectedOccasionIconKey.name,
+                                    isActive = true
                                 )
                             },
                             modifier = Modifier.weight(1.15f),
@@ -2014,18 +2066,18 @@ fun DeveloperControlPanelScreen(
                         )
 
                         VectorActionButton(
-                            text = "إلغاء الثيم والعودة للوضع الرسمي",
+                            text = "إيقاف وإخفاء شريط المناسبة",
                             icon = Icons.Filled.Restore,
                             containerColor = DangerRed,
                             onClick = {
-                                selectedOccasionTheme = OccasionThemeType.OFFICIAL
-                                customOccasionTitle = OccasionThemeType.OFFICIAL.badgeTitle
-                                customOccasionGreeting = OccasionThemeType.OFFICIAL.bannerGreeting
+                                isOccasionBannerActive = false
+                                customOccasionTitle = ""
+                                customOccasionGreeting = ""
                                 customOccasionIconBase64 = ""
                                 customOccasionIconUrl = ""
+                                selectedOccasionIconKey = OccasionIconKey.CROWN
                                 customPrimaryHex = OccasionThemeType.OFFICIAL.defaultPrimaryHex
                                 customGradientHex = OccasionThemeType.OFFICIAL.defaultGradientHex
-                                selectedLauncherAlias = OccasionThemeType.OFFICIAL.launcherAliasName
                                 viewModel.resetGlobalOccasionThemeToOfficial()
                             },
                             modifier = Modifier.weight(1f),

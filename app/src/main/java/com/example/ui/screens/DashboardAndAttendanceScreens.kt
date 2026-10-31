@@ -53,10 +53,14 @@ fun DashboardScreen(
     val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
     val dismissalCalls by viewModel.dismissalCalls.collectAsState()
     val featureSettings by viewModel.featureSettings.collectAsState()
+    val dismissedUrgentAlertSig by viewModel.dismissedUrgentAlertSignature.collectAsState()
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isTeacher = currentUser?.role == UserRole.TEACHER
     val isAdmin = currentUser?.role == UserRole.ADMIN
+
+    var isEditingUrgentAlertRequested by remember { mutableStateOf(false) }
+    var dashboardBehaviorVisibleCount by remember(selectedParentChildId) { mutableStateOf(3) }
 
     // Scoped data based on logged-in user role (and active child for Parent)
     val scopedStudents = remember(students, currentUser, selectedParentChildId) {
@@ -75,6 +79,14 @@ fun DashboardScreen(
         scopedNotifications.count { !it.isRead }
     }
 
+    val activeUrgentAlert = schoolConfig.urgentAlert
+    val currentUrgentSig = activeUrgentAlert.signatureKey.ifBlank {
+        "${activeUrgentAlert.updatedAt}_${activeUrgentAlert.message.hashCode()}"
+    }
+    val shouldShowUrgentAlertBanner = activeUrgentAlert.isActive &&
+        activeUrgentAlert.message.isNotBlank() &&
+        dismissedUrgentAlertSig != currentUrgentSig
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -82,11 +94,21 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // Live Occasion Theme Greeting Banner (Managed by Developer ABU-RASLAN)
-        if (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL ||
-            occasionThemeConfig.customBannerText.isNotBlank() ||
-            occasionThemeConfig.customIconBase64.isNotBlank()
-        ) {
+        // Urgent School Alert Banner (for all members of this school: Teachers, Students, Parents, Admin)
+        if (shouldShowUrgentAlertBanner) {
+            item {
+                UrgentSchoolAlertBannerCard(
+                    alert = activeUrgentAlert,
+                    isAdmin = isAdmin,
+                    onDismissForUser = { viewModel.dismissUrgentSchoolAlertLocally() },
+                    onEditRequest = { isEditingUrgentAlertRequested = true },
+                    onDeleteAlert = { viewModel.deleteOrStopUrgentSchoolAlert() }
+                )
+            }
+        }
+
+        // Live Occasion Theme Greeting Banner (Hidden by default unless explicitly activated by Developer)
+        if (occasionThemeConfig.isActive) {
             item {
                 LiveOccasionBannerCard(
                     config = occasionThemeConfig,
@@ -196,6 +218,19 @@ fun DashboardScreen(
             }
         }
 
+        // School Principal Urgent Alert Manager Tool (Publish, Edit, Delete/Stop)
+        if (isAdmin) {
+            item {
+                AdminUrgentSchoolAlertManagerCard(
+                    currentAlert = activeUrgentAlert,
+                    isEditingRequested = isEditingUrgentAlertRequested,
+                    onEditRequestConsumed = { isEditingUrgentAlertRequested = false },
+                    onPublishOrUpdate = { msg -> viewModel.publishOrUpdateUrgentSchoolAlert(msg) },
+                    onDeleteOrStop = { viewModel.deleteOrStopUrgentSchoolAlert() }
+                )
+            }
+        }
+
         // Strict Privacy Isolation vs Admin/Teacher Stat Cards
         item {
             if (isParentOrStudent && myStudent != null) {
@@ -212,8 +247,11 @@ fun DashboardScreen(
                 val myBadges = remember(attendance, grades, myStudent.id) {
                     viewModel.getStudentAutoBadges(myStudent.id)
                 }
-                val myBehaviors = remember(dailyBehaviors, myStudent.id) {
-                    dailyBehaviors.filter { it.studentId == myStudent.id }.take(3)
+                val allMyBehaviors = remember(dailyBehaviors, myStudent.id) {
+                    dailyBehaviors.filter { it.studentId == myStudent.id }
+                }
+                val myBehaviors = remember(allMyBehaviors, dashboardBehaviorVisibleCount) {
+                    allMyBehaviors.take(dashboardBehaviorVisibleCount)
                 }
 
                 // Automatic Motivational Badges (وسام الالتزام الذهبي + وسام نجم المادة)
@@ -289,8 +327,8 @@ fun DashboardScreen(
                     }
                 }
 
-                // Recent Daily Follow-Up & Behavior Log for Student/Parent
-                if (featureSettings.dailyBehaviorEnabled && myBehaviors.isNotEmpty()) {
+                // Recent Daily Follow-Up & Behavior Log for Student/Parent (3 by 3 progressive loading + ClipboardCheckVectorIcon)
+                if (featureSettings.dailyBehaviorEnabled && allMyBehaviors.isNotEmpty()) {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -306,7 +344,12 @@ fun DashboardScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
+                                Icon(
+                                    imageVector = ClipboardCheckVectorIcon,
+                                    contentDescription = "دفتر المتابعة اليومي والسلوك",
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(18.dp)
+                                )
                                 Text(
                                     text = "دفتر المتابعة اليومي والسلوك (${myStudent.studentName}):",
                                     style = MaterialTheme.typography.labelLarge,
@@ -335,7 +378,7 @@ fun DashboardScreen(
                                             modifier = Modifier.weight(1f)
                                         ) {
                                             Icon(
-                                                imageVector = if (beh.behaviorType.isPositive) Icons.Filled.AutoAwesome else Icons.Filled.Info,
+                                                imageVector = if (beh.behaviorType.isPositive) ClipboardCheckVectorIcon else Icons.Filled.Info,
                                                 contentDescription = null,
                                                 tint = DeepEmerald,
                                                 modifier = Modifier.size(15.dp)
@@ -355,6 +398,15 @@ fun DashboardScreen(
                                     }
                                 }
                             }
+                            ProgressiveInfiniteScrollFooter(
+                                visibleCount = myBehaviors.size,
+                                totalCount = allMyBehaviors.size,
+                                step = 3,
+                                itemLabel = "ملاحظة",
+                                onLoadMore = {
+                                    dashboardBehaviorVisibleCount = (dashboardBehaviorVisibleCount + 3).coerceAtMost(allMyBehaviors.size)
+                                }
+                            )
                         }
                     }
                 }
@@ -857,6 +909,9 @@ fun DailyAttendanceScreen(
     var showLeaveRequestDialog by remember { mutableStateOf(false) }
     var showLostAndFoundDialog by remember { mutableStateOf(false) }
     var selectedStudentForIdCard by remember { mutableStateOf<StudentRecord?>(null) }
+    var attendanceBehaviorVisibleCount by remember(selectedParentChildId) { mutableStateOf(3) }
+    var studentAttendanceRecordsVisibleCount by remember(selectedParentChildId) { mutableStateOf(6) }
+    var teacherStudentsVisibleCount by remember(selectedClass, selectedSection, searchName) { mutableStateOf(6) }
 
     LaunchedEffect(featureSettings) {
         if (!featureSettings.qrAttendanceEnabled) {
@@ -1000,8 +1055,9 @@ fun DailyAttendanceScreen(
                     }
                 }
 
-                // Daily Behavior & Classroom Follow-Up Log for Student/Parent
+                // Daily Behavior & Classroom Follow-Up Log for Student/Parent (3 by 3 progressive loading + ClipboardCheckVectorIcon)
                 if (featureSettings.dailyBehaviorEnabled && myBehaviors.isNotEmpty()) {
+                    val visibleBehaviors = myBehaviors.take(attendanceBehaviorVisibleCount)
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -1016,14 +1072,18 @@ fun DailyAttendanceScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = DeepEmerald)
+                                    Icon(
+                                        imageVector = ClipboardCheckVectorIcon,
+                                        contentDescription = "دفتر المتابعة اليومي والسلوك",
+                                        tint = DeepEmerald
+                                    )
                                     Text(
                                         text = "دفتر المتابعة اليومي والسلوك الصفي (${myBehaviors.size}):",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                 }
-                                myBehaviors.forEach { beh ->
+                                visibleBehaviors.forEach { beh ->
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
                                         color = if (beh.behaviorType.isPositive) {
@@ -1066,6 +1126,15 @@ fun DailyAttendanceScreen(
                                         }
                                     }
                                 }
+                                ProgressiveInfiniteScrollFooter(
+                                    visibleCount = visibleBehaviors.size,
+                                    totalCount = myBehaviors.size,
+                                    step = 3,
+                                    itemLabel = "ملاحظة",
+                                    onLoadMore = {
+                                        attendanceBehaviorVisibleCount = (attendanceBehaviorVisibleCount + 3).coerceAtMost(myBehaviors.size)
+                                    }
+                                )
                             }
                         }
                     }
@@ -1089,7 +1158,8 @@ fun DailyAttendanceScreen(
                     }
                 }
 
-                items(myRecords, key = { it.id }) { rec ->
+                val visibleMyRecords = myRecords.take(studentAttendanceRecordsVisibleCount)
+                items(visibleMyRecords, key = { it.id }) { rec ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -1123,6 +1193,19 @@ fun DailyAttendanceScreen(
                                 }
                             )
                         }
+                    }
+                }
+                if (visibleMyRecords.size < myRecords.size) {
+                    item {
+                        ProgressiveInfiniteScrollFooter(
+                            visibleCount = visibleMyRecords.size,
+                            totalCount = myRecords.size,
+                            step = 6,
+                            itemLabel = "سجل حضور",
+                            onLoadMore = {
+                                studentAttendanceRecordsVisibleCount = (studentAttendanceRecordsVisibleCount + 6).coerceAtMost(myRecords.size)
+                            }
+                        )
                     }
                 }
             }
@@ -1469,8 +1552,9 @@ fun DailyAttendanceScreen(
                 }
             }
 
-            // Student Attendance Cards for the selected Class & Section
-            items(scopedStudents, key = { it.id }) { stu ->
+            // Student Attendance Cards for the selected Class & Section (6 by 6 progressive loading)
+            val visibleScopedStudents = scopedStudents.take(teacherStudentsVisibleCount)
+            items(visibleScopedStudents, key = { it.id }) { stu ->
                 val currentEntry = attendance.firstOrNull {
                     it.studentId == stu.id && it.date == selectedDate
                 }
@@ -1633,12 +1717,23 @@ fun DailyAttendanceScreen(
 
                             val teacherDefaultSubj = currentUser?.specialty?.split("،")?.firstOrNull()?.trim()?.ifBlank { "المتابعة اليومية" } ?: "المتابعة اليومية"
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    text = "تقييم المتابعة والسلوك الصفي الفوري (يرسل إشعاراً لولي الأمر):",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = DeepForestGreen,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = ClipboardCheckVectorIcon,
+                                        contentDescription = "دفتر المتابعة اليومي والسلوك",
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "تقييم دفتر المتابعة اليومي والسلوك الصفي (يرسل إشعاراً لولي الأمر):",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = DeepForestGreen,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                                 DailyBehaviorType.entries.chunked(2).forEach { rowItems ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1724,6 +1819,19 @@ fun DailyAttendanceScreen(
                             )
                         }
                     }
+                }
+            }
+            if (visibleScopedStudents.size < scopedStudents.size) {
+                item {
+                    ProgressiveInfiniteScrollFooter(
+                        visibleCount = visibleScopedStudents.size,
+                        totalCount = scopedStudents.size,
+                        step = 6,
+                        itemLabel = "طالب",
+                        onLoadMore = {
+                            teacherStudentsVisibleCount = (teacherStudentsVisibleCount + 6).coerceAtMost(scopedStudents.size)
+                        }
+                    )
                 }
             }
         }

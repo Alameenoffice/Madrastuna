@@ -39,6 +39,7 @@ object FirebaseConfigConstants {
     const val COL_DISMISSAL_CALLS = "dismissal_calls"
     const val COL_LOST_AND_FOUND = "lost_and_found"
     const val COL_PRIVATE_SUGGESTIONS = "private_suggestions"
+    const val COL_URGENT_ALERT = "urgent_alert"
 
     // Root collections for Developer Super-Admin Panel
     const val COL_SCHOOL_LICENSES = "school_licenses"
@@ -255,6 +256,16 @@ data class RegisteredSchoolSummary(
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
 }
 
+data class UrgentSchoolAlert(
+    val id: String = "urgent_alert",
+    val schoolId: String = "",
+    val message: String = "",
+    val updatedAt: String = "",
+    val authorName: String = "إدارة المدرسة",
+    val isActive: Boolean = false,
+    val signatureKey: String = ""
+)
+
 data class SchoolConfig(
     val schoolId: String = "",
     val isSetupCompleted: Boolean = false,
@@ -272,7 +283,8 @@ data class SchoolConfig(
     val academicYear: String = "2026 - 2027",
     val phone: String = "07512362567",
     val subscriptionExpiryDate: String = "2027-10-29",
-    val featureSettings: SchoolFeatureSettings = SchoolFeatureSettings()
+    val featureSettings: SchoolFeatureSettings = SchoolFeatureSettings(),
+    val urgentAlert: UrgentSchoolAlert = UrgentSchoolAlert()
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -1153,10 +1165,35 @@ enum class OccasionThemeType(
     }
 }
 
+enum class OccasionIconKey(
+    val arabicLabel: String,
+    val launcherAliasName: String
+) {
+    CROWN("تاج", ".MainActivityHonor"),
+    CRESCENT("هلال", ".MainActivityRamadan"),
+    GRADUATION_CAP("قبعة تخرج", ".MainActivityDefault"),
+    TROPHY("كأس", ".MainActivityHonor"),
+    SHIELD("درع", ".MainActivityNational"),
+    FLAG("علم", ".MainActivityNational"),
+    BOOK("كتاب", ".MainActivityDefault"),
+    STAR("نجمة", ".MainActivityNewYear"),
+    CALENDAR("تقويم", ".MainActivityNewYear"),
+    ROSE("وردة", ".MainActivityDefault"),
+    BELL("جرس", ".MainActivityDefault");
+
+    companion object {
+        fun fromKey(key: String): OccasionIconKey {
+            return entries.firstOrNull { it.name.equals(key.trim(), ignoreCase = true) } ?: CROWN
+        }
+    }
+}
+
 data class OccasionThemeConfig(
-    val themeType: OccasionThemeType = OccasionThemeType.OFFICIAL,
+    val isActive: Boolean = false,
+    val themeType: OccasionThemeType = OccasionThemeType.CUSTOM_MANUAL,
     val customTitle: String = "",
     val customBannerText: String = "",
+    val selectedIconKey: String = OccasionIconKey.CROWN.name,
     val customIconBase64: String = "",
     val customIconUrl: String = "",
     val primaryColorHex: String = "#064E3B",
@@ -1171,22 +1208,29 @@ data class OccasionThemeConfig(
         get() = customBannerText
 
     val customIconEmoji: String
-        get() = themeType.emojiSymbol
+        get() = ""
+
+    val resolvedIconKey: OccasionIconKey
+        get() = OccasionIconKey.fromKey(selectedIconKey)
 
     val effectiveTitle: String
-        get() = customTitle.ifBlank { themeType.badgeTitle }
+        get() = customTitle.ifBlank { "مناسبة خاصة" }
 
     val effectiveBannerText: String
-        get() = customBannerText.ifBlank { themeType.bannerGreeting }
+        get() = customBannerText.ifBlank { "كل عام وأنتم بخير من أسرة منصة مدرستي الذكية" }
 
     val effectivePrimaryHex: String
-        get() = primaryColorHex.ifBlank { themeType.defaultPrimaryHex }
+        get() = primaryColorHex.ifBlank { "#064E3B" }
 
     val effectiveGradientHex: String
-        get() = gradientColorHex.ifBlank { themeType.defaultGradientHex }
+        get() = gradientColorHex.ifBlank { "#059669" }
 
     val effectiveAliasName: String
-        get() = launcherAliasName.ifBlank { themeType.launcherAliasName }
+        get() = if (!isActive) {
+            ".MainActivityDefault"
+        } else {
+            launcherAliasName.ifBlank { resolvedIconKey.launcherAliasName }
+        }
 }
 
 /**

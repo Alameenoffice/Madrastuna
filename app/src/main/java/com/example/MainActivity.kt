@@ -46,6 +46,7 @@ import com.example.ui.components.Base64AvatarImage
 import com.example.ui.components.DigitalStudentIdDialog
 import com.example.ui.components.GlobalImageLightboxDialog
 import com.example.ui.components.ParentMultiChildSwitcherBar
+import com.example.ui.components.ProgressiveInfiniteScrollFooter
 import com.example.ui.components.VectorActionButton
 import com.example.ui.screens.*
 import com.example.ui.theme.DangerRed
@@ -989,11 +990,20 @@ fun AuthenticatedMainPlatform(
                 }
             },
             text = {
+                val allDistinctNotifications = remember(notifications) {
+                    notifications.distinctBy { it.id }
+                }
+                var notificationsVisibleCount by remember(allDistinctNotifications.size) {
+                    mutableStateOf(6)
+                }
+                val displayedNotifications = remember(allDistinctNotifications, notificationsVisibleCount) {
+                    allDistinctNotifications.take(notificationsVisibleCount)
+                }
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.heightIn(max = 420.dp)
                 ) {
-                    items(notifications.distinctBy { it.id }, key = { it.id }) { notif ->
+                    items(displayedNotifications, key = { it.id }) { notif ->
                         val cleanTitle = com.example.util.InputSanitizer.stripEmojis(notif.title)
                         val cleanBody = com.example.util.InputSanitizer.stripEmojis(notif.body)
                         val isSecretSuggestion = cleanTitle.contains("صندوق المقترحات") || cleanTitle.contains("سرية")
@@ -1064,6 +1074,19 @@ fun AuthenticatedMainPlatform(
                                     )
                                 }
                             }
+                        }
+                    }
+                    if (displayedNotifications.size < allDistinctNotifications.size) {
+                        item {
+                            ProgressiveInfiniteScrollFooter(
+                                visibleCount = displayedNotifications.size,
+                                totalCount = allDistinctNotifications.size,
+                                step = 6,
+                                itemLabel = "إشعار",
+                                onLoadMore = {
+                                    notificationsVisibleCount = (notificationsVisibleCount + 6).coerceAtMost(allDistinctNotifications.size)
+                                }
+                            )
                         }
                     }
                 }

@@ -908,7 +908,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
 
-                        // 15. Live sync: feature_settings, daily_behavior, homework_submissions, quick_quizzes, dismissal_calls, lost_and_found, private_suggestions
+                        // 15. Live sync: feature_settings, urgent_alert, daily_behavior, homework_submissions, quick_quizzes, dismissal_calls, lost_and_found, private_suggestions
                         if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS)) {
                             val remoteFeatRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_FEATURE_SETTINGS)
                             if (!remoteFeatRaw.isNullOrBlank() &&
@@ -919,6 +919,19 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 _schoolConfig.value = _schoolConfig.value.copy(featureSettings = parsedFeat)
                                 _featureSettings.value = parsedFeat
                                 enforceActiveSectionFeatureVisibility(parsedFeat)
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_URGENT_ALERT)) {
+                            val remoteUrgRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_URGENT_ALERT)
+                            if (!remoteUrgRaw.isNullOrBlank() &&
+                                remoteUrgRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_URGENT_ALERT)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_URGENT_ALERT, remoteUrgRaw)
+                                val parsedUrg = repo.parseUrgentSchoolAlertJson(remoteUrgRaw, sid)
+                                if (parsedUrg != _schoolConfig.value.urgentAlert) {
+                                    _schoolConfig.value = _schoolConfig.value.copy(urgentAlert = parsedUrg)
+                                }
                             }
                         }
 
@@ -1008,9 +1021,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         val parsedThm = repo.parseOccasionThemeConfigJson(remoteThm)
                         if (parsedThm != _occasionThemeConfig.value) {
                             _occasionThemeConfig.value = parsedThm
+                            val targetAlias = if (parsedThm.isActive) {
+                                parsedThm.effectiveAliasName.ifBlank { parsedThm.themeType.name }
+                            } else {
+                                "default"
+                            }
                             com.example.util.AppIconSwitcherHelper.changeLauncherIcon(
                                 appContext,
-                                parsedThm.effectiveAliasName.ifBlank { parsedThm.themeType.name }
+                                targetAlias
                             )
                         }
                     }
@@ -4078,53 +4096,142 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun updateGlobalOccasionTheme(
-        themeType: OccasionThemeType,
+        themeType: OccasionThemeType = OccasionThemeType.CUSTOM_MANUAL,
         customTitle: String = "",
         customBannerText: String = "",
         customIconBase64: String = _occasionThemeConfig.value.customIconBase64,
         customIconUrl: String = _occasionThemeConfig.value.customIconUrl,
         primaryColorHex: String = themeType.defaultPrimaryHex,
         gradientColorHex: String = themeType.defaultGradientHex,
-        launcherAliasName: String = themeType.launcherAliasName
+        launcherAliasName: String = themeType.launcherAliasName,
+        selectedIconKey: String = _occasionThemeConfig.value.selectedIconKey,
+        isActive: Boolean = true
     ) {
-        val cleanTitle = InputSanitizer.sanitize(customTitle).ifBlank { themeType.badgeTitle }
-        val cleanGreeting = InputSanitizer.sanitize(customBannerText).ifBlank { themeType.bannerGreeting }
+        val iconKey = OccasionIconKey.fromKey(selectedIconKey)
+        val cleanTitle = InputSanitizer.sanitize(customTitle).ifBlank { "تهنئة ومناسبة خاصة" }
+        val cleanGreeting = InputSanitizer.sanitize(customBannerText).ifBlank { "نتمنى لجميع منتسبي المدرسة دوام التوفيق والتميز" }
+        val resolvedAlias = launcherAliasName.ifBlank { iconKey.launcherAliasName }
         val updated = OccasionThemeConfig(
+            isActive = isActive,
             themeType = themeType,
+            selectedIconKey = iconKey.name,
             customTitle = cleanTitle,
             customBannerText = cleanGreeting,
             customIconBase64 = customIconBase64,
             customIconUrl = customIconUrl.trim(),
-            primaryColorHex = primaryColorHex.ifBlank { themeType.defaultPrimaryHex },
-            gradientColorHex = gradientColorHex.ifBlank { themeType.defaultGradientHex },
-            launcherAliasName = launcherAliasName.ifBlank { themeType.launcherAliasName },
+            primaryColorHex = primaryColorHex.ifBlank { "#064E3B" },
+            gradientColorHex = gradientColorHex.ifBlank { "#047857" },
+            launcherAliasName = resolvedAlias,
             updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         )
         _occasionThemeConfig.value = updated
         repo.saveOccasionThemeConfig(updated)
         com.example.util.AppIconSwitcherHelper.changeLauncherIcon(
             appContext,
-            updated.effectiveAliasName.ifBlank { updated.themeType.name }
+            if (isActive) updated.effectiveAliasName.ifBlank { iconKey.launcherAliasName } else "default"
         )
-        showToastAlert("تم تفعيل ثيم وأيقونة (${cleanTitle}) في جميع المدارس وعلى شاشة الهاتف فوراً", isSuccess = true)
+        if (isActive) {
+            showToastAlert("تم تفعيل وإظهار شريط المناسبة (${cleanTitle}) في جميع المدارس فوراً", isSuccess = true)
+        } else {
+            showToastAlert("تم حفظ بيانات المناسبة مع إبقاء الشريط مخفياً في المدارس", isSuccess = true)
+        }
+    }
+
+    fun toggleGlobalOccasionThemeActive(isActive: Boolean) {
+        val current = _occasionThemeConfig.value
+        val iconKey = OccasionIconKey.fromKey(current.selectedIconKey)
+        val updated = current.copy(
+            isActive = isActive,
+            updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        )
+        _occasionThemeConfig.value = updated
+        repo.saveOccasionThemeConfig(updated)
+        com.example.util.AppIconSwitcherHelper.changeLauncherIcon(
+            appContext,
+            if (isActive) updated.effectiveAliasName.ifBlank { iconKey.launcherAliasName } else "default"
+        )
+        if (isActive) {
+            showToastAlert("تم إظهار شريط المناسبة في واجهات جميع المدارس فوراً", isSuccess = true)
+        } else {
+            showToastAlert("تم إخفاء شريط المناسبة من جميع المدارس والعودة للوضع الافتراضي النظيف", isSuccess = true)
+        }
     }
 
     fun resetGlobalOccasionThemeToOfficial() {
         val official = OccasionThemeConfig(
+            isActive = false,
             themeType = OccasionThemeType.OFFICIAL,
-            customTitle = OccasionThemeType.OFFICIAL.badgeTitle,
-            customBannerText = OccasionThemeType.OFFICIAL.bannerGreeting,
+            selectedIconKey = OccasionIconKey.CROWN.name,
+            customTitle = "",
+            customBannerText = "",
             customIconBase64 = "",
             customIconUrl = "",
             primaryColorHex = OccasionThemeType.OFFICIAL.defaultPrimaryHex,
             gradientColorHex = OccasionThemeType.OFFICIAL.defaultGradientHex,
-            launcherAliasName = OccasionThemeType.OFFICIAL.launcherAliasName,
+            launcherAliasName = "default",
             updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         )
         _occasionThemeConfig.value = official
         repo.saveOccasionThemeConfig(official)
         com.example.util.AppIconSwitcherHelper.changeLauncherIcon(appContext, "default")
-        showToastAlert("تم إلغاء ثيم المناسبة والعودة للوضع الرسمي الزمردي والأيقونة الافتراضية فوراً", isSuccess = true)
+        showToastAlert("تم إيقاف وإخفاء شريط المناسبة من جميع المدارس والعودة للوضع الرسمي الزمردي", isSuccess = true)
+    }
+
+    // =========================================================================
+    // URGENT SCHOOL ALERT (Principal Publish / Edit / Stop per School)
+    // =========================================================================
+
+    private val _dismissedUrgentAlertSignature = MutableStateFlow("")
+    val dismissedUrgentAlertSignature: StateFlow<String> = _dismissedUrgentAlertSignature.asStateFlow()
+
+    fun dismissUrgentSchoolAlertLocally() {
+        val currentAlert = _schoolConfig.value.urgentAlert
+        val sig = currentAlert.signatureKey.ifBlank { "${currentAlert.updatedAt}_${currentAlert.message.hashCode()}" }
+        _dismissedUrgentAlertSignature.value = sig
+    }
+
+    fun publishOrUpdateUrgentSchoolAlert(message: String) {
+        val cleanMsg = InputSanitizer.sanitize(message).trim()
+        if (cleanMsg.isBlank()) {
+            showToastAlert("يرجى كتابة نص التنبيه العاجل أولاً", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId.ifBlank { repo.getActiveSchoolId() }
+        if (sid.isBlank()) return
+        val author = _currentUser.value?.fullName?.takeIf { it.isNotBlank() } ?: "مدير المدرسة"
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US).format(Date())
+        val sig = "${System.currentTimeMillis()}_${cleanMsg.hashCode()}"
+        val newAlert = UrgentSchoolAlert(
+            id = "urgent_alert",
+            schoolId = sid,
+            message = cleanMsg,
+            updatedAt = nowStamp,
+            authorName = author,
+            isActive = true,
+            signatureKey = sig
+        )
+        _dismissedUrgentAlertSignature.value = ""
+        _schoolConfig.value = _schoolConfig.value.copy(urgentAlert = newAlert)
+        repo.saveUrgentSchoolAlert(newAlert, sid)
+        showToastAlert("تم نشر/تحديث التنبيه العاجل أعلى الشاشة لجميع حسابات مدرستك فوراً", isSuccess = true)
+    }
+
+    fun deleteOrStopUrgentSchoolAlert() {
+        val sid = _schoolConfig.value.schoolId.ifBlank { repo.getActiveSchoolId() }
+        if (sid.isBlank()) return
+        val clearedAlert = UrgentSchoolAlert(
+            id = "urgent_alert",
+            schoolId = sid,
+            message = "",
+            updatedAt = "",
+            authorName = "",
+            isActive = false,
+            signatureKey = ""
+        )
+        _dismissedUrgentAlertSignature.value = ""
+        _schoolConfig.value = _schoolConfig.value.copy(urgentAlert = clearedAlert)
+        repo.saveUrgentSchoolAlert(clearedAlert, sid)
+        showToastAlert("تم حذف وإيقاف التنبيه العاجل من شاشات جميع منتسبي المدرسة فوراً", isSuccess = true)
     }
 
     // =========================================================================
