@@ -47,6 +47,7 @@ import com.example.ui.components.DigitalStudentIdDialog
 import com.example.ui.components.GlobalImageLightboxDialog
 import com.example.ui.components.ParentMultiChildSwitcherBar
 import com.example.ui.components.ProgressiveInfiniteScrollFooter
+import com.example.ui.components.UrgentSchoolAlertModalDialog
 import com.example.ui.components.VectorActionButton
 import com.example.ui.screens.*
 import com.example.ui.theme.DangerRed
@@ -407,6 +408,8 @@ fun AuthenticatedMainPlatform(
         } else null
     }
 
+    val showUrgentAlertModal by viewModel.showUrgentAlertModal.collectAsState()
+
     var idCardDialogStudent by remember { mutableStateOf<StudentRecord?>(null) }
     var showNotificationsSheet by remember { mutableStateOf(false) }
 
@@ -419,6 +422,8 @@ fun AuthenticatedMainPlatform(
         } else if (activeSection == AppSection.TUITION_FEES &&
             (schoolConfig.schoolType == SchoolType.PUBLIC || !featureSettings.tuitionEnabled)
         ) {
+            viewModel.navigateToSection(AppSection.DASHBOARD)
+        } else if (activeSection == AppSection.STUDENT_ACTIVITIES && !featureSettings.studentActivitiesEnabled) {
             viewModel.navigateToSection(AppSection.DASHBOARD)
         } else if (activeSection == AppSection.EVENTS_NEWS && !featureSettings.eventsGalleryEnabled) {
             viewModel.navigateToSection(AppSection.DASHBOARD)
@@ -438,6 +443,9 @@ fun AuthenticatedMainPlatform(
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
+            if (featureSettings.studentActivitiesEnabled) {
+                add(AppSection.STUDENT_ACTIVITIES to Icons.Filled.AutoAwesome)
+            }
             if (featureSettings.honorRollEnabled) {
                 add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
             }
@@ -464,7 +472,9 @@ fun AuthenticatedMainPlatform(
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.MenuBook)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
-            if (featureSettings.honorRollEnabled) {
+            if (featureSettings.studentActivitiesEnabled) {
+                add(AppSection.STUDENT_ACTIVITIES to Icons.Filled.AutoAwesome)
+            } else if (featureSettings.honorRollEnabled) {
                 add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
             } else {
                 add(AppSection.REPORTS_CHAT to Icons.Filled.Forum)
@@ -551,6 +561,71 @@ fun AuthenticatedMainPlatform(
                             }
 
                             HorizontalDivider(color = EmeraldAccent.copy(alpha = 0.25f))
+
+                            // Principal's Urgent School Alert Tool inside Side Drawer ("إدارة التنبيه العاجل")
+                            if (currentUser?.role == UserRole.ADMIN) {
+                                val hasActiveUrgent = schoolConfig.urgentAlert.isActive &&
+                                    schoolConfig.urgentAlert.message.isNotBlank()
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (hasActiveUrgent) {
+                                        DangerRed.copy(alpha = 0.24f)
+                                    } else {
+                                        DeepEmerald.copy(alpha = 0.55f)
+                                    },
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (hasActiveUrgent) Color(0xFFFCA5A5) else GoldAccent.copy(alpha = 0.55f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            coroutineScope.launch { drawerState.close() }
+                                            viewModel.openUrgentSchoolAlertModal()
+                                        }
+                                        .testTag("drawer_urgent_school_alert_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Campaign,
+                                                contentDescription = "إدارة التنبيه العاجل",
+                                                tint = if (hasActiveUrgent) Color(0xFFFCA5A5) else GoldAccent,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "إدارة التنبيه العاجل",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White
+                                                )
+                                                Text(
+                                                    text = if (hasActiveUrgent) "تنبيه عاجل مفعّل حالياً" else "بث أو إيقاف تنبيه للمدرسة",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFFA7F3D0)
+                                                )
+                                            }
+                                        }
+                                        if (hasActiveUrgent) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(9.dp)
+                                                    .clip(CircleShape)
+                                                    .background(DangerRed)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
 
                             LazyColumn(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -897,7 +972,11 @@ fun AuthenticatedMainPlatform(
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .clickable {
+                                    viewModel.dismissBannerAlert()
+                                    viewModel.openNotificationDeepLink(alert)
+                                },
                             shape = RoundedCornerShape(14.dp)
                         ) {
                             Row(
@@ -960,6 +1039,7 @@ fun AuthenticatedMainPlatform(
                         AppSection.ATTENDANCE -> DailyAttendanceScreen(viewModel = viewModel)
                         AppSection.SCHEDULE_HOMEWORK -> ScheduleAndHomeworkScreen(viewModel = viewModel)
                         AppSection.EXAMS_GRADES -> ExamsAndGradesScreen(viewModel = viewModel)
+                        AppSection.STUDENT_ACTIVITIES -> StudentActivitiesScreen(viewModel = viewModel)
                         AppSection.HONOR_ROLL -> HonorRollScreen(viewModel = viewModel)
                         AppSection.TUITION_FEES -> TuitionFeesScreen(viewModel = viewModel)
                         AppSection.REPORTS_CHAT -> ReportsAndChatScreen(viewModel = viewModel)
@@ -970,6 +1050,16 @@ fun AuthenticatedMainPlatform(
                 }
             }
         }
+    }
+
+    // Principal's Urgent School Alert Modal Dialog (launched from Side Drawer)
+    if (showUrgentAlertModal && currentUser?.role == UserRole.ADMIN) {
+        UrgentSchoolAlertModalDialog(
+            currentAlert = schoolConfig.urgentAlert,
+            onDismiss = { viewModel.closeUrgentSchoolAlertModal() },
+            onPublishOrUpdate = { msg -> viewModel.publishOrUpdateUrgentSchoolAlert(msg) },
+            onStopOrDelete = { viewModel.deleteOrStopUrgentSchoolAlert() }
+        )
     }
 
     // Full Notification History Dialog (سجل الإشعارات الفورية الكامل)
@@ -1013,6 +1103,11 @@ fun AuthenticatedMainPlatform(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .wrapContentHeight()
+                                .clickable {
+                                    showNotificationsSheet = false
+                                    viewModel.openNotificationDeepLink(notif)
+                                }
+                                .testTag("sheet_notif_item_${notif.id}")
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),

@@ -141,6 +141,24 @@ fun ReportsAndChatScreen(
             ?: allowedChatContacts.firstOrNull()
     }
 
+    val deepLinkTarget by viewModel.deepLinkTarget.collectAsState()
+    LaunchedEffect(deepLinkTarget, allowedChatContacts) {
+        val target = deepLinkTarget
+        if (target != null && target.section == AppSection.REPORTS_CHAT) {
+            selectedTab = target.tabIndex.coerceIn(0, 1)
+            if (target.tabIndex == 1 && target.itemId.isNotBlank()) {
+                val matchingContact = allowedChatContacts.firstOrNull {
+                    it.accountId == target.itemId || it.linkedStudentId == target.itemId
+                }
+                if (matchingContact != null) {
+                    selectedContactAccountId = matchingContact.accountId
+                    isChatConversationOpen = true
+                }
+            }
+            viewModel.clearDeepLinkTarget()
+        }
+    }
+
     val activeConversationMessages = remember(chatMessages, currentUser, selectedContact) {
         val user = currentUser
         val contact = selectedContact
@@ -1658,6 +1676,11 @@ fun EventsAndNewsScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = editDate,
+                        label = "تاريخ الفعالية أو الخبر",
+                        onDateSelected = { selectedIso, _ -> editDate = selectedIso }
+                    )
                     OutlinedTextField(
                         value = editDescription,
                         onValueChange = { editDescription = it },
@@ -1702,7 +1725,7 @@ fun EventsAndNewsScreen(
         var title by remember { mutableStateOf("") }
         var category by remember { mutableStateOf("نشاط علمي وثقافي") }
         var location by remember { mutableStateOf("الموصل - زمار") }
-        var date by remember { mutableStateOf("2026-10-29") }
+        var date by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
         var description by remember { mutableStateOf("") }
         var imageBase64 by remember { mutableStateOf("") }
 
@@ -1732,6 +1755,11 @@ fun EventsAndNewsScreen(
                         placeholder = { Text("الموصل - زمار") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
+                    )
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = date,
+                        label = "تاريخ الفعالية أو الخبر",
+                        onDateSelected = { selectedIso, _ -> date = selectedIso }
                     )
                     OutlinedTextField(
                         value = description,
@@ -2267,6 +2295,14 @@ fun SettingsScreen(
                         ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(
                                 featureSettings.copy(lostAndFoundEnabled = v, suggestionsBoxEnabled = v)
+                            )
+                        },
+                        Triple(
+                            "ميزة مجتمع ونشاطات الطلبة والإبداعات" to Icons.Filled.AutoAwesome,
+                            featureSettings.studentActivitiesEnabled
+                        ) { v: Boolean ->
+                            viewModel.updateSchoolFeatureSettings(
+                                featureSettings.copy(studentActivitiesEnabled = v)
                             )
                         }
                     )

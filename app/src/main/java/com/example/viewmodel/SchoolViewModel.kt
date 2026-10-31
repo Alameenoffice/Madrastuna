@@ -120,6 +120,21 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _biometricCredentials = MutableStateFlow(repo.loadBiometricCredentials())
     val biometricCredentials: StateFlow<BiometricSavedCredentials?> = _biometricCredentials.asStateFlow()
 
+    private val _studentActivityPosts = MutableStateFlow(repo.loadStudentActivityPosts())
+    val studentActivityPosts: StateFlow<List<StudentActivityPost>> = _studentActivityPosts.asStateFlow()
+
+    private val _activityViolationReports = MutableStateFlow(repo.loadActivityViolationReports())
+    val activityViolationReports: StateFlow<List<StudentActivityViolationReport>> = _activityViolationReports.asStateFlow()
+
+    private val _userProfilesAndSanctions = MutableStateFlow(repo.loadUserProfilesAndSanctions())
+    val userProfilesAndSanctions: StateFlow<Map<String, UserActivityProfileAndSanctions>> = _userProfilesAndSanctions.asStateFlow()
+
+    private val _showUrgentAlertModal = MutableStateFlow(false)
+    val showUrgentAlertModal: StateFlow<Boolean> = _showUrgentAlertModal.asStateFlow()
+
+    private val _deepLinkTarget = MutableStateFlow<DeepLinkNavigationTarget?>(null)
+    val deepLinkTarget: StateFlow<DeepLinkNavigationTarget?> = _deepLinkTarget.asStateFlow()
+
     // Security Shield Brute-Force Lockout States
     private val _failedLoginAttempts = MutableStateFlow(0)
     val failedLoginAttempts: StateFlow<Int> = _failedLoginAttempts.asStateFlow()
@@ -265,6 +280,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _dismissalCalls.value = repo.loadDismissalCalls(schoolId)
         _lostAndFoundItems.value = repo.loadLostAndFoundItems(schoolId)
         _privateSuggestions.value = repo.loadPrivateSuggestions(schoolId)
+        _studentActivityPosts.value = repo.loadStudentActivityPosts(schoolId)
+        _activityViolationReports.value = repo.loadActivityViolationReports(schoolId)
+        _userProfilesAndSanctions.value = repo.loadUserProfilesAndSanctions(schoolId)
     }
 
     // =========================================================================
@@ -999,6 +1017,36 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
 
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)) {
+                            val remoteActRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)
+                            if (!remoteActRaw.isNullOrBlank() &&
+                                remoteActRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES, remoteActRaw)
+                                _studentActivityPosts.value = repo.parseStudentActivityPostsJson(remoteActRaw, sid)
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ACTIVITY_REPORTS)) {
+                            val remoteRepActRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_ACTIVITY_REPORTS)
+                            if (!remoteRepActRaw.isNullOrBlank() &&
+                                remoteRepActRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ACTIVITY_REPORTS)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ACTIVITY_REPORTS, remoteRepActRaw)
+                                _activityViolationReports.value = repo.parseActivityViolationReportsJson(remoteRepActRaw, sid)
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_USER_PROFILES)) {
+                            val remoteProfRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_USER_PROFILES)
+                            if (!remoteProfRaw.isNullOrBlank() &&
+                                remoteProfRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_USER_PROFILES)
+                            ) {
+                                repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_USER_PROFILES, remoteProfRaw)
+                                _userProfilesAndSanctions.value = repo.parseUserProfilesAndSanctionsJson(remoteProfRaw, sid)
+                            }
+                        }
+
                     } catch (_: Exception) {
                     }
                 }
@@ -1348,6 +1396,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val curr = _activeSection.value
         if (curr == AppSection.HONOR_ROLL && !feat.honorRollEnabled) {
             _activeSection.value = AppSection.DASHBOARD
+        } else if (curr == AppSection.STUDENT_ACTIVITIES && !feat.studentActivitiesEnabled) {
+            _activeSection.value = AppSection.DASHBOARD
         } else if (curr == AppSection.TUITION_FEES && (_schoolConfig.value.schoolType == SchoolType.PUBLIC || !feat.tuitionEnabled)) {
             _activeSection.value = AppSection.DASHBOARD
         } else if (curr == AppSection.EVENTS_NEWS && !feat.eventsGalleryEnabled) {
@@ -1397,11 +1447,113 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             _activeSection.value = AppSection.DASHBOARD
             return
         }
+        if (section == AppSection.STUDENT_ACTIVITIES && !feat.studentActivitiesEnabled) {
+            _activeSection.value = AppSection.DASHBOARD
+            return
+        }
         if (section == AppSection.EVENTS_NEWS && !feat.eventsGalleryEnabled) {
             _activeSection.value = AppSection.DASHBOARD
             return
         }
         _activeSection.value = section
+    }
+
+    fun openUrgentSchoolAlertModal() {
+        _showUrgentAlertModal.value = true
+    }
+
+    fun closeUrgentSchoolAlertModal() {
+        _showUrgentAlertModal.value = false
+    }
+
+    fun clearDeepLinkTarget() {
+        _deepLinkTarget.value = null
+    }
+
+    /**
+     * Section 7: Smart Instant Deep-Link Navigation on Notification Click
+     * Marks the notification as read and routes immediately to the exact Section, Tab, and Item.
+     */
+    fun openNotificationDeepLink(notif: AppNotification) {
+        val sid = _schoolConfig.value.schoolId
+        if (!notif.isRead) {
+            val updated = _notifications.value.map {
+                if (it.id == notif.id) it.copy(isRead = true) else it
+            }
+            _notifications.value = updated
+            repo.saveNotifications(updated, sid)
+        }
+
+        val resolvedSection: AppSection = runCatching {
+            if (notif.targetSection.isNotBlank()) {
+                AppSection.valueOf(notif.targetSection)
+            } else {
+                inferSectionFromNotification(notif)
+            }
+        }.getOrElse { inferSectionFromNotification(notif) }
+
+        val resolvedTab: Int = if (notif.targetSection.isNotBlank()) {
+            notif.targetTab
+        } else {
+            inferTabFromNotification(notif, resolvedSection)
+        }
+
+        val resolvedItemId: String = notif.targetItemId.ifBlank {
+            notif.targetStudentId
+        }
+
+        navigateToSection(resolvedSection)
+        _deepLinkTarget.value = DeepLinkNavigationTarget(
+            section = _activeSection.value,
+            tabIndex = resolvedTab,
+            itemId = resolvedItemId,
+            timestamp = System.currentTimeMillis()
+        )
+    }
+
+    private fun inferSectionFromNotification(notif: AppNotification): AppSection {
+        val titleAndBody = "${notif.title} ${notif.body}"
+        return when {
+            titleAndBody.contains("نشاط") || titleAndBody.contains("منشور") || titleAndBody.contains("تعليق") || titleAndBody.contains("إعجاب") || titleAndBody.contains("مخالفة") ->
+                AppSection.STUDENT_ACTIVITIES
+            titleAndBody.contains("رسالة جديدة") || titleAndBody.contains("محادثة") ->
+                AppSection.REPORTS_CHAT
+            titleAndBody.contains("صندوق المقترحات") || titleAndBody.contains("رسالة سرية") || titleAndBody.contains("مفقودات") ->
+                AppSection.DASHBOARD
+            notif.type == NotificationType.ATTENDANCE -> AppSection.ATTENDANCE
+            notif.type == NotificationType.HOMEWORK -> AppSection.SCHEDULE_HOMEWORK
+            notif.type == NotificationType.GRADES -> AppSection.EXAMS_GRADES
+            notif.type == NotificationType.TUITION -> AppSection.TUITION_FEES
+            notif.type == NotificationType.REPORT -> {
+                if (titleAndBody.contains("تقييم يومي") || titleAndBody.contains("متابعة")) {
+                    AppSection.ATTENDANCE
+                } else {
+                    AppSection.REPORTS_CHAT
+                }
+            }
+            notif.type == NotificationType.GENERAL -> {
+                if (titleAndBody.contains("خبر جديد") || titleAndBody.contains("فعالية")) {
+                    AppSection.EVENTS_NEWS
+                } else {
+                    AppSection.DASHBOARD
+                }
+            }
+            else -> AppSection.DASHBOARD
+        }
+    }
+
+    private fun inferTabFromNotification(notif: AppNotification, section: AppSection): Int {
+        val titleAndBody = "${notif.title} ${notif.body}"
+        return when (section) {
+            AppSection.REPORTS_CHAT -> if (titleAndBody.contains("رسالة جديدة") || titleAndBody.contains("محادثة")) 1 else 0
+            AppSection.SCHEDULE_HOMEWORK -> when {
+                titleAndBody.contains("مكتبة الملخصات") || titleAndBody.contains("ملخص") -> 2
+                else -> 0
+            }
+            AppSection.EXAMS_GRADES -> if (titleAndBody.contains("موعد امتحان")) 1 else 0
+            AppSection.STUDENT_ACTIVITIES -> if (titleAndBody.contains("بلاغ مخالفة")) 2 else 0
+            else -> 0
+        }
     }
 
     fun dismissBannerAlert() {
@@ -2376,11 +2528,30 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         targetUserId: String = "",
         targetGradeClass: String = "",
         targetSectionName: String = "",
-        targetRole: String = ""
+        targetRole: String = "",
+        targetSection: String = "",
+        targetTab: Int = 0,
+        targetItemId: String = ""
     ) {
         val sid = _schoolConfig.value.schoolId
         val senderId = _currentUser.value?.id.orEmpty()
         val timeLabel = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
+        val tempNotif = AppNotification(
+            id = "temp",
+            title = title,
+            body = body,
+            type = type,
+            createdAt = ""
+        )
+        val resolvedSectionName = targetSection.ifBlank {
+            inferSectionFromNotification(tempNotif).name
+        }
+        val resolvedTabIndex = if (targetSection.isNotBlank()) {
+            targetTab
+        } else {
+            val secEnum = runCatching { AppSection.valueOf(resolvedSectionName) }.getOrDefault(AppSection.DASHBOARD)
+            inferTabFromNotification(tempNotif, secEnum)
+        }
         val notif = AppNotification(
             id = "notif_${UUID.randomUUID().toString().take(6)}",
             title = InputSanitizer.sanitize(title),
@@ -2392,6 +2563,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             targetSectionName = targetSectionName,
             targetRole = targetRole,
             senderUserId = senderId,
+            targetSection = resolvedSectionName,
+            targetTab = resolvedTabIndex,
+            targetItemId = targetItemId,
             createdAt = "الآن ($timeLabel)",
             isRead = false,
             schoolId = sid
@@ -2885,12 +3059,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             body = "للصف $gradeClass ($sectionName): $cleanPrep — الواجب: $homeworkDetails",
             type = NotificationType.HOMEWORK,
             targetGradeClass = gradeClass,
-            targetSectionName = sectionName
+            targetSectionName = sectionName,
+            targetSection = AppSection.SCHEDULE_HOMEWORK.name,
+            targetTab = 1,
+            targetItemId = hw.id
         )
     }
 
     // =========================================================================
-    // SECTION 4: EXAMS & FLEXIBLE GRADING (10 OR 100)
+    // SECTION 4: EXAMS & FLEXIBLE GRADING (10 OR 100 + EXTRA DAILY & MONTHLY)
     // =========================================================================
 
     fun addExamSchedule(
@@ -2899,9 +3076,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         examType: String,
         examDate: String,
         dayName: String,
-        timeSlot: String,
+        timeSlot: String = "",
         topicsIncluded: String,
-        hallNumber: String
+        hallNumber: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
@@ -2927,8 +3104,48 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             title = "موعد امتحان جديد: $subjectName",
             body = "تم تحديد موعد $examType للصف $gradeClass يوم $dayName الموافق $examDate.",
             type = NotificationType.GRADES,
-            targetGradeClass = gradeClass
+            targetGradeClass = gradeClass,
+            targetSection = AppSection.EXAMS_GRADES.name,
+            targetTab = 1,
+            targetItemId = item.id
         )
+    }
+
+    fun updateExamSchedule(
+        examId: String,
+        gradeClass: String,
+        subjectName: String,
+        examType: String,
+        examDate: String,
+        dayName: String,
+        topicsIncluded: String
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _examSchedules.value.map { ex ->
+            if (ex.id == examId) {
+                ex.copy(
+                    gradeClass = gradeClass,
+                    subjectName = InputSanitizer.sanitize(subjectName),
+                    examType = InputSanitizer.sanitize(examType),
+                    examDate = InputSanitizer.sanitize(examDate),
+                    dayName = InputSanitizer.sanitize(dayName),
+                    topicsIncluded = InputSanitizer.sanitize(topicsIncluded)
+                )
+            } else ex
+        }
+        _examSchedules.value = updated
+        repo.saveExamSchedules(updated, sid)
+        showToastAlert("تم تعديل موعد امتحان ($subjectName) وحفظه بنجاح", isSuccess = true)
+    }
+
+    fun deleteExamSchedule(examId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _examSchedules.value.filterNot { it.id == examId }
+        _examSchedules.value = updated
+        repo.saveExamSchedules(updated, sid)
+        showToastAlert("تم حذف موعد الامتحان من الجدول نهائياً", isSuccess = true)
     }
 
     fun saveOrUpdateSubjectGrade(
@@ -2939,11 +3156,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         month2Score: Int,
         midYearScore: Int,
         finalExamScore: Int,
-        maxScoreScale: Int = GradingRules.defaultMaxScoreForClass(student.gradeClass)
+        maxScoreScale: Int = GradingRules.defaultMaxScoreForClass(student.gradeClass),
+        extraDailyScores: List<Int> = emptyList(),
+        extraMonthlyScores: List<Int> = emptyList()
     ): Boolean {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return false
         val validScale = if (maxScoreScale == 10) 10 else 100
-        val scores = listOf(dailyScore, month1Score, month2Score, midYearScore, finalExamScore)
+        val scores = listOf(dailyScore, month1Score, month2Score, midYearScore, finalExamScore) + extraDailyScores + extraMonthlyScores
         if (scores.any { it < 0 || it > validScale }) {
             showToastAlert(
                 "خطأ في الإدخال: لا يمكن إدخال درجة أكبر من الحد الأقصى المعتمد ($validScale)",
@@ -2968,6 +3187,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             midYearScore = midYearScore.coerceIn(0, validScale),
             finalExamScore = finalExamScore.coerceIn(0, validScale),
             maxScoreScale = validScale,
+            extraDailyScores = extraDailyScores.map { it.coerceIn(0, validScale) },
+            extraMonthlyScores = extraMonthlyScores.map { it.coerceIn(0, validScale) },
             schoolId = sid
         )
 
@@ -2989,7 +3210,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             title = "رصد درجات مادة $subjectName",
             body = "تم تحديث درجات الطالب ${student.studentName} في مادة $subjectName (السعي: ${grade.annualEffortScore}/$validScale | المعدل: ${grade.finalAverage}/$validScale - ${grade.ratingLabel}).",
             type = NotificationType.GRADES,
-            targetStudentId = student.id
+            targetStudentId = student.id,
+            targetSection = AppSection.EXAMS_GRADES.name,
+            targetTab = 0,
+            targetItemId = grade.id
         )
         return true
     }
@@ -3230,12 +3454,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         showToastAlert("تم إرسال الرسالة إلى ${contact.fullName}", isSuccess = true)
 
-        // Strictly notify ONLY the exact recipient accountId
+        // Strictly notify ONLY the exact recipient accountId with deep-link to Direct Chat and sender's accountId
         pushNotification(
             title = "رسالة جديدة من ${msg.senderName}",
             body = cleanText.ifBlank { "تم إرفاق صورة في المحادثة المباشرة" },
             type = NotificationType.REPORT,
-            targetUserId = contact.accountId
+            targetUserId = contact.accountId,
+            targetSection = AppSection.REPORTS_CHAT.name,
+            targetTab = 1,
+            targetItemId = user.id
         )
     }
 
@@ -3563,7 +3790,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             title = "تسليم واجب مصور: $stuName (${homework.subjectName})",
             body = "قام الطالب $stuName (${homework.gradeClass}) بإرفاق صورة حل الواجب البيتي للمراجعة.",
             type = NotificationType.HOMEWORK,
-            targetRole = UserRole.TEACHER.name
+            targetRole = UserRole.TEACHER.name,
+            targetSection = AppSection.SCHEDULE_HOMEWORK.name,
+            targetTab = 1,
+            targetItemId = homework.id
         )
     }
 
@@ -3579,11 +3809,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanScore = InputSanitizer.sanitize(score)
         var targetStudentId = ""
         var subjectName = ""
+        var targetHwId = ""
 
         val updated = _homeworkSubmissions.value.map { sub ->
             if (sub.id == submissionId) {
                 targetStudentId = sub.studentId
                 subjectName = sub.subjectName
+                targetHwId = sub.homeworkId
                 sub.copy(
                     status = HomeworkSubmissionStatus.REVIEWED_CORRECTED,
                     teacherFeedback = cleanFeedback,
@@ -3612,7 +3844,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 title = notifTitle,
                 body = notifBody,
                 type = NotificationType.HOMEWORK,
-                targetStudentId = targetStudentId
+                targetStudentId = targetStudentId,
+                targetSection = AppSection.SCHEDULE_HOMEWORK.name,
+                targetTab = 1,
+                targetItemId = targetHwId
             )
         }
     }
@@ -4288,4 +4523,738 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         return login(creds.username, creds.password)
     }
+
+    // =========================================================================
+    // SECTION 12: STUDENT CREATIVE COMMUNITY ("مجتمع ونشاطات الطلبة")
+    // & FULL ADMIN MODERATION & SANCTIONS SYSTEM
+    // =========================================================================
+
+    fun getUserActivityProfile(userId: String): UserActivityProfileAndSanctions {
+        val sid = _schoolConfig.value.schoolId
+        return _userProfilesAndSanctions.value[userId] ?: UserActivityProfileAndSanctions(
+            userId = userId,
+            schoolId = sid
+        )
+    }
+
+    fun getFollowersCount(targetUserId: String): Int {
+        return _userProfilesAndSanctions.value.values.count { targetUserId in it.followingUserIds }
+    }
+
+    fun updateMyActivityBio(newBio: String) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val cleanBio = InputSanitizer.sanitize(newBio).take(220)
+        val currentMap = _userProfilesAndSanctions.value.toMutableMap()
+        val existing = currentMap[user.id] ?: UserActivityProfileAndSanctions(userId = user.id, schoolId = sid)
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        currentMap[user.id] = existing.copy(bio = cleanBio, updatedAt = nowStamp)
+        _userProfilesAndSanctions.value = currentMap
+        repo.saveUserProfilesAndSanctions(currentMap, sid)
+        showToastAlert("تم حفظ وتحديث النبذة التعريفية (Bio) في ملفك الإبداعي بنجاح", isSuccess = true)
+    }
+
+    fun toggleFollowUser(targetUserId: String) {
+        val user = _currentUser.value ?: return
+        if (targetUserId.isBlank() || targetUserId == user.id) return
+        val sid = _schoolConfig.value.schoolId
+        val currentMap = _userProfilesAndSanctions.value.toMutableMap()
+        val myProfile = currentMap[user.id] ?: UserActivityProfileAndSanctions(userId = user.id, schoolId = sid)
+        val alreadyFollowing = targetUserId in myProfile.followingUserIds
+        val updatedFollowing = if (alreadyFollowing) {
+            myProfile.followingUserIds.filterNot { it == targetUserId }
+        } else {
+            (myProfile.followingUserIds + targetUserId).distinct()
+        }
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        currentMap[user.id] = myProfile.copy(followingUserIds = updatedFollowing, updatedAt = nowStamp)
+        _userProfilesAndSanctions.value = currentMap
+        repo.saveUserProfilesAndSanctions(currentMap, sid)
+
+        val targetAccName = _accounts.value.firstOrNull { it.id == targetUserId }?.fullName ?: "العضو"
+        if (!alreadyFollowing) {
+            showToastAlert("أصبحت تتابع ($targetAccName) في مجتمع نشاطات الطلبة", isSuccess = true)
+        } else {
+            showToastAlert("تم إلغاء متابعة ($targetAccName)", isSuccess = true)
+        }
+    }
+
+    fun publishStudentActivityPost(
+        category: String,
+        title: String,
+        content: String,
+        imageBase64: String
+    ): Boolean {
+        if (!validateSessionAndSchoolAccess()) return false
+        val user = _currentUser.value ?: return false
+        val sid = _schoolConfig.value.schoolId
+
+        // Check if user is restricted from posting (Mute Posting sanction)
+        val mySanctions = getUserActivityProfile(user.id)
+        if (user.role != UserRole.ADMIN && mySanctions.isPostingMuted()) {
+            val rem = mySanctions.remainingPostingBanLabel()
+            val reason = mySanctions.mutePostingReason.ifBlank { "مخالفة ضوابط النشر في المنصة" }
+            showToastAlert(
+                "عذراً، حسابك موقوف مؤقتاً عن نشر النشاطات ($rem) — السبب: $reason",
+                isSuccess = false
+            )
+            return false
+        }
+
+        val cleanTitle = InputSanitizer.sanitize(title)
+        val cleanContent = InputSanitizer.sanitize(content)
+        if (cleanTitle.isBlank() && cleanContent.isBlank() && imageBase64.isBlank()) {
+            showToastAlert("يرجى كتابة عنوان أو محتوى النشاط الإبداعي أو إرفاق صورة", isSuccess = false)
+            return false
+        }
+
+        val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
+        val authorClass = linkedStu?.gradeClass?.ifBlank { user.gradeClass } ?: user.gradeClass
+        val authorSec = linkedStu?.sectionName?.ifBlank { user.sectionName } ?: user.sectionName
+        val authorPhoto = user.photoBase64.ifBlank { linkedStu?.photoBase64.orEmpty() }
+        val authorDisplayName = linkedStu?.fullNameWithFather?.takeIf { user.role == UserRole.STUDENT } ?: user.fullName
+
+        // Admin & Teacher publish directly as APPROVED; Student/Parent posts go to PENDING moderation queue
+        val initialStatus = if (user.role == UserRole.ADMIN || user.role == UserRole.TEACHER) {
+            StudentActivityStatus.APPROVED
+        } else {
+            StudentActivityStatus.PENDING
+        }
+
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val post = StudentActivityPost(
+            id = "act_${UUID.randomUUID().toString().take(6)}",
+            schoolId = sid,
+            authorUserId = user.id,
+            authorStudentId = linkedStu?.id ?: user.linkedStudentId,
+            authorName = authorDisplayName,
+            authorRole = user.role,
+            authorGradeClass = authorClass,
+            authorSectionName = authorSec,
+            authorPhotoBase64 = authorPhoto,
+            category = InputSanitizer.sanitize(category).ifBlank { "موهبة وإبداع علمي" },
+            title = cleanTitle.ifBlank { "مشاركة إبداعية" },
+            content = cleanContent,
+            imageBase64 = imageBase64,
+            status = initialStatus,
+            reviewedByName = if (initialStatus == StudentActivityStatus.APPROVED) user.fullName else "",
+            createdAt = nowStamp,
+            createdAtMillis = System.currentTimeMillis()
+        )
+
+        val updated = listOf(post) + _studentActivityPosts.value
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+
+        if (initialStatus == StudentActivityStatus.PENDING) {
+            showToastAlert(
+                "تم إرسال مشاركتك الإبداعية إلى قائمة المراجعة لدى الإدارة والمعلمين، وستُنشر فور الموافقة عليها",
+                isSuccess = true
+            )
+            pushNotification(
+                title = "مشاركة طالب بانتظار المراجعة: $authorDisplayName",
+                body = "أرسل ($authorDisplayName - $authorClass) مشاركة إبداعية بعنوان (${post.title}) في قسم نشاطات الطلبة للمراجعة والاعتماد.",
+                type = NotificationType.GENERAL,
+                targetRole = UserRole.ADMIN.name,
+                targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                targetTab = 1,
+                targetItemId = post.id
+            )
+        } else {
+            showToastAlert("تم نشر المشاركة في مجتمع نشاطات الطلبة فوراً", isSuccess = true)
+        }
+        return true
+    }
+
+    fun reviewStudentActivityPost(postId: String, approve: Boolean) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val reviewer = _currentUser.value?.fullName ?: "إدارة المدرسة"
+        val sid = _schoolConfig.value.schoolId
+        var targetPost: StudentActivityPost? = null
+
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                val nextStatus = if (approve) StudentActivityStatus.APPROVED else StudentActivityStatus.REJECTED
+                val copyPost = p.copy(status = nextStatus, reviewedByName = reviewer)
+                targetPost = copyPost
+                copyPost
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+
+        val reviewed = targetPost ?: return
+        if (approve) {
+            showToastAlert("تمت الموافقة على نشر نشاط (${reviewed.authorName}) في ساحة الإبداع", isSuccess = true)
+            pushNotification(
+                title = "تم اعتماد ونشر مشاركتك الإبداعية!",
+                body = "وافقت إدارة المدرسة ($reviewer) على نشر مشاركتك (${reviewed.title}) في قسم نشاطات الطلبة.",
+                type = NotificationType.GENERAL,
+                targetUserId = reviewed.authorUserId,
+                targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                targetTab = 0,
+                targetItemId = reviewed.id
+            )
+        } else {
+            showToastAlert("تم رفض المشاركة وإخفاؤها من القائمة", isSuccess = false)
+            pushNotification(
+                title = "ملاحظة حول مشاركتك في نشاطات الطلبة",
+                body = "اعتذرت الإدارة عن نشر مشاركتك (${reviewed.title}). يرجى مراجعة ضوابط النشر التربوي والمحاولة مجدداً.",
+                type = NotificationType.GENERAL,
+                targetUserId = reviewed.authorUserId,
+                targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                targetTab = 0,
+                targetItemId = reviewed.id
+            )
+        }
+    }
+
+    fun updateStudentActivityPost(
+        postId: String,
+        category: String,
+        title: String,
+        content: String,
+        imageBase64: String
+    ) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val target = _studentActivityPosts.value.firstOrNull { it.id == postId } ?: return
+        if (user.role != UserRole.ADMIN && target.authorUserId != user.id) {
+            showToastAlert("لا تملك صلاحية تعديل هذا المنشور", isSuccess = false)
+            return
+        }
+        val cleanTitle = InputSanitizer.sanitize(title).ifBlank { target.title }
+        val cleanContent = InputSanitizer.sanitize(content)
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                p.copy(
+                    category = InputSanitizer.sanitize(category).ifBlank { p.category },
+                    title = cleanTitle,
+                    content = cleanContent,
+                    imageBase64 = imageBase64
+                )
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+        showToastAlert("تم حفظ تعديلات المنشور بنجاح", isSuccess = true)
+    }
+
+    fun deleteStudentActivityPost(postId: String) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val target = _studentActivityPosts.value.firstOrNull { it.id == postId } ?: return
+        if (user.role != UserRole.ADMIN && target.authorUserId != user.id) {
+            showToastAlert("لا تملك صلاحية حذف هذا المنشور", isSuccess = false)
+            return
+        }
+        val updated = _studentActivityPosts.value.filterNot { it.id == postId }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+        showToastAlert("تم حذف المنشور من مجتمع نشاطات الطلبة نهائياً", isSuccess = true)
+    }
+
+    fun toggleStudentActivityHeart(postId: String) {
+        if (!validateSessionAndSchoolAccess()) return
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+
+        val mySanctions = getUserActivityProfile(user.id)
+        if (user.role != UserRole.ADMIN && mySanctions.isInteractionMuted()) {
+            val rem = mySanctions.remainingInteractionBanLabel()
+            val reason = mySanctions.muteInteractionReason.ifBlank { "مخالفة آداب التفاعل" }
+            showToastAlert(
+                "عذراً، حسابك مقيد مؤقتاً من التفاعل والإعجاب ($rem) — السبب: $reason",
+                isSuccess = false
+            )
+            return
+        }
+
+        var newlyLikedPost: StudentActivityPost? = null
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                val alreadyLiked = user.id in p.likedByUserIds
+                val nextLikers = if (alreadyLiked) {
+                    p.likedByUserIds.filterNot { it == user.id }
+                } else {
+                    (p.likedByUserIds + user.id).distinct()
+                }
+                val copyP = p.copy(
+                    heartCount = nextLikers.size,
+                    likedByUserIds = nextLikers
+                )
+                if (!alreadyLiked) {
+                    newlyLikedPost = copyP
+                }
+                copyP
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+
+        // Strictly notify ONLY the post owner when someone else likes their post
+        newlyLikedPost?.let { likedPost ->
+            if (likedPost.authorUserId.isNotBlank() && likedPost.authorUserId != user.id) {
+                pushNotification(
+                    title = "إعجاب جديد بمشاركتك الإبداعية",
+                    body = "أعجب (${user.fullName}) بمنشورك (${likedPost.title}) في قسم نشاطات الطلبة.",
+                    type = NotificationType.GENERAL,
+                    targetUserId = likedPost.authorUserId,
+                    targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                    targetTab = 0,
+                    targetItemId = likedPost.id
+                )
+            }
+        }
+    }
+
+    fun addStudentActivityComment(postId: String, commentText: String) {
+        if (!validateSessionAndSchoolAccess()) return
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+
+        val mySanctions = getUserActivityProfile(user.id)
+        if (user.role != UserRole.ADMIN && mySanctions.isInteractionMuted()) {
+            val rem = mySanctions.remainingInteractionBanLabel()
+            val reason = mySanctions.muteInteractionReason.ifBlank { "مخالفة آداب التعليقات" }
+            showToastAlert(
+                "عذراً، حسابك موقوف مؤقتاً عن كتابة التعليقات ($rem) — السبب: $reason",
+                isSuccess = false
+            )
+            return
+        }
+
+        val cleanText = InputSanitizer.sanitize(commentText)
+        if (cleanText.isBlank()) {
+            showToastAlert("يرجى كتابة نص التعليق أولاً", isSuccess = false)
+            return
+        }
+
+        val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
+        val authorClass = linkedStu?.gradeClass?.ifBlank { user.gradeClass } ?: user.gradeClass
+        val authorPhoto = user.photoBase64.ifBlank { linkedStu?.photoBase64.orEmpty() }
+        val authorDisplayName = linkedStu?.fullNameWithFather?.takeIf { user.role == UserRole.STUDENT } ?: user.fullName
+        val nowStamp = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
+
+        val newComment = StudentActivityComment(
+            id = "cmt_${UUID.randomUUID().toString().take(6)}",
+            postId = postId,
+            authorUserId = user.id,
+            authorName = authorDisplayName,
+            authorRole = user.role,
+            authorGradeClass = authorClass,
+            authorPhotoBase64 = authorPhoto,
+            text = cleanText,
+            createdAt = nowStamp,
+            createdAtMillis = System.currentTimeMillis()
+        )
+
+        var targetPost: StudentActivityPost? = null
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                val copyP = p.copy(comments = p.comments + newComment)
+                targetPost = copyP
+                copyP
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+
+        // Strictly notify ONLY the post owner
+        targetPost?.let { post ->
+            if (post.authorUserId.isNotBlank() && post.authorUserId != user.id) {
+                pushNotification(
+                    title = "تعليق جديد على منشورك (${post.title})",
+                    body = "علّق ($authorDisplayName) على مشاركتك: \"$cleanText\"",
+                    type = NotificationType.GENERAL,
+                    targetUserId = post.authorUserId,
+                    targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                    targetTab = 0,
+                    targetItemId = post.id
+                )
+            }
+        }
+    }
+
+    fun updateStudentActivityComment(postId: String, commentId: String, newText: String) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val cleanText = InputSanitizer.sanitize(newText)
+        if (cleanText.isBlank()) return
+
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                p.copy(
+                    comments = p.comments.map { c ->
+                        if (c.id == commentId && (user.role == UserRole.ADMIN || c.authorUserId == user.id)) {
+                            c.copy(text = cleanText)
+                        } else c
+                    }
+                )
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+        showToastAlert("تم تعديل التعليق بنجاح", isSuccess = true)
+    }
+
+    fun deleteStudentActivityComment(postId: String, commentId: String) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                p.copy(
+                    comments = p.comments.filterNot { c ->
+                        c.id == commentId && (user.role == UserRole.ADMIN || c.authorUserId == user.id || p.authorUserId == user.id)
+                    }
+                )
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+        showToastAlert("تم حذف التعليق بنجاح", isSuccess = true)
+    }
+
+    fun addStudentActivityReply(postId: String, commentId: String, replyText: String) {
+        if (!validateSessionAndSchoolAccess()) return
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+
+        val mySanctions = getUserActivityProfile(user.id)
+        if (user.role != UserRole.ADMIN && mySanctions.isInteractionMuted()) {
+            val rem = mySanctions.remainingInteractionBanLabel()
+            val reason = mySanctions.muteInteractionReason.ifBlank { "مخالفة آداب التفاعل" }
+            showToastAlert(
+                "عذراً، حسابك موقوف مؤقتاً عن كتابة الردود ($rem) — السبب: $reason",
+                isSuccess = false
+            )
+            return
+        }
+
+        val cleanText = InputSanitizer.sanitize(replyText)
+        if (cleanText.isBlank()) return
+
+        val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
+        val authorClass = linkedStu?.gradeClass?.ifBlank { user.gradeClass } ?: user.gradeClass
+        val authorPhoto = user.photoBase64.ifBlank { linkedStu?.photoBase64.orEmpty() }
+        val authorDisplayName = linkedStu?.fullNameWithFather?.takeIf { user.role == UserRole.STUDENT } ?: user.fullName
+        val nowStamp = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
+
+        val newReply = StudentActivityReply(
+            id = "rpl_${UUID.randomUUID().toString().take(6)}",
+            commentId = commentId,
+            postId = postId,
+            authorUserId = user.id,
+            authorName = authorDisplayName,
+            authorRole = user.role,
+            authorGradeClass = authorClass,
+            authorPhotoBase64 = authorPhoto,
+            text = cleanText,
+            createdAt = nowStamp,
+            createdAtMillis = System.currentTimeMillis()
+        )
+
+        var targetPost: StudentActivityPost? = null
+        var parentCommentAuthorId = ""
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                val nextComments = p.comments.map { c ->
+                    if (c.id == commentId) {
+                        parentCommentAuthorId = c.authorUserId
+                        c.copy(replies = c.replies + newReply)
+                    } else c
+                }
+                val copyP = p.copy(comments = nextComments)
+                targetPost = copyP
+                copyP
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+
+        // Notify post owner (and comment owner if different)
+        targetPost?.let { post ->
+            if (post.authorUserId.isNotBlank() && post.authorUserId != user.id) {
+                pushNotification(
+                    title = "رد جديد على منشورك (${post.title})",
+                    body = "كتب ($authorDisplayName) رداً على تعليق في منشورك: \"$cleanText\"",
+                    type = NotificationType.GENERAL,
+                    targetUserId = post.authorUserId,
+                    targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                    targetTab = 0,
+                    targetItemId = post.id
+                )
+            }
+            if (parentCommentAuthorId.isNotBlank() &&
+                parentCommentAuthorId != user.id &&
+                parentCommentAuthorId != post.authorUserId
+            ) {
+                pushNotification(
+                    title = "رد جديد على تعليقك في نشاطات الطلبة",
+                    body = "ردّ ($authorDisplayName) على تعليقك: \"$cleanText\"",
+                    type = NotificationType.GENERAL,
+                    targetUserId = parentCommentAuthorId,
+                    targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                    targetTab = 0,
+                    targetItemId = post.id
+                )
+            }
+        }
+    }
+
+    fun updateStudentActivityReply(postId: String, commentId: String, replyId: String, newText: String) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val cleanText = InputSanitizer.sanitize(newText)
+        if (cleanText.isBlank()) return
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                p.copy(
+                    comments = p.comments.map { c ->
+                        if (c.id == commentId) {
+                            c.copy(
+                                replies = c.replies.map { r ->
+                                    if (r.id == replyId && (user.role == UserRole.ADMIN || r.authorUserId == user.id)) {
+                                        r.copy(text = cleanText)
+                                    } else r
+                                }
+                            )
+                        } else c
+                    }
+                )
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+        showToastAlert("تم تعديل الرد بنجاح", isSuccess = true)
+    }
+
+    fun deleteStudentActivityReply(postId: String, commentId: String, replyId: String) {
+        val user = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                p.copy(
+                    comments = p.comments.map { c ->
+                        if (c.id == commentId) {
+                            c.copy(
+                                replies = c.replies.filterNot { r ->
+                                    r.id == replyId && (user.role == UserRole.ADMIN || r.authorUserId == user.id || p.authorUserId == user.id)
+                                }
+                            )
+                        } else c
+                    }
+                )
+            } else p
+        }
+        _studentActivityPosts.value = updated
+        repo.saveStudentActivityPosts(updated, sid)
+        showToastAlert("تم حذف الرد بنجاح", isSuccess = true)
+    }
+
+    fun reportStudentActivityViolation(
+        postId: String,
+        commentId: String = "",
+        replyId: String = "",
+        targetType: ViolationTargetType = ViolationTargetType.POST,
+        reportedUserId: String,
+        reportedStudentId: String = "",
+        reportedUserName: String,
+        reportedUserRole: UserRole,
+        contentExcerpt: String,
+        reason: String
+    ) {
+        val user = _currentUser.value ?: return
+        val cleanReason = InputSanitizer.sanitize(reason)
+        if (cleanReason.isBlank()) {
+            showToastAlert("يرجى توضيح سبب الإبلاغ عن المخالفة", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val rep = StudentActivityViolationReport(
+            id = "vrep_${UUID.randomUUID().toString().take(6)}",
+            schoolId = sid,
+            postId = postId,
+            commentId = commentId,
+            replyId = replyId,
+            targetType = targetType,
+            reportedUserId = reportedUserId,
+            reportedStudentId = reportedStudentId,
+            reportedUserName = InputSanitizer.sanitize(reportedUserName),
+            reportedUserRole = reportedUserRole,
+            reportedContentExcerpt = InputSanitizer.sanitize(contentExcerpt).take(160),
+            reporterUserId = user.id,
+            reporterName = user.fullName,
+            reason = cleanReason,
+            createdAt = nowStamp,
+            isResolved = false
+        )
+        val updated = listOf(rep) + _activityViolationReports.value
+        _activityViolationReports.value = updated
+        repo.saveActivityViolationReports(updated, sid)
+
+        showToastAlert("تم إرسال بلاغ المخالفة إلى صندوق بلاغات مدير المدرسة للمراجعة الفورية", isSuccess = true)
+
+        pushNotification(
+            title = "بلاغ مخالفة في نشاطات الطلبة (${targetType.arabicLabel})",
+            body = "أبلغ (${user.fullName}) عن ${targetType.arabicLabel} للمستخدم ($reportedUserName) — السبب: $cleanReason",
+            type = NotificationType.REPORT,
+            targetRole = UserRole.ADMIN.name,
+            targetSection = AppSection.STUDENT_ACTIVITIES.name,
+            targetTab = 2,
+            targetItemId = postId
+        )
+    }
+
+    /**
+     * Principal's Full Moderation & Sanctions Execution:
+     * 1) Mute Posting (24h, 3d, 7d, Permanent)
+     * 2) Mute Interaction / Likes & Comments (24h, 3d, 7d, Permanent)
+     * 3) Official Administrative Warning Notification to the violating user AND their parent (if student).
+     */
+    fun applyAdminUserSanction(
+        targetUserId: String,
+        targetStudentId: String = "",
+        targetUserName: String,
+        mutePostingDuration: SanctionDurationOption?,
+        muteInteractionDuration: SanctionDurationOption?,
+        sendOfficialWarning: Boolean,
+        reasonAndViolationText: String,
+        relatedReportId: String = ""
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val cleanReason = InputSanitizer.sanitize(reasonAndViolationText).ifBlank {
+            "مخالفة ضوابط وآداب النشر والتفاعل في مجتمع المدرسة"
+        }
+        val nowMs = System.currentTimeMillis()
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+
+        val currentMap = _userProfilesAndSanctions.value.toMutableMap()
+        val existing = currentMap[targetUserId] ?: UserActivityProfileAndSanctions(
+            userId = targetUserId,
+            schoolId = sid
+        )
+
+        val nextPostUntil = if (mutePostingDuration != null) {
+            if (mutePostingDuration.isPermanent) Long.MAX_VALUE / 2 else nowMs + mutePostingDuration.durationMillis
+        } else existing.mutePostingUntilMillis
+        val nextPostPerm = mutePostingDuration?.isPermanent ?: existing.isPermanentPostingBan
+
+        val nextInterUntil = if (muteInteractionDuration != null) {
+            if (muteInteractionDuration.isPermanent) Long.MAX_VALUE / 2 else nowMs + muteInteractionDuration.durationMillis
+        } else existing.muteInteractionUntilMillis
+        val nextInterPerm = muteInteractionDuration?.isPermanent ?: existing.isPermanentInteractionBan
+
+        val updatedProfile = existing.copy(
+            mutePostingUntilMillis = nextPostUntil,
+            isPermanentPostingBan = nextPostPerm,
+            mutePostingReason = if (mutePostingDuration != null) cleanReason else existing.mutePostingReason,
+            muteInteractionUntilMillis = nextInterUntil,
+            isPermanentInteractionBan = nextInterPerm,
+            muteInteractionReason = if (muteInteractionDuration != null) cleanReason else existing.muteInteractionReason,
+            warningCount = if (sendOfficialWarning) existing.warningCount + 1 else existing.warningCount,
+            lastWarningText = if (sendOfficialWarning) cleanReason else existing.lastWarningText,
+            updatedAt = nowStamp
+        )
+        currentMap[targetUserId] = updatedProfile
+        _userProfilesAndSanctions.value = currentMap
+        repo.saveUserProfilesAndSanctions(currentMap, sid)
+
+        val actionSummaryParts = mutableListOf<String>()
+        if (mutePostingDuration != null) {
+            actionSummaryParts.add("تعليق النشر (${mutePostingDuration.arabicLabel})")
+        }
+        if (muteInteractionDuration != null) {
+            actionSummaryParts.add("تعليق التفاعل والتعليقات (${muteInteractionDuration.arabicLabel})")
+        }
+        if (sendOfficialWarning) {
+            actionSummaryParts.add("إرسال إنذار إداري رسمي")
+        }
+        val actionSummary = actionSummaryParts.joinToString(" + ").ifBlank { "تنبيه رقابي" }
+
+        if (relatedReportId.isNotBlank()) {
+            val updatedReps = _activityViolationReports.value.map { r ->
+                if (r.id == relatedReportId) {
+                    r.copy(isResolved = true, resolutionActionNote = "$actionSummary — $cleanReason")
+                } else r
+            }
+            _activityViolationReports.value = updatedReps
+            repo.saveActivityViolationReports(updatedReps, sid)
+        }
+
+        // Send private official warning notification to the violating user AND copy to their parent if student
+        if (sendOfficialWarning || mutePostingDuration != null || muteInteractionDuration != null) {
+            val warningTitle = "إنذار وإجراء رقابي رسمي من إدارة المدرسة"
+            val warningBody = "تنبيه للمستخدم ($targetUserName): تم اتخاذ إجراء ($actionSummary) بسبب: ($cleanReason). يرجى الالتزام التام بآداب وضوابط المنصة التربوية."
+
+            if (targetUserId.isNotBlank()) {
+                pushNotification(
+                    title = warningTitle,
+                    body = warningBody,
+                    type = NotificationType.REPORT,
+                    targetUserId = targetUserId,
+                    targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                    targetTab = 0
+                )
+            }
+
+            val resolvedStuId = targetStudentId.ifBlank {
+                _accounts.value.firstOrNull { it.id == targetUserId }?.linkedStudentId.orEmpty()
+            }
+            if (resolvedStuId.isNotBlank()) {
+                pushNotification(
+                    title = "إشعار لولي الأمر • إجراء رقابي: $targetUserName",
+                    body = "نود إعلامكم بتوجيه ($actionSummary) لحساب الطالب ($targetUserName) في قسم نشاطات الطلبة بسبب: ($cleanReason).",
+                    type = NotificationType.REPORT,
+                    targetStudentId = resolvedStuId,
+                    targetRole = UserRole.PARENT.name,
+                    targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                    targetTab = 0
+                )
+            }
+        }
+
+        showToastAlert("تم تنفيذ الإجراء الرقابي ($actionSummary) بحق ($targetUserName) وحفظه في السحابة فوراً", isSuccess = true)
+    }
+
+    fun liftAdminUserSanctions(targetUserId: String, targetUserName: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val currentMap = _userProfilesAndSanctions.value.toMutableMap()
+        val existing = currentMap[targetUserId] ?: return
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        currentMap[targetUserId] = existing.copy(
+            mutePostingUntilMillis = 0L,
+            isPermanentPostingBan = false,
+            mutePostingReason = "",
+            muteInteractionUntilMillis = 0L,
+            isPermanentInteractionBan = false,
+            muteInteractionReason = "",
+            updatedAt = nowStamp
+        )
+        _userProfilesAndSanctions.value = currentMap
+        repo.saveUserProfilesAndSanctions(currentMap, sid)
+        showToastAlert("تم رفع جميع قيود النشر والتفاعل عن حساب ($targetUserName) بنجاح", isSuccess = true)
+
+        pushNotification(
+            title = "تم رفع القيود عن حسابك في نشاطات الطلبة",
+            body = "قامت إدارة المدرسة برفع تعليق النشر والتفاعل عن حسابك ($targetUserName). يمكنك الآن المشاركة والتفاعل مجدداً.",
+            type = NotificationType.GENERAL,
+            targetUserId = targetUserId,
+            targetSection = AppSection.STUDENT_ACTIVITIES.name,
+            targetTab = 0
+        )
+    }
+
+    fun deleteActivityViolationReport(reportId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _activityViolationReports.value.filterNot { it.id == reportId }
+        _activityViolationReports.value = updated
+        repo.saveActivityViolationReports(updated, sid)
+        showToastAlert("تم حذف البلاغ من صندوق بلاغات النشاطات", isSuccess = true)
+    }
 }
+

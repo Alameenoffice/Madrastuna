@@ -40,6 +40,9 @@ object FirebaseConfigConstants {
     const val COL_LOST_AND_FOUND = "lost_and_found"
     const val COL_PRIVATE_SUGGESTIONS = "private_suggestions"
     const val COL_URGENT_ALERT = "urgent_alert"
+    const val COL_STUDENT_ACTIVITIES = "student_activities"
+    const val COL_ACTIVITY_REPORTS = "activity_reports"
+    const val COL_USER_PROFILES = "user_profiles"
 
     // Root collections for Developer Super-Admin Panel
     const val COL_SCHOOL_LICENSES = "school_licenses"
@@ -214,6 +217,7 @@ enum class AppSection(val arabicTitle: String) {
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     EXAMS_GRADES("الامتحانات والدرجات"),
     HONOR_ROLL("لوحة الشرف"),
+    STUDENT_ACTIVITIES("نشاطات الطلبة"),
     TUITION_FEES("الأقساط الدراسية"),
     REPORTS_CHAT("البلاغات والتواصل"),
     EVENTS_NEWS("الفعاليات والأخبار"),
@@ -487,17 +491,35 @@ data class SubjectGrade(
     val midYearScore: Int,
     val finalExamScore: Int,
     val maxScoreScale: Int = GradingRules.defaultMaxScoreForClass(gradeClass),
+    val extraDailyScores: List<Int> = emptyList(),
+    val extraMonthlyScores: List<Int> = emptyList(),
     val schoolId: String = ""
 ) {
-    // هل اكتملت جميع الامتحانات (شهر 1، شهر 2، نصف السنة، النهائي)؟
+    // هل اكتملت جميع الامتحانات (شهر 1، شهر 2، والأشهر الإضافية، نصف السنة، النهائي)؟
     val isAllExamsCompleted: Boolean
-        get() = month1Score > 0 && month2Score > 0 && midYearScore > 0 && finalExamScore > 0
+        get() = month1Score > 0 &&
+            month2Score > 0 &&
+            extraMonthlyScores.all { it > 0 } &&
+            midYearScore > 0 &&
+            finalExamScore > 0
 
-    // السعي السنوي (calculated according to maxScoreScale: 10 or 100)
+    // متوسط درجات اليومي (يومي 1 + أي درجات يومية إضافية)
+    val effectiveDailyAverage: Double
+        get() {
+            val allDaily = listOf(dailyScore) + extraDailyScores
+            return allDaily.average()
+        }
+
+    // السعي السنوي (يحسب بدقة متناهية مع أي حقول يومية أو شهرية إضافية)
     val annualEffortScore: Int
-        get() = (((dailyScore + month1Score + month2Score) / 3.0 * 0.5) + (midYearScore * 0.5))
-            .roundToInt()
-            .coerceIn(0, maxScoreScale)
+        get() {
+            val components = mutableListOf(effectiveDailyAverage, month1Score.toDouble(), month2Score.toDouble())
+            extraMonthlyScores.forEach { components.add(it.toDouble()) }
+            val courseworkAvg = components.average()
+            return ((courseworkAvg * 0.5) + (midYearScore * 0.5))
+                .roundToInt()
+                .coerceIn(0, maxScoreScale)
+        }
 
     // المعدل النهائي
     val finalAverage: Int
@@ -652,6 +674,9 @@ data class AppNotification(
     val targetSectionName: String = "", // Specific section (e.g. for Homework)
     val targetRole: String = "",       // Optional role filter (e.g. "ADMIN" or "PARENT")
     val senderUserId: String = "",    // Sender user ID (never notify the sender himself)
+    val targetSection: String = "",   // Deep-link section (e.g. AppSection.name)
+    val targetTab: Int = 0,           // Deep-link sub-tab index
+    val targetItemId: String = "",    // Deep-link specific item/post/contact/homework ID
     val createdAt: String,
     val isRead: Boolean = false,
     val schoolId: String = ""
@@ -848,7 +873,8 @@ data class SchoolFeatureSettings(
     val qrAttendanceEnabled: Boolean = digitalIdEnabled,
     val homeworkSubmissionEnabled: Boolean = true,
     val dismissalCallEnabled: Boolean = true,
-    val lostAndFoundEnabled: Boolean = true
+    val lostAndFoundEnabled: Boolean = true,
+    val studentActivitiesEnabled: Boolean = true
 ) {
     fun normalized(): SchoolFeatureSettings {
         val bus = busAlertsEnabled && busTrackingEnabled || (busAlertsEnabled != busTrackingEnabled && busAlertsEnabled)
@@ -1249,6 +1275,172 @@ data class BiometricSavedCredentials(
     val isValid: Boolean
         get() = username.isNotBlank() && password.isNotBlank()
 }
+
+/**
+ * 9. Student Creative Community & Activities ("مجتمع ونشاطات الطلبة") + Full Admin Moderation & Sanctions
+ */
+enum class StudentActivityStatus(val arabicLabel: String) {
+    PENDING("قيد المراجعة"),
+    APPROVED("معتمد ومنشور"),
+    REJECTED("مرفوض")
+}
+
+data class StudentActivityReply(
+    val id: String,
+    val commentId: String,
+    val postId: String,
+    val authorUserId: String,
+    val authorName: String,
+    val authorRole: UserRole,
+    val authorGradeClass: String = "",
+    val authorPhotoBase64: String = "",
+    val text: String,
+    val createdAt: String,
+    val createdAtMillis: Long = System.currentTimeMillis()
+)
+
+data class StudentActivityComment(
+    val id: String,
+    val postId: String,
+    val authorUserId: String,
+    val authorName: String,
+    val authorRole: UserRole,
+    val authorGradeClass: String = "",
+    val authorPhotoBase64: String = "",
+    val text: String,
+    val createdAt: String,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val replies: List<StudentActivityReply> = emptyList()
+)
+
+data class StudentActivityPost(
+    val id: String,
+    val schoolId: String = "",
+    val authorUserId: String,
+    val authorStudentId: String = "",
+    val authorName: String,
+    val authorRole: UserRole,
+    val authorGradeClass: String = "",
+    val authorSectionName: String = "",
+    val authorPhotoBase64: String = "",
+    val category: String = "موهبة وإبداع علمي",
+    val title: String,
+    val content: String,
+    val imageBase64: String = "",
+    val status: StudentActivityStatus = StudentActivityStatus.PENDING,
+    val reviewedByName: String = "",
+    val createdAt: String,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val heartCount: Int = 0,
+    val likedByUserIds: List<String> = emptyList(),
+    val comments: List<StudentActivityComment> = emptyList()
+) {
+    val totalCommentsAndRepliesCount: Int
+        get() = comments.size + comments.sumOf { it.replies.size }
+
+    fun engagementScore(isAuthorFollowed: Boolean): Double {
+        val likesWeight = heartCount * 3.0
+        val commentsWeight = totalCommentsAndRepliesCount * 4.5
+        val followBoost = if (isAuthorFollowed) 12.0 else 0.0
+        val ageHours = ((System.currentTimeMillis() - createdAtMillis).coerceAtLeast(0L) / 3_600_000.0)
+        val recencyBonus = (48.0 - ageHours).coerceAtLeast(0.0) * 0.35
+        return likesWeight + commentsWeight + followBoost + recencyBonus
+    }
+}
+
+enum class ViolationTargetType(val arabicLabel: String) {
+    POST("منشور نشاط"),
+    COMMENT("تعليق"),
+    REPLY("رد على تعليق")
+}
+
+data class StudentActivityViolationReport(
+    val id: String,
+    val schoolId: String = "",
+    val postId: String,
+    val commentId: String = "",
+    val replyId: String = "",
+    val targetType: ViolationTargetType = ViolationTargetType.POST,
+    val reportedUserId: String,
+    val reportedStudentId: String = "",
+    val reportedUserName: String,
+    val reportedUserRole: UserRole,
+    val reportedContentExcerpt: String,
+    val reporterUserId: String,
+    val reporterName: String,
+    val reason: String,
+    val createdAt: String,
+    val isResolved: Boolean = false,
+    val resolutionActionNote: String = ""
+)
+
+enum class SanctionDurationOption(val arabicLabel: String, val durationMillis: Long, val isPermanent: Boolean = false) {
+    HOURS_24("24 ساعة", 24L * 3600L * 1000L, false),
+    DAYS_3("3 أيام", 3L * 24L * 3600L * 1000L, false),
+    DAYS_7("7 أيام", 7L * 24L * 3600L * 1000L, false),
+    PERMANENT("حظر دائم", Long.MAX_VALUE / 2, true)
+}
+
+data class UserActivityProfileAndSanctions(
+    val userId: String,
+    val schoolId: String = "",
+    val bio: String = "",
+    val followingUserIds: List<String> = emptyList(),
+    val mutePostingUntilMillis: Long = 0L,
+    val isPermanentPostingBan: Boolean = false,
+    val mutePostingReason: String = "",
+    val muteInteractionUntilMillis: Long = 0L,
+    val isPermanentInteractionBan: Boolean = false,
+    val muteInteractionReason: String = "",
+    val warningCount: Int = 0,
+    val lastWarningText: String = "",
+    val updatedAt: String = ""
+) {
+    fun isPostingMuted(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        return isPermanentPostingBan || mutePostingUntilMillis > nowMillis
+    }
+
+    fun isInteractionMuted(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        return isPermanentInteractionBan || muteInteractionUntilMillis > nowMillis
+    }
+
+    fun remainingPostingBanLabel(nowMillis: Long = System.currentTimeMillis()): String {
+        if (isPermanentPostingBan) return "حظر دائم من النشر"
+        val diff = mutePostingUntilMillis - nowMillis
+        if (diff <= 0L) return ""
+        val hours = (diff / (3600L * 1000L)).coerceAtLeast(1L)
+        return if (hours >= 24L) {
+            val days = (hours / 24L).coerceAtLeast(1L)
+            "متبقي $days يوم ($hours ساعة)"
+        } else {
+            "متبقي $hours ساعة"
+        }
+    }
+
+    fun remainingInteractionBanLabel(nowMillis: Long = System.currentTimeMillis()): String {
+        if (isPermanentInteractionBan) return "حظر دائم من التفاعل"
+        val diff = muteInteractionUntilMillis - nowMillis
+        if (diff <= 0L) return ""
+        val hours = (diff / (3600L * 1000L)).coerceAtLeast(1L)
+        return if (hours >= 24L) {
+            val days = (hours / 24L).coerceAtLeast(1L)
+            "متبقي $days يوم ($hours ساعة)"
+        } else {
+            "متبقي $hours ساعة"
+        }
+    }
+}
+
+/**
+ * 10. Deep-Link Notification Navigation Target (التوجيه الذكي الفوري عند النقر على الإشعارات)
+ */
+data class DeepLinkNavigationTarget(
+    val section: AppSection,
+    val tabIndex: Int = 0,
+    val itemId: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 
 
 

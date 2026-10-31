@@ -307,10 +307,11 @@ class SchoolRepository(context: Context) {
             put("smartDismissal", f.dismissalCallEnabled)
             put("quickQuizzes", f.quickQuizzesEnabled)
             put("lostAndFoundSuggestions", lostAndSug)
+            put("studentActivities", f.studentActivitiesEnabled)
         }
 
         return JSONObject().apply {
-            // Canonical 12 keys
+            // Canonical 12+ keys
             put("busTracking", bus)
             put("honorRoll", f.honorRollEnabled)
             put("directMessaging", f.directChatEnabled)
@@ -345,6 +346,7 @@ class SchoolRepository(context: Context) {
             put("digitalIdEnabled", qr)
             put("qrScannerEnabled", qr)
             put("qrAttendanceEnabled", qr)
+            put("studentActivitiesEnabled", f.studentActivitiesEnabled)
         }
     }
 
@@ -376,6 +378,7 @@ class SchoolRepository(context: Context) {
         val quizzes = boolKey("quickQuizzes", "quickQuizzesEnabled")
         val lostAndSug = boolKey("lostAndFoundSuggestions", "lostAndFoundEnabled", "suggestionsBoxEnabled", "dismissalAndLostFoundEnabled")
         val eventsGallery = boolKey("eventsGalleryEnabled")
+        val studentActivities = boolKey("studentActivities", "studentActivitiesEnabled")
 
         return SchoolFeatureSettings(
             honorRollEnabled = honor,
@@ -396,7 +399,8 @@ class SchoolRepository(context: Context) {
             qrAttendanceEnabled = qr,
             homeworkSubmissionEnabled = photoHw,
             dismissalCallEnabled = smartDismissal,
-            lostAndFoundEnabled = lostAndSug
+            lostAndFoundEnabled = lostAndSug,
+            studentActivitiesEnabled = studentActivities
         )
     }
 
@@ -880,6 +884,15 @@ class SchoolRepository(context: Context) {
         return parseGradesJson(raw, schoolId)
     }
 
+    private fun jsonArrayToIntList(arr: JSONArray?): List<Int> {
+        if (arr == null) return emptyList()
+        val list = mutableListOf<Int>()
+        for (i in 0 until arr.length()) {
+            list.add(arr.optInt(i, 0))
+        }
+        return list
+    }
+
     fun parseGradesJson(raw: String, schoolId: String = getActiveSchoolId()): List<SubjectGrade> {
         return try {
             val arr = JSONArray(raw)
@@ -902,6 +915,8 @@ class SchoolRepository(context: Context) {
                         midYearScore = o.optInt("midYearScore", 0),
                         finalExamScore = o.optInt("finalExamScore", 0),
                         maxScoreScale = scale,
+                        extraDailyScores = jsonArrayToIntList(o.optJSONArray("extraDailyScores")),
+                        extraMonthlyScores = jsonArrayToIntList(o.optJSONArray("extraMonthlyScores")),
                         schoolId = o.optString("schoolId", schoolId)
                     )
                 )
@@ -928,6 +943,8 @@ class SchoolRepository(context: Context) {
                 put("midYearScore", g.midYearScore)
                 put("finalExamScore", g.finalExamScore)
                 put("maxScoreScale", g.maxScoreScale)
+                put("extraDailyScores", JSONArray(g.extraDailyScores))
+                put("extraMonthlyScores", JSONArray(g.extraMonthlyScores))
                 put("schoolId", schoolId)
             })
         }
@@ -1244,6 +1261,9 @@ class SchoolRepository(context: Context) {
                         targetSectionName = o.optString("targetSectionName", ""),
                         targetRole = o.optString("targetRole", ""),
                         senderUserId = o.optString("senderUserId", ""),
+                        targetSection = o.optString("targetSection", ""),
+                        targetTab = o.optInt("targetTab", 0),
+                        targetItemId = o.optString("targetItemId", ""),
                         createdAt = o.optString("createdAt"),
                         isRead = o.optBoolean("isRead", false),
                         schoolId = o.optString("schoolId", schoolId)
@@ -1271,6 +1291,9 @@ class SchoolRepository(context: Context) {
                 put("targetSectionName", InputSanitizer.sanitize(n.targetSectionName))
                 put("targetRole", n.targetRole)
                 put("senderUserId", n.senderUserId)
+                put("targetSection", n.targetSection)
+                put("targetTab", n.targetTab)
+                put("targetItemId", n.targetItemId)
                 put("createdAt", InputSanitizer.sanitize(n.createdAt))
                 put("isRead", n.isRead)
                 put("schoolId", schoolId)
@@ -1948,6 +1971,26 @@ class SchoolRepository(context: Context) {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS), it)
             }
         }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_URGENT_ALERT)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_URGENT_ALERT), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_ACTIVITY_REPORTS)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_ACTIVITY_REPORTS), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_USER_PROFILES)?.let {
+            if (it.isNotBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_USER_PROFILES), it)
+            }
+        }
 
         editor.apply()
         return foundAny
@@ -2520,6 +2563,326 @@ class SchoolRepository(context: Context) {
     }
 
     // =========================================================================
+    // 15. STUDENT CREATIVE ACTIVITIES, VIOLATION REPORTS & USER PROFILES/SANCTIONS
+    // =========================================================================
+
+    fun loadStudentActivityPosts(schoolId: String = getActiveSchoolId()): List<StudentActivityPost> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES), null)
+            ?: return emptyList()
+        return parseStudentActivityPostsJson(raw, schoolId)
+    }
+
+    fun parseStudentActivityPostsJson(raw: String, schoolId: String = getActiveSchoolId()): List<StudentActivityPost> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<StudentActivityPost>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+
+                val status = runCatching {
+                    StudentActivityStatus.valueOf(o.optString("status", StudentActivityStatus.PENDING.name))
+                }.getOrDefault(StudentActivityStatus.PENDING)
+
+                val authorRole = runCatching {
+                    UserRole.valueOf(o.optString("authorRole", UserRole.STUDENT.name))
+                }.getOrDefault(UserRole.STUDENT)
+
+                val likedList = jsonArrayToList(o.optJSONArray("likedByUserIds")).distinct()
+                val heartCount = if (likedList.isNotEmpty()) likedList.size else o.optInt("heartCount", 0)
+
+                val commentsArr = o.optJSONArray("comments") ?: JSONArray()
+                val commentsList = mutableListOf<StudentActivityComment>()
+                for (cIdx in 0 until commentsArr.length()) {
+                    val co = commentsArr.getJSONObject(cIdx)
+                    val cRole = runCatching {
+                        UserRole.valueOf(co.optString("authorRole", UserRole.STUDENT.name))
+                    }.getOrDefault(UserRole.STUDENT)
+
+                    val repliesArr = co.optJSONArray("replies") ?: JSONArray()
+                    val repliesList = mutableListOf<StudentActivityReply>()
+                    for (rIdx in 0 until repliesArr.length()) {
+                        val ro = repliesArr.getJSONObject(rIdx)
+                        val rRole = runCatching {
+                            UserRole.valueOf(ro.optString("authorRole", UserRole.STUDENT.name))
+                        }.getOrDefault(UserRole.STUDENT)
+                        repliesList.add(
+                            StudentActivityReply(
+                                id = ro.optString("id"),
+                                commentId = ro.optString("commentId"),
+                                postId = ro.optString("postId"),
+                                authorUserId = ro.optString("authorUserId"),
+                                authorName = ro.optString("authorName"),
+                                authorRole = rRole,
+                                authorGradeClass = ro.optString("authorGradeClass", ""),
+                                authorPhotoBase64 = ro.optString("authorPhotoBase64", ""),
+                                text = ro.optString("text"),
+                                createdAt = ro.optString("createdAt"),
+                                createdAtMillis = ro.optLong("createdAtMillis", System.currentTimeMillis())
+                            )
+                        )
+                    }
+
+                    commentsList.add(
+                        StudentActivityComment(
+                            id = co.optString("id"),
+                            postId = co.optString("postId"),
+                            authorUserId = co.optString("authorUserId"),
+                            authorName = co.optString("authorName"),
+                            authorRole = cRole,
+                            authorGradeClass = co.optString("authorGradeClass", ""),
+                            authorPhotoBase64 = co.optString("authorPhotoBase64", ""),
+                            text = co.optString("text"),
+                            createdAt = co.optString("createdAt"),
+                            createdAtMillis = co.optLong("createdAtMillis", System.currentTimeMillis()),
+                            replies = repliesList
+                        )
+                    )
+                }
+
+                list.add(
+                    StudentActivityPost(
+                        id = o.optString("id"),
+                        schoolId = itemSid,
+                        authorUserId = o.optString("authorUserId"),
+                        authorStudentId = o.optString("authorStudentId", ""),
+                        authorName = o.optString("authorName"),
+                        authorRole = authorRole,
+                        authorGradeClass = o.optString("authorGradeClass", ""),
+                        authorSectionName = o.optString("authorSectionName", ""),
+                        authorPhotoBase64 = o.optString("authorPhotoBase64", ""),
+                        category = o.optString("category", "موهبة وإبداع علمي"),
+                        title = o.optString("title"),
+                        content = o.optString("content"),
+                        imageBase64 = o.optString("imageBase64", ""),
+                        status = status,
+                        reviewedByName = o.optString("reviewedByName", ""),
+                        createdAt = o.optString("createdAt"),
+                        createdAtMillis = o.optLong("createdAtMillis", System.currentTimeMillis()),
+                        heartCount = heartCount,
+                        likedByUserIds = likedList,
+                        comments = commentsList
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveStudentActivityPosts(posts: List<StudentActivityPost>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        posts.forEach { p ->
+            val cleanLikes = p.likedByUserIds.filter { it.isNotBlank() }.distinct()
+            val finalHearts = if (cleanLikes.isNotEmpty() || p.heartCount == 0) cleanLikes.size else p.heartCount
+
+            val commentsArr = JSONArray()
+            p.comments.forEach { c ->
+                val repliesArr = JSONArray()
+                c.replies.forEach { r ->
+                    repliesArr.put(JSONObject().apply {
+                        put("id", r.id)
+                        put("commentId", r.commentId)
+                        put("postId", r.postId)
+                        put("authorUserId", r.authorUserId)
+                        put("authorName", InputSanitizer.sanitize(r.authorName))
+                        put("authorRole", r.authorRole.name)
+                        put("authorGradeClass", InputSanitizer.sanitize(r.authorGradeClass))
+                        put("authorPhotoBase64", r.authorPhotoBase64)
+                        put("text", InputSanitizer.sanitize(r.text))
+                        put("createdAt", r.createdAt)
+                        put("createdAtMillis", r.createdAtMillis)
+                    })
+                }
+                commentsArr.put(JSONObject().apply {
+                    put("id", c.id)
+                    put("postId", c.postId)
+                    put("authorUserId", c.authorUserId)
+                    put("authorName", InputSanitizer.sanitize(c.authorName))
+                    put("authorRole", c.authorRole.name)
+                    put("authorGradeClass", InputSanitizer.sanitize(c.authorGradeClass))
+                    put("authorPhotoBase64", c.authorPhotoBase64)
+                    put("text", InputSanitizer.sanitize(c.text))
+                    put("createdAt", c.createdAt)
+                    put("createdAtMillis", c.createdAtMillis)
+                    put("replies", repliesArr)
+                })
+            }
+
+            arr.put(JSONObject().apply {
+                put("id", p.id)
+                put("schoolId", schoolId)
+                put("authorUserId", p.authorUserId)
+                put("authorStudentId", p.authorStudentId)
+                put("authorName", InputSanitizer.sanitize(p.authorName))
+                put("authorRole", p.authorRole.name)
+                put("authorGradeClass", InputSanitizer.sanitize(p.authorGradeClass))
+                put("authorSectionName", InputSanitizer.sanitize(p.authorSectionName))
+                put("authorPhotoBase64", p.authorPhotoBase64)
+                put("category", InputSanitizer.sanitize(p.category))
+                put("title", InputSanitizer.sanitize(p.title))
+                put("content", InputSanitizer.sanitize(p.content))
+                put("imageBase64", p.imageBase64)
+                put("status", p.status.name)
+                put("reviewedByName", InputSanitizer.sanitize(p.reviewedByName))
+                put("createdAt", p.createdAt)
+                put("createdAtMillis", p.createdAtMillis)
+                put("heartCount", finalHearts)
+                put("likedByUserIds", JSONArray(cleanLikes))
+                put("comments", commentsArr)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES, jsonStr)
+    }
+
+    fun loadActivityViolationReports(schoolId: String = getActiveSchoolId()): List<StudentActivityViolationReport> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_ACTIVITY_REPORTS), null)
+            ?: return emptyList()
+        return parseActivityViolationReportsJson(raw, schoolId)
+    }
+
+    fun parseActivityViolationReportsJson(raw: String, schoolId: String = getActiveSchoolId()): List<StudentActivityViolationReport> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<StudentActivityViolationReport>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                val tType = runCatching {
+                    ViolationTargetType.valueOf(o.optString("targetType", ViolationTargetType.POST.name))
+                }.getOrDefault(ViolationTargetType.POST)
+                val rRole = runCatching {
+                    UserRole.valueOf(o.optString("reportedUserRole", UserRole.STUDENT.name))
+                }.getOrDefault(UserRole.STUDENT)
+                list.add(
+                    StudentActivityViolationReport(
+                        id = o.optString("id"),
+                        schoolId = itemSid,
+                        postId = o.optString("postId"),
+                        commentId = o.optString("commentId", ""),
+                        replyId = o.optString("replyId", ""),
+                        targetType = tType,
+                        reportedUserId = o.optString("reportedUserId"),
+                        reportedStudentId = o.optString("reportedStudentId", ""),
+                        reportedUserName = o.optString("reportedUserName"),
+                        reportedUserRole = rRole,
+                        reportedContentExcerpt = o.optString("reportedContentExcerpt"),
+                        reporterUserId = o.optString("reporterUserId"),
+                        reporterName = o.optString("reporterName"),
+                        reason = o.optString("reason"),
+                        createdAt = o.optString("createdAt"),
+                        isResolved = o.optBoolean("isResolved", false),
+                        resolutionActionNote = o.optString("resolutionActionNote", "")
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveActivityViolationReports(reports: List<StudentActivityViolationReport>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        reports.forEach { r ->
+            arr.put(JSONObject().apply {
+                put("id", r.id)
+                put("schoolId", schoolId)
+                put("postId", r.postId)
+                put("commentId", r.commentId)
+                put("replyId", r.replyId)
+                put("targetType", r.targetType.name)
+                put("reportedUserId", r.reportedUserId)
+                put("reportedStudentId", r.reportedStudentId)
+                put("reportedUserName", InputSanitizer.sanitize(r.reportedUserName))
+                put("reportedUserRole", r.reportedUserRole.name)
+                put("reportedContentExcerpt", InputSanitizer.sanitize(r.reportedContentExcerpt))
+                put("reporterUserId", r.reporterUserId)
+                put("reporterName", InputSanitizer.sanitize(r.reporterName))
+                put("reason", InputSanitizer.sanitize(r.reason))
+                put("createdAt", r.createdAt)
+                put("isResolved", r.isResolved)
+                put("resolutionActionNote", InputSanitizer.sanitize(r.resolutionActionNote))
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_ACTIVITY_REPORTS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_ACTIVITY_REPORTS, jsonStr)
+    }
+
+    fun loadUserProfilesAndSanctions(schoolId: String = getActiveSchoolId()): Map<String, UserActivityProfileAndSanctions> {
+        if (schoolId.isBlank()) return emptyMap()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_USER_PROFILES), null)
+            ?: return emptyMap()
+        return parseUserProfilesAndSanctionsJson(raw, schoolId)
+    }
+
+    fun parseUserProfilesAndSanctionsJson(raw: String, schoolId: String = getActiveSchoolId()): Map<String, UserActivityProfileAndSanctions> {
+        return try {
+            val arr = JSONArray(raw)
+            val map = mutableMapOf<String, UserActivityProfileAndSanctions>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val uid = o.optString("userId")
+                if (uid.isNotBlank()) {
+                    map[uid] = UserActivityProfileAndSanctions(
+                        userId = uid,
+                        schoolId = o.optString("schoolId", schoolId).ifBlank { schoolId },
+                        bio = o.optString("bio", ""),
+                        followingUserIds = jsonArrayToList(o.optJSONArray("followingUserIds")).distinct(),
+                        mutePostingUntilMillis = o.optLong("mutePostingUntilMillis", 0L),
+                        isPermanentPostingBan = o.optBoolean("isPermanentPostingBan", false),
+                        mutePostingReason = o.optString("mutePostingReason", ""),
+                        muteInteractionUntilMillis = o.optLong("muteInteractionUntilMillis", 0L),
+                        isPermanentInteractionBan = o.optBoolean("isPermanentInteractionBan", false),
+                        muteInteractionReason = o.optString("muteInteractionReason", ""),
+                        warningCount = o.optInt("warningCount", 0),
+                        lastWarningText = o.optString("lastWarningText", ""),
+                        updatedAt = o.optString("updatedAt", "")
+                    )
+                }
+            }
+            map
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun saveUserProfilesAndSanctions(profiles: Map<String, UserActivityProfileAndSanctions>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        profiles.values.forEach { p ->
+            arr.put(JSONObject().apply {
+                put("userId", p.userId)
+                put("schoolId", schoolId)
+                put("bio", InputSanitizer.sanitize(p.bio))
+                put("followingUserIds", JSONArray(p.followingUserIds.distinct()))
+                put("mutePostingUntilMillis", p.mutePostingUntilMillis)
+                put("isPermanentPostingBan", p.isPermanentPostingBan)
+                put("mutePostingReason", InputSanitizer.sanitize(p.mutePostingReason))
+                put("muteInteractionUntilMillis", p.muteInteractionUntilMillis)
+                put("isPermanentInteractionBan", p.isPermanentInteractionBan)
+                put("muteInteractionReason", InputSanitizer.sanitize(p.muteInteractionReason))
+                put("warningCount", p.warningCount)
+                put("lastWarningText", InputSanitizer.sanitize(p.lastWarningText))
+                put("updatedAt", p.updatedAt)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_USER_PROFILES), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_USER_PROFILES, jsonStr)
+    }
+
+    // =========================================================================
     // CLEAN STATE DEFAULTS (Empty Lists - No pre-existing fake students/data)
     // =========================================================================
 
@@ -2536,3 +2899,4 @@ class SchoolRepository(context: Context) {
     fun defaultEvents(): List<SchoolEvent> = emptyList()
     fun defaultNotifications(): List<AppNotification> = emptyList()
 }
+

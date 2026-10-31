@@ -101,7 +101,7 @@ fun DashboardScreen(
                     alert = activeUrgentAlert,
                     isAdmin = isAdmin,
                     onDismissForUser = { viewModel.dismissUrgentSchoolAlertLocally() },
-                    onEditRequest = { isEditingUrgentAlertRequested = true },
+                    onEditRequest = { viewModel.openUrgentSchoolAlertModal() },
                     onDeleteAlert = { viewModel.deleteOrStopUrgentSchoolAlert() }
                 )
             }
@@ -215,19 +215,6 @@ fun DashboardScreen(
                         }
                     }
                 }
-            }
-        }
-
-        // School Principal Urgent Alert Manager Tool (Publish, Edit, Delete/Stop)
-        if (isAdmin) {
-            item {
-                AdminUrgentSchoolAlertManagerCard(
-                    currentAlert = activeUrgentAlert,
-                    isEditingRequested = isEditingUrgentAlertRequested,
-                    onEditRequestConsumed = { isEditingUrgentAlertRequested = false },
-                    onPublishOrUpdate = { msg -> viewModel.publishOrUpdateUrgentSchoolAlert(msg) },
-                    onDeleteOrStop = { viewModel.deleteOrStopUrgentSchoolAlert() }
-                )
             }
         }
 
@@ -586,6 +573,9 @@ fun DashboardScreen(
                         add(Triple(AppSection.TUITION_FEES, Icons.Filled.AccountBalanceWallet, if (isParentOrStudent) "أقساط الطالب ووصولات الدفع" else "الأقساط الدراسية ووصولات الدفع"))
                     }
                     add(Triple(AppSection.REPORTS_CHAT, Icons.Filled.Forum, if (isParentOrStudent) "بلاغات الطالب ومراسلة الإدارة" else "البلاغات الرسمية والمراسلة المباشرة"))
+                    if (featureSettings.studentActivitiesEnabled) {
+                        add(Triple(AppSection.STUDENT_ACTIVITIES, Icons.Filled.AutoAwesome, "مجتمع ونشاطات الطلبة والإبداعات العلمية"))
+                    }
                     if (featureSettings.eventsGalleryEnabled) {
                         add(Triple(AppSection.EVENTS_NEWS, Icons.Filled.Newspaper, "معرض الفعاليات والأخبار (عام)"))
                     }
@@ -713,6 +703,7 @@ fun DashboardScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .wrapContentHeight()
+                                .clickable { viewModel.openNotificationDeepLink(notif) }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -903,7 +894,7 @@ fun DailyAttendanceScreen(
         mutableStateOf(allowedSections.firstOrNull() ?: "أ")
     }
 
-    var selectedDate by remember { mutableStateOf("2026-10-29") }
+    var selectedDate by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
     var searchName by remember { mutableStateOf("") }
     var showQrScannerDialog by remember { mutableStateOf(false) }
     var showLeaveRequestDialog by remember { mutableStateOf(false) }
@@ -1340,15 +1331,15 @@ fun DailyAttendanceScreen(
                             }
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = selectedDate,
-                                onValueChange = { selectedDate = it },
-                                label = { Text("تاريخ الرصد") },
-                                leadingIcon = { Icon(Icons.Filled.CalendarToday, contentDescription = null) },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ModernCalendarDatePickerField(
+                                selectedDateIso = selectedDate,
+                                label = "تاريخ الرصد",
+                                onDateSelected = { selectedIso, _ -> selectedDate = selectedIso },
+                                modifier = Modifier.weight(1.1f)
                             )
                             OutlinedTextField(
                                 value = searchName,
@@ -1356,7 +1347,7 @@ fun DailyAttendanceScreen(
                                 label = { Text("بحث باسم الطالب...") },
                                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                                 singleLine = true,
-                                modifier = Modifier.weight(1.2f),
+                                modifier = Modifier.weight(1.1f),
                                 shape = RoundedCornerShape(12.dp)
                             )
                         }
@@ -2154,12 +2145,14 @@ private fun SubmitLeaveRequestDialog(
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = leaveDate,
-                        onValueChange = { leaveDate = it },
-                        label = { Text("تاريخ الإجازة (YYYY-MM-DD)") },
-                        singleLine = true,
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = leaveDate,
+                        label = "تاريخ الإجازة",
+                        onDateSelected = { selectedIso, _ -> leaveDate = selectedIso },
                         modifier = Modifier.weight(1.3f)
                     )
                     OutlinedTextField(

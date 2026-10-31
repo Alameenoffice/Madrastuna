@@ -2542,16 +2542,13 @@ fun DeveloperControlPanelScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "أدخل تاريخ انتهاء الاشتراك بصيغة YYYY-MM-DD (يظهر تنبيه التجديد لمدير المدرسة تلقائياً قبل 14 يوماً من الانتهاء):",
+                        text = "اختر تاريخ انتهاء الاشتراك من التقويم (يظهر تنبيه التجديد لمدير المدرسة تلقائياً قبل 14 يوماً من الانتهاء):",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    OutlinedTextField(
-                        value = expiryDateInput,
-                        onValueChange = { expiryDateInput = it },
-                        label = { Text("تاريخ انتهاء الاشتراك (YYYY-MM-DD)") },
-                        placeholder = { Text("2027-06-01") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = expiryDateInput,
+                        label = "تاريخ انتهاء الاشتراك",
+                        onDateSelected = { selectedIso, _ -> expiryDateInput = selectedIso }
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),

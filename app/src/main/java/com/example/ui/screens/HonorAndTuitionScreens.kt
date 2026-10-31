@@ -124,7 +124,7 @@ fun HonorRollScreen(
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Text(
-                                    text = "لوحة الشرف الذهبية • ${schoolConfig.schoolName}",
+                                    text = "لوحة الشرف • ${schoolConfig.schoolName}",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = Color(0xFFFDE68A),
                                     maxLines = 1,
@@ -140,7 +140,7 @@ fun HonorRollScreen(
                         )
 
                         Text(
-                            text = "تفتخر إدارة المدرسة في (${schoolConfig.address}) بتكريم كوكبة التفوق والإبداع العلمي",
+                            text = "تفتخر إدارة (${schoolConfig.schoolName}) بتكريم كوكبة التفوق والإبداع العلمي",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFFDE68A)
                         )
@@ -944,8 +944,8 @@ fun TuitionFeesScreen(
     if (selectedTuitionForPayment != null) {
         val rec = selectedTuitionForPayment!!
         var amountText by remember { mutableStateOf("250000") }
-        var paymentDate by remember { mutableStateOf("2026-10-29") }
-        var nextDue by remember { mutableStateOf("2026-12-01") }
+        var paymentDate by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
+        var nextDue by remember { mutableStateOf(rec.nextDueDate.ifBlank { ArabicCalendarDateHelper.todayIsoDate() }) }
         var note by remember { mutableStateOf("دفعة قسط دراسي") }
 
         AlertDialog(
@@ -965,19 +965,15 @@ fun TuitionFeesScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedTextField(
-                        value = paymentDate,
-                        onValueChange = { paymentDate = it },
-                        label = { Text("تاريخ الدفع") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = paymentDate,
+                        label = "تاريخ الدفع",
+                        onDateSelected = { selectedIso, _ -> paymentDate = selectedIso }
                     )
-                    OutlinedTextField(
-                        value = nextDue,
-                        onValueChange = { nextDue = it },
-                        label = { Text("تاريخ الاستحقاق القادم") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = nextDue,
+                        label = "تاريخ الاستحقاق القادم",
+                        onDateSelected = { selectedIso, _ -> nextDue = selectedIso }
                     )
                     OutlinedTextField(
                         value = note,
