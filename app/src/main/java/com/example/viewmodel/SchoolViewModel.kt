@@ -1008,7 +1008,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         val parsedThm = repo.parseOccasionThemeConfigJson(remoteThm)
                         if (parsedThm != _occasionThemeConfig.value) {
                             _occasionThemeConfig.value = parsedThm
-                            com.example.util.AppIconSwitcherHelper.setAppIcon(appContext, parsedThm.effectiveAliasName)
+                            com.example.util.AppIconSwitcherHelper.changeLauncherIcon(
+                                appContext,
+                                parsedThm.effectiveAliasName.ifBlank { parsedThm.themeType.name }
+                            )
                         }
                     }
                 } catch (_: Exception) {
@@ -4099,7 +4102,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
         _occasionThemeConfig.value = updated
         repo.saveOccasionThemeConfig(updated)
-        com.example.util.AppIconSwitcherHelper.setAppIcon(appContext, updated.effectiveAliasName)
+        com.example.util.AppIconSwitcherHelper.changeLauncherIcon(
+            appContext,
+            updated.effectiveAliasName.ifBlank { updated.themeType.name }
+        )
         showToastAlert("تم تفعيل ثيم وأيقونة (${cleanTitle}) في جميع المدارس وعلى شاشة الهاتف فوراً", isSuccess = true)
     }
 
@@ -4117,7 +4123,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
         _occasionThemeConfig.value = official
         repo.saveOccasionThemeConfig(official)
-        com.example.util.AppIconSwitcherHelper.setAppIcon(appContext, ".MainActivityDefault")
+        com.example.util.AppIconSwitcherHelper.changeLauncherIcon(appContext, "default")
         showToastAlert("تم إلغاء ثيم المناسبة والعودة للوضع الرسمي الزمردي والأيقونة الافتراضية فوراً", isSuccess = true)
     }
 

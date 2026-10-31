@@ -66,7 +66,12 @@ class MainActivity : ComponentActivity() {
 
     @android.webkit.JavascriptInterface
     fun setAppIcon(aliasName: String) {
-        com.example.util.AppIconSwitcherHelper.setAppIcon(this, aliasName)
+        com.example.util.AppIconSwitcherHelper.changeLauncherIcon(this, aliasName)
+    }
+
+    @android.webkit.JavascriptInterface
+    fun changeLauncherIcon(themeKey: String) {
+        com.example.util.AppIconSwitcherHelper.changeLauncherIcon(this, themeKey)
     }
 
     @android.webkit.JavascriptInterface
@@ -146,7 +151,10 @@ fun MadrasatiRootApp(
     }
 
     LaunchedEffect(occasionThemeConfig.themeType, occasionThemeConfig.launcherAliasName) {
-        com.example.util.AppIconSwitcherHelper.setAppIcon(context, occasionThemeConfig.effectiveAliasName)
+        com.example.util.AppIconSwitcherHelper.changeLauncherIcon(
+            context,
+            occasionThemeConfig.effectiveAliasName.ifBlank { occasionThemeConfig.themeType.name }
+        )
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -642,40 +650,30 @@ fun AuthenticatedMainPlatform(
                                 }
                             }
 
-                            if (schoolConfig.logoBase64.isBlank() &&
-                                (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL || occasionThemeConfig.customIconBase64.isNotBlank())
+                            Base64AvatarImage(
+                                base64Data = currentUser?.photoBase64?.ifBlank { schoolConfig.logoBase64 }
+                                    ?: schoolConfig.logoBase64,
+                                fallbackIcon = Icons.Filled.Person,
+                                contentDescription = currentUser?.fullName ?: schoolConfig.schoolName,
+                                size = 42.dp
+                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                com.example.ui.components.OccasionVectorEmblem(
-                                    themeType = occasionThemeConfig.themeType,
-                                    customIconBase64 = occasionThemeConfig.customIconBase64,
-                                    size = 42.dp
-                                )
-                            } else {
-                                Base64AvatarImage(
-                                    base64Data = schoolConfig.logoBase64.ifBlank { occasionThemeConfig.customIconBase64 },
-                                    fallbackIcon = Icons.Filled.School,
-                                    contentDescription = schoolConfig.schoolName,
-                                    size = 42.dp
-                                )
-                                if (occasionThemeConfig.themeType != OccasionThemeType.OFFICIAL) {
-                                    com.example.ui.components.OccasionVectorEmblem(
-                                        themeType = occasionThemeConfig.themeType,
-                                        customIconBase64 = occasionThemeConfig.customIconBase64,
-                                        size = 30.dp
-                                    )
-                                }
-                            }
-                            Column {
                                 Text(
-                                    text = schoolConfig.schoolName,
+                                    text = currentUser?.fullName?.ifBlank { schoolConfig.schoolName }
+                                        ?: schoolConfig.schoolName,
                                     style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${currentUser?.role?.arabicTitle ?: ""} • ${schoolConfig.address}",
+                                    text = "${currentUser?.role?.arabicTitle ?: ""} • ${schoolConfig.schoolName}",
                                     style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.primary,
                                     maxLines = 1,
                                     softWrap = false,

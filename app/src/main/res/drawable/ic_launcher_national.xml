@@ -4,29 +4,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Sovereign Emerald-Teal Background -->
+    <!-- Deep Emerald Background -->
     <path
-        android:fillColor="#047857"
+        android:fillColor="#064E3B"
         android:pathData="M0,0h108v108h-108z" />
     <path
-        android:fillColor="#0F766E"
+        android:fillColor="#047857"
         android:pathData="M54,14A40,40 0,1 1,14 54A40,40 0,0 1,54 14Z" />
-    <!-- Golden Sovereign Shield Border -->
+    <!-- Golden Sovereign Outer Ring -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#FBBF24"
         android:strokeWidth="2.5"
         android:pathData="M54,17A37,37 0,1 1,17 54A37,37 0,0 1,54 17Z" />
-    <!-- Flag Pole -->
-    <path
-        android:fillColor="#FDE68A"
-        android:pathData="M35,26h4v56h-4z" />
-    <!-- Waving Royal Banner Flag -->
+    <!-- Luxury Golden National Shield (درع وشعار وطني ذهبي) -->
     <path
         android:fillColor="#FBBF24"
-        android:pathData="M39,28C49,25 59,33 73,29L73,55C59,59 49,51 39,54Z" />
-    <!-- Emerald Star inside Flag -->
+        android:pathData="M54,24L76,33L76,53C76,68 65,78 54,83C43,78 32,68 32,53L32,33Z" />
+    <!-- Inner Emerald Shield Core -->
     <path
         android:fillColor="#064E3B"
-        android:pathData="M56,34L58,39L63,39L59,42L61,47L56,44L51,47L53,42L49,39L54,39Z" />
+        android:pathData="M54,29L71,36L71,52C71,64 62,72 54,77C46,72 37,64 37,52L37,36Z" />
+    <!-- Central Sovereign Golden Star & Emblem -->
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M54,37L58,47L68,47L60,53L63,63L54,57L45,63L48,53L40,47L50,47Z" />
 </vector>

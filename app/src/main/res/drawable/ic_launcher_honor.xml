@@ -17,23 +17,25 @@
         android:strokeColor="#FBBF24"
         android:strokeWidth="3"
         android:pathData="M54,17A37,37 0,1 1,17 54A37,37 0,0 1,54 17Z" />
-    <!-- Royal Graduation Cap (Mortarboard) -->
+    <!-- Royal Golden Championship Trophy Handles -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FDE68A"
+        android:strokeWidth="3.5"
+        android:pathData="M36,34C28,34 27,46 36,49M72,34C80,34 81,46 72,49" />
+    <!-- Trophy Cup Body -->
     <path
         android:fillColor="#FBBF24"
-        android:pathData="M54,25L82,38L54,51L26,38Z" />
-    <!-- Cap Tassel -->
-    <path
-        android:fillColor="#FEF08A"
-        android:pathData="M76,40L79,40L79,56L76,56Z" />
-    <!-- Championship Trophy Cup Below Cap -->
+        android:pathData="M35,28L73,28L69,53C67,62 61,67 54,67C47,67 41,62 39,53Z" />
+    <!-- Trophy Pedestal Stem & Base -->
     <path
         android:fillColor="#F59E0B"
-        android:pathData="M39,47L69,47L65,64C63,70 59,73 54,73C49,73 45,70 43,64Z" />
+        android:pathData="M49,67h10v9h-10z" />
     <path
         android:fillColor="#FDE68A"
-        android:pathData="M50,73h8v7h-8zM42,80h24v5h-24z" />
-    <!-- Star of Excellence -->
+        android:pathData="M38,76h32v6h-32z" />
+    <!-- Star of Excellence on Trophy -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,51L56,56L61,56L57,59L59,64L54,61L49,64L51,59L47,56L52,56Z" />
+        android:fillColor="#FEF9C3"
+        android:pathData="M54,34L57,41L65,41L59,46L61,53L54,48L47,53L49,46L43,41L51,41Z" />
 </vector>

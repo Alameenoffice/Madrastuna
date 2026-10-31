@@ -228,6 +228,11 @@ class WebAppInterface(
 
     @JavascriptInterface
     fun setAppIcon(aliasName: String) {
-        AppIconSwitcherHelper.setAppIcon(context, aliasName)
+        AppIconSwitcherHelper.changeLauncherIcon(context, aliasName)
+    }
+
+    @JavascriptInterface
+    fun changeLauncherIcon(themeKey: String) {
+        AppIconSwitcherHelper.changeLauncherIcon(context, themeKey)
     }
 }
