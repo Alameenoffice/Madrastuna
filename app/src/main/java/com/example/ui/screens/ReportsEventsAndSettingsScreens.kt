@@ -1384,8 +1384,19 @@ fun ReportsAndChatScreen(
 fun EventsAndNewsScreen(
     viewModel: SchoolViewModel
 ) {
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
-    val events by viewModel.events.collectAsState()
+    val rawEvents by viewModel.events.collectAsState()
+    val events = remember(rawEvents, schoolConfig.schoolId) {
+        val activeSid = schoolConfig.schoolId.trim()
+        rawEvents.filter { ev ->
+            if (activeSid.isNotEmpty()) {
+                ev.schoolId.trim() == activeSid
+            } else {
+                ev.schoolId.isBlank()
+            }
+        }
+    }
 
     var showPublishEventDialog by remember { mutableStateOf(false) }
     var eventBeingEdited by remember { mutableStateOf<SchoolEvent?>(null) }

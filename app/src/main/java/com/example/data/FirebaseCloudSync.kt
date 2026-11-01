@@ -361,10 +361,14 @@ object FirebaseCloudSync {
 
         if (chosenPayload.isNotBlank()) {
             // If we have a local write timestamp that is newer than the remote document's updatedAt, keep local payload!
-            if (lastLocalWriteTs > 0L && chosenTs in 1 until lastLocalWriteTs) {
+            if (lastLocalWriteTs > 0L && chosenTs < lastLocalWriteTs) {
                 return@withContext localWrittenPayloads[key] ?: chosenPayload
             }
             return@withContext chosenPayload
+        }
+
+        if (lastLocalWriteTs > 0L) {
+            localWrittenPayloads[key]?.let { if (it.isNotBlank()) return@withContext it }
         }
 
         // If fetching feature_settings, also check schools/{schoolId}/settings/config in Firestore

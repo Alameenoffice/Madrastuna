@@ -209,6 +209,35 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _loginConnectingMessage = MutableStateFlow<String?>(null)
     val loginConnectingMessage: StateFlow<String?> = _loginConnectingMessage.asStateFlow()
 
+    // Persistent Attendance Selection States (never reset on tab/section navigation)
+    private val _selectedAttendanceDate = MutableStateFlow(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
+    val selectedAttendanceDate: StateFlow<String> = _selectedAttendanceDate.asStateFlow()
+
+    private val _selectedAttendanceClass = MutableStateFlow("")
+    val selectedAttendanceClass: StateFlow<String> = _selectedAttendanceClass.asStateFlow()
+
+    private val _selectedAttendanceSection = MutableStateFlow("")
+    val selectedAttendanceSection: StateFlow<String> = _selectedAttendanceSection.asStateFlow()
+
+    fun setSelectedAttendanceDate(dateIso: String) {
+        val clean = ArabicTextNormalizer.normalizeDigitsToAscii(dateIso.trim())
+        if (clean.isNotBlank()) {
+            _selectedAttendanceDate.value = clean
+        }
+    }
+
+    fun setSelectedAttendanceClass(gradeClass: String) {
+        if (gradeClass.isNotBlank()) {
+            _selectedAttendanceClass.value = gradeClass
+        }
+    }
+
+    fun setSelectedAttendanceSection(sectionName: String) {
+        if (sectionName.isNotBlank()) {
+            _selectedAttendanceSection.value = sectionName
+        }
+    }
+
     val availableClasses: List<String>
         get() = (_schoolConfig.value.schoolStage.defaultClasses + _schoolConfig.value.registeredClasses)
             .map { ArabicTextNormalizer.cleanPureClassName(it) }
@@ -285,23 +314,35 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 try {
                     if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HONOR_ROLL)) {
                         FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_HONOR_ROLL)?.let {
-                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HONOR_ROLL)) {
+                            if (it.isNotBlank() &&
+                                _schoolConfig.value.schoolId == sid &&
+                                !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HONOR_ROLL)
+                            ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HONOR_ROLL, it)
-                                _students.value = repo.parseStudentsJson(it, sid)
+                                val parsedStudents = repo.parseStudentsJson(it, sid)
+                                _students.value = mergeAttendanceIntoStudents(parsedStudents, _attendance.value)
                             }
                         }
                     }
                     if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ATTENDANCE)) {
                         FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_ATTENDANCE)?.let {
-                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ATTENDANCE)) {
+                            if (it.isNotBlank() &&
+                                _schoolConfig.value.schoolId == sid &&
+                                !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ATTENDANCE)
+                            ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE, it)
-                                _attendance.value = repo.parseAttendanceJson(it, sid)
+                                val parsedAtt = repo.parseAttendanceJson(it, sid)
+                                _attendance.value = parsedAtt
+                                _students.value = mergeAttendanceIntoStudents(_students.value, parsedAtt)
                             }
                         }
                     }
                     if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)) {
                         FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)?.let {
-                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)) {
+                            if (it.isNotBlank() &&
+                                _schoolConfig.value.schoolId == sid &&
+                                !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)
+                            ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES, it)
                                 _studentActivityPosts.value = repo.parseStudentActivityPostsJson(it, sid)
                             }
@@ -401,6 +442,37 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         return true
     }
 
+    private fun mergeAttendanceIntoStudents(
+        studentsList: List<StudentRecord>,
+        attendanceList: List<AttendanceEntry>
+    ): List<StudentRecord> {
+        if (studentsList.isEmpty()) return studentsList
+        val attByStudent = attendanceList.groupBy { it.studentId.trim() }
+        return studentsList.map { stu ->
+            val cleanStuId = stu.id.trim()
+            val stuEntries = attByStudent[cleanStuId].orEmpty()
+            if (stuEntries.isEmpty()) {
+                stu
+            } else {
+                val mergedMap = linkedMapOf<String, String>()
+                stu.dailyAttendance.forEach { (dKey, stVal) ->
+                    val cleanDKey = ArabicTextNormalizer.normalizeDigitsToAscii(dKey.trim())
+                    if (cleanDKey.isNotEmpty() && stVal.isNotBlank()) {
+                        mergedMap[cleanDKey] = stVal.trim().uppercase()
+                    }
+                }
+                // Iterate from oldest to newest so the latest prepended attendance entry is authoritative
+                stuEntries.asReversed().forEach { entry ->
+                    val cleanDKey = ArabicTextNormalizer.normalizeDigitsToAscii(entry.date.trim())
+                    if (cleanDKey.isNotEmpty()) {
+                        mergedMap[cleanDKey] = entry.status.name
+                    }
+                }
+                if (mergedMap == stu.dailyAttendance) stu else stu.copy(dailyAttendance = mergedMap)
+            }
+        }
+    }
+
     private fun reloadSchoolDataIntoMemory(schoolId: String) {
         if (schoolId.isBlank()) return
         repo.setActiveSchoolId(schoolId)
@@ -409,8 +481,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _featureSettings.value = loadedCfg.featureSettings
         _holidaysConfig.value = loadedCfg.holidaysConfig
         _accounts.value = repo.loadAccounts(schoolId)
-        _students.value = repo.loadStudents(schoolId)
-        _attendance.value = repo.loadAttendance(schoolId)
+        val loadedAtt = repo.loadAttendance(schoolId)
+        val loadedStudents = mergeAttendanceIntoStudents(repo.loadStudents(schoolId), loadedAtt)
+        _students.value = loadedStudents
+        _attendance.value = loadedAtt
         _schedules.value = repo.loadSchedules(schoolId)
         _homeworks.value = repo.loadHomeworks(schoolId)
         _examSchedules.value = repo.loadExamSchedules(schoolId)
@@ -784,17 +858,26 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 val user = _currentUser.value
                 if (sid.isNotBlank() && user != null) {
                     try {
-                        // 1. Live sync: honor_roll & students (including Honor Roll status, points, heart reactions, photos)
+                        // 1. Live sync: honor_roll & students (including Honor Roll status, points, heart reactions, photos, dailyAttendance)
                         if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HONOR_ROLL)) {
                             val remoteStudentsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
                                 sid,
                                 FirebaseConfigConstants.COL_HONOR_ROLL
                             )
+                            if (_schoolConfig.value.schoolId != sid) continue
                             if (!remoteStudentsRaw.isNullOrBlank() &&
+                                !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HONOR_ROLL) &&
                                 remoteStudentsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HONOR_ROLL)
                             ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HONOR_ROLL, remoteStudentsRaw)
-                                _students.value = repo.parseStudentsJson(remoteStudentsRaw, sid)
+                                val parsedRemoteStudents = repo.parseStudentsJson(remoteStudentsRaw, sid)
+                                // Merge existing in-memory dailyAttendance & _attendance so a remote student sync never erases local attendance
+                                val localMapByStu = _students.value.associate { it.id.trim() to it.dailyAttendance }
+                                val preservedStudents = parsedRemoteStudents.map { rStu ->
+                                    val localAtt = localMapByStu[rStu.id.trim()].orEmpty()
+                                    if (localAtt.isEmpty()) rStu else rStu.copy(dailyAttendance = rStu.dailyAttendance + localAtt)
+                                }
+                                _students.value = mergeAttendanceIntoStudents(preservedStudents, _attendance.value)
                             }
                         }
 
@@ -925,12 +1008,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 sid,
                                 FirebaseConfigConstants.COL_ATTENDANCE
                             )
+                            if (_schoolConfig.value.schoolId != sid) continue
                             if (!remoteAttRaw.isNullOrBlank() &&
                                 !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_ATTENDANCE) &&
                                 remoteAttRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE)
                             ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_ATTENDANCE, remoteAttRaw)
-                                _attendance.value = repo.parseAttendanceJson(remoteAttRaw, sid)
+                                val remoteEntries = repo.parseAttendanceJson(remoteAttRaw, sid)
+                                // Merge with local _attendance so local entries that haven't round-tripped are never lost
+                                val mergedEntries = (remoteEntries + _attendance.value.filter { it.schoolId.isBlank() || it.schoolId == sid })
+                                    .distinctBy { "${it.studentId.trim()}__${ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim())}" }
+                                _attendance.value = mergedEntries
+                                _students.value = mergeAttendanceIntoStudents(_students.value, mergedEntries)
                             }
                         }
 
@@ -1188,6 +1277,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             val remoteCmtRaw = if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS)) {
                                 FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS)
                             } else null
+                            if (_schoolConfig.value.schoolId != sid) continue
                             var changed = false
                             if (!remoteCmtRaw.isNullOrBlank() &&
                                 remoteCmtRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS)
@@ -1793,6 +1883,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val updated = holidayEntries + remaining
         _attendance.value = updated
         repo.saveAttendance(updated, sid)
+
+        val updatedStudents = _students.value.map { stu ->
+            if ((stu.schoolId.isEmpty() || stu.schoolId == sid) && stu.isActive) {
+                stu.copy(dailyAttendance = stu.dailyAttendance + (cleanDate to AttendanceStatus.HOLIDAY.name))
+            } else stu
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
     }
 
     fun toggleWeeklyHolidayDay(dayName: String) {
@@ -2143,6 +2241,34 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         _studyMaterials.value = emptyList()
         repo.saveStudyMaterials(emptyList(), generatedSchoolId)
+
+        _dailyBehaviors.value = emptyList()
+        repo.saveDailyBehaviors(emptyList(), generatedSchoolId)
+
+        _homeworkSubmissions.value = emptyList()
+        repo.saveHomeworkSubmissions(emptyList(), generatedSchoolId)
+
+        _quickQuizzes.value = emptyList()
+        _quickQuizAnswers.value = emptyList()
+        repo.saveQuickQuizzes(emptyList(), generatedSchoolId)
+
+        _dismissalCalls.value = emptyList()
+        repo.saveDismissalCalls(emptyList(), generatedSchoolId)
+
+        _lostAndFoundItems.value = emptyList()
+        repo.saveLostAndFoundItems(emptyList(), generatedSchoolId)
+
+        _privateSuggestions.value = emptyList()
+        repo.savePrivateSuggestions(emptyList(), generatedSchoolId)
+
+        _studentActivityPosts.value = emptyList()
+        repo.saveStudentActivityPosts(emptyList(), generatedSchoolId)
+
+        _activityViolationReports.value = emptyList()
+        repo.saveActivityViolationReports(emptyList(), generatedSchoolId)
+
+        _userProfilesAndSanctions.value = emptyMap()
+        repo.saveUserProfilesAndSanctions(emptyMap(), generatedSchoolId)
 
         val session = UserSession(
             userId = adminAccount.id,
@@ -3163,14 +3289,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanNote = InputSanitizer.sanitize(note).trim()
         val deterministicId = "attendance_${cleanDate}_$cleanStudentId"
 
-        // Idempotent guard: if the student already has this exact status for this date,
-        // do NOT re-insert, do NOT increment absence counters, and do NOT send duplicate notifications!
+        // Idempotent guard: check both _attendance and student.dailyAttendance for this normalized date
         val existingEntry = _attendance.value.firstOrNull {
             it.studentId.trim() == cleanStudentId &&
                 ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate
         }
+        val existingMapStatus = _students.value.firstOrNull { it.id.trim() == cleanStudentId }
+            ?.dailyAttendance?.get(cleanDate)
+            ?.let { raw -> runCatching { AttendanceStatus.valueOf(raw.trim().uppercase()) }.getOrNull() }
+
         if (existingEntry != null &&
             existingEntry.status == status &&
+            existingMapStatus == status &&
             (cleanNote.isEmpty() || existingEntry.note == cleanNote)
         ) {
             showToastAlert("حالة (${status.arabicLabel}) للطالب ${student.studentName} مثبتة مسبقاً ليوم $cleanDate", isSuccess = true)
@@ -3196,6 +3326,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val updated = listOf(entry) + filtered
         _attendance.value = updated
         repo.saveAttendance(updated, sid)
+
+        // Also update the student's persistent dailyAttendance map in schools/{schoolId}/honor_roll
+        val updatedStudents = _students.value.map { stu ->
+            if (stu.id.trim() == cleanStudentId) {
+                stu.copy(dailyAttendance = stu.dailyAttendance + (cleanDate to status.name))
+            } else stu
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
 
         showToastAlert("تم حفظ حالة (${status.arabicLabel}) للطالب ${student.studentName}", isSuccess = true)
 
@@ -3260,7 +3399,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
 
         val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
-        val cleanDate = InputSanitizer.sanitize(date).trim()
+        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(InputSanitizer.sanitize(date).trim())
         val deterministicId = "attendance_${cleanDate}_${matchedStudent.id}"
         val entry = AttendanceEntry(
             id = deterministicId,
@@ -3275,11 +3414,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
 
         val filtered = _attendance.value.filterNot {
-            it.studentId == matchedStudent.id && it.date.trim() == cleanDate
+            it.studentId.trim() == matchedStudent.id.trim() &&
+                ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate
         }
         val updated = listOf(entry) + filtered
         _attendance.value = updated
         repo.saveAttendance(updated, sid)
+
+        val updatedStudents = _students.value.map { stu ->
+            if (stu.id.trim() == matchedStudent.id.trim()) {
+                stu.copy(dailyAttendance = stu.dailyAttendance + (cleanDate to AttendanceStatus.PRESENT.name))
+            } else stu
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
 
         val arrivalMsg = "وصل ابنكم ${matchedStudent.fullNameWithFather} (${matchedStudent.gradeClass} - شعبة ${matchedStudent.sectionName}) إلى المدرسة الآن الساعة $timeNow"
         showToastAlert("تم التعرف على الطالب (${matchedStudent.fullNameWithFather}) وتسجيل حضوره بالـ QR وإبلاغ ولي أمره فوراً", isSuccess = true)
@@ -3410,6 +3558,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             val updatedAtt = newEntries + filteredAtt
             _attendance.value = updatedAtt
             repo.saveAttendance(updatedAtt, sid)
+
+            val excusedPairs = datesToMark.associateWith { AttendanceStatus.EXCUSED.name }
+            val updatedStudents = _students.value.map { stu ->
+                if (stu.id.trim() == cleanStudentId) {
+                    stu.copy(dailyAttendance = stu.dailyAttendance + excusedPairs)
+                } else stu
+            }
+            _students.value = updatedStudents
+            repo.saveStudents(updatedStudents, sid)
         }
 
         val statusAction = if (approve) "تمت الموافقة على" else "تم رفض"
@@ -3503,18 +3660,61 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
 
     /**
+     * Returns the canonical date-keyed attendance map (`YYYY-MM-DD` -> `AttendanceStatus`) for a student,
+     * merging `StudentRecord.dailyAttendance` and `_attendance.value` so that each date has a single authoritative status.
+     */
+    fun getStudentAttendanceMap(studentId: String): Map<String, AttendanceStatus> {
+        val cleanId = studentId.trim()
+        if (cleanId.isEmpty()) return emptyMap()
+        val map = linkedMapOf<String, AttendanceStatus>()
+
+        val student = _students.value.firstOrNull { it.id.trim() == cleanId }
+        student?.dailyAttendance?.forEach { (rawDate, rawStatus) ->
+            val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(rawDate.trim())
+            if (cleanDate.isNotEmpty()) {
+                val parsed = runCatching { AttendanceStatus.valueOf(rawStatus.trim().uppercase()) }.getOrNull()
+                if (parsed != null) {
+                    map[cleanDate] = parsed
+                }
+            }
+        }
+
+        // Overlay _attendance entries from oldest to newest so the latest prepended entry wins
+        _attendance.value
+            .filter { it.studentId.trim() == cleanId && it.date.isNotBlank() }
+            .asReversed()
+            .forEach { entry ->
+                val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(entry.date.trim())
+                if (cleanDate.isNotEmpty()) {
+                    map[cleanDate] = entry.status
+                }
+            }
+
+        return map
+    }
+
+    /**
+     * Reads the student's saved attendance status for a specific `YYYY-MM-DD` date directly from
+     * the persistent date-keyed attendance map / records, falling back to `PRESENT` only when no
+     * record exists for that date.
+     */
+    fun getStudentAttendanceStatusForDate(studentId: String, dateIso: String): AttendanceStatus {
+        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(dateIso.trim())
+        if (cleanDate.isNotEmpty() && getHolidayLabelForDate(cleanDate) != null) {
+            return AttendanceStatus.HOLIDAY
+        }
+        val map = getStudentAttendanceMap(studentId)
+        return map[cleanDate] ?: AttendanceStatus.PRESENT
+    }
+
+    /**
      * Computes the Automatic Motivational Badges for a student:
      * 1. "وسام الالتزام الذهبي": 100% attendance (0 ABSENT records) during the current month.
      * 2. "وسام نجم المادة": Full score (10/10 or 100/100) in any subject exam.
      */
     fun getStudentAutoBadges(studentId: String): List<StudentAutoBadge> {
         val badges = mutableListOf<StudentAutoBadge>()
-        val currentMonthPrefix = SimpleDateFormat("yyyy-MM", Locale.US).format(Date())
-
-        val studentAtt = _attendance.value.filter {
-            it.studentId == studentId && (it.date.startsWith(currentMonthPrefix) || it.date.isNotBlank())
-        }
-        val absentCount = studentAtt.count { it.status == AttendanceStatus.ABSENT }
+        val absentCount = getTotalAbsenceDays(studentId)
         if (absentCount == 0) {
             badges.add(
                 StudentAutoBadge(
@@ -3551,17 +3751,28 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun getTotalAbsenceDays(studentId: String): Int {
-        // Group by canonical date so a single day can NEVER be counted more than once,
-        // and only count the date if the canonical (latest) status for that date is ABSENT
-        // and the date is NOT a weekly or official school holiday.
-        val cleanId = studentId.trim()
-        return _attendance.value
-            .filter { it.studentId.trim() == cleanId && it.date.isNotBlank() }
-            .groupBy { ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) }
-            .count { (dateKey, entriesForDate) ->
-                entriesForDate.first().status == AttendanceStatus.ABSENT &&
-                    getHolidayLabelForDate(dateKey) == null
-            }
+        // Count unique dates in the student's canonical date-keyed map where status is ABSENT (excluding holidays)
+        return getStudentAttendanceMap(studentId).count { (dateKey, status) ->
+            status == AttendanceStatus.ABSENT && getHolidayLabelForDate(dateKey) == null
+        }
+    }
+
+    fun getTotalExcusedDays(studentId: String): Int {
+        return getStudentAttendanceMap(studentId).count { (dateKey, status) ->
+            status == AttendanceStatus.EXCUSED && getHolidayLabelForDate(dateKey) == null
+        }
+    }
+
+    fun getTotalLateDays(studentId: String): Int {
+        return getStudentAttendanceMap(studentId).count { (dateKey, status) ->
+            status == AttendanceStatus.LATE && getHolidayLabelForDate(dateKey) == null
+        }
+    }
+
+    fun getTotalPresentDays(studentId: String): Int {
+        return getStudentAttendanceMap(studentId).count { (dateKey, status) ->
+            status == AttendanceStatus.PRESENT && getHolidayLabelForDate(dateKey) == null
+        }
     }
 
     // =========================================================================
@@ -4135,6 +4346,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val sid = _schoolConfig.value.schoolId
+        val sName = _schoolConfig.value.schoolName
         val author = _currentUser.value?.fullName ?: "إدارة المدرسة"
         val ev = SchoolEvent(
             id = "ev_${UUID.randomUUID().toString().take(6)}",
@@ -4147,9 +4359,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             authorName = author,
             heartCount = 0,
             likedByUserIds = emptyList(),
-            schoolId = sid
+            schoolId = sid,
+            schoolName = sName
         )
-        val updated = listOf(ev) + _events.value
+        val updated = listOf(ev) + _events.value.filter { it.schoolId.isBlank() || it.schoolId == sid }
         _events.value = updated
         repo.saveEvents(updated, sid)
 
@@ -5250,9 +5463,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val sName = _schoolConfig.value.schoolName
         val post = StudentActivityPost(
             id = "act_${UUID.randomUUID().toString().take(6)}",
             schoolId = sid,
+            schoolName = sName,
             authorUserId = user.id,
             authorStudentId = if (isStaffOrAdmin) "" else (linkedStu?.id ?: user.linkedStudentId),
             authorName = authorDisplayName,
@@ -5270,7 +5485,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             createdAtMillis = System.currentTimeMillis()
         )
 
-        val updated = listOf(post) + _studentActivityPosts.value
+        val updated = listOf(post) + _studentActivityPosts.value.filter { it.schoolId.isBlank() || it.schoolId == sid }
         _studentActivityPosts.value = updated
         repo.saveStudentActivityPosts(updated, sid)
 

@@ -703,6 +703,19 @@ class SchoolRepository(context: Context) {
                     o.optString("gradeClass"),
                     o.optString("sectionName")
                 )
+                val dailyAttObj = o.optJSONObject("dailyAttendance")
+                val dailyAttMap = linkedMapOf<String, String>()
+                if (dailyAttObj != null) {
+                    val keys = dailyAttObj.keys()
+                    while (keys.hasNext()) {
+                        val rawDateKey = keys.next()
+                        val cleanDateKey = ArabicTextNormalizer.normalizeDigitsToAscii(rawDateKey.trim())
+                        val rawStatusVal = dailyAttObj.optString(rawDateKey, "").trim().uppercase()
+                        if (cleanDateKey.isNotEmpty() && rawStatusVal.isNotEmpty()) {
+                            dailyAttMap[cleanDateKey] = rawStatusVal
+                        }
+                    }
+                }
                 list.add(
                     StudentRecord(
                         id = o.optString("id"),
@@ -728,7 +741,8 @@ class SchoolRepository(context: Context) {
                         likedByUserIds = jsonArrayToList(o.optJSONArray("likedBy") ?: o.optJSONArray("likedByUserIds")).distinct(),
                         isBusSubscribed = o.optBoolean("isBusSubscribed", false),
                         busRouteName = o.optString("busRouteName", "الخط الصباحي والمسائي"),
-                        schoolId = itemSchoolId
+                        schoolId = itemSchoolId,
+                        dailyAttendance = dailyAttMap
                     )
                 )
             }
@@ -741,13 +755,20 @@ class SchoolRepository(context: Context) {
     fun saveStudents(students: List<StudentRecord>, schoolId: String = getActiveSchoolId()) {
         if (schoolId.isBlank()) return
         val arr = JSONArray()
-        students.forEach { s ->
+        students.filter { it.schoolId.isBlank() || it.schoolId == schoolId }.forEach { s ->
             val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
                 s.gradeClass,
                 s.sectionName
             )
             val cleanLikedBy = s.likedByUserIds.filter { it.isNotBlank() }.distinct()
             val finalHeartCount = if (cleanLikedBy.isNotEmpty() || s.heartCount == 0) cleanLikedBy.size else s.heartCount
+            val dailyAttJson = JSONObject()
+            s.dailyAttendance.forEach { (dKey, stVal) ->
+                val cleanDKey = ArabicTextNormalizer.normalizeDigitsToAscii(dKey.trim())
+                if (cleanDKey.isNotEmpty() && stVal.isNotBlank()) {
+                    dailyAttJson.put(cleanDKey, stVal.trim().uppercase())
+                }
+            }
             arr.put(JSONObject().apply {
                 put("id", s.id)
                 put("studentName", InputSanitizer.sanitize(s.studentName))
@@ -771,6 +792,7 @@ class SchoolRepository(context: Context) {
                 put("isBusSubscribed", s.isBusSubscribed)
                 put("busRouteName", InputSanitizer.sanitize(s.busRouteName))
                 put("schoolId", schoolId)
+                put("dailyAttendance", dailyAttJson)
             })
         }
         val jsonStr = arr.toString()
@@ -795,8 +817,10 @@ class SchoolRepository(context: Context) {
             val dedupMap = linkedMapOf<String, AttendanceEntry>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 val stuId = o.optString("studentId").trim()
-                val cleanDate = o.optString("date").trim()
+                val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(o.optString("date").trim())
                 if (stuId.isEmpty() || cleanDate.isEmpty()) continue
                 val deterministicId = "attendance_${cleanDate}_${stuId}"
                 val entry = AttendanceEntry(
@@ -811,7 +835,7 @@ class SchoolRepository(context: Context) {
                         AttendanceStatus.valueOf(rawStatus)
                     }.getOrDefault(AttendanceStatus.PRESENT),
                     note = o.optString("note"),
-                    schoolId = o.optString("schoolId", schoolId)
+                    schoolId = itemSid
                 )
                 // Keep first occurrence (latest prepended record) per (studentId, date)
                 val key = "${stuId}__${cleanDate}"
@@ -828,16 +852,17 @@ class SchoolRepository(context: Context) {
     fun saveAttendance(entries: List<AttendanceEntry>, schoolId: String = getActiveSchoolId()) {
         if (schoolId.isBlank()) return
         val dedupMap = linkedMapOf<String, AttendanceEntry>()
-        entries.forEach { e ->
+        entries.filter { it.schoolId.isBlank() || it.schoolId == schoolId }.forEach { e ->
             val stuId = e.studentId.trim()
-            val cleanDate = e.date.trim()
+            val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(e.date.trim())
             if (stuId.isNotEmpty() && cleanDate.isNotEmpty()) {
                 val key = "${stuId}__${cleanDate}"
                 if (!dedupMap.containsKey(key)) {
                     dedupMap[key] = e.copy(
                         id = "attendance_${cleanDate}_${stuId}",
                         studentId = stuId,
-                        date = cleanDate
+                        date = cleanDate,
+                        schoolId = schoolId
                     )
                 }
             }
@@ -879,6 +904,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<SchedulePeriod>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 list.add(
                     SchedulePeriod(
                         id = o.optString("id"),
@@ -889,7 +916,7 @@ class SchoolRepository(context: Context) {
                         subjectName = o.optString("subjectName"),
                         teacherName = o.optString("teacherName"),
                         timeSlot = o.optString("timeSlot"),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -940,6 +967,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<HomeworkItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 list.add(
                     HomeworkItem(
                         id = o.optString("id"),
@@ -951,7 +980,7 @@ class SchoolRepository(context: Context) {
                         homeworkDetails = o.optString("homeworkDetails"),
                         dueDate = o.optString("dueDate"),
                         createdAt = o.optString("createdAt"),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -1005,6 +1034,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<ExamScheduleItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 list.add(
                     ExamScheduleItem(
                         id = o.optString("id"),
@@ -1016,7 +1047,7 @@ class SchoolRepository(context: Context) {
                         timeSlot = o.optString("timeSlot"),
                         topicsIncluded = o.optString("topicsIncluded"),
                         hallNumber = o.optString("hallNumber"),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -1073,6 +1104,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<SubjectGrade>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 val gCls = o.optString("gradeClass")
                 val defaultScale = GradingRules.defaultMaxScoreForClass(gCls)
                 val scale = o.optInt("maxScoreScale", defaultScale).let { if (it == 10) 10 else 100 }
@@ -1091,7 +1124,7 @@ class SchoolRepository(context: Context) {
                         maxScoreScale = scale,
                         extraDailyScores = jsonArrayToIntList(o.optJSONArray("extraDailyScores")),
                         extraMonthlyScores = jsonArrayToIntList(o.optJSONArray("extraMonthlyScores")),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -1144,6 +1177,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<TuitionRecord>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 val instArr = o.optJSONArray("installments") ?: JSONArray()
                 val installments = mutableListOf<TuitionInstallment>()
                 for (j in 0 until instArr.length()) {
@@ -1169,7 +1204,7 @@ class SchoolRepository(context: Context) {
                         totalFee = o.optLong("totalFee", 1500000L),
                         nextDueDate = o.optString("nextDueDate", "2026-11-15"),
                         installments = installments,
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -1228,6 +1263,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<ParentReport>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 list.add(
                     ParentReport(
                         id = o.optString("id"),
@@ -1241,7 +1278,7 @@ class SchoolRepository(context: Context) {
                         details = o.optString("details"),
                         senderName = o.optString("senderName"),
                         createdAt = o.optString("createdAt"),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -1288,6 +1325,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<ChatMessage>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 list.add(
                     ChatMessage(
                         id = o.optString("id"),
@@ -1307,7 +1346,7 @@ class SchoolRepository(context: Context) {
                         messageText = o.optString("messageText"),
                         timestamp = o.optString("timestamp"),
                         imageBase64 = o.optString("imageBase64", ""),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -1360,6 +1399,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<SchoolEvent>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 val likedList = jsonArrayToList(o.optJSONArray("likedBy") ?: o.optJSONArray("likedByUserIds")).distinct()
                 val heartCount = if (likedList.isNotEmpty()) likedList.size else o.optInt("heartCount", 0)
                 list.add(
@@ -1374,7 +1415,8 @@ class SchoolRepository(context: Context) {
                         authorName = o.optString("authorName", "إدارة المدرسة"),
                         heartCount = heartCount,
                         likedByUserIds = likedList,
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid,
+                        schoolName = o.optString("schoolName", "")
                     )
                 )
             }
@@ -1387,7 +1429,7 @@ class SchoolRepository(context: Context) {
     fun saveEvents(events: List<SchoolEvent>, schoolId: String = getActiveSchoolId()) {
         if (schoolId.isBlank()) return
         val arr = JSONArray()
-        events.forEach { ev ->
+        events.filter { it.schoolId.isBlank() || it.schoolId == schoolId }.forEach { ev ->
             val cleanLikedBy = ev.likedByUserIds.filter { it.isNotBlank() }.distinct()
             val finalHeartCount = if (cleanLikedBy.isNotEmpty() || ev.heartCount == 0) cleanLikedBy.size else ev.heartCount
             arr.put(JSONObject().apply {
@@ -1403,6 +1445,7 @@ class SchoolRepository(context: Context) {
                 put("likedBy", JSONArray(cleanLikedBy))
                 put("likedByUserIds", JSONArray(cleanLikedBy))
                 put("schoolId", schoolId)
+                put("schoolName", InputSanitizer.sanitize(ev.schoolName))
             })
         }
         val jsonStr = arr.toString()
@@ -1423,6 +1466,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<AppNotification>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 list.add(
                     AppNotification(
                         id = o.optString("id"),
@@ -1440,7 +1485,7 @@ class SchoolRepository(context: Context) {
                         targetItemId = o.optString("targetItemId", ""),
                         createdAt = o.optString("createdAt"),
                         isRead = o.optBoolean("isRead", false),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -1495,6 +1540,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<LeaveRequestItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 list.add(
                     LeaveRequestItem(
                         id = o.optString("id"),
@@ -1515,7 +1562,7 @@ class SchoolRepository(context: Context) {
                         }.getOrDefault(LeaveRequestStatus.PENDING),
                         adminResponseNote = o.optString("adminResponseNote", ""),
                         createdAt = o.optString("createdAt"),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -1528,7 +1575,7 @@ class SchoolRepository(context: Context) {
     fun saveLeaveRequests(items: List<LeaveRequestItem>, schoolId: String = getActiveSchoolId()) {
         if (schoolId.isBlank()) return
         val arr = JSONArray()
-        items.forEach { item ->
+        items.filter { it.schoolId.isBlank() || it.schoolId == schoolId }.forEach { item ->
             arr.put(JSONObject().apply {
                 put("id", item.id)
                 put("studentId", item.studentId)
@@ -1565,6 +1612,8 @@ class SchoolRepository(context: Context) {
             val list = mutableListOf<StudyMaterialItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 list.add(
                     StudyMaterialItem(
                         id = o.optString("id"),
@@ -1578,7 +1627,7 @@ class SchoolRepository(context: Context) {
                         imageBase64 = o.optString("imageBase64", ""),
                         materialType = o.optString("materialType", "ملخص دراسي / ملزمة PDF"),
                         createdAt = o.optString("createdAt"),
-                        schoolId = o.optString("schoolId", schoolId)
+                        schoolId = itemSid
                     )
                 )
             }
@@ -2758,15 +2807,17 @@ class SchoolRepository(context: Context) {
         if (schoolId.isBlank()) return emptyList()
         val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS), null)
             ?: return emptyList()
-        return parseStudentActivityCommentsJson(raw)
+        return parseStudentActivityCommentsJson(raw, schoolId)
     }
 
-    fun parseStudentActivityCommentsJson(raw: String): List<StudentActivityComment> {
+    fun parseStudentActivityCommentsJson(raw: String, schoolId: String = getActiveSchoolId()): List<StudentActivityComment> {
         return try {
             val commentsArr = JSONArray(raw)
             val commentsList = mutableListOf<StudentActivityComment>()
             for (cIdx in 0 until commentsArr.length()) {
                 val co = commentsArr.getJSONObject(cIdx)
+                val itemSid = co.optString("schoolId", "").trim()
+                if (schoolId.isNotEmpty() && itemSid.isNotEmpty() && itemSid != schoolId) continue
                 val cRole = runCatching {
                     UserRole.valueOf(co.optString("authorRole", UserRole.STUDENT.name))
                 }.getOrDefault(UserRole.STUDENT)
@@ -2856,7 +2907,7 @@ class SchoolRepository(context: Context) {
 
                 val legacyCommentsArr = o.optJSONArray("comments")
                 val legacyComments = if (legacyCommentsArr != null) {
-                    parseStudentActivityCommentsJson(legacyCommentsArr.toString())
+                    parseStudentActivityCommentsJson(legacyCommentsArr.toString(), schoolId)
                 } else {
                     emptyList()
                 }
@@ -2865,6 +2916,7 @@ class SchoolRepository(context: Context) {
                     StudentActivityPost(
                         id = o.optString("id"),
                         schoolId = itemSid,
+                        schoolName = o.optString("schoolName", ""),
                         authorUserId = o.optString("authorUserId"),
                         authorStudentId = o.optString("authorStudentId", ""),
                         authorName = o.optString("authorName"),
@@ -2898,7 +2950,7 @@ class SchoolRepository(context: Context) {
         val postsArr = JSONArray()
         val allCommentsArr = JSONArray()
 
-        posts.forEach { p ->
+        posts.filter { it.schoolId.isBlank() || it.schoolId == schoolId }.forEach { p ->
             val cleanLikes = p.likedByUserIds.filter { it.isNotBlank() }.distinct().takeLast(500)
             val finalHearts = if (cleanLikes.isNotEmpty() || p.heartCount == 0) cleanLikes.size else maxOf(cleanLikes.size, p.heartCount)
             val safeAuthorClass = if (p.authorRole == UserRole.ADMIN || p.authorRole == UserRole.TEACHER) "" else InputSanitizer.sanitize(p.authorGradeClass)
@@ -2912,6 +2964,7 @@ class SchoolRepository(context: Context) {
                         put("id", r.id)
                         put("commentId", r.commentId)
                         put("postId", p.id)
+                        put("schoolId", schoolId)
                         put("authorUserId", r.authorUserId)
                         put("authorName", InputSanitizer.sanitize(r.authorName))
                         put("authorRole", r.authorRole.name)
@@ -2945,6 +2998,7 @@ class SchoolRepository(context: Context) {
             postsArr.put(JSONObject().apply {
                 put("id", p.id)
                 put("schoolId", schoolId)
+                put("schoolName", InputSanitizer.sanitize(p.schoolName))
                 put("authorUserId", p.authorUserId)
                 put("authorStudentId", p.authorStudentId)
                 put("authorName", InputSanitizer.sanitize(p.authorName))

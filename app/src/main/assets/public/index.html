@@ -943,14 +943,54 @@
       findUserAcrossSchools: async function() { return null; }
     };
 
+    function strictSchoolFilter(items, targetSchoolId) {
+      const sid = targetSchoolId || state.schoolId;
+      if (!Array.isArray(items)) return [];
+      if (!sid) return [];
+      return items.filter(function(item) {
+        return item && item.schoolId === sid;
+      });
+    }
+
+    function getStudentAttendanceMap(student) {
+      const map = {};
+      if (!student) return map;
+      if (student.dailyAttendance && typeof student.dailyAttendance === 'object') {
+        Object.keys(student.dailyAttendance).forEach(function(dateKey) {
+          if (dateKey && student.dailyAttendance[dateKey]) {
+            map[dateKey] = student.dailyAttendance[dateKey];
+          }
+        });
+      }
+      const attList = strictSchoolFilter(state.attendance, state.schoolId);
+      attList.forEach(function(rec) {
+        if (rec && rec.studentId === student.id && rec.date && rec.status) {
+          map[rec.date] = rec.status;
+        }
+      });
+      return map;
+    }
+
+    function getStudentStatusForDate(student, dateStr) {
+      if (!student || !dateStr) return 'PRESENT';
+      const map = getStudentAttendanceMap(student);
+      return map[dateStr] || 'PRESENT';
+    }
+
+    function getStudentTotalByStatus(student, targetStatus) {
+      const map = getStudentAttendanceMap(student);
+      return Object.values(map).filter(function(st) { return st === targetStatus; }).length;
+    }
+
     async function saveTenantDoc(subCol, docId, payload) {
       const schoolId = state.schoolId;
       if (!schoolId) return;
       const cleanPayload = Object.assign({}, payload, {
         schoolId: schoolId,
+        schoolName: (state.schoolConfig && state.schoolConfig.schoolName) ? state.schoolConfig.schoolName : (payload.schoolName || ''),
         updatedAt: new Date().toISOString()
       });
-      const list = state[subCol] || [];
+      const list = strictSchoolFilter(state[subCol] || [], schoolId);
       const idx = list.findIndex(function(x) { return x.id === docId; });
       if (idx >= 0) list[idx] = Object.assign({ id: docId }, cleanPayload);
       else list.unshift(Object.assign({ id: docId }, cleanPayload));
@@ -1679,8 +1719,11 @@
       if (state.activeSection === 'ATTENDANCE') {
         if (isParentOrStudent) {
           const myStudent = getLinkedStudent(user);
-          const myRecords = myStudent ? state.attendance.filter(function(a) { return a.studentId === myStudent.id; }) : [];
-          const totalAbsences = myRecords.filter(function(a) { return a.status === 'ABSENT'; }).length;
+          const myMap = getStudentAttendanceMap(myStudent);
+          const myRecords = Object.keys(myMap).sort().reverse().map(function(dKey) {
+            return { date: dKey, status: myMap[dKey] };
+          });
+          const totalAbsences = getStudentTotalByStatus(myStudent, 'ABSENT');
           const statusLabels = { PRESENT: 'حاضر ✓', ABSENT: 'غائب ✗', LATE: 'متأخر', EXCUSED: 'مجاز' };
 
           return `
@@ -1736,10 +1779,8 @@
             </div>
 
             ${studentsInClass.map(function(stu) {
-              const recId = state.attendanceDate + '_' + stu.id;
-              const rec = state.attendance.find(function(a) { return a.id === recId; });
-              const totalStuAbs = state.attendance.filter(function(a) { return a.studentId === stu.id && a.status === 'ABSENT'; }).length;
-              const curStatus = rec ? rec.status : '';
+              const totalStuAbs = getStudentTotalByStatus(stu, 'ABSENT');
+              const curStatus = getStudentStatusForDate(stu, state.attendanceDate);
               return `
                 <div class="between" style="padding:10px 0;border-bottom:1px solid var(--border);">
                   <div>
@@ -2759,6 +2800,9 @@
       if (!validateSession(['ADMIN', 'TEACHER'])) return;
       const stu = state.users.find(function(u) { return u.id === studentId; });
       if (!stu) return;
+      const updatedDailyMap = Object.assign({}, stu.dailyAttendance || {});
+      updatedDailyMap[state.attendanceDate] = status;
+      stu.dailyAttendance = updatedDailyMap;
       const recId = state.attendanceDate + '_' + studentId;
       await saveTenantDoc('attendance', recId, {
         studentId: studentId,
@@ -2769,6 +2813,7 @@
         status: status,
         recordedBy: state.currentUser.fullName
       });
+      await saveTenantDoc('users', stu.id, Object.assign({}, stu, { dailyAttendance: updatedDailyMap }));
       const statusAr = { PRESENT: 'حاضر', ABSENT: 'غائب', LATE: 'متأخر', EXCUSED: 'مجاز' }[status] || status;
       showToast('تم تسجيل حالة الطالب (' + stu.fullName + '): ' + statusAr, 'success');
       if (status === 'ABSENT' || status === 'LATE') {
@@ -3433,29 +3478,34 @@
       subCollections.forEach((colName) => {
         const colRef = collection(db, 'schools', schoolId, colName);
         const unsub = onSnapshot(colRef, (snapshot) => {
+          if (window.appState.schoolId !== schoolId) return;
           const items = [];
           snapshot.forEach((docSnap) => {
-            items.push({ id: docSnap.id, ...docSnap.data() });
+            const d = docSnap.data();
+            if (!d.schoolId || d.schoolId === schoolId) {
+              items.push({ id: docSnap.id, ...d, schoolId: schoolId });
+            }
           });
 
           if (initialSnapshotLoaded[colName]) {
             snapshot.docChanges().forEach((change) => {
               if (change.type === 'added') {
-                handleRealtimeExternalAlert(colName, change.doc.data(), change.doc.id);
+                const cd = change.doc.data();
+                if (!cd.schoolId || cd.schoolId === schoolId) {
+                  handleRealtimeExternalAlert(colName, cd, change.doc.id);
+                }
               }
             });
           } else {
             initialSnapshotLoaded[colName] = true;
           }
 
-          if (items.length > 0) {
-            window.appState[colName] = items;
-            if (colName === 'users' && window.appState.currentUser) {
-              const updatedMe = items.find(u => u.id === window.appState.currentUser.id);
-              if (updatedMe) window.appState.currentUser = updatedMe;
-            }
-            window.renderApp();
+          window.appState[colName] = items;
+          if (colName === 'users' && window.appState.currentUser) {
+            const updatedMe = items.find(u => u.id === window.appState.currentUser.id);
+            if (updatedMe) window.appState.currentUser = updatedMe;
           }
+          window.renderApp();
         }, () => {});
         activeUnsubscribers.push(unsub);
       });

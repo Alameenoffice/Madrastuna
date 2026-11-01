@@ -944,28 +944,35 @@ fun DailyAttendanceScreen(
     val allowedClasses = remember(schoolConfig, currentUser, students, selectedParentChildId) {
         viewModel.getAllowedClassesForUser(currentUser)
     }
-    var selectedClass by remember(currentUser?.id, allowedClasses) {
-        mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
+    val vmSelectedClass by viewModel.selectedAttendanceClass.collectAsState()
+    val selectedClass = if (vmSelectedClass.isNotBlank() && vmSelectedClass in allowedClasses) {
+        vmSelectedClass
+    } else {
+        allowedClasses.firstOrNull() ?: "الأول المتوسط"
     }
+
     val allowedSections = remember(schoolConfig, currentUser, students, selectedClass, selectedParentChildId) {
         viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
     }
-    var selectedSection by remember(currentUser?.id, selectedClass, allowedSections) {
-        mutableStateOf(allowedSections.firstOrNull() ?: "أ")
+    val vmSelectedSection by viewModel.selectedAttendanceSection.collectAsState()
+    val selectedSection = if (vmSelectedSection.isNotBlank() && vmSelectedSection in allowedSections) {
+        vmSelectedSection
+    } else {
+        allowedSections.firstOrNull() ?: "أ"
     }
 
-    LaunchedEffect(allowedClasses) {
-        if (selectedClass !in allowedClasses && allowedClasses.isNotEmpty()) {
-            selectedClass = allowedClasses.first()
+    LaunchedEffect(allowedClasses, vmSelectedClass) {
+        if ((vmSelectedClass.isBlank() || vmSelectedClass !in allowedClasses) && allowedClasses.isNotEmpty()) {
+            viewModel.setSelectedAttendanceClass(allowedClasses.first())
         }
     }
-    LaunchedEffect(allowedSections) {
-        if (selectedSection !in allowedSections && allowedSections.isNotEmpty()) {
-            selectedSection = allowedSections.first()
+    LaunchedEffect(allowedSections, vmSelectedSection) {
+        if ((vmSelectedSection.isBlank() || vmSelectedSection !in allowedSections) && allowedSections.isNotEmpty()) {
+            viewModel.setSelectedAttendanceSection(allowedSections.first())
         }
     }
 
-    var selectedDate by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
+    val selectedDate by viewModel.selectedAttendanceDate.collectAsState()
     val selectedDateHolidayLabel = remember(holidaysConfig, selectedDate) {
         viewModel.getHolidayLabelForDate(selectedDate)
     }
@@ -1034,7 +1041,30 @@ fun DailyAttendanceScreen(
             val myStu = scopedStudents.firstOrNull()
             if (myStu != null) {
                 val myTotalAbsences = viewModel.getTotalAbsenceDays(myStu.id)
-                val rawMyRecords = attendance.filter { it.studentId == myStu.id }
+                val baseList = attendance.filter { it.studentId == myStu.id }
+                val existingDates = baseList.map {
+                    ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim())
+                }.toSet()
+                val extraFromDailyMap = myStu.dailyAttendance.entries.mapNotNull { (rawDate, rawSt) ->
+                    val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(rawDate.trim())
+                    if (cleanDate.isBlank() || cleanDate in existingDates) {
+                        null
+                    } else {
+                        val parsedSt = runCatching { AttendanceStatus.valueOf(rawSt.trim()) }.getOrNull()
+                            ?: return@mapNotNull null
+                        AttendanceEntry(
+                            id = "ATT_DAILY_${myStu.id}_$cleanDate",
+                            studentId = myStu.id,
+                            studentName = myStu.fullNameWithFather,
+                            gradeClass = myStu.gradeClass,
+                            sectionName = myStu.sectionName,
+                            date = cleanDate,
+                            status = parsedSt,
+                            schoolId = myStu.schoolId
+                        )
+                    }
+                }
+                val rawMyRecords = (baseList + extraFromDailyMap).sortedByDescending { it.date }
                 val cleanSel = ArabicTextNormalizer.normalizeDigitsToAscii(selectedDate.trim())
                 val myRecords = if (selectedDateHolidayLabel != null && rawMyRecords.none {
                         ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanSel
@@ -1055,14 +1085,7 @@ fun DailyAttendanceScreen(
                 } else {
                     rawMyRecords
                 }
-                val todayStatus = if (selectedDateHolidayLabel != null) {
-                    AttendanceStatus.HOLIDAY
-                } else {
-                    myRecords.firstOrNull {
-                        ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) ==
-                            ArabicTextNormalizer.normalizeDigitsToAscii(selectedDate.trim())
-                    }?.status ?: AttendanceStatus.PRESENT
-                }
+                val todayStatus = viewModel.getStudentAttendanceStatusForDate(myStu.id, selectedDate)
                 val myLeaveRequests = leaveRequests.filter { it.studentId == myStu.id }
                 val myBadges = viewModel.getStudentAutoBadges(myStu.id)
                 val myBehaviors = dailyBehaviors.filter { it.studentId == myStu.id }
@@ -1479,7 +1502,7 @@ fun DailyAttendanceScreen(
                             ModernCalendarDatePickerField(
                                 selectedDateIso = selectedDate,
                                 label = "تاريخ الرصد",
-                                onDateSelected = { selectedIso, _ -> selectedDate = selectedIso },
+                                onDateSelected = { selectedIso, _ -> viewModel.setSelectedAttendanceDate(selectedIso) },
                                 modifier = Modifier.weight(0.95f)
                             )
                             OutlinedTextField(
@@ -1515,10 +1538,10 @@ fun DailyAttendanceScreen(
                                 FilterChip(
                                     selected = selectedClass == cls,
                                     onClick = {
-                                        selectedClass = cls
+                                        viewModel.setSelectedAttendanceClass(cls)
                                         val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
                                         if (selectedSection !in nextSecs) {
-                                            selectedSection = nextSecs.firstOrNull() ?: "أ"
+                                            viewModel.setSelectedAttendanceSection(nextSecs.firstOrNull() ?: "أ")
                                         }
                                     },
                                     label = { Text(cls, maxLines = 1, softWrap = false) },
@@ -1541,7 +1564,7 @@ fun DailyAttendanceScreen(
                             allowedSections.forEach { sec ->
                                 FilterChip(
                                     selected = selectedSection == sec,
-                                    onClick = { selectedSection = sec },
+                                    onClick = { viewModel.setSelectedAttendanceSection(sec) },
                                     label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
                                 )
                             }
@@ -1781,19 +1804,20 @@ fun DailyAttendanceScreen(
                     it.studentId.trim() == stu.id.trim() &&
                         ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanSelDate
                 }
-                var optimisticStatus by remember(stu.id, cleanSelDate, currentEntry?.status) {
-                    mutableStateOf<AttendanceStatus?>(currentEntry?.status)
+                val savedStatus = remember(attendance, students, stu.id, stu.dailyAttendance, cleanSelDate, holidaysConfig) {
+                    viewModel.getStudentAttendanceStatusForDate(stu.id, cleanSelDate)
                 }
-                LaunchedEffect(currentEntry?.status) {
-                    if (currentEntry != null) {
-                        optimisticStatus = currentEntry.status
-                    }
+                var optimisticStatus by remember(stu.id, cleanSelDate, savedStatus) {
+                    mutableStateOf<AttendanceStatus>(savedStatus)
                 }
-                val currentStatus = optimisticStatus ?: currentEntry?.status ?: AttendanceStatus.PRESENT
-                val totalAbsences = remember(attendance, stu.id) {
+                LaunchedEffect(savedStatus) {
+                    optimisticStatus = savedStatus
+                }
+                val currentStatus = optimisticStatus
+                val totalAbsences = remember(attendance, students, stu.id, stu.dailyAttendance, holidaysConfig) {
                     viewModel.getTotalAbsenceDays(stu.id)
                 }
-                val stuBadges = remember(attendance, stu.id) {
+                val stuBadges = remember(attendance, students, stu.id, stu.dailyAttendance, holidaysConfig) {
                     viewModel.getStudentAutoBadges(stu.id)
                 }
 

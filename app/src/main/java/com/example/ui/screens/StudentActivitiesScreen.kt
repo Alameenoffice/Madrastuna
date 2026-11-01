@@ -213,9 +213,30 @@ private fun ActivityBase64BannerImage(
 
 @Composable
 fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
-    val allPosts by viewModel.studentActivityPosts.collectAsState()
-    val violationReports by viewModel.activityViolationReports.collectAsState()
+    val rawPosts by viewModel.studentActivityPosts.collectAsState()
+    val rawViolationReports by viewModel.activityViolationReports.collectAsState()
+    val allPosts = remember(rawPosts, schoolConfig.schoolId) {
+        val activeSid = schoolConfig.schoolId.trim()
+        rawPosts.filter { post ->
+            if (activeSid.isNotEmpty()) {
+                post.schoolId.trim() == activeSid
+            } else {
+                post.schoolId.isBlank()
+            }
+        }
+    }
+    val violationReports = remember(rawViolationReports, schoolConfig.schoolId) {
+        val activeSid = schoolConfig.schoolId.trim()
+        rawViolationReports.filter { rep ->
+            if (activeSid.isNotEmpty()) {
+                rep.schoolId.trim() == activeSid
+            } else {
+                rep.schoolId.isBlank()
+            }
+        }
+    }
     val profilesAndSanctionsMap by viewModel.userProfilesAndSanctions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val deepLinkTarget by viewModel.deepLinkTarget.collectAsState()

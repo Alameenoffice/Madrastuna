@@ -738,7 +738,8 @@ data class StudentRecord(
     val likedByUserIds: List<String> = emptyList(),
     val isBusSubscribed: Boolean = false,
     val busRouteName: String = "الخط الصباحي والمسائي",
-    val schoolId: String = ""
+    val schoolId: String = "",
+    val dailyAttendance: Map<String, String> = emptyMap()
 ) {
     val qrCodeValue: String
         get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
@@ -1014,7 +1015,8 @@ data class SchoolEvent(
     val authorName: String = "إدارة المدرسة",
     val heartCount: Int = 0,
     val likedByUserIds: List<String> = emptyList(),
-    val schoolId: String = ""
+    val schoolId: String = "",
+    val schoolName: String = ""
 )
 
 data class AppNotification(
@@ -1691,6 +1693,7 @@ data class StudentActivityComment(
 data class StudentActivityPost(
     val id: String,
     val schoolId: String = "",
+    val schoolName: String = "",
     val authorUserId: String,
     val authorStudentId: String = "",
     val authorName: String,
