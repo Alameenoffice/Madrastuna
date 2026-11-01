@@ -801,7 +801,7 @@ fun ReportsAndChatScreen(
                                     onClick = {
                                         val msg = """
                                             تبليغ رسمي (${rep.reportType.arabicLabel})
-                                            من: ${schoolConfig.schoolName} (${schoolConfig.address})
+                                            من: ${schoolConfig.schoolName}
                                             إلى السيد ولي أمر الطالب (${rep.studentName} - ${rep.gradeClass}) المحترم:
                                             • الموضوع: ${rep.title}
                                             • التفاصيل: ${rep.details}
@@ -1517,7 +1517,7 @@ fun EventsAndNewsScreen(
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 NoWrapBadge(
-                                    text = "${ev.category} • ${ev.location}",
+                                    text = if (ev.location.isNotBlank()) "${ev.category} • ${ev.location}" else ev.category,
                                     icon = Icons.Filled.LocationOn,
                                     containerColor = Color.Black.copy(alpha = 0.3f),
                                     contentColor = Color.White
@@ -1718,7 +1718,7 @@ fun EventsAndNewsScreen(
                                 category = editCategory,
                                 description = editDescription.ifBlank { editTitle },
                                 date = editDate,
-                                location = editLocation.ifBlank { "الموصل - زمار" },
+                                location = editLocation.trim(),
                                 imageBase64 = editImageBase64
                             )
                             eventBeingEdited = null
@@ -1735,7 +1735,7 @@ fun EventsAndNewsScreen(
     if (showPublishEventDialog) {
         var title by remember { mutableStateOf("") }
         var category by remember { mutableStateOf("نشاط علمي وثقافي") }
-        var location by remember { mutableStateOf("الموصل - زمار") }
+        var location by remember { mutableStateOf("") }
         var date by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
         var description by remember { mutableStateOf("") }
         var imageBase64 by remember { mutableStateOf("") }
@@ -1763,7 +1763,7 @@ fun EventsAndNewsScreen(
                         value = location,
                         onValueChange = { location = it },
                         label = { Text("الموقع الجغرافي") },
-                        placeholder = { Text("الموصل - زمار") },
+                        placeholder = { Text("أدخل موقع الفعالية (اختياري)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1797,7 +1797,7 @@ fun EventsAndNewsScreen(
                                 category = category,
                                 description = description.ifBlank { title },
                                 date = date,
-                                location = location.ifBlank { "الموصل - زمار" },
+                                location = location.trim(),
                                 imageBase64 = imageBase64
                             )
                             showPublishEventDialog = false
@@ -1893,8 +1893,13 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        val cleanUserAddr = ArabicTextNormalizer.cleanDefaultAddress(currentUser?.address ?: "")
                         Text(
-                            text = "العنوان: ${currentUser?.address ?: "الموصل - زمار"} • كود المدرسة: ${schoolConfig.schoolId}",
+                            text = if (cleanUserAddr.isNotBlank()) {
+                                "العنوان: $cleanUserAddr • كود المدرسة: ${schoolConfig.schoolId}"
+                            } else {
+                                "كود المدرسة: ${schoolConfig.schoolId}"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -2309,7 +2314,7 @@ fun SettingsScreen(
                             )
                         },
                         Triple(
-                            "ميزة مجتمع ونشاطات الطلبة والإبداعات" to Icons.Filled.AutoAwesome,
+                            "ميزة مجتمع ونشاطات الطلبة والإبداعات" to StudentActivitiesLinearVector,
                             featureSettings.studentActivitiesEnabled
                         ) { v: Boolean ->
                             viewModel.updateSchoolFeatureSettings(
@@ -2413,7 +2418,7 @@ fun SettingsScreen(
                         value = address,
                         onValueChange = { address = it },
                         label = { Text("العنوان الجغرافي") },
-                        placeholder = { Text("الموصل - زمار") },
+                        placeholder = { Text("أدخل العنوان الجغرافي للمدرسة (اختياري)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -2588,7 +2593,7 @@ fun SettingsScreen(
                         onClick = {
                             viewModel.updateSchoolInfo(
                                 schoolName = schoolName,
-                                address = address.ifBlank { "الموصل - زمار" },
+                                address = address.trim(),
                                 schoolType = selectedType,
                                 logoBase64 = logoBase64,
                                 schoolStage = selectedStage,

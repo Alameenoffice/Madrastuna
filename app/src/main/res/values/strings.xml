@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">مدرستي</string>
     <string name="platform_subtitle">منصة مدرستي التعليمية والإدارية المتكاملة</string>
-    <string name="default_address_hint">الموصل - زمار</string>
+    <string name="default_address_hint">العنوان الجغرافي</string>
     <string name="developer_credit">منصة مدرستي الذكية المتكاملة</string>
     <string name="start_now">البدء الآن</string>
     <string name="login_title">تسجيل الدخول الموحد</string>

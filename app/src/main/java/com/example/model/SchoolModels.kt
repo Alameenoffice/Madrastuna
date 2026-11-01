@@ -272,7 +272,7 @@ data class SchoolLicense(
 data class RegisteredSchoolSummary(
     val schoolId: String,
     val schoolName: String,
-    val address: String = "الموصل - زمار",
+    val address: String = "",
     val schoolStage: String = "ثانوية",
     val schoolType: String = "مدرسة أهلية",
     val createdAt: String = "2026-10-29",
@@ -315,7 +315,7 @@ data class SchoolConfig(
     val isActive: Boolean = true,
     val createdAt: String = "2026-10-29",
     val schoolName: String = "مدرستي النموذجية",
-    val address: String = "الموصل - زمار",
+    val address: String = "",
     val schoolType: SchoolType = SchoolType.PRIVATE,
     val schoolStage: SchoolStage = SchoolStage.SECONDARY,
     val registeredClasses: List<String> = SchoolStage.SECONDARY.defaultClasses,
@@ -363,7 +363,7 @@ data class UserAccount(
     val linkedStudentId: String = "",
     val gradeClass: String = "الأول المتوسط",
     val sectionName: String = "أ",
-    val address: String = "الموصل - زمار",
+    val address: String = "",
     val photoBase64: String = "",
     val schoolId: String = "",
     val canModerateActivities: Boolean = false
@@ -715,6 +715,43 @@ object ArabicTextNormalizer {
         }
         return sb.toString()
     }
+
+    /**
+     * Normalizes any date string into canonical ISO format YYYY-MM-DD (e.g. "20261101" -> "2026-11-01").
+     */
+    fun normalizeDateIso(raw: String): String {
+        val ascii = normalizeDigitsToAscii(raw.trim())
+        if (ascii.isEmpty()) return ""
+        if (ascii.length == 8 && ascii.all { it.isDigit() }) {
+            return "${ascii.substring(0, 4)}-${ascii.substring(4, 6)}-${ascii.substring(6, 8)}"
+        }
+        val sepMatch = Regex("^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$").find(ascii)
+        if (sepMatch != null) {
+            val y = sepMatch.groupValues[1]
+            val m = sepMatch.groupValues[2].padStart(2, '0')
+            val d = sepMatch.groupValues[3].padStart(2, '0')
+            return "$y-$m-$d"
+        }
+        return ascii
+    }
+
+    /**
+     * Strips legacy default city/district placeholders so school and student addresses stay clean.
+     */
+    fun cleanDefaultAddress(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return ""
+        val legacyCity = "\u0627\u0644\u0645\u0648\u0635\u0644"
+        val legacyDistrict = "\u0632\u0645\u0627\u0631"
+        val cleaned = trimmed
+            .replace("($legacyCity - $legacyDistrict)", "")
+            .replace("($legacyCity $legacyDistrict)", "")
+            .replace("$legacyCity - $legacyDistrict", "")
+            .replace("$legacyCity $legacyDistrict", "")
+            .trim()
+        if (cleaned == legacyCity || cleaned == legacyDistrict || cleaned == "-" || cleaned == "—") return ""
+        return cleaned
+    }
 }
 
 data class StudentRecord(
@@ -724,7 +761,7 @@ data class StudentRecord(
     val sectionName: String,
     val parentName: String,
     val parentPhone: String,
-    val address: String = "الموصل - زمار",
+    val address: String = "",
     val studentUsername: String,
     val studentPassword: String,
     val parentUsername: String,
@@ -739,7 +776,12 @@ data class StudentRecord(
     val isBusSubscribed: Boolean = false,
     val busRouteName: String = "الخط الصباحي والمسائي",
     val schoolId: String = "",
-    val dailyAttendance: Map<String, String> = emptyMap()
+    val dailyAttendance: Map<String, String> = emptyMap(),
+    val todayStatus: String = "",
+    val todayStatusDate: String = "",
+    val absenceDays: Int = 0,
+    val excusedDays: Int = 0,
+    val lateDays: Int = 0
 ) {
     val qrCodeValue: String
         get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
@@ -1010,7 +1052,7 @@ data class SchoolEvent(
     val category: String,
     val description: String,
     val date: String,
-    val location: String = "الموصل - زمار",
+    val location: String = "",
     val imageBase64: String = "",
     val authorName: String = "إدارة المدرسة",
     val heartCount: Int = 0,

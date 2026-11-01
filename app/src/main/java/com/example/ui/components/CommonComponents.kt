@@ -1318,7 +1318,7 @@ fun ChoreographedSplashScreen(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
+                            imageVector = Icons.Filled.School,
                             contentDescription = null,
                             tint = GoldAccent,
                             modifier = Modifier.size(16.dp)
@@ -1379,21 +1379,13 @@ fun ChoreographedSplashScreen(
                                 }
                             }
 
-                            Column(horizontalAlignment = Alignment.Start) {
-                                Text(
-                                    text = "المدرسة المكتشفة",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = GoldDeep,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = discoveredSchoolName.orEmpty(),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isDarkMode) Color.White else DeepForestGreen,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
+                            Text(
+                                text = discoveredSchoolName.orEmpty(),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color.White else DeepForestGreen,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 } else {

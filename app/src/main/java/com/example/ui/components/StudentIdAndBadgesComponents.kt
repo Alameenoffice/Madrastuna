@@ -207,8 +207,13 @@ fun DigitalStudentIdCardView(
                                 color = WarmGoldLight,
                                 fontWeight = FontWeight.SemiBold
                             )
+                            val cleanCardAddr = com.example.model.ArabicTextNormalizer.cleanDefaultAddress(schoolConfig.address)
                             Text(
-                                text = "العام الدراسي: ${schoolConfig.academicYear} | ${schoolConfig.address}",
+                                text = if (cleanCardAddr.isNotBlank()) {
+                                    "العام الدراسي: ${schoolConfig.academicYear} | $cleanCardAddr"
+                                } else {
+                                    "العام الدراسي: ${schoolConfig.academicYear}"
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.White.copy(alpha = 0.85f)
                             )

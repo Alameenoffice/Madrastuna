@@ -779,7 +779,7 @@ fun TuitionFeesScreen(
                                                 onClick = {
                                                     val msg = """
                                                         وصل قبض قسط دراسي رقم (${inst.receiptNumber})
-                                                        الصادر من: ${schoolConfig.schoolName} (${schoolConfig.address})
+                                                        الصادر من: ${schoolConfig.schoolName}
                                                         • اسم الطالب: ${record.studentName} (${record.gradeClass})
                                                         • المبلغ المستلم: ${inst.amount} دينار عراقي
                                                         • تاريخ الدفعة: ${inst.paymentDate}
@@ -834,7 +834,7 @@ fun TuitionFeesScreen(
                                 val latestReceipt = record.installments.firstOrNull()?.receiptNumber ?: "REC-1000"
                                 val msg = """
                                     كشف ووصل القسط الدراسي (${latestReceipt})
-                                    من إدارة (${schoolConfig.schoolName} - ${schoolConfig.address})
+                                    من إدارة (${schoolConfig.schoolName})
                                     • الطالب: ${record.studentName} (${record.gradeClass})
                                     • القسط السنوي الكلي: ${record.totalFee} د.ع
                                     • مجموع الدفعات الواصلة: ${record.paidAmount} د.ع
@@ -884,11 +884,14 @@ fun TuitionFeesScreen(
                             fontWeight = FontWeight.ExtraBold,
                             color = DeepEmerald
                         )
-                        Text(
-                            text = "العنوان: ${schoolConfig.address}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        val cleanReceiptAddr = ArabicTextNormalizer.cleanDefaultAddress(schoolConfig.address)
+                        if (cleanReceiptAddr.isNotBlank()) {
+                            Text(
+                                text = "العنوان: $cleanReceiptAddr",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         HorizontalDivider(color = GoldAccent.copy(alpha = 0.4f))
                         Text("• اسم الطالب: ${tuitionRec.studentName}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                         Text("• الصف والشعبة: ${tuitionRec.gradeClass} (${tuitionRec.sectionName})", style = MaterialTheme.typography.bodySmall)

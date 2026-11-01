@@ -167,7 +167,7 @@ class SchoolRepository(context: Context) {
                 isActive = obj.optBoolean("isActive", true),
                 createdAt = obj.optString("createdAt", "2026-10-29"),
                 schoolName = obj.optString("schoolName", "مدرستي النموذجية"),
-                address = obj.optString("address", "الموصل - زمار"),
+                address = ArabicTextNormalizer.cleanDefaultAddress(obj.optString("address", "")),
                 schoolType = SchoolType.valueOf(obj.optString("schoolType", SchoolType.PRIVATE.name)),
                 schoolStage = stage,
                 registeredClasses = regClasses,
@@ -341,7 +341,7 @@ class SchoolRepository(context: Context) {
             put("isActive", config.isActive)
             put("createdAt", config.createdAt.ifBlank { "2026-10-29" })
             put("schoolName", InputSanitizer.sanitize(config.schoolName))
-            put("address", InputSanitizer.sanitize(config.address.ifBlank { "الموصل - زمار" }))
+            put("address", InputSanitizer.sanitize(ArabicTextNormalizer.cleanDefaultAddress(config.address)))
             put("schoolType", config.schoolType.name)
             put("schoolStage", config.schoolStage.name)
             put("registeredClasses", JSONArray(config.registeredClasses))
@@ -626,7 +626,7 @@ class SchoolRepository(context: Context) {
                         linkedStudentId = o.optString("linkedStudentId"),
                         gradeClass = pureGradeClass.ifBlank { "الأول المتوسط" },
                         sectionName = pureSectionName.ifBlank { "أ" },
-                        address = o.optString("address", "الموصل - زمار"),
+                        address = ArabicTextNormalizer.cleanDefaultAddress(o.optString("address", "")),
                         photoBase64 = o.optString("photoBase64", ""),
                         schoolId = itemSchoolId,
                         canModerateActivities = o.optBoolean("canModerateActivities", false)
@@ -673,7 +673,7 @@ class SchoolRepository(context: Context) {
                 put("linkedStudentId", acc.linkedStudentId)
                 put("gradeClass", InputSanitizer.sanitize(pureGradeClass))
                 put("sectionName", InputSanitizer.sanitize(pureSectionName))
-                put("address", InputSanitizer.sanitize(acc.address))
+                put("address", InputSanitizer.sanitize(ArabicTextNormalizer.cleanDefaultAddress(acc.address)))
                 put("photoBase64", acc.photoBase64)
                 put("schoolId", schoolId)
                 put("canModerateActivities", acc.canModerateActivities)
@@ -709,12 +709,41 @@ class SchoolRepository(context: Context) {
                     val keys = dailyAttObj.keys()
                     while (keys.hasNext()) {
                         val rawDateKey = keys.next()
-                        val cleanDateKey = ArabicTextNormalizer.normalizeDigitsToAscii(rawDateKey.trim())
+                        val cleanDateKey = ArabicTextNormalizer.normalizeDateIso(rawDateKey.trim())
                         val rawStatusVal = dailyAttObj.optString(rawDateKey, "").trim().uppercase()
                         if (cleanDateKey.isNotEmpty() && rawStatusVal.isNotEmpty()) {
                             dailyAttMap[cleanDateKey] = rawStatusVal
                         }
                     }
+                }
+                val parsedTodayDate = ArabicTextNormalizer.normalizeDateIso(o.optString("todayStatusDate", ""))
+                val parsedTodayStatus = o.optString("todayStatus", "").trim().uppercase()
+                if (parsedTodayDate.isNotEmpty() && parsedTodayStatus.isNotEmpty() && !dailyAttMap.containsKey(parsedTodayDate)) {
+                    dailyAttMap[parsedTodayDate] = parsedTodayStatus
+                }
+                val latestDateKey = dailyAttMap.keys.maxOrNull().orEmpty()
+                val effectiveTodayDate = parsedTodayDate.ifEmpty { latestDateKey }
+                val effectiveTodayStatus = when {
+                    effectiveTodayDate.isNotEmpty() && dailyAttMap.containsKey(effectiveTodayDate) ->
+                        dailyAttMap[effectiveTodayDate].orEmpty()
+                    parsedTodayStatus.isNotEmpty() -> parsedTodayStatus
+                    latestDateKey.isNotEmpty() -> dailyAttMap[latestDateKey].orEmpty()
+                    else -> ""
+                }
+                val computedAbsenceDays = if (dailyAttMap.isNotEmpty()) {
+                    dailyAttMap.values.count { it.equals("ABSENT", ignoreCase = true) }
+                } else {
+                    o.optInt("absenceDays", 0)
+                }
+                val computedExcusedDays = if (dailyAttMap.isNotEmpty()) {
+                    dailyAttMap.values.count { it.equals("EXCUSED", ignoreCase = true) }
+                } else {
+                    o.optInt("excusedDays", 0)
+                }
+                val computedLateDays = if (dailyAttMap.isNotEmpty()) {
+                    dailyAttMap.values.count { it.equals("LATE", ignoreCase = true) }
+                } else {
+                    o.optInt("lateDays", 0)
                 }
                 list.add(
                     StudentRecord(
@@ -724,7 +753,7 @@ class SchoolRepository(context: Context) {
                         sectionName = pureSectionName,
                         parentName = o.optString("parentName"),
                         parentPhone = o.optString("parentPhone"),
-                        address = o.optString("address", "الموصل - زمار"),
+                        address = ArabicTextNormalizer.cleanDefaultAddress(o.optString("address", "")),
                         studentUsername = o.optString("studentUsername"),
                         studentPassword = o.optString("studentPassword"),
                         parentUsername = o.optString("parentUsername"),
@@ -742,7 +771,12 @@ class SchoolRepository(context: Context) {
                         isBusSubscribed = o.optBoolean("isBusSubscribed", false),
                         busRouteName = o.optString("busRouteName", "الخط الصباحي والمسائي"),
                         schoolId = itemSchoolId,
-                        dailyAttendance = dailyAttMap
+                        dailyAttendance = dailyAttMap,
+                        todayStatus = effectiveTodayStatus,
+                        todayStatusDate = effectiveTodayDate,
+                        absenceDays = computedAbsenceDays,
+                        excusedDays = computedExcusedDays,
+                        lateDays = computedLateDays
                     )
                 )
             }
@@ -762,13 +796,40 @@ class SchoolRepository(context: Context) {
             )
             val cleanLikedBy = s.likedByUserIds.filter { it.isNotBlank() }.distinct()
             val finalHeartCount = if (cleanLikedBy.isNotEmpty() || s.heartCount == 0) cleanLikedBy.size else s.heartCount
-            val dailyAttJson = JSONObject()
+            val normalizedAttMap = linkedMapOf<String, String>()
             s.dailyAttendance.forEach { (dKey, stVal) ->
-                val cleanDKey = ArabicTextNormalizer.normalizeDigitsToAscii(dKey.trim())
+                val cleanDKey = ArabicTextNormalizer.normalizeDateIso(dKey.trim())
                 if (cleanDKey.isNotEmpty() && stVal.isNotBlank()) {
-                    dailyAttJson.put(cleanDKey, stVal.trim().uppercase())
+                    normalizedAttMap[cleanDKey] = stVal.trim().uppercase()
                 }
             }
+            val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(s.todayStatusDate)
+            val cleanTodayStatus = s.todayStatus.trim().uppercase()
+            if (cleanTodayDate.isNotEmpty() && cleanTodayStatus.isNotEmpty()) {
+                normalizedAttMap[cleanTodayDate] = cleanTodayStatus
+            }
+            val dailyAttJson = JSONObject()
+            normalizedAttMap.forEach { (dKey, stVal) ->
+                dailyAttJson.put(dKey, stVal)
+            }
+            val latestDateKey = normalizedAttMap.keys.maxOrNull().orEmpty()
+            val effectiveTodayDate = cleanTodayDate.ifEmpty { latestDateKey }
+            val effectiveTodayStatus = when {
+                effectiveTodayDate.isNotEmpty() && normalizedAttMap.containsKey(effectiveTodayDate) ->
+                    normalizedAttMap[effectiveTodayDate].orEmpty()
+                cleanTodayStatus.isNotEmpty() -> cleanTodayStatus
+                latestDateKey.isNotEmpty() -> normalizedAttMap[latestDateKey].orEmpty()
+                else -> ""
+            }
+            val calcAbsenceDays = if (normalizedAttMap.isNotEmpty()) {
+                normalizedAttMap.values.count { it.equals("ABSENT", ignoreCase = true) }
+            } else s.absenceDays
+            val calcExcusedDays = if (normalizedAttMap.isNotEmpty()) {
+                normalizedAttMap.values.count { it.equals("EXCUSED", ignoreCase = true) }
+            } else s.excusedDays
+            val calcLateDays = if (normalizedAttMap.isNotEmpty()) {
+                normalizedAttMap.values.count { it.equals("LATE", ignoreCase = true) }
+            } else s.lateDays
             arr.put(JSONObject().apply {
                 put("id", s.id)
                 put("studentName", InputSanitizer.sanitize(s.studentName))
@@ -776,7 +837,7 @@ class SchoolRepository(context: Context) {
                 put("sectionName", InputSanitizer.sanitize(pureSectionName))
                 put("parentName", InputSanitizer.sanitize(s.parentName))
                 put("parentPhone", InputSanitizer.sanitize(s.parentPhone))
-                put("address", InputSanitizer.sanitize(s.address))
+                put("address", InputSanitizer.sanitize(ArabicTextNormalizer.cleanDefaultAddress(s.address)))
                 put("studentUsername", InputSanitizer.sanitizeUsername(s.studentUsername))
                 put("studentPassword", InputSanitizer.sanitize(s.studentPassword))
                 put("parentUsername", InputSanitizer.sanitizeUsername(s.parentUsername))
@@ -793,6 +854,11 @@ class SchoolRepository(context: Context) {
                 put("busRouteName", InputSanitizer.sanitize(s.busRouteName))
                 put("schoolId", schoolId)
                 put("dailyAttendance", dailyAttJson)
+                put("todayStatus", effectiveTodayStatus)
+                put("todayStatusDate", effectiveTodayDate)
+                put("absenceDays", calcAbsenceDays)
+                put("excusedDays", calcExcusedDays)
+                put("lateDays", calcLateDays)
             })
         }
         val jsonStr = arr.toString()
@@ -820,7 +886,7 @@ class SchoolRepository(context: Context) {
                 val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
                 if (schoolId.isNotEmpty() && itemSid != schoolId) continue
                 val stuId = o.optString("studentId").trim()
-                val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(o.optString("date").trim())
+                val cleanDate = ArabicTextNormalizer.normalizeDateIso(o.optString("date").trim())
                 if (stuId.isEmpty() || cleanDate.isEmpty()) continue
                 val deterministicId = "attendance_${cleanDate}_${stuId}"
                 val entry = AttendanceEntry(
@@ -854,7 +920,7 @@ class SchoolRepository(context: Context) {
         val dedupMap = linkedMapOf<String, AttendanceEntry>()
         entries.filter { it.schoolId.isBlank() || it.schoolId == schoolId }.forEach { e ->
             val stuId = e.studentId.trim()
-            val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(e.date.trim())
+            val cleanDate = ArabicTextNormalizer.normalizeDateIso(e.date.trim())
             if (stuId.isNotEmpty() && cleanDate.isNotEmpty()) {
                 val key = "${stuId}__${cleanDate}"
                 if (!dedupMap.containsKey(key)) {
@@ -1410,7 +1476,7 @@ class SchoolRepository(context: Context) {
                         category = o.optString("category"),
                         description = o.optString("description"),
                         date = o.optString("date"),
-                        location = o.optString("location", "الموصل - زمار"),
+                        location = ArabicTextNormalizer.cleanDefaultAddress(o.optString("location", "")),
                         imageBase64 = o.optString("imageBase64", ""),
                         authorName = o.optString("authorName", "إدارة المدرسة"),
                         heartCount = heartCount,
@@ -1863,7 +1929,7 @@ class SchoolRepository(context: Context) {
                         RegisteredSchoolSummary(
                             schoolId = sid,
                             schoolName = o.optString("schoolName", "مدرستي النموذجية"),
-                            address = o.optString("address", "الموصل - زمار"),
+                            address = ArabicTextNormalizer.cleanDefaultAddress(o.optString("address", "")),
                             schoolStage = o.optString("schoolStage", "ثانوية"),
                             schoolType = o.optString("schoolType", "مدرسة أهلية"),
                             createdAt = o.optString("createdAt", "2026-10-29"),

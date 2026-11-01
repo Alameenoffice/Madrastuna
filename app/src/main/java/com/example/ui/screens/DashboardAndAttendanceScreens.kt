@@ -199,8 +199,14 @@ fun DashboardScreen(
                                             "الطالب: ${myStudent.studentName} • الصف: ${myStudent.gradeClass} (شعبة ${myStudent.sectionName})"
                                         isTeacher ->
                                             "المواد: ${currentUser?.specialty?.ifBlank { "كادر تدريسي" } ?: ""} • الصفوف: ${currentUser?.formattedAssignedClassesForDisplay ?: ""}"
-                                        else ->
-                                            "${schoolConfig.schoolName} (${schoolConfig.address}) — ${schoolConfig.academicYear}"
+                                        else -> {
+                                            val cleanAddr = ArabicTextNormalizer.cleanDefaultAddress(schoolConfig.address)
+                                            if (cleanAddr.isNotBlank()) {
+                                                "${schoolConfig.schoolName} ($cleanAddr) — ${schoolConfig.academicYear}"
+                                            } else {
+                                                "${schoolConfig.schoolName} — ${schoolConfig.academicYear}"
+                                            }
+                                        }
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color.White.copy(alpha = 0.9f)
@@ -243,10 +249,7 @@ fun DashboardScreen(
                 val myTodayStatus = if (todayHolidayLabel != null) {
                     AttendanceStatus.HOLIDAY
                 } else {
-                    attendance.firstOrNull {
-                        it.studentId == myStudent.id &&
-                            ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == todayIso
-                    }?.status ?: AttendanceStatus.PRESENT
+                    viewModel.getStudentStatusForDate(myStudent, todayIso)
                 }
                 val myTotalAbsences = viewModel.getTotalAbsenceDays(myStudent.id)
                 val myClassHomeworks = homeworks.filter {
@@ -490,19 +493,17 @@ fun DashboardScreen(
                 }
             } else {
                 // ADMIN OR SCOPED TEACHER DASHBOARD STATS
-                val scopedStudentIds = scopedStudents.map { it.id.trim() }.toSet()
-                val scopedAttendance = attendance.filter {
-                    it.studentId.trim() in scopedStudentIds &&
-                        ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == todayIso
+                val absentCount = scopedStudents.count {
+                    viewModel.getStudentStatusForDate(it, todayIso) == AttendanceStatus.ABSENT
                 }
-                val absentCount = scopedAttendance.count { it.status == AttendanceStatus.ABSENT }
-                val excusedCount = scopedAttendance.count { it.status == AttendanceStatus.EXCUSED }
-                val lateCount = scopedAttendance.count { it.status == AttendanceStatus.LATE }
-                val explicitPresentCount = scopedAttendance.count { it.status == AttendanceStatus.PRESENT }
-                val presentCount = if (scopedStudents.isEmpty()) {
-                    0
-                } else {
-                    (scopedStudents.size - absentCount - excusedCount - lateCount).coerceAtLeast(explicitPresentCount)
+                val excusedCount = scopedStudents.count {
+                    viewModel.getStudentStatusForDate(it, todayIso) == AttendanceStatus.EXCUSED
+                }
+                val lateCount = scopedStudents.count {
+                    viewModel.getStudentStatusForDate(it, todayIso) == AttendanceStatus.LATE
+                }
+                val presentCount = scopedStudents.count {
+                    viewModel.getStudentStatusForDate(it, todayIso) == AttendanceStatus.PRESENT
                 }
                 val scopedHomeworks = remember(homeworks, currentUser, isTeacher) {
                     if (isTeacher && currentUser != null) {
@@ -1799,24 +1800,13 @@ fun DailyAttendanceScreen(
             // Student Attendance Cards for the selected Class & Section (6 by 6 progressive loading)
             val visibleScopedStudents = scopedStudents.take(teacherStudentsVisibleCount)
             items(visibleScopedStudents, key = { it.id }) { stu ->
-                val cleanSelDate = ArabicTextNormalizer.normalizeDigitsToAscii(selectedDate.trim())
+                val cleanSelDate = ArabicTextNormalizer.normalizeDateIso(selectedDate.trim())
                 val currentEntry = attendance.firstOrNull {
                     it.studentId.trim() == stu.id.trim() &&
-                        ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanSelDate
+                        ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanSelDate
                 }
-                val savedStatus = remember(attendance, students, stu.id, stu.dailyAttendance, cleanSelDate, holidaysConfig) {
-                    viewModel.getStudentAttendanceStatusForDate(stu.id, cleanSelDate)
-                }
-                var optimisticStatus by remember(stu.id, cleanSelDate, savedStatus) {
-                    mutableStateOf<AttendanceStatus>(savedStatus)
-                }
-                LaunchedEffect(savedStatus) {
-                    optimisticStatus = savedStatus
-                }
-                val currentStatus = optimisticStatus
-                val totalAbsences = remember(attendance, students, stu.id, stu.dailyAttendance, holidaysConfig) {
-                    viewModel.getTotalAbsenceDays(stu.id)
-                }
+                val currentStatus = viewModel.getStudentStatusForDate(stu, cleanSelDate)
+                val totalAbsences = viewModel.getTotalAbsenceDays(stu.id)
                 val stuBadges = remember(attendance, students, stu.id, stu.dailyAttendance, holidaysConfig) {
                     viewModel.getStudentAutoBadges(stu.id)
                 }
@@ -1969,8 +1959,7 @@ fun DailyAttendanceScreen(
                                             .clip(RoundedCornerShape(10.dp))
                                             .clickable(enabled = canEdit) {
                                                 viewModel.requireOnlineAndExecute {
-                                                    optimisticStatus = st
-                                                    viewModel.recordStudentAttendance(stu, selectedDate, st)
+                                                    viewModel.recordStudentAttendance(stu, cleanSelDate, st)
                                                 }
                                             }
                                             .testTag("att_btn_${stu.id}_${st.name}"),
@@ -2105,7 +2094,7 @@ fun DailyAttendanceScreen(
                                 containerColor = WhatsAppGreen,
                                 onClick = {
                                     val msg = """
-                                        تبليغ رسمي من إدارة (${schoolConfig.schoolName} - ${schoolConfig.address}):
+                                        تبليغ رسمي من إدارة (${schoolConfig.schoolName}):
                                         إلى السيد ولي أمر الطالب (${stu.fullNameWithFather}) المحترم،
                                         نود إعلامكم بتسجيل حالة (${currentStatus.arabicLabel}) لنجلكم في الصف (${stu.gradeClass} - شعبة ${stu.sectionName}) لهذا اليوم الموافق $selectedDate.
                                         • إجمالي أيام الغياب المسجلة: $totalAbsences يوم.

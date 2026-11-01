@@ -1136,7 +1136,6 @@
           <div style="display:inline-flex;align-items:center;gap:12px;background:var(--surface);border:1.8px solid #F59E0B;border-radius:22px;padding:12px 20px;box-shadow:var(--shadow-lg);">
             ${logoHtml}
             <div style="text-align:right;">
-              <div style="font-size:0.75rem;font-weight:800;color:#D97706;">المدرسة المكتشفة</div>
               <div style="font-size:1.18rem;font-weight:900;color:var(--text);">${sanitizeText(discovered.schoolName)}</div>
             </div>
           </div>
@@ -1257,29 +1256,55 @@
       });
     }
 
+    function normalizeDateIso(raw) {
+      if (!raw) return '';
+      const s = String(raw).trim();
+      if (/^\d{8}$/.test(s)) {
+        return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
+      }
+      return s;
+    }
+
     function getStudentAttendanceMap(student) {
       const map = {};
       if (!student) return map;
       if (student.dailyAttendance && typeof student.dailyAttendance === 'object') {
         Object.keys(student.dailyAttendance).forEach(function(dateKey) {
-          if (dateKey && student.dailyAttendance[dateKey]) {
-            map[dateKey] = student.dailyAttendance[dateKey];
+          const normKey = normalizeDateIso(dateKey);
+          if (normKey && student.dailyAttendance[dateKey]) {
+            map[normKey] = String(student.dailyAttendance[dateKey]).toUpperCase();
           }
         });
       }
       const attList = strictSchoolFilter(state.attendance, state.schoolId);
       attList.forEach(function(rec) {
         if (rec && rec.studentId === student.id && rec.date && rec.status) {
-          map[rec.date] = rec.status;
+          map[normalizeDateIso(rec.date)] = String(rec.status).toUpperCase();
         }
       });
       return map;
     }
 
     function getStudentStatusForDate(student, dateStr) {
-      if (!student || !dateStr) return 'PRESENT';
+      if (!student) return 'PRESENT';
+      const targetDate = normalizeDateIso(dateStr || state.attendanceDate || new Date().toISOString().split('T')[0]);
+      if (student.dailyAttendance && typeof student.dailyAttendance === 'object') {
+        if (student.dailyAttendance[targetDate]) {
+          return String(student.dailyAttendance[targetDate]).toUpperCase();
+        }
+        const compactKey = targetDate.replace(/-/g, '');
+        if (student.dailyAttendance[compactKey]) {
+          return String(student.dailyAttendance[compactKey]).toUpperCase();
+        }
+      }
+      if (normalizeDateIso(student.todayStatusDate) === targetDate && student.todayStatus) {
+        return String(student.todayStatus).toUpperCase();
+      }
+      if (!dateStr && student.todayStatus) {
+        return String(student.todayStatus).toUpperCase();
+      }
       const map = getStudentAttendanceMap(student);
-      return map[dateStr] || 'PRESENT';
+      return map[targetDate] || 'PRESENT';
     }
 
     function getStudentTotalByStatus(student, targetStatus) {
@@ -1489,8 +1514,8 @@
             lottie: 'https://assets9.lottiefiles.com/packages/lf20_DMgKk1.json'
           },
           {
-            title: 'لوحة الشرف والخصوصية التامة',
-            desc: 'عزل كامل لخصوصية بيانات كل طالب وولي أمر مع الاحتفاء بالمتفوقين في لوحة الشرف ومعرض الفعاليات المدرسية.',
+            title: 'مجتمع تفاعلي ومنصة تواصل اجتماعي تربوية',
+            desc: 'مساحة اجتماعية آمنة وراقية تجمع الطلبة والأساتذة لمشاركة الإبداعات العلمية والفنية، التفاعل الإيجابي، ومتابعة الفعاليات والأخبار المدرسية لحظة بلحظة.',
             lottie: 'https://assets2.lottiefiles.com/packages/lf20_touohxv0.json'
           }
         ];
@@ -1559,11 +1584,11 @@
                 <div class="grid-2">
                   <div>
                     <label class="field-label">اسم المدرسة</label>
-                    <input id="setup_school_name" placeholder="مثال: ثانوية زمار النموذجية" />
+                    <input id="setup_school_name" placeholder="مثال: مدرسة النور الأهلية" />
                   </div>
                   <div>
                     <label class="field-label">العنوان الجغرافي للمدرسة</label>
-                    <input id="setup_address" placeholder="الموصل - زمار" value="الموصل - زمار" />
+                    <input id="setup_address" placeholder="أدخل العنوان الجغرافي (اختياري)" value="" />
                   </div>
                 </div>
 
@@ -1689,8 +1714,8 @@
       // 4. Authenticated Luxurious Main Platform
       const user = state.currentUser;
       const cfg = state.schoolConfig || {
-        schoolName: 'منصة مدرستي النموذجية',
-        address: 'الموصل - زمار',
+        schoolName: 'منصة مدرستي الذكية',
+        address: '',
         schoolType: 'PRIVATE',
         schoolStage: 'MIDDLE',
         registeredClasses: STAGE_CONFIGS.MIDDLE.classes,
@@ -1731,7 +1756,7 @@
               <div>
                 <div style="font-weight:900;font-size:1.02rem;color:#fff;">${sanitizeText(cfg.schoolName)}</div>
                 <div style="font-size:0.76rem;color:#FDE68A;font-weight:700;">
-                  ${getRoleLabel(user.role)} • ${sanitizeText(user.fullName)} • ${sanitizeText(cfg.address || 'الموصل - زمار')}
+                  ${getRoleLabel(user.role)} • ${sanitizeText(user.fullName)}${cfg.address ? ' • ' + sanitizeText(cfg.address) : ''}
                 </div>
               </div>
             </div>
@@ -1939,7 +1964,7 @@
                   </div>
                   <h2 style="font-size:1.3rem;font-weight:900;">${sanitizeText(cfg.schoolName)}</h2>
                   <p style="font-size:0.83rem;color:#FDE68A;font-weight:700;">
-                    العنوان: ${sanitizeText(cfg.address || 'الموصل - زمار')} • كود المدرسة المعزول: ${sanitizeText(state.schoolId)}
+                    ${cfg.address ? 'العنوان: ' + sanitizeText(cfg.address) + ' • ' : ''}كود المدرسة المعزول: ${sanitizeText(state.schoolId)}
                   </p>
                 </div>
               </div>
@@ -2825,7 +2850,7 @@
                 </div>
                 <div>
                   <label class="field-label">العنوان الجغرافي</label>
-                  <input id="set_school_address" value="${sanitizeText(cfg.address || 'الموصل - زمار')}" placeholder="الموصل - زمار" />
+                  <input id="set_school_address" value="${sanitizeText(cfg.address || '')}" placeholder="العنوان الجغرافي (اختياري)" />
                 </div>
                 <div>
                   <label class="field-label">نوع المدرسة</label>
@@ -2863,7 +2888,7 @@
               <button onclick="window.saveSchoolSettings()">${ICONS.check} حفظ إعدادات المدرسة</button>
             ` : `
               <p style="font-size:0.86rem;color:var(--text-muted);">
-                المدرسة: <strong>${sanitizeText(cfg.schoolName)}</strong> • العنوان: <strong>${sanitizeText(cfg.address || 'الموصل - زمار')}</strong>
+                المدرسة: <strong>${sanitizeText(cfg.schoolName)}</strong>${cfg.address ? ` • العنوان: <strong>${sanitizeText(cfg.address)}</strong>` : ''}
               </p>
             `}
           </div>
@@ -2944,7 +2969,7 @@
 
     window.submitNewSchoolSetup = async function() {
       const schoolName = sanitizeText(document.getElementById('setup_school_name')?.value);
-      const address = sanitizeText(document.getElementById('setup_address')?.value) || 'الموصل - زمار';
+      const address = sanitizeText(document.getElementById('setup_address')?.value) || '';
       const schoolType = document.getElementById('setup_type')?.value || 'PRIVATE';
       const schoolStage = document.getElementById('setup_stage')?.value || 'MIDDLE';
       const adminName = sanitizeText(document.getElementById('setup_admin_name')?.value);
@@ -3112,20 +3137,43 @@
       if (!validateSession(['ADMIN', 'TEACHER'])) return;
       const stu = state.users.find(function(u) { return u.id === studentId; });
       if (!stu) return;
-      const updatedDailyMap = Object.assign({}, stu.dailyAttendance || {});
-      updatedDailyMap[state.attendanceDate] = status;
+      const cleanDate = normalizeDateIso(state.attendanceDate || new Date().toISOString().split('T')[0]);
+      const updatedDailyMap = {};
+      if (stu.dailyAttendance && typeof stu.dailyAttendance === 'object') {
+        Object.keys(stu.dailyAttendance).forEach(function(k) {
+          const nk = normalizeDateIso(k);
+          if (nk) updatedDailyMap[nk] = String(stu.dailyAttendance[k]).toUpperCase();
+        });
+      }
+      updatedDailyMap[cleanDate] = status;
+      const allVals = Object.values(updatedDailyMap);
+      const totalAbsences = allVals.filter(function(s) { return s === 'ABSENT'; }).length;
+      const totalExcused = allVals.filter(function(s) { return s === 'EXCUSED'; }).length;
+      const totalLate = allVals.filter(function(s) { return s === 'LATE'; }).length;
       stu.dailyAttendance = updatedDailyMap;
-      const recId = state.attendanceDate + '_' + studentId;
+      stu.todayStatus = status;
+      stu.todayStatusDate = cleanDate;
+      stu.absenceDays = totalAbsences;
+      stu.excusedDays = totalExcused;
+      stu.lateDays = totalLate;
+      const recId = cleanDate + '_' + studentId;
       await saveTenantDoc('attendance', recId, {
         studentId: studentId,
         studentName: stu.fullName,
         gradeName: stu.gradeName,
         sectionName: stu.sectionName,
-        date: state.attendanceDate,
+        date: cleanDate,
         status: status,
         recordedBy: state.currentUser.fullName
       });
-      await saveTenantDoc('users', stu.id, Object.assign({}, stu, { dailyAttendance: updatedDailyMap }));
+      await saveTenantDoc('users', stu.id, Object.assign({}, stu, {
+        dailyAttendance: updatedDailyMap,
+        todayStatus: status,
+        todayStatusDate: cleanDate,
+        absenceDays: totalAbsences,
+        excusedDays: totalExcused,
+        lateDays: totalLate
+      }));
       const statusAr = { PRESENT: 'حاضر', ABSENT: 'غائب', LATE: 'متأخر', EXCUSED: 'مجاز' }[status] || status;
       showToast('تم تسجيل حالة الطالب (' + stu.fullName + '): ' + statusAr, 'success');
       if (status === 'ABSENT' || status === 'LATE') {
@@ -3613,7 +3661,7 @@
     window.saveSchoolSettings = async function() {
       if (!validateSession(['ADMIN'])) return;
       const name = sanitizeText(document.getElementById('set_school_name')?.value);
-      const addr = sanitizeText(document.getElementById('set_school_address')?.value) || 'الموصل - زمار';
+      const addr = sanitizeText(document.getElementById('set_school_address')?.value) || '';
       const type = document.getElementById('set_school_type')?.value || 'PRIVATE';
       if (!name) {
         showToast('اسم المدرسة مطلوب', 'error');

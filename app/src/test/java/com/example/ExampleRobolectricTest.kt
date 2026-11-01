@@ -26,7 +26,7 @@ class ExampleRobolectricTest {
         val viewModel = SchoolViewModel(context as Application)
         viewModel.setupSchoolAndAdmin(
             schoolName = "مدرستي النموذجية",
-            address = "الموصل - زمار",
+            address = "بغداد",
             schoolType = SchoolType.PRIVATE,
             logoBase64 = "",
             adminFullName = "المدير العام",
@@ -34,7 +34,7 @@ class ExampleRobolectricTest {
             adminPassword = "123"
         )
         assertTrue(viewModel.schoolConfig.value.isSetupCompleted)
-        assertEquals("الموصل - زمار", viewModel.schoolConfig.value.address)
+        assertEquals("بغداد", viewModel.schoolConfig.value.address)
 
         val sampleGrade = SubjectGrade(
             id = "g1",

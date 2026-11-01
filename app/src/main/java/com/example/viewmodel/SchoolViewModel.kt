@@ -451,25 +451,51 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         return studentsList.map { stu ->
             val cleanStuId = stu.id.trim()
             val stuEntries = attByStudent[cleanStuId].orEmpty()
-            if (stuEntries.isEmpty()) {
-                stu
-            } else {
-                val mergedMap = linkedMapOf<String, String>()
-                stu.dailyAttendance.forEach { (dKey, stVal) ->
-                    val cleanDKey = ArabicTextNormalizer.normalizeDigitsToAscii(dKey.trim())
-                    if (cleanDKey.isNotEmpty() && stVal.isNotBlank()) {
-                        mergedMap[cleanDKey] = stVal.trim().uppercase()
-                    }
+            val mergedMap = linkedMapOf<String, String>()
+            stu.dailyAttendance.forEach { (dKey, stVal) ->
+                val cleanDKey = ArabicTextNormalizer.normalizeDateIso(dKey.trim())
+                if (cleanDKey.isNotEmpty() && stVal.isNotBlank()) {
+                    mergedMap[cleanDKey] = stVal.trim().uppercase()
                 }
-                // Iterate from oldest to newest so the latest prepended attendance entry is authoritative
-                stuEntries.asReversed().forEach { entry ->
-                    val cleanDKey = ArabicTextNormalizer.normalizeDigitsToAscii(entry.date.trim())
-                    if (cleanDKey.isNotEmpty()) {
-                        mergedMap[cleanDKey] = entry.status.name
-                    }
-                }
-                if (mergedMap == stu.dailyAttendance) stu else stu.copy(dailyAttendance = mergedMap)
             }
+            val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(stu.todayStatusDate)
+            val cleanTodayStatus = stu.todayStatus.trim().uppercase()
+            if (cleanTodayDate.isNotEmpty() && cleanTodayStatus.isNotEmpty() && !mergedMap.containsKey(cleanTodayDate)) {
+                mergedMap[cleanTodayDate] = cleanTodayStatus
+            }
+            // Iterate from oldest to newest so the latest prepended attendance entry is authoritative
+            stuEntries.asReversed().forEach { entry ->
+                val cleanDKey = ArabicTextNormalizer.normalizeDateIso(entry.date.trim())
+                if (cleanDKey.isNotEmpty()) {
+                    mergedMap[cleanDKey] = entry.status.name
+                }
+            }
+            val latestDateKey = mergedMap.keys.maxOrNull().orEmpty()
+            val effectiveTodayDate = cleanTodayDate.ifEmpty { latestDateKey }
+            val effectiveTodayStatus = when {
+                effectiveTodayDate.isNotEmpty() && mergedMap.containsKey(effectiveTodayDate) ->
+                    mergedMap[effectiveTodayDate].orEmpty()
+                cleanTodayStatus.isNotEmpty() -> cleanTodayStatus
+                latestDateKey.isNotEmpty() -> mergedMap[latestDateKey].orEmpty()
+                else -> ""
+            }
+            val calcAbsenceDays = mergedMap.count { (dKey, stVal) ->
+                stVal.equals(AttendanceStatus.ABSENT.name, ignoreCase = true) && getHolidayLabelForDate(dKey) == null
+            }
+            val calcExcusedDays = mergedMap.count { (dKey, stVal) ->
+                stVal.equals(AttendanceStatus.EXCUSED.name, ignoreCase = true) && getHolidayLabelForDate(dKey) == null
+            }
+            val calcLateDays = mergedMap.count { (dKey, stVal) ->
+                stVal.equals(AttendanceStatus.LATE.name, ignoreCase = true) && getHolidayLabelForDate(dKey) == null
+            }
+            stu.copy(
+                dailyAttendance = mergedMap,
+                todayStatus = effectiveTodayStatus,
+                todayStatusDate = effectiveTodayDate,
+                absenceDays = calcAbsenceDays,
+                excusedDays = calcExcusedDays,
+                lateDays = calcLateDays
+            )
         }
     }
 
@@ -872,10 +898,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_HONOR_ROLL, remoteStudentsRaw)
                                 val parsedRemoteStudents = repo.parseStudentsJson(remoteStudentsRaw, sid)
                                 // Merge existing in-memory dailyAttendance & _attendance so a remote student sync never erases local attendance
-                                val localMapByStu = _students.value.associate { it.id.trim() to it.dailyAttendance }
+                                val localByStu = _students.value.associateBy { it.id.trim() }
                                 val preservedStudents = parsedRemoteStudents.map { rStu ->
-                                    val localAtt = localMapByStu[rStu.id.trim()].orEmpty()
-                                    if (localAtt.isEmpty()) rStu else rStu.copy(dailyAttendance = rStu.dailyAttendance + localAtt)
+                                    val localStu = localByStu[rStu.id.trim()]
+                                    val localAtt = localStu?.dailyAttendance.orEmpty()
+                                    if (localAtt.isEmpty()) rStu else rStu.copy(
+                                        dailyAttendance = rStu.dailyAttendance + localAtt,
+                                        todayStatus = localStu?.todayStatus?.ifBlank { rStu.todayStatus } ?: rStu.todayStatus,
+                                        todayStatusDate = localStu?.todayStatusDate?.ifBlank { rStu.todayStatusDate } ?: rStu.todayStatusDate
+                                    )
                                 }
                                 _students.value = mergeAttendanceIntoStudents(preservedStudents, _attendance.value)
                             }
@@ -1017,7 +1048,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 val remoteEntries = repo.parseAttendanceJson(remoteAttRaw, sid)
                                 // Merge with local _attendance so local entries that haven't round-tripped are never lost
                                 val mergedEntries = (remoteEntries + _attendance.value.filter { it.schoolId.isBlank() || it.schoolId == sid })
-                                    .distinctBy { "${it.studentId.trim()}__${ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim())}" }
+                                    .distinctBy { "${it.studentId.trim()}__${ArabicTextNormalizer.normalizeDateIso(it.date.trim())}" }
                                 _attendance.value = mergedEntries
                                 _students.value = mergeAttendanceIntoStudents(_students.value, mergedEntries)
                             }
@@ -2122,7 +2153,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         val prefixedAdminUsername = FirebaseConfigConstants.applySchoolPrefix(generatedSchoolId, cleanUser)
         val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val finalAddress = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" }
+        val finalAddress = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address))
         val generatedClasses = schoolStage.defaultClasses
         val generatedSubjects = schoolStage.defaultSubjects
         val finalSections = customSections.ifEmpty { listOf("أ", "ب", "ج") }
@@ -2324,7 +2355,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val updated = _schoolConfig.value.copy(
             schoolName = cleanName,
-            address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
+            address = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address)),
             schoolType = schoolType,
             schoolStage = schoolStage,
             registeredClasses = finalClasses,
@@ -2734,7 +2765,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             assignedClasses = normalizedAssignedStr,
             gradeClass = primaryClass,
             sectionName = primarySec,
-            address = "الموصل - زمار",
+            address = "",
             photoBase64 = photoBase64,
             schoolId = sid,
             canModerateActivities = canModerateActivities
@@ -2936,7 +2967,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val sid = _schoolConfig.value.schoolId
         val stuId = "stu_${UUID.randomUUID().toString().take(6)}"
-        val finalAddress = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" }
+        val finalAddress = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address))
         val finalPhone = InputSanitizer.sanitize(parentPhone).ifBlank { "07512362567" }
         val rawSUser = InputSanitizer.sanitizeUsername(studentUsername).ifBlank { "stu${(10..99).random()}" }
         val sUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawSUser)
@@ -3082,7 +3113,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     sectionName = pureSectionName,
                     parentName = InputSanitizer.sanitize(parentName).ifBlank { s.parentName },
                     parentPhone = InputSanitizer.sanitize(parentPhone).ifBlank { s.parentPhone },
-                    address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
+                    address = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address)),
                     studentUsername = prefixedStuUser.ifBlank { s.studentUsername },
                     studentPassword = InputSanitizer.sanitize(studentPassword).ifBlank { s.studentPassword },
                     parentUsername = prefixedParUser.ifBlank { s.parentUsername },
@@ -3104,7 +3135,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     phone = InputSanitizer.sanitize(parentPhone).ifBlank { acc.phone },
                     gradeClass = pureGradeClass,
                     sectionName = pureSectionName,
-                    address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
+                    address = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address)),
                     photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
                     schoolId = sid
                 )
@@ -3119,7 +3150,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     phone = InputSanitizer.sanitize(parentPhone).ifBlank { acc.phone },
                     gradeClass = if (acc.linkedStudentId == studentId) pureGradeClass else acc.gradeClass,
                     sectionName = if (acc.linkedStudentId == studentId) pureSectionName else acc.sectionName,
-                    address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
+                    address = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address)),
                     photoBase64 = if (acc.linkedStudentId == studentId && photoBase64.isNotBlank()) photoBase64 else acc.photoBase64,
                     schoolId = sid
                 )
@@ -3279,7 +3310,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val sid = _schoolConfig.value.schoolId
-        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(InputSanitizer.sanitize(date).trim())
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(date).trim())
         val holidayReason = getHolidayLabelForDate(cleanDate)
         if (status != AttendanceStatus.HOLIDAY && holidayReason != null) {
             showToastAlert("اليوم عطلة ($holidayReason) — السجل مقفل وموثق كعطلة رسمية لجميع الطلبة", isSuccess = false)
@@ -3292,11 +3323,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         // Idempotent guard: check both _attendance and student.dailyAttendance for this normalized date
         val existingEntry = _attendance.value.firstOrNull {
             it.studentId.trim() == cleanStudentId &&
-                ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate
+                ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanDate
         }
-        val existingMapStatus = _students.value.firstOrNull { it.id.trim() == cleanStudentId }
-            ?.dailyAttendance?.get(cleanDate)
-            ?.let { raw -> runCatching { AttendanceStatus.valueOf(raw.trim().uppercase()) }.getOrNull() }
+        val targetStuObj = _students.value.firstOrNull { it.id.trim() == cleanStudentId }
+        val existingMapStatus = if (targetStuObj != null) {
+            getStudentStatusForDate(targetStuObj, cleanDate).takeIf {
+                targetStuObj.dailyAttendance.keys.any { k -> ArabicTextNormalizer.normalizeDateIso(k) == cleanDate } ||
+                    ArabicTextNormalizer.normalizeDateIso(targetStuObj.todayStatusDate) == cleanDate
+            }
+        } else null
 
         if (existingEntry != null &&
             existingEntry.status == status &&
@@ -3321,16 +3356,40 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val filtered = _attendance.value.filterNot {
             it.studentId.trim() == cleanStudentId &&
-                ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate
+                ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanDate
         }
         val updated = listOf(entry) + filtered
         _attendance.value = updated
         repo.saveAttendance(updated, sid)
 
-        // Also update the student's persistent dailyAttendance map in schools/{schoolId}/honor_roll
+        // Update the student's persistent dailyAttendance map, todayStatus, todayStatusDate, and counters directly in StudentRecord
         val updatedStudents = _students.value.map { stu ->
             if (stu.id.trim() == cleanStudentId) {
-                stu.copy(dailyAttendance = stu.dailyAttendance + (cleanDate to status.name))
+                val updatedDaily = linkedMapOf<String, String>()
+                stu.dailyAttendance.forEach { (k, v) ->
+                    val nk = ArabicTextNormalizer.normalizeDateIso(k)
+                    if (nk.isNotEmpty() && v.isNotBlank()) {
+                        updatedDaily[nk] = v.trim().uppercase()
+                    }
+                }
+                updatedDaily[cleanDate] = status.name
+                val newAbsenceDays = updatedDaily.count { (dKey, stVal) ->
+                    stVal == AttendanceStatus.ABSENT.name && getHolidayLabelForDate(dKey) == null
+                }
+                val newExcusedDays = updatedDaily.count { (dKey, stVal) ->
+                    stVal == AttendanceStatus.EXCUSED.name && getHolidayLabelForDate(dKey) == null
+                }
+                val newLateDays = updatedDaily.count { (dKey, stVal) ->
+                    stVal == AttendanceStatus.LATE.name && getHolidayLabelForDate(dKey) == null
+                }
+                stu.copy(
+                    dailyAttendance = updatedDaily,
+                    todayStatus = status.name,
+                    todayStatusDate = cleanDate,
+                    absenceDays = newAbsenceDays,
+                    excusedDays = newExcusedDays,
+                    lateDays = newLateDays
+                )
             } else stu
         }
         _students.value = updatedStudents
@@ -3399,7 +3458,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
 
         val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
-        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(InputSanitizer.sanitize(date).trim())
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(date).trim())
         val deterministicId = "attendance_${cleanDate}_${matchedStudent.id}"
         val entry = AttendanceEntry(
             id = deterministicId,
@@ -3415,7 +3474,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val filtered = _attendance.value.filterNot {
             it.studentId.trim() == matchedStudent.id.trim() &&
-                ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate
+                ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanDate
         }
         val updated = listOf(entry) + filtered
         _attendance.value = updated
@@ -3423,7 +3482,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val updatedStudents = _students.value.map { stu ->
             if (stu.id.trim() == matchedStudent.id.trim()) {
-                stu.copy(dailyAttendance = stu.dailyAttendance + (cleanDate to AttendanceStatus.PRESENT.name))
+                val updatedDaily = linkedMapOf<String, String>()
+                stu.dailyAttendance.forEach { (k, v) ->
+                    val nk = ArabicTextNormalizer.normalizeDateIso(k)
+                    if (nk.isNotEmpty() && v.isNotBlank()) updatedDaily[nk] = v.trim().uppercase()
+                }
+                updatedDaily[cleanDate] = AttendanceStatus.PRESENT.name
+                stu.copy(
+                    dailyAttendance = updatedDaily,
+                    todayStatus = AttendanceStatus.PRESENT.name,
+                    todayStatusDate = cleanDate,
+                    absenceDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.ABSENT.name && getHolidayLabelForDate(dKey) == null },
+                    excusedDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.EXCUSED.name && getHolidayLabelForDate(dKey) == null },
+                    lateDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.LATE.name && getHolidayLabelForDate(dKey) == null }
+                )
             } else stu
         }
         _students.value = updatedStudents
@@ -3520,7 +3592,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         if (approve) {
             val student = _students.value.firstOrNull { it.id == targetReq.studentId }
             val cleanStudentId = targetReq.studentId.trim()
-            val cleanLeaveDate = ArabicTextNormalizer.normalizeDigitsToAscii(targetReq.leaveDate.trim()).ifBlank {
+            val cleanLeaveDate = ArabicTextNormalizer.normalizeDateIso(targetReq.leaveDate.trim()).ifBlank {
                 SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             }
             val daysCount = targetReq.durationDays.coerceIn(1, 30)
@@ -3553,7 +3625,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             val datesSet = datesToMark.toSet()
             val filteredAtt = _attendance.value.filterNot {
                 it.studentId.trim() == cleanStudentId &&
-                    ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) in datesSet
+                    ArabicTextNormalizer.normalizeDateIso(it.date.trim()) in datesSet
             }
             val updatedAtt = newEntries + filteredAtt
             _attendance.value = updatedAtt
@@ -3562,7 +3634,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             val excusedPairs = datesToMark.associateWith { AttendanceStatus.EXCUSED.name }
             val updatedStudents = _students.value.map { stu ->
                 if (stu.id.trim() == cleanStudentId) {
-                    stu.copy(dailyAttendance = stu.dailyAttendance + excusedPairs)
+                    val updatedDaily = linkedMapOf<String, String>()
+                    stu.dailyAttendance.forEach { (k, v) ->
+                        val nk = ArabicTextNormalizer.normalizeDateIso(k)
+                        if (nk.isNotEmpty() && v.isNotBlank()) updatedDaily[nk] = v.trim().uppercase()
+                    }
+                    updatedDaily.putAll(excusedPairs)
+                    stu.copy(
+                        dailyAttendance = updatedDaily,
+                        todayStatus = AttendanceStatus.EXCUSED.name,
+                        todayStatusDate = cleanLeaveDate,
+                        absenceDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.ABSENT.name && getHolidayLabelForDate(dKey) == null },
+                        excusedDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.EXCUSED.name && getHolidayLabelForDate(dKey) == null },
+                        lateDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.LATE.name && getHolidayLabelForDate(dKey) == null }
+                    )
                 } else stu
             }
             _students.value = updatedStudents
@@ -3660,6 +3745,43 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
 
     /**
+     * Unified helper to read the student's daily attendance status directly from the StudentRecord
+     * (`dailyAttendance[targetDate]`, `todayStatusDate`/`todayStatus`, and in-memory `_attendance`),
+     * used across AttendanceScreen, Admin/Teacher Dashboard, and Parent/Student Dashboard.
+     */
+    fun getStudentStatusForDate(student: StudentRecord?, dateStr: String? = null): AttendanceStatus {
+        if (student == null) return AttendanceStatus.PRESENT
+        val targetDate = ArabicTextNormalizer.normalizeDateIso(
+            dateStr?.takeIf { it.isNotBlank() } ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        )
+        if (targetDate.isNotEmpty() && getHolidayLabelForDate(targetDate) != null) {
+            return AttendanceStatus.HOLIDAY
+        }
+        val compactDate = targetDate.replace("-", "")
+        val directFromMap = student.dailyAttendance[targetDate]
+            ?: student.dailyAttendance[compactDate]
+            ?: student.dailyAttendance.entries.firstOrNull { (k, _) ->
+                ArabicTextNormalizer.normalizeDateIso(k) == targetDate
+            }?.value
+        if (!directFromMap.isNullOrBlank()) {
+            runCatching { AttendanceStatus.valueOf(directFromMap.trim().uppercase()) }.getOrNull()?.let { return it }
+        }
+        val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate)
+        if (cleanTodayDate == targetDate && student.todayStatus.isNotBlank()) {
+            runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()?.let { return it }
+        }
+        if (dateStr.isNullOrBlank() && student.todayStatus.isNotBlank()) {
+            runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()?.let { return it }
+        }
+        val fromAttList = _attendance.value.firstOrNull {
+            it.studentId.trim() == student.id.trim() &&
+                ArabicTextNormalizer.normalizeDateIso(it.date) == targetDate
+        }?.status
+        if (fromAttList != null) return fromAttList
+        return AttendanceStatus.PRESENT
+    }
+
+    /**
      * Returns the canonical date-keyed attendance map (`YYYY-MM-DD` -> `AttendanceStatus`) for a student,
      * merging `StudentRecord.dailyAttendance` and `_attendance.value` so that each date has a single authoritative status.
      */
@@ -3670,11 +3792,19 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val student = _students.value.firstOrNull { it.id.trim() == cleanId }
         student?.dailyAttendance?.forEach { (rawDate, rawStatus) ->
-            val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(rawDate.trim())
+            val cleanDate = ArabicTextNormalizer.normalizeDateIso(rawDate.trim())
             if (cleanDate.isNotEmpty()) {
                 val parsed = runCatching { AttendanceStatus.valueOf(rawStatus.trim().uppercase()) }.getOrNull()
                 if (parsed != null) {
                     map[cleanDate] = parsed
+                }
+            }
+        }
+        if (student != null) {
+            val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate)
+            if (cleanTodayDate.isNotEmpty() && student.todayStatus.isNotBlank() && !map.containsKey(cleanTodayDate)) {
+                runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()?.let {
+                    map[cleanTodayDate] = it
                 }
             }
         }
@@ -3684,7 +3814,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             .filter { it.studentId.trim() == cleanId && it.date.isNotBlank() }
             .asReversed()
             .forEach { entry ->
-                val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(entry.date.trim())
+                val cleanDate = ArabicTextNormalizer.normalizeDateIso(entry.date.trim())
                 if (cleanDate.isNotEmpty()) {
                     map[cleanDate] = entry.status
                 }
@@ -3695,13 +3825,16 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * Reads the student's saved attendance status for a specific `YYYY-MM-DD` date directly from
-     * the persistent date-keyed attendance map / records, falling back to `PRESENT` only when no
-     * record exists for that date.
+     * `getStudentStatusForDate(student, dateIso)`.
      */
     fun getStudentAttendanceStatusForDate(studentId: String, dateIso: String): AttendanceStatus {
-        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(dateIso.trim())
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(dateIso.trim())
         if (cleanDate.isNotEmpty() && getHolidayLabelForDate(cleanDate) != null) {
             return AttendanceStatus.HOLIDAY
+        }
+        val student = _students.value.firstOrNull { it.id.trim() == studentId.trim() }
+        if (student != null) {
+            return getStudentStatusForDate(student, cleanDate)
         }
         val map = getStudentAttendanceMap(studentId)
         return map[cleanDate] ?: AttendanceStatus.PRESENT
@@ -4354,7 +4487,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             category = InputSanitizer.sanitize(category).ifBlank { "فعالية مدرسية" },
             description = InputSanitizer.sanitize(description).ifBlank { cleanTitle },
             date = InputSanitizer.sanitize(date).ifBlank { "2026-10-29" },
-            location = InputSanitizer.sanitize(location).ifBlank { "الموصل - زمار" },
+            location = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(location)).ifBlank { sName },
             imageBase64 = imageBase64,
             authorName = author,
             heartCount = 0,
@@ -4398,7 +4531,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     category = InputSanitizer.sanitize(category).ifBlank { "فعالية مدرسية" },
                     description = InputSanitizer.sanitize(description).ifBlank { cleanTitle },
                     date = InputSanitizer.sanitize(date).ifBlank { ev.date },
-                    location = InputSanitizer.sanitize(location).ifBlank { "الموصل - زمار" },
+                    location = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(location)),
                     imageBase64 = imageBase64
                 )
             } else ev

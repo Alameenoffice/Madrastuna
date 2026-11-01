@@ -391,7 +391,7 @@ fun AdminAccountsScreen(
                             onClick = {
                                 val msg = """
                                     السلام عليكم أستاذنا الفاضل ${teacher.fullName}
-                                    إدارة (${schoolConfig.schoolName} - ${schoolConfig.address}) ترحب بكم في منصة مدرستي.
+                                    إدارة (${schoolConfig.schoolName}) ترحب بكم في منصة مدرستي.
                                     بيانات الدخول الخاصة بحساب المعلم:
                                     • كود المدرسة: ${schoolConfig.schoolId}
                                     • المواد المسندة: ${teacher.specialty}
@@ -592,7 +592,7 @@ fun AdminAccountsScreen(
                             onClick = {
                                 val msg = """
                                     السلام عليكم السيد ولي أمر الطالب (${stu.studentName}) المحترم،
-                                    تهديكم إدارة (${schoolConfig.schoolName} - ${schoolConfig.address}) أطيب التحيات.
+                                    تهديكم إدارة (${schoolConfig.schoolName}) أطيب التحيات.
                                     تم تفعيل حسابات المتابعة اليومية في منصة مدرستي (كود المدرسة: ${schoolConfig.schoolId}):
                                     • الصف والشعبة: ${stu.gradeClass} - شعبة (${stu.sectionName})
                                     • حساب ولي الأمر: المستخدم (${stu.parentUsername}) | الرمز (${stu.parentPassword})
@@ -1044,7 +1044,7 @@ fun AdminAccountsScreen(
         }
         var parentName by remember(currentStu) { mutableStateOf(currentStu?.parentName ?: "") }
         var parentPhone by remember(currentStu) { mutableStateOf(currentStu?.parentPhone ?: "07512362567") }
-        var address by remember(currentStu) { mutableStateOf(currentStu?.address ?: "الموصل - زمار") }
+        var address by remember(currentStu) { mutableStateOf(currentStu?.address ?: "") }
         var totalFeeText by remember { mutableStateOf("1500000") }
         var photoBase64 by remember(currentStu) { mutableStateOf(currentStu?.photoBase64 ?: "") }
         var sUser by remember(currentStu) {
@@ -1300,7 +1300,7 @@ fun AdminAccountsScreen(
                             value = address,
                             onValueChange = { address = it },
                             label = { Text("العنوان السكني") },
-                            placeholder = { Text("الموصل - زمار") },
+                            placeholder = { Text("أدخل العنوان السكني (اختياري)") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -1395,7 +1395,7 @@ fun AdminAccountsScreen(
                                         sectionName = sectionName,
                                         parentName = parentName,
                                         parentPhone = parentPhone,
-                                        address = address.ifBlank { "الموصل - زمار" },
+                                        address = address.trim(),
                                         totalFee = totalFeeText.toLongOrNull() ?: 1500000L,
                                         photoBase64 = photoBase64,
                                         studentUsername = sUser,

@@ -62,12 +62,12 @@ fun OnboardingScreen(
         listOf(
             OnboardingSlideData(
                 badge = "الشريحة 1 من 3 • منصة مدرستي المتكاملة",
-                title = "إدارة مدرسية ذكية بهوية عصرية",
-                description = "منصة رقمية شاملة تربط إدارة المدرسة، الكادر التدريسي، أولياء الأمور، والطلبة في بيئة تعليمية موحدة وآمنة في الموصل - زمار.",
+                title = "منصة مدرستي الذكية بهوية عصرية",
+                description = "منصة رقمية شاملة تربط الأسرة التربوية، الكادر التدريسي، أولياء الأمور، والطلبة في بيئة تعليمية موحدة وآمنة.",
                 highlights = listOf(
-                    "هيكلة إدارية صارمة وصلاحيات مخصصة لكل حساب",
-                    "دعم المدارس الأهلية والحكومية وكافة المراحل الدراسية",
-                    "إشعارات فورية وتكامل مباشر مع واتساب"
+                    "بيئة تعليمية وتربوية تفاعلية تجمع الطلبة والأساتذة وأولياء الأمور",
+                    "متابعة متكاملة لكافة المراحل والصفوف الدراسية",
+                    "إشعارات فورية وتواصل مباشر مع أولياء الأمور"
                 )
             ),
             OnboardingSlideData(
@@ -81,13 +81,13 @@ fun OnboardingScreen(
                 )
             ),
             OnboardingSlideData(
-                badge = "الشريحة 3 من 3 • التميز والتواصل المباشر",
-                title = "لوحة الشرف الذهبية والتواصل الفعال",
-                description = "احتفِ بأوائل الطلبة والمجتهدين في لوحة الشرف الذهبية، وتابع الأقساط الدراسية، البلاغات، ومعرض الفعاليات المدرسية المصور.",
+                badge = "الشريحة 3 من 3 • مجتمع تفاعلي ومنصة تواصل",
+                title = "مجتمع تفاعلي ومنصة تواصل اجتماعي تربوية",
+                description = "مساحة اجتماعية آمنة وراقية تجمع الطلبة والأساتذة لمشاركة الإبداعات العلمية والفنية، التفاعل الإيجابي، ومتابعة الفعاليات والأخبار المدرسية لحظة بلحظة.",
                 highlights = listOf(
-                    "لوحة شرف احتفالية بأوسمة فيكتور ذهبية للطلبة الأوائل",
-                    "نظام أقساط ذكي يتفعل تلقائياً للمدارس الأهلية",
-                    "صندوق مراسلة مباشر وبلاغات رسمية مع أولياء الأمور"
+                    "منصة تواصل اجتماعي طلابية لمشاركة المواهب والمشاريع العلمية والفنية",
+                    "تفاعل حي ومباشر (إعجاب، تعليقات، ومتابعة للإبداعات المدرسية)",
+                    "متابعة فورية لليوم الدراسي، الجداول، الواجبات، والفعاليات المصورة"
                 )
             )
         )
@@ -117,7 +117,7 @@ fun OnboardingScreen(
                     text = if (!discoveredSchoolName.isNullOrBlank()) {
                         "منصة مدرستي الذكية • $discoveredSchoolName"
                     } else {
-                        "منصة مدرستي الذكية • الموصل - زمار"
+                        "منصة مدرستي الذكية"
                     },
                     icon = Icons.Filled.School,
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -231,7 +231,7 @@ fun OnboardingScreen(
 
                     NoWrapBadge(
                         text = slide.badge,
-                        icon = Icons.Filled.AutoAwesome,
+                        icon = Icons.Filled.School,
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -414,7 +414,7 @@ fun SchoolSetupScreen(
     BackHandler { onCancelSetup() }
 
     var schoolName by remember { mutableStateOf("مدرستي النموذجية") }
-    var address by remember { mutableStateOf("الموصل - زمار") }
+    var address by remember { mutableStateOf("") }
     var selectedSchoolType by remember { mutableStateOf(SchoolType.PRIVATE) }
     var selectedSchoolStage by remember { mutableStateOf(SchoolStage.SECONDARY) }
     var logoBase64 by remember { mutableStateOf("") }
@@ -527,7 +527,7 @@ fun SchoolSetupScreen(
                         value = schoolName,
                         onValueChange = { schoolName = it },
                         label = { Text("اسم المدرسة الرسمي") },
-                        placeholder = { Text("مثال: ثانوية زمار النموذجية") },
+                        placeholder = { Text("مثال: مدرسة النور الأهلية") },
                         leadingIcon = { Icon(Icons.Filled.School, contentDescription = null) },
                         singleLine = true,
                         modifier = Modifier
@@ -540,7 +540,7 @@ fun SchoolSetupScreen(
                         value = address,
                         onValueChange = { address = it },
                         label = { Text("العنوان الجغرافي للمدرسة") },
-                        placeholder = { Text("الموصل - زمار") },
+                        placeholder = { Text("أدخل العنوان الجغرافي (اختياري)") },
                         leadingIcon = { Icon(Icons.Filled.LocationOn, contentDescription = null) },
                         singleLine = true,
                         modifier = Modifier
@@ -795,7 +795,7 @@ fun SchoolSetupScreen(
                             } else {
                                 onCompleteSetup(
                                     schoolName,
-                                    address.ifBlank { "الموصل - زمار" },
+                                    address.trim(),
                                     selectedSchoolType,
                                     logoBase64,
                                     adminFullName,
@@ -946,9 +946,9 @@ fun UnifiedLoginScreen(
                     } else if (schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank()) {
                         "كود المدرسة: ${schoolConfig.schoolId} • ${schoolConfig.schoolStage.arabicLabel}"
                     } else {
-                        "منصة مدرستي الذكية • الموصل - زمار"
+                        "منصة مدرستي الذكية"
                     },
-                    icon = Icons.Filled.LocationOn,
+                    icon = Icons.Filled.School,
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                 )
