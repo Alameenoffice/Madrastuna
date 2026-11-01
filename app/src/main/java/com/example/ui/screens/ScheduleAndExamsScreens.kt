@@ -57,6 +57,8 @@ fun ScheduleAndHomeworkScreen(
     val quickQuizzes by viewModel.quickQuizzes.collectAsState()
     val quickQuizAnswers by viewModel.quickQuizAnswers.collectAsState()
     val studyMaterials by viewModel.studyMaterials.collectAsState()
+    val accounts by viewModel.accounts.collectAsState()
+    val staffTitleSingular = schoolConfig.schoolStage.staffTitleSingular
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val canPublish = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
@@ -84,6 +86,8 @@ fun ScheduleAndHomeworkScreen(
     var selectedDay by remember { mutableStateOf("الأحد") }
 
     var showPublishHomeworkDialog by remember { mutableStateOf(false) }
+    var editingHomework by remember { mutableStateOf<HomeworkItem?>(null) }
+    var deletingHomework by remember { mutableStateOf<HomeworkItem?>(null) }
     var showPublishQuickQuizDialog by remember { mutableStateOf(false) }
     var editingQuiz by remember { mutableStateOf<QuickQuizItem?>(null) }
     var showAddPeriodDialog by remember { mutableStateOf(false) }
@@ -580,7 +584,7 @@ fun ScheduleAndHomeworkScreen(
                                 }
 
                                 Text(
-                                    text = "الصف: ${hw.gradeClass} (شعبة ${hw.sectionName}) • المعلم: ${hw.teacherName}",
+                                    text = "الصف: ${hw.gradeClass} (شعبة ${hw.sectionName}) • $staffTitleSingular: ${hw.teacherName}",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -1028,6 +1032,62 @@ fun ScheduleAndHomeworkScreen(
                                         }
                                     }
                                 }
+
+                                if (canPublish) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { editingHomework = hw },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(36.dp)
+                                                .testTag("edit_homework_${hw.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Edit,
+                                                contentDescription = "تعديل الواجب",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "تعديل",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { deletingHomework = hw },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(36.dp)
+                                                .testTag("delete_homework_${hw.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.DeleteOutline,
+                                                contentDescription = "حذف الواجب",
+                                                tint = DangerRed,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "حذف",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DangerRed
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1115,7 +1175,7 @@ fun ScheduleAndHomeworkScreen(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "المعلم: ${period.teacherName}",
+                                        text = "$staffTitleSingular: ${period.teacherName}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1594,17 +1654,192 @@ fun ScheduleAndHomeworkScreen(
         )
     }
 
+    // Edit Homework Modal
+    editingHomework?.let { hwTarget ->
+        var editSubject by remember(hwTarget.id) { mutableStateOf(hwTarget.subjectName) }
+        var editSubjExpanded by remember { mutableStateOf(false) }
+        var editPrep by remember(hwTarget.id) { mutableStateOf(hwTarget.dailyPreparation) }
+        var editHwDetails by remember(hwTarget.id) { mutableStateOf(hwTarget.homeworkDetails) }
+        var editDueDate by remember(hwTarget.id) { mutableStateOf(hwTarget.dueDate) }
+
+        AlertDialog(
+            onDismissRequest = { editingHomework = null },
+            title = {
+                Text(
+                    text = "تعديل التحضير والواجب (${hwTarget.subjectName})",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepEmerald
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ExposedDropdownMenuBox(
+                        expanded = editSubjExpanded,
+                        onExpandedChange = { editSubjExpanded = !editSubjExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = editSubject,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("المادة الدراسية") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = editSubjExpanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = editSubjExpanded,
+                            onDismissRequest = { editSubjExpanded = false }
+                        ) {
+                            allowedSubjects.forEach { sOption ->
+                                DropdownMenuItem(
+                                    text = { Text(sOption) },
+                                    onClick = {
+                                        editSubject = sOption
+                                        editSubjExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = editPrep,
+                        onValueChange = { editPrep = it },
+                        label = { Text("التحضير اليومي للدرس القادم") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editHwDetails,
+                        onValueChange = { editHwDetails = it },
+                        label = { Text("تفاصيل الواجب البيتي المطلوب") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = editDueDate,
+                        label = "تاريخ التسليم",
+                        onDateSelected = { selectedIso, _ -> editDueDate = selectedIso }
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "حفظ التعديلات",
+                    icon = Icons.Filled.CheckCircle,
+                    onClick = {
+                        if (editPrep.isNotBlank()) {
+                            viewModel.updateHomework(
+                                homeworkId = hwTarget.id,
+                                gradeClass = hwTarget.gradeClass,
+                                sectionName = hwTarget.sectionName,
+                                subjectName = editSubject,
+                                teacherName = hwTarget.teacherName,
+                                dailyPreparation = editPrep,
+                                homeworkDetails = editHwDetails.ifBlank { "مراجعة الدرس وحل أسئلة الفصل" },
+                                dueDate = editDueDate
+                            )
+                            editingHomework = null
+                        }
+                    },
+                    testTag = "confirm_edit_homework_btn"
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { editingHomework = null }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    // Delete Homework Confirmation Modal
+    deletingHomework?.let { hwTarget ->
+        AlertDialog(
+            onDismissRequest = { deletingHomework = null },
+            title = {
+                Text(
+                    text = "تأكيد حذف الواجب الدراسي",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DangerRed
+                )
+            },
+            text = {
+                Text(
+                    text = "هل أنت متأكد من حذف واجب مادة (${hwTarget.subjectName}) للصف (${hwTarget.gradeClass} - شعبة ${hwTarget.sectionName})؟ سيتم حذفه فوراً من السحابة وجميع الأجهزة.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "تأكيد الحذف",
+                    icon = Icons.Filled.DeleteOutline,
+                    containerColor = DangerRed,
+                    onClick = {
+                        viewModel.deleteHomework(hwTarget.id)
+                        deletingHomework = null
+                    },
+                    testTag = "confirm_delete_homework_btn"
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingHomework = null }) { Text("إلغاء") }
+            }
+        )
+    }
+
     if (showAddPeriodDialog) {
-        var periodNo by remember { mutableStateOf("5") }
+        val registeredTeachers = remember(accounts) {
+            accounts.filter { it.role == UserRole.TEACHER }
+        }
+        var periodNo by remember { mutableStateOf("1") }
         var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }
-        var teacher by remember { mutableStateOf(currentUser?.fullName ?: "أ. عمر قاسم الحديثي") }
-        var timeSlot by remember { mutableStateOf("11:30 - 12:15") }
+        var teacher by remember(currentUser, registeredTeachers) {
+            val defaultTeacher = if (currentUser?.role == UserRole.TEACHER) {
+                currentUser?.fullName
+            } else {
+                registeredTeachers.firstOrNull()?.fullName
+            }
+            mutableStateOf(defaultTeacher ?: "")
+        }
+        var teacherSearchQuery by remember { mutableStateOf("") }
+        var teacherDropdownExpanded by remember { mutableStateOf(false) }
+
+        val timeOptions = remember {
+            listOf(
+                "08:00 ص",
+                "08:45 ص",
+                "09:30 ص",
+                "10:15 ص",
+                "11:00 ص",
+                "11:45 ص",
+                "12:30 م",
+                "01:15 م",
+                "02:00 م"
+            )
+        }
+        var startTime by remember { mutableStateOf("08:00 ص") }
+        var endTime by remember { mutableStateOf("08:45 ص") }
+        var startExpanded by remember { mutableStateOf(false) }
+        var endExpanded by remember { mutableStateOf(false) }
+
+        val filteredTeachers = remember(registeredTeachers, teacherSearchQuery) {
+            if (teacherSearchQuery.isBlank()) {
+                registeredTeachers
+            } else {
+                val q = teacherSearchQuery.trim()
+                registeredTeachers.filter { tAcc ->
+                    tAcc.fullName.contains(q, ignoreCase = true) ||
+                        tAcc.specialty.contains(q, ignoreCase = true) ||
+                        tAcc.teacherSubjectsList.any { it.contains(q, ignoreCase = true) }
+                }
+            }
+        }
 
         AlertDialog(
             onDismissRequest = { showAddPeriodDialog = false },
             title = { Text("إضافة حصة ليوم $selectedDay ($selectedClass - $selectedSection)") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     OutlinedTextField(
                         value = periodNo,
                         onValueChange = { periodNo = it.filter { c -> c.isDigit() } },
@@ -1612,6 +1847,7 @@ fun ScheduleAndHomeworkScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Text("المادة الدراسية:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(allowedSubjects) { sOpt ->
                             FilterChip(
@@ -1621,20 +1857,144 @@ fun ScheduleAndHomeworkScreen(
                             )
                         }
                     }
-                    OutlinedTextField(
-                        value = teacher,
-                        onValueChange = { teacher = it },
-                        label = { Text("اسم مدرس المادة") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+
+                    // Searchable Select Dropdown for Teacher Name
+                    Text(
+                        text = "اختيار $staffTitleSingular من الكادر المسجل:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald
                     )
-                    OutlinedTextField(
-                        value = timeSlot,
-                        onValueChange = { timeSlot = it },
-                        label = { Text("الوقت") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    ExposedDropdownMenuBox(
+                        expanded = teacherDropdownExpanded,
+                        onExpandedChange = { teacherDropdownExpanded = !teacherDropdownExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = teacherSearchQuery.ifBlank { teacher },
+                            onValueChange = {
+                                teacherSearchQuery = it
+                                teacher = it
+                                teacherDropdownExpanded = true
+                            },
+                            label = { Text("ابحث أو اختر اسم $staffTitleSingular...") },
+                            leadingIcon = { Icon(Icons.Filled.PersonSearch, contentDescription = null, tint = DeepEmerald) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = teacherDropdownExpanded) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = teacherDropdownExpanded,
+                            onDismissRequest = { teacherDropdownExpanded = false }
+                        ) {
+                            if (filteredTeachers.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("لا يوجد مطابق في الكادر المسجل") },
+                                    onClick = { teacherDropdownExpanded = false }
+                                )
+                            } else {
+                                filteredTeachers.forEach { tAcc ->
+                                    val subjInfo = tAcc.teacherSubjectsList.joinToString("، ").ifBlank { tAcc.specialty }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(tAcc.fullName, fontWeight = FontWeight.Bold)
+                                                if (subjInfo.isNotBlank()) {
+                                                    Text(
+                                                        text = "الاختصاص: $subjInfo",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            teacher = tAcc.fullName
+                                            teacherSearchQuery = ""
+                                            teacherDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Structured Start & End Time Selectors
+                    Text(
+                        text = "توقيت الحصة الدراسية (من الساعة — إلى الساعة):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ExposedDropdownMenuBox(
+                            expanded = startExpanded,
+                            onExpandedChange = { startExpanded = !startExpanded },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            OutlinedTextField(
+                                value = startTime,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("من الساعة") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = startExpanded) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = startExpanded,
+                                onDismissRequest = { startExpanded = false }
+                            ) {
+                                timeOptions.forEach { tOpt ->
+                                    DropdownMenuItem(
+                                        text = { Text(tOpt) },
+                                        onClick = {
+                                            startTime = tOpt
+                                            startExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        ExposedDropdownMenuBox(
+                            expanded = endExpanded,
+                            onExpandedChange = { endExpanded = !endExpanded },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            OutlinedTextField(
+                                value = endTime,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("إلى الساعة") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = endExpanded) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = endExpanded,
+                                onDismissRequest = { endExpanded = false }
+                            ) {
+                                timeOptions.forEach { tOpt ->
+                                    DropdownMenuItem(
+                                        text = { Text(tOpt) },
+                                        onClick = {
+                                            endTime = tOpt
+                                            endExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -1642,14 +2002,16 @@ fun ScheduleAndHomeworkScreen(
                     text = "حفظ في الجدول",
                     icon = Icons.Filled.Save,
                     onClick = {
+                        val finalTeacher = teacher.trim().ifBlank { currentUser?.fullName ?: staffTitleSingular }
+                        val formattedSlot = "$startTime - $endTime"
                         viewModel.addSchedulePeriod(
                             gradeClass = selectedClass,
                             sectionName = selectedSection,
                             dayOfWeek = selectedDay,
                             periodNumber = periodNo.toIntOrNull() ?: 1,
                             subjectName = subject,
-                            teacherName = teacher,
-                            timeSlot = timeSlot
+                            teacherName = finalTeacher,
+                            timeSlot = formattedSlot
                         )
                         showAddPeriodDialog = false
                     }
@@ -1896,81 +2258,81 @@ fun ExamsAndGradesScreen(
                         else -> "راسب"
                     }
 
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "كشف درجات الطالب: ${myStu.fullNameWithFather}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "الصف: ${myStu.gradeClass} • شعبة (${myStu.sectionName})",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    NoWrapBadge(
-                                        text = if (allSubjectsCompleted) "المعدل النهائي: $overallAvg%" else "مؤشر المتابعة: $overallAvg%",
-                                        icon = Icons.Filled.AutoGraph,
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = Color.White
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    NoWrapBadge(
-                                        text = "الحالة: $overallRating",
-                                        icon = Icons.Filled.WorkspacePremium,
-                                        containerColor = GoldAccent,
-                                        contentColor = Color(0xFF451A03)
-                                    )
-                                }
-                            }
-                            if (myBadges.isNotEmpty()) {
-                                StudentAutoBadgesRow(badges = myBadges)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
-                                        context = context,
-                                        student = myStu,
-                                        grades = allSubjectsReport,
-                                        schoolConfig = schoolConfig
-                                    )
-                                    viewModel.showBannerMessage(msg)
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("تصدير / طباعة بطاقة الدرجات الرسمية (PDF)")
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
+                        item(key = "student_report_card_header_${myStu.id}") {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(18.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "كشف درجات الطالب: ${myStu.fullNameWithFather}",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "الصف: ${myStu.gradeClass} • شعبة (${myStu.sectionName})",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            NoWrapBadge(
+                                                text = if (allSubjectsCompleted) "المعدل النهائي: $overallAvg%" else "مؤشر المتابعة: $overallAvg%",
+                                                icon = Icons.Filled.AutoGraph,
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = Color.White
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            NoWrapBadge(
+                                                text = "الحالة: $overallRating",
+                                                icon = Icons.Filled.WorkspacePremium,
+                                                containerColor = GoldAccent,
+                                                contentColor = Color(0xFF451A03)
+                                            )
+                                        }
+                                    }
+                                    if (myBadges.isNotEmpty()) {
+                                        StudentAutoBadgesRow(badges = myBadges)
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                                context = context,
+                                                student = myStu,
+                                                grades = allSubjectsReport,
+                                                schoolConfig = schoolConfig
+                                            )
+                                            viewModel.showBannerMessage(msg)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("تصدير / طباعة بطاقة الدرجات الرسمية (PDF)")
+                                    }
+                                }
+                            }
+                        }
+
                         items(allSubjectsReport, key = { it.subjectName }) { g ->
                             val statusColor = when {
                                 !g.isAllExamsCompleted -> DeepEmerald
@@ -2719,8 +3081,12 @@ fun ExamsAndGradesScreen(
             ) {
                 items(scopedExams, key = { it.id }) { ex ->
                     val daysRemaining = ex.daysRemainingUntilExam()
+                    val formattedExamDateLabel = listOf(ex.dayName.trim(), ex.examDate.trim())
+                        .filter { it.isNotEmpty() }
+                        .joinToString(" • ")
+                        .ifBlank { ex.examDate }
                     val countdownText = when {
-                        daysRemaining == null -> "موعد مجدول"
+                        daysRemaining == null -> formattedExamDateLabel
                         daysRemaining > 0L -> "قادم (بعد $daysRemaining يوم)"
                         daysRemaining == 0L -> "اليوم"
                         else -> "منتهي"
@@ -2753,14 +3119,16 @@ fun ExamsAndGradesScreen(
                                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (daysRemaining != null) {
+                                        NoWrapBadge(
+                                            text = countdownText,
+                                            icon = Icons.Filled.Timer,
+                                            containerColor = countdownColor.copy(alpha = 0.16f),
+                                            contentColor = countdownColor
+                                        )
+                                    }
                                     NoWrapBadge(
-                                        text = countdownText,
-                                        icon = Icons.Filled.Timer,
-                                        containerColor = countdownColor.copy(alpha = 0.16f),
-                                        contentColor = countdownColor
-                                    )
-                                    NoWrapBadge(
-                                        text = "${ex.dayName} ${ex.examDate}",
+                                        text = formattedExamDateLabel,
                                         icon = Icons.Filled.Event,
                                         containerColor = GoldAccent.copy(alpha = 0.2f),
                                         contentColor = GoldDeep

@@ -144,6 +144,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _isNetworkOnline = MutableStateFlow(checkCurrentNetworkOnline())
     val isNetworkOnline: StateFlow<Boolean> = _isNetworkOnline.asStateFlow()
 
+    val isCloudActionProcessing: StateFlow<Boolean> = FirebaseCloudSync.isCloudWriteInFlight
+
     // Security Shield Brute-Force Lockout States
     private val _failedLoginAttempts = MutableStateFlow(0)
     val failedLoginAttempts: StateFlow<Int> = _failedLoginAttempts.asStateFlow()
@@ -209,16 +211,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     val availableClasses: List<String>
         get() = (_schoolConfig.value.schoolStage.defaultClasses + _schoolConfig.value.registeredClasses)
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
+            .map { ArabicTextNormalizer.cleanPureClassName(it) }
+            .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusClassName(it) }
             .distinctBy { ArabicTextNormalizer.normalizeClass(it) }
-            .ifEmpty { SchoolStage.SECONDARY.defaultClasses }
+            .ifEmpty { _schoolConfig.value.schoolStage.defaultClasses }
 
     val availableSections: List<String>
-        get() = _schoolConfig.value.registeredSections.ifEmpty { listOf("أ", "ب", "ج") }
+        get() = _schoolConfig.value.registeredSections
+            .map { ArabicTextNormalizer.cleanPureSectionName(it) }
+            .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusSectionName(it) }
+            .distinctBy { ArabicTextNormalizer.normalizeSection(it) }
+            .ifEmpty { listOf("أ", "ب", "ج") }
 
     val availableSubjects: List<String>
-        get() = _schoolConfig.value.registeredSubjects.ifEmpty { SchoolStage.SECONDARY.defaultSubjects }
+        get() = _schoolConfig.value.registeredSubjects.ifEmpty { _schoolConfig.value.schoolStage.defaultSubjects }
 
     val weekDays = listOf("الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس")
 
@@ -301,6 +307,22 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
                     }
+                    if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_USERS)) {
+                        FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_USERS)?.let {
+                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_USERS)) {
+                                val parsedAccounts = repo.parseAccountsJson(it, sid)
+                                if (parsedAccounts.isNotEmpty()) {
+                                    repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_USERS, it)
+                                    _accounts.value = parsedAccounts
+                                    _currentUser.value?.let { curr ->
+                                        parsedAccounts.firstOrNull { acc -> acc.id == curr.id }?.let { refreshedUser ->
+                                            _currentUser.value = refreshedUser
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HOLIDAYS)) {
                         FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_HOLIDAYS)?.let {
                             if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_HOLIDAYS)) {
@@ -311,6 +333,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
                     }
+                    flushPendingActivityCommentsToCloud()
                 } catch (_: Exception) {
                 }
             }
@@ -318,9 +341,28 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun refreshConnectivityState(): Boolean {
-        val online = checkCurrentNetworkOnline()
-        _isNetworkOnline.value = online
-        return online
+        val osOnline = checkCurrentNetworkOnline()
+        if (!osOnline) {
+            _isNetworkOnline.value = false
+            return false
+        }
+        viewModelScope.launch {
+            val realOnline = FirebaseCloudSync.verifyRealInternet(3000)
+            _isNetworkOnline.value = realOnline
+            if (realOnline) {
+                flushPendingActivityCommentsToCloud()
+            }
+        }
+        return osOnline
+    }
+
+    fun requireOnlineAndExecute(action: () -> Unit) {
+        if (!checkCurrentNetworkOnline()) {
+            _isNetworkOnline.value = false
+            showToastAlert("لا يوجد اتصال حقيقي بالإنترنت — يرجى التحقق من الشبكة والمحاولة مجدداً", isSuccess = false)
+            return
+        }
+        action()
     }
 
     // =========================================================================
@@ -335,7 +377,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 repo.clearSession()
                 _activeSession.value = null
                 _currentUser.value = null
-                showToastAlert("اشتراك المدرسة متوقف، يرجى مراجعة المطور أحمد أبو رسلان", isSuccess = false)
+                showToastAlert("اشتراك المدرسة متوقف حالياً، يرجى مراجعة إدارة المنصة التقنية", isSuccess = false)
                 return
             }
             val matchedUser = _accounts.value.firstOrNull {
@@ -577,7 +619,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             id = "dev_bc_${UUID.randomUUID().toString().take(6)}",
             title = cleanTitle,
             message = cleanMsg,
-            senderName = "المطور أحمد أبو رسلان",
+            senderName = "إدارة المنصة التقنية",
             createdAt = today,
             targetSchoolId = "ALL"
         )
@@ -677,7 +719,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             if (matched == null) {
-                showToastAlert("كود التفعيل ($cleanCode) غير صحيح، يرجى مراجعة المطور أحمد أبو رسلان", isSuccess = false)
+                showToastAlert("كود التفعيل ($cleanCode) غير صحيح، يرجى التأكد من الكود والمحاولة مجدداً", isSuccess = false)
                 onResult(false)
                 return@launch
             }
@@ -1183,6 +1225,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
 
+                        flushPendingActivityCommentsToCloud()
+
                     } catch (_: Exception) {
                     }
                 }
@@ -1229,20 +1273,21 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun getAllowedClassesForUser(user: UserAccount? = _currentUser.value): List<String> {
         val sid = _schoolConfig.value.schoolId
         val schoolStudents = _students.value.filter { it.isActive && (it.schoolId.isEmpty() || it.schoolId == sid) }
-        val studentClasses = schoolStudents.map { it.gradeClass.trim() }.filter { it.isNotEmpty() }
+        val studentClasses = schoolStudents
+            .map { ArabicTextNormalizer.cleanPureClassName(it.gradeClass) }
+            .filter { it.isNotEmpty() && !ArabicTextNormalizer.isBogusClassName(it) }
         val regClasses = (availableClasses + studentClasses)
-            .filter { it.isNotBlank() }
+            .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusClassName(it) }
             .distinctBy { ArabicTextNormalizer.normalizeClass(it) }
 
         if (user == null || user.role == UserRole.ADMIN) return regClasses
         return when (user.role) {
             UserRole.TEACHER -> {
+                val explicitTeacherClasses = user.parsedClassAndSectionEntries
+                    .map { it.first }
+                    .filter { it.isNotBlank() && !ArabicTextNormalizer.isAllClassesToken(it) && !ArabicTextNormalizer.isBogusClassName(it) }
                 val matchedFromPool = regClasses.filter { cls -> user.canTeacherAccessClassSection(cls, null) }
-                val directTeacherClasses = user.teacherAssignedClassesOnly.filter { assignedCls ->
-                    !ArabicTextNormalizer.isAllClassesToken(assignedCls) &&
-                        matchedFromPool.none { ArabicTextNormalizer.matchesClass(it, assignedCls) }
-                }
-                val combined = (matchedFromPool + directTeacherClasses)
+                val combined = (explicitTeacherClasses + matchedFromPool)
                     .distinctBy { ArabicTextNormalizer.normalizeClass(it) }
                     .ifEmpty { regClasses }
                 // Prioritize classes that actually have registered students assigned to this teacher
@@ -1256,10 +1301,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             UserRole.PARENT, UserRole.STUDENT -> {
                 val children = getChildrenForParent(user)
                 if (children.isNotEmpty()) {
-                    children.map { it.gradeClass }.distinctBy { ArabicTextNormalizer.normalizeClass(it) }
+                    children.map { ArabicTextNormalizer.cleanPureClassName(it.gradeClass) }
+                        .distinctBy { ArabicTextNormalizer.normalizeClass(it) }
                 } else {
                     val linkedStu = schoolStudents.firstOrNull { it.id == user.linkedStudentId }
-                    if (linkedStu != null) listOf(linkedStu.gradeClass) else listOf(user.gradeClass)
+                    if (linkedStu != null) listOf(ArabicTextNormalizer.cleanPureClassName(linkedStu.gradeClass))
+                    else listOf(ArabicTextNormalizer.cleanPureClassName(user.gradeClass))
                 }
             }
             else -> regClasses
@@ -1273,18 +1320,27 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 (it.schoolId.isEmpty() || it.schoolId == sid) &&
                 ArabicTextNormalizer.matchesClass(it.gradeClass, gradeClass)
         }
-        val studentSecs = classStudents.map { it.sectionName.trim() }.filter { it.isNotEmpty() }
+        val studentSecs = classStudents
+            .map { ArabicTextNormalizer.cleanPureSectionName(it.sectionName) }
+            .filter { it.isNotEmpty() && !ArabicTextNormalizer.isBogusSectionName(it) }
         val regSections = (availableSections + studentSecs)
-            .filter { it.isNotBlank() }
+            .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusSectionName(it) }
             .distinctBy { ArabicTextNormalizer.normalizeSection(it) }
 
         if (user == null || user.role == UserRole.ADMIN) return regSections
         return when (user.role) {
             UserRole.TEACHER -> {
-                val filtered = regSections.filter { sec -> user.canTeacherAccessClassSection(gradeClass, sec) }
+                val explicitSecsForClass = user.parsedClassAndSectionEntries
+                    .filter { (cls, _) -> ArabicTextNormalizer.matchesClass(cls, gradeClass) || ArabicTextNormalizer.isAllClassesToken(cls) }
+                    .map { it.second }
+                    .map { ArabicTextNormalizer.cleanPureSectionName(it) }
+                    .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusSectionName(it) }
+                val poolFiltered = regSections.filter { sec -> user.canTeacherAccessClassSection(gradeClass, sec) }
+                val combined = (explicitSecsForClass + poolFiltered)
+                    .distinctBy { ArabicTextNormalizer.normalizeSection(it) }
                     .ifEmpty { regSections }
                 // Prioritize sections that actually have registered students in this class
-                filtered.sortedByDescending { sec ->
+                combined.sortedByDescending { sec ->
                     classStudents.count { stu ->
                         ArabicTextNormalizer.matchesSection(stu.sectionName, sec)
                     }
@@ -1295,10 +1351,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     ArabicTextNormalizer.matchesClass(it.gradeClass, gradeClass)
                 }
                 if (children.isNotEmpty()) {
-                    children.map { it.sectionName }.distinctBy { ArabicTextNormalizer.normalizeSection(it) }
+                    children.map { ArabicTextNormalizer.cleanPureSectionName(it.sectionName) }
+                        .distinctBy { ArabicTextNormalizer.normalizeSection(it) }
                 } else {
                     val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
-                    if (linkedStu != null) listOf(linkedStu.sectionName) else listOf(user.sectionName)
+                    if (linkedStu != null) listOf(ArabicTextNormalizer.cleanPureSectionName(linkedStu.sectionName))
+                    else listOf(ArabicTextNormalizer.cleanPureSectionName(user.sectionName))
                 }
             }
             else -> regSections
@@ -2340,12 +2398,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             _isSchoolSetupUnlocked.value = false
             _loginConnectingMessage.value = null
             refreshDeveloperCloudData()
-            showToastAlert("مرحباً بك في لوحة تحكم المطور - أحمد أبو رسلان", isSuccess = true)
+            showToastAlert("مرحباً بك في لوحة تحكم المطور العام", isSuccess = true)
             val devDummy = UserAccount(
                 id = "dev_super_admin",
                 username = FirebaseConfigConstants.DEV_USERNAME,
                 password = "",
-                fullName = "المطور أحمد أبو رسلان",
+                fullName = "إدارة المنصة التقنية",
                 role = UserRole.ADMIN,
                 isActive = true
             )
@@ -2448,8 +2506,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         // Check if the school subscription is active (isActive)
         if (!isSchoolSubscriptionActive(resolvedSchoolId)) {
-            showToastAlert("اشتراك المدرسة متوقف، يرجى مراجعة المطور أحمد أبو رسلان", isSuccess = false)
-            return Result.failure(IllegalStateException("اشتراك المدرسة متوقف، يرجى مراجعة المطور أحمد أبو رسلان"))
+            showToastAlert("اشتراك المدرسة متوقف حالياً، يرجى مراجعة إدارة المنصة التقنية", isSuccess = false)
+            return Result.failure(IllegalStateException("اشتراك المدرسة متوقف حالياً، يرجى مراجعة إدارة المنصة التقنية"))
         }
 
         if (!matched.isActive) {
@@ -2498,12 +2556,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         phone: String,
         username: String,
         password: String,
-        photoBase64: String = ""
+        photoBase64: String = "",
+        canModerateActivities: Boolean = false
     ): UserAccount? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
+        val staffLabel = _schoolConfig.value.schoolStage.staffTitleSingular
         val cleanName = InputSanitizer.sanitize(fullName)
         if (cleanName.isBlank()) {
-            showToastAlert("يرجى إدخال اسم المعلم الثلاثي", isSuccess = false)
+            showToastAlert("يرجى إدخال اسم $staffLabel الثلاثي", isSuccess = false)
             return null
         }
 
@@ -2517,6 +2577,25 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return null
         }
 
+        val tempHolder = UserAccount(
+            id = "temp",
+            username = cleanUsername,
+            password = cleanPassword,
+            fullName = cleanName,
+            role = UserRole.TEACHER,
+            assignedClasses = InputSanitizer.sanitize(assignedClasses)
+        )
+        val parsedPairs = tempHolder.parsedClassAndSectionEntries
+        val normalizedAssignedStr = if (parsedPairs.isNotEmpty()) {
+            parsedPairs.joinToString(" | ") { (cls, sec) ->
+                if (sec.isBlank()) cls else "$cls - $sec"
+            }
+        } else {
+            InputSanitizer.sanitize(assignedClasses)
+        }
+        val primaryClass = parsedPairs.firstOrNull()?.first ?: availableClasses.firstOrNull().orEmpty()
+        val primarySec = parsedPairs.firstOrNull()?.second?.takeIf { it.isNotBlank() } ?: "أ"
+
         val newTeacher = UserAccount(
             id = "tch_${UUID.randomUUID().toString().take(6)}",
             username = cleanUsername,
@@ -2526,15 +2605,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             isActive = true,
             phone = InputSanitizer.sanitize(phone).ifBlank { "07512362567" },
             specialty = InputSanitizer.sanitize(specialty),
-            assignedClasses = InputSanitizer.sanitize(assignedClasses),
+            assignedClasses = normalizedAssignedStr,
+            gradeClass = primaryClass,
+            sectionName = primarySec,
             address = "الموصل - زمار",
             photoBase64 = photoBase64,
-            schoolId = sid
+            schoolId = sid,
+            canModerateActivities = canModerateActivities
         )
         val updated = listOf(newTeacher) + _accounts.value
         _accounts.value = updated
         repo.saveAccounts(updated, sid)
-        showToastAlert("تم إنشاء حساب المعلم ($cleanName) باسم مستخدم ($cleanUsername)", isSuccess = true)
+        showToastAlert("تم إنشاء حساب $staffLabel ($cleanName) باسم مستخدم ($cleanUsername)", isSuccess = true)
         return newTeacher
     }
 
@@ -2546,23 +2628,48 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         phone: String,
         username: String,
         password: String,
-        photoBase64: String = ""
+        photoBase64: String = "",
+        canModerateActivities: Boolean? = null
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
+        val staffLabel = _schoolConfig.value.schoolStage.staffTitleSingular
         val rawUser = InputSanitizer.sanitizeUsername(username)
         val prefixedUser = if (rawUser.isNotBlank()) FirebaseConfigConstants.applySchoolPrefix(sid, rawUser) else ""
+
+        val tempHolder = UserAccount(
+            id = "temp",
+            username = prefixedUser,
+            password = "",
+            fullName = fullName,
+            role = UserRole.TEACHER,
+            assignedClasses = InputSanitizer.sanitize(assignedClasses)
+        )
+        val parsedPairs = tempHolder.parsedClassAndSectionEntries
+        val normalizedAssignedStr = if (parsedPairs.isNotEmpty()) {
+            parsedPairs.joinToString(" | ") { (cls, sec) ->
+                if (sec.isBlank()) cls else "$cls - $sec"
+            }
+        } else {
+            InputSanitizer.sanitize(assignedClasses)
+        }
+        val primaryClass = parsedPairs.firstOrNull()?.first
+        val primarySec = parsedPairs.firstOrNull()?.second?.takeIf { it.isNotBlank() }
+
         val updated = _accounts.value.map { acc ->
             if (acc.id == teacherId && acc.role == UserRole.TEACHER) {
                 acc.copy(
                     fullName = InputSanitizer.sanitize(fullName).ifBlank { acc.fullName },
                     specialty = InputSanitizer.sanitize(specialty),
-                    assignedClasses = InputSanitizer.sanitize(assignedClasses),
+                    assignedClasses = normalizedAssignedStr,
+                    gradeClass = primaryClass ?: acc.gradeClass,
+                    sectionName = primarySec ?: acc.sectionName,
                     phone = InputSanitizer.sanitize(phone).ifBlank { acc.phone },
                     username = prefixedUser.ifBlank { acc.username },
                     password = InputSanitizer.sanitize(password).ifBlank { acc.password },
                     photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
-                    schoolId = sid
+                    schoolId = sid,
+                    canModerateActivities = canModerateActivities ?: acc.canModerateActivities
                 )
             } else acc
         }
@@ -2573,7 +2680,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 _currentUser.value = updated.firstOrNull { it.id == teacherId } ?: curr
             }
         }
-        showToastAlert("تم تحديث بيانات وصلاحيات المعلم بنجاح", isSuccess = true)
+        showToastAlert("تم تحديث بيانات وصلاحيات $staffLabel بنجاح", isSuccess = true)
     }
 
     fun toggleAccountActive(accountId: String) {
@@ -2712,11 +2819,16 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val pUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawPUser)
         val pPass = InputSanitizer.sanitize(parentPassword).ifBlank { (1000..9999).random().toString() }
 
+        val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
+            gradeClass,
+            sectionName
+        )
+
         val newStudent = StudentRecord(
             id = stuId,
             studentName = cleanStuName,
-            gradeClass = gradeClass,
-            sectionName = sectionName,
+            gradeClass = pureGradeClass,
+            sectionName = pureSectionName,
             parentName = cleanParName,
             parentPhone = finalPhone,
             address = finalAddress,
@@ -2752,8 +2864,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             isActive = true,
             phone = finalPhone,
             linkedStudentId = stuId,
-            gradeClass = gradeClass,
-            sectionName = sectionName,
+            gradeClass = pureGradeClass,
+            sectionName = pureSectionName,
             address = finalAddress,
             photoBase64 = photoBase64,
             schoolId = sid
@@ -2771,8 +2883,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 isActive = true,
                 phone = finalPhone,
                 linkedStudentId = stuId,
-                gradeClass = gradeClass,
-                sectionName = sectionName,
+                gradeClass = pureGradeClass,
+                sectionName = pureSectionName,
                 address = finalAddress,
                 photoBase64 = photoBase64,
                 schoolId = sid
@@ -2785,8 +2897,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val newTuition = TuitionRecord(
             studentId = stuId,
             studentName = newStudent.studentName,
-            gradeClass = gradeClass,
-            sectionName = sectionName,
+            gradeClass = pureGradeClass,
+            sectionName = pureSectionName,
             parentName = newStudent.parentName,
             parentPhone = finalPhone,
             totalFee = totalFee.coerceAtLeast(500000L),
@@ -2827,13 +2939,21 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val prefixedStuUser = if (rawStuUser.isNotBlank()) FirebaseConfigConstants.applySchoolPrefix(sid, rawStuUser) else ""
         val rawParUser = InputSanitizer.sanitizeUsername(parentUsername)
         val prefixedParUser = if (rawParUser.isNotBlank()) FirebaseConfigConstants.applySchoolPrefix(sid, rawParUser) else ""
+        val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
+            gradeClass,
+            sectionName
+        )
 
+        val targetOldStudent = _students.value.firstOrNull { it.id == studentId }
+        val oldParentUsername = targetOldStudent?.parentUsername.orEmpty()
+
+        // Strictly update gradeClass and sectionName ONLY on the target studentId — never overwrite siblings!
         val updatedStudents = _students.value.map { s ->
             if (s.id == studentId) {
                 s.copy(
                     studentName = InputSanitizer.sanitize(studentName).ifBlank { s.studentName },
-                    gradeClass = gradeClass,
-                    sectionName = sectionName,
+                    gradeClass = pureGradeClass,
+                    sectionName = pureSectionName,
                     parentName = InputSanitizer.sanitize(parentName).ifBlank { s.parentName },
                     parentPhone = InputSanitizer.sanitize(parentPhone).ifBlank { s.parentPhone },
                     address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
@@ -2850,36 +2970,52 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveStudents(updatedStudents, sid)
 
         val updatedAccounts = _accounts.value.map { acc ->
-            if (acc.linkedStudentId == studentId) {
-                if (acc.role == UserRole.PARENT) {
-                    acc.copy(
-                        fullName = InputSanitizer.sanitize(parentName).ifBlank { acc.fullName },
-                        username = prefixedParUser.ifBlank { acc.username },
-                        password = InputSanitizer.sanitize(parentPassword).ifBlank { acc.password },
-                        phone = InputSanitizer.sanitize(parentPhone).ifBlank { acc.phone },
-                        gradeClass = gradeClass,
-                        sectionName = sectionName,
-                        address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
-                        photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
-                        schoolId = sid
-                    )
-                } else {
-                    acc.copy(
-                        fullName = InputSanitizer.sanitize(studentName).ifBlank { acc.fullName },
-                        username = prefixedStuUser.ifBlank { acc.username },
-                        password = InputSanitizer.sanitize(studentPassword).ifBlank { acc.password },
-                        phone = InputSanitizer.sanitize(parentPhone).ifBlank { acc.phone },
-                        gradeClass = gradeClass,
-                        sectionName = sectionName,
-                        address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
-                        photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
-                        schoolId = sid
-                    )
-                }
+            if (acc.role == UserRole.STUDENT && acc.linkedStudentId == studentId) {
+                acc.copy(
+                    fullName = InputSanitizer.sanitize(studentName).ifBlank { acc.fullName },
+                    username = prefixedStuUser.ifBlank { acc.username },
+                    password = InputSanitizer.sanitize(studentPassword).ifBlank { acc.password },
+                    phone = InputSanitizer.sanitize(parentPhone).ifBlank { acc.phone },
+                    gradeClass = pureGradeClass,
+                    sectionName = pureSectionName,
+                    address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
+                    photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
+                    schoolId = sid
+                )
+            } else if (acc.role == UserRole.PARENT &&
+                (acc.linkedStudentId == studentId ||
+                    (oldParentUsername.isNotBlank() && acc.username.equals(oldParentUsername, ignoreCase = true)))
+            ) {
+                acc.copy(
+                    fullName = InputSanitizer.sanitize(parentName).ifBlank { acc.fullName },
+                    username = prefixedParUser.ifBlank { acc.username },
+                    password = InputSanitizer.sanitize(parentPassword).ifBlank { acc.password },
+                    phone = InputSanitizer.sanitize(parentPhone).ifBlank { acc.phone },
+                    gradeClass = if (acc.linkedStudentId == studentId) pureGradeClass else acc.gradeClass,
+                    sectionName = if (acc.linkedStudentId == studentId) pureSectionName else acc.sectionName,
+                    address = InputSanitizer.sanitize(address).ifBlank { "الموصل - زمار" },
+                    photoBase64 = if (acc.linkedStudentId == studentId && photoBase64.isNotBlank()) photoBase64 else acc.photoBase64,
+                    schoolId = sid
+                )
             } else acc
         }
         _accounts.value = updatedAccounts
         repo.saveAccounts(updatedAccounts, sid)
+
+        val updatedTuitions = _tuitions.value.map { t ->
+            if (t.studentId == studentId) {
+                t.copy(
+                    studentName = InputSanitizer.sanitize(studentName).ifBlank { t.studentName },
+                    gradeClass = pureGradeClass,
+                    sectionName = pureSectionName,
+                    parentName = InputSanitizer.sanitize(parentName).ifBlank { t.parentName },
+                    parentPhone = InputSanitizer.sanitize(parentPhone).ifBlank { t.parentPhone }
+                )
+            } else t
+        }
+        _tuitions.value = updatedTuitions
+        repo.saveTuitions(updatedTuitions, sid)
+
         _currentUser.value?.let { curr ->
             if (curr.linkedStudentId == studentId) {
                 _currentUser.value = updatedAccounts.firstOrNull { it.id == curr.id } ?: curr
@@ -3235,22 +3371,43 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         if (approve) {
             val student = _students.value.firstOrNull { it.id == targetReq.studentId }
-            val cleanLeaveDate = targetReq.leaveDate.trim()
-            val entry = AttendanceEntry(
-                id = "attendance_${cleanLeaveDate}_${targetReq.studentId}",
-                studentId = targetReq.studentId,
-                studentName = student?.studentName ?: targetReq.studentName,
-                gradeClass = targetReq.gradeClass,
-                sectionName = targetReq.sectionName,
-                date = cleanLeaveDate,
-                status = AttendanceStatus.EXCUSED,
-                note = "مجاز بعذر رسمي (${targetReq.leaveType.arabicLabel}): ${targetReq.reason}",
-                schoolId = sid
-            )
-            val filteredAtt = _attendance.value.filterNot {
-                it.studentId == targetReq.studentId && it.date.trim() == cleanLeaveDate
+            val cleanStudentId = targetReq.studentId.trim()
+            val cleanLeaveDate = ArabicTextNormalizer.normalizeDigitsToAscii(targetReq.leaveDate.trim()).ifBlank {
+                SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             }
-            val updatedAtt = listOf(entry) + filteredAtt
+            val daysCount = targetReq.durationDays.coerceIn(1, 30)
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val startDateObj = runCatching { sdf.parse(cleanLeaveDate) }.getOrNull()
+            val datesToMark = if (startDateObj != null && daysCount > 1) {
+                (0 until daysCount).map { offset ->
+                    val cal = java.util.Calendar.getInstance().apply {
+                        time = startDateObj
+                        add(java.util.Calendar.DAY_OF_YEAR, offset)
+                    }
+                    sdf.format(cal.time)
+                }
+            } else {
+                listOf(cleanLeaveDate)
+            }
+            val newEntries = datesToMark.map { dIso ->
+                AttendanceEntry(
+                    id = "attendance_${dIso}_$cleanStudentId",
+                    studentId = cleanStudentId,
+                    studentName = student?.studentName ?: targetReq.studentName,
+                    gradeClass = student?.gradeClass?.ifBlank { targetReq.gradeClass } ?: targetReq.gradeClass,
+                    sectionName = student?.sectionName?.ifBlank { targetReq.sectionName } ?: targetReq.sectionName,
+                    date = dIso,
+                    status = AttendanceStatus.EXCUSED,
+                    note = "مجاز بعذر رسمي (${targetReq.leaveType.arabicLabel}): ${targetReq.reason}",
+                    schoolId = sid
+                )
+            }
+            val datesSet = datesToMark.toSet()
+            val filteredAtt = _attendance.value.filterNot {
+                it.studentId.trim() == cleanStudentId &&
+                    ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) in datesSet
+            }
+            val updatedAtt = newEntries + filteredAtt
             _attendance.value = updatedAtt
             repo.saveAttendance(updatedAtt, sid)
         }
@@ -3488,6 +3645,50 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             targetTab = 1,
             targetItemId = hw.id
         )
+    }
+
+    fun updateHomework(
+        homeworkId: String,
+        gradeClass: String,
+        sectionName: String,
+        subjectName: String,
+        teacherName: String,
+        dailyPreparation: String,
+        homeworkDetails: String,
+        dueDate: String
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val cleanPrep = InputSanitizer.sanitize(dailyPreparation)
+        if (cleanPrep.isBlank()) {
+            showToastAlert("يرجى إدخال تفاصيل التحضير اليومي للدرس", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val updated = _homeworks.value.map { hw ->
+            if (hw.id == homeworkId) {
+                hw.copy(
+                    gradeClass = gradeClass,
+                    sectionName = sectionName,
+                    subjectName = InputSanitizer.sanitize(subjectName),
+                    teacherName = InputSanitizer.sanitize(teacherName),
+                    dailyPreparation = cleanPrep,
+                    homeworkDetails = InputSanitizer.sanitize(homeworkDetails),
+                    dueDate = InputSanitizer.sanitize(dueDate)
+                )
+            } else hw
+        }
+        _homeworks.value = updated
+        repo.saveHomeworks(updated, sid)
+        showToastAlert("تم تعديل وتحديث الواجب الدراسي لمادة ($subjectName) بنجاح", isSuccess = true)
+    }
+
+    fun deleteHomework(homeworkId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val updated = _homeworks.value.filterNot { it.id == homeworkId }
+        _homeworks.value = updated
+        repo.saveHomeworks(updated, sid)
+        showToastAlert("تم حذف الواجب الدراسي من القائمة نهائياً", isSuccess = true)
     }
 
     // =========================================================================
@@ -4923,7 +5124,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val creds = BiometricSavedCredentials(
             username = "ABU-RASLAN",
             password = "202699",
-            fullName = "المطور أحمد أبو رسلان",
+            fullName = "إدارة المنصة التقنية",
             roleArabic = "مطور النظام العام",
             schoolId = "DEV",
             schoolName = "لوحة تحكم المطور",
@@ -4932,7 +5133,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
         repo.saveBiometricCredentials(creds)
         _biometricCredentials.value = creds
-        showToastAlert("تم تفعيل الدخول السريع ببصمة الإصبع لحساب المطور (أحمد أبو رسلان) بنجاح", isSuccess = true)
+        showToastAlert("تم تفعيل الدخول السريع ببصمة الإصبع لحساب مطور النظام بنجاح", isSuccess = true)
     }
 
     fun disableBiometricLogin() {
@@ -5095,7 +5296,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun reviewStudentActivityPost(postId: String, approve: Boolean) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
-        val reviewer = _currentUser.value?.fullName ?: "إدارة المدرسة"
+        val user = _currentUser.value ?: return
+        if (user.role == UserRole.TEACHER && !user.canModerateActivities) {
+            showToastAlert("عذراً، صلاحية مراجعة واعتماد منشورات نشاطات الطلبة مخصصة لمدير المدرسة أو الكادر المخول فقط", isSuccess = false)
+            return
+        }
+        val reviewer = user.fullName.ifBlank { "إدارة المدرسة" }
         val sid = _schoolConfig.value.schoolId
         var targetPost: StudentActivityPost? = null
 
@@ -5275,7 +5481,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             authorPhotoBase64 = authorPhoto,
             text = cleanText,
             createdAt = nowStamp,
-            createdAtMillis = System.currentTimeMillis()
+            createdAtMillis = System.currentTimeMillis(),
+            syncStatus = "pending_sync"
         )
 
         var targetPost: StudentActivityPost? = null
@@ -5288,22 +5495,83 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         _studentActivityPosts.value = updated
         repo.saveStudentActivityPosts(updated, sid)
-        showToastAlert("تم نشر تعليقك بنجاح", isSuccess = true)
 
-        // Strictly notify ONLY the post owner
-        targetPost?.let { post ->
-            if (post.authorUserId.isNotBlank() && post.authorUserId != user.id) {
-                pushNotification(
-                    title = "تعليق جديد على منشورك (${post.title})",
-                    body = "علّق ($authorDisplayName) على مشاركتك: \"$cleanText\"",
-                    type = NotificationType.GENERAL,
-                    targetUserId = post.authorUserId,
-                    targetSection = AppSection.STUDENT_ACTIVITIES.name,
-                    targetTab = 0,
-                    targetItemId = post.id
-                )
+        viewModelScope.launch {
+            val online = checkCurrentNetworkOnline() && FirebaseCloudSync.verifyRealInternet(3000)
+            if (online) {
+                markCommentSyncedInMemoryAndSave(postId, newComment.id, sid)
+                targetPost?.let { post ->
+                    if (post.authorUserId.isNotBlank() && post.authorUserId != user.id) {
+                        pushNotification(
+                            title = "تعليق جديد على منشورك (${post.title})",
+                            body = "علّق ($authorDisplayName) على مشاركتك: \"$cleanText\"",
+                            type = NotificationType.GENERAL,
+                            targetUserId = post.authorUserId,
+                            targetSection = AppSection.STUDENT_ACTIVITIES.name,
+                            targetTab = 0,
+                            targetItemId = post.id
+                        )
+                    }
+                }
             }
         }
+    }
+
+    private fun markCommentSyncedInMemoryAndSave(postId: String, commentId: String, schoolId: String) {
+        val syncedPosts = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                p.copy(
+                    comments = p.comments.map { c ->
+                        if (c.id == commentId) c.copy(syncStatus = "synced") else c
+                    }
+                )
+            } else p
+        }
+        _studentActivityPosts.value = syncedPosts
+        repo.saveStudentActivityPosts(syncedPosts, schoolId)
+    }
+
+    private fun markReplySyncedInMemoryAndSave(postId: String, commentId: String, replyId: String, schoolId: String) {
+        val syncedPosts = _studentActivityPosts.value.map { p ->
+            if (p.id == postId) {
+                p.copy(
+                    comments = p.comments.map { c ->
+                        if (c.id == commentId) {
+                            c.copy(
+                                replies = c.replies.map { r ->
+                                    if (r.id == replyId) r.copy(syncStatus = "synced") else r
+                                }
+                            )
+                        } else c
+                    }
+                )
+            } else p
+        }
+        _studentActivityPosts.value = syncedPosts
+        repo.saveStudentActivityPosts(syncedPosts, schoolId)
+    }
+
+    private fun flushPendingActivityCommentsToCloud() {
+        val sid = _schoolConfig.value.schoolId
+        if (sid.isBlank() || !checkCurrentNetworkOnline()) return
+        val hasPending = _studentActivityPosts.value.any { p ->
+            p.comments.any { c ->
+                c.syncStatus == "pending_sync" || c.replies.any { r -> r.syncStatus == "pending_sync" }
+            }
+        }
+        if (!hasPending) return
+        val syncedPosts = _studentActivityPosts.value.map { p ->
+            p.copy(
+                comments = p.comments.map { c ->
+                    c.copy(
+                        syncStatus = "synced",
+                        replies = c.replies.map { r -> r.copy(syncStatus = "synced") }
+                    )
+                }
+            )
+        }
+        _studentActivityPosts.value = syncedPosts
+        repo.saveStudentActivityPosts(syncedPosts, sid)
     }
 
     fun updateStudentActivityComment(postId: String, commentId: String, newText: String) {
@@ -5317,7 +5585,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 p.copy(
                     comments = p.comments.map { c ->
                         if (c.id == commentId && c.authorUserId == user.id) {
-                            c.copy(text = cleanText)
+                            c.copy(text = cleanText, syncStatus = "synced")
                         } else c
                     }
                 )
@@ -5382,7 +5650,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             authorPhotoBase64 = authorPhoto,
             text = cleanText,
             createdAt = nowStamp,
-            createdAtMillis = System.currentTimeMillis()
+            createdAtMillis = System.currentTimeMillis(),
+            syncStatus = "pending_sync"
         )
 
         var targetPost: StudentActivityPost? = null
@@ -5402,7 +5671,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         _studentActivityPosts.value = updated
         repo.saveStudentActivityPosts(updated, sid)
-        showToastAlert("تم إضافة الرد بنجاح", isSuccess = true)
+
+        viewModelScope.launch {
+            val online = checkCurrentNetworkOnline() && FirebaseCloudSync.verifyRealInternet(3000)
+            if (online) {
+                markReplySyncedInMemoryAndSave(postId, commentId, newReply.id, sid)
+            }
+        }
 
         // Notify post owner (and comment owner if different)
         targetPost?.let { post ->

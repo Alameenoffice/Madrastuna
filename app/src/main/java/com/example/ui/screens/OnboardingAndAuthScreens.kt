@@ -829,7 +829,7 @@ fun UnifiedLoginScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "أدخل كود التفعيل لمرة واحدة (مثال: MAD-XXXX) المرسل إليك من المطور أحمد أبو رسلان لفتح شاشة تأسيس مدرسة جديدة:",
+                        text = "أدخل كود التفعيل لمرة واحدة (مثال: MAD-XXXX) المخصص لفتح شاشة تأسيس مدرسة جديدة:",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1236,7 +1236,7 @@ fun UnifiedLoginScreen(
 
 /**
  * Internal Developer Super-Admin Control Panel:
- * "لوحة تحكم المطور - أحمد أبو رسلان"
+ * "لوحة تحكم النظام العام"
  * Opened exclusively when logging in with ABU-RASLAN / 07512362567.
  */
 @Composable
@@ -1321,7 +1321,7 @@ fun DeveloperControlPanelScreen(
                             )
                             Column {
                                 Text(
-                                    text = "لوحة تحكم المطور - أحمد أبو رسلان",
+                                    text = "لوحة تحكم النظام العام",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -1410,7 +1410,7 @@ fun DeveloperControlPanelScreen(
             // Biometric Fingerprint Quick Login Toggle for Developer Account
             BiometricSettingsSectionCard(
                 currentAccountUsername = "ABU-RASLAN",
-                currentAccountFullName = "المطور أحمد أبو رسلان",
+                currentAccountFullName = "إدارة النظام العام",
                 currentAccountRoleLabel = "مطور النظام العام",
                 savedBiometricCredentials = biometricCredentials,
                 onEnableBiometricVerified = {
@@ -2263,7 +2263,7 @@ fun DeveloperControlPanelScreen(
                                                         append("1. افتح تطبيق مدرستي على هاتفك.\n")
                                                         append("2. في شاشة تسجيل الدخول، اضغط *5 ضغطات متتالية* على شعار المنصة في الأعلى.\n")
                                                         append("3. أدخل كود التفعيل (*${lic.code}*) لتفتح لك شاشة تأسيس المدرسة وإنشاء حساب المدير.\n\n")
-                                                        append("مع تحيات المطور: *المهندس أحمد أبو رسلان*")
+                                                        append("مع تحيات إدارة *منصة مدرستي الذكية*")
                                                     }
                                                     ExternalIntents.sendWhatsAppMessage(
                                                         context = context,

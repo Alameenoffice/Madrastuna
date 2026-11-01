@@ -1149,7 +1149,7 @@ fun AdminSubscriptionAndBroadcastBanner(
                             fontWeight = FontWeight.ExtraBold
                         )
                         Text(
-                            text = "لتجديد رخصة المدرسة يرجى التواصل مع المطور أحمد أبو رسلان (07512362567)",
+                            text = "لتجديد رخصة المدرسة يرجى التواصل مع الدعم الفني للمنصة",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextMutedGreen
                         )

@@ -585,23 +585,51 @@ class SchoolRepository(context: Context) {
                 val o = arr.getJSONObject(i)
                 val itemSchoolId = o.optString("schoolId", schoolId).ifBlank { schoolId }
                 if (schoolId.isNotEmpty() && itemSchoolId != schoolId) continue
+                val role = runCatching {
+                    UserRole.valueOf(o.optString("role", UserRole.STUDENT.name))
+                }.getOrDefault(UserRole.STUDENT)
+
+                val rawAssigned = o.optString("assignedClasses").trim()
+                val fallbackClassesArr = o.optJSONArray("classes") ?: o.optJSONArray("grades")
+                val fallbackSectionsArr = o.optJSONArray("sections")
+                val unifiedAssignedClasses = if (rawAssigned.isNotBlank()) {
+                    rawAssigned
+                } else if (fallbackClassesArr != null && fallbackClassesArr.length() > 0) {
+                    val clsList = jsonArrayToList(fallbackClassesArr).map { ArabicTextNormalizer.cleanPureClassName(it) }.filter { it.isNotBlank() }
+                    val secList = jsonArrayToList(fallbackSectionsArr).map { ArabicTextNormalizer.cleanPureSectionName(it) }.filter { it.isNotBlank() }
+                    val secsJoined = if (secList.isNotEmpty()) secList.joinToString("، ") else "أ"
+                    clsList.joinToString(" | ") { c -> "$c ($secsJoined)" }
+                } else if (role == UserRole.TEACHER) {
+                    val gc = ArabicTextNormalizer.cleanPureClassName(o.optString("gradeClass"))
+                    val sn = ArabicTextNormalizer.cleanPureSectionName(o.optString("sectionName", "أ")).ifBlank { "أ" }
+                    if (gc.isNotBlank()) "$gc ($sn)" else ""
+                } else {
+                    ""
+                }
+
+                val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
+                    o.optString("gradeClass", "الأول المتوسط"),
+                    o.optString("sectionName", "أ")
+                )
+
                 list.add(
                     UserAccount(
                         id = o.optString("id"),
                         username = o.optString("username"),
                         password = o.optString("password"),
                         fullName = o.optString("fullName"),
-                        role = UserRole.valueOf(o.optString("role", UserRole.STUDENT.name)),
+                        role = role,
                         isActive = o.optBoolean("isActive", true),
                         phone = o.optString("phone"),
                         specialty = o.optString("specialty"),
-                        assignedClasses = o.optString("assignedClasses"),
+                        assignedClasses = unifiedAssignedClasses,
                         linkedStudentId = o.optString("linkedStudentId"),
-                        gradeClass = o.optString("gradeClass", "الأول المتوسط"),
-                        sectionName = o.optString("sectionName", "أ"),
+                        gradeClass = pureGradeClass.ifBlank { "الأول المتوسط" },
+                        sectionName = pureSectionName.ifBlank { "أ" },
                         address = o.optString("address", "الموصل - زمار"),
                         photoBase64 = o.optString("photoBase64", ""),
-                        schoolId = itemSchoolId
+                        schoolId = itemSchoolId,
+                        canModerateActivities = o.optBoolean("canModerateActivities", false)
                     )
                 )
             }
@@ -615,6 +643,20 @@ class SchoolRepository(context: Context) {
         if (schoolId.isBlank()) return
         val arr = JSONArray()
         accounts.forEach { acc ->
+            val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
+                acc.gradeClass,
+                acc.sectionName
+            )
+            val parsedEntries = acc.parsedClassAndSectionEntries
+            val pureClassesList = acc.teacherAssignedClassesOnly
+            val pureSectionsList = acc.teacherAssignedSectionsOnly
+            val normalizedAssignedString = if (acc.role == UserRole.TEACHER && parsedEntries.isNotEmpty()) {
+                parsedEntries.joinToString(" | ") { (cls, sec) ->
+                    if (sec.isBlank()) cls else "$cls - $sec"
+                }
+            } else {
+                acc.assignedClasses
+            }
             arr.put(JSONObject().apply {
                 put("id", acc.id)
                 put("username", InputSanitizer.sanitizeUsername(acc.username))
@@ -624,13 +666,17 @@ class SchoolRepository(context: Context) {
                 put("isActive", acc.isActive)
                 put("phone", InputSanitizer.sanitize(acc.phone))
                 put("specialty", InputSanitizer.sanitize(acc.specialty))
-                put("assignedClasses", InputSanitizer.sanitize(acc.assignedClasses))
+                put("assignedClasses", InputSanitizer.sanitize(normalizedAssignedString))
+                put("classes", JSONArray(pureClassesList))
+                put("grades", JSONArray(pureClassesList))
+                put("sections", JSONArray(pureSectionsList))
                 put("linkedStudentId", acc.linkedStudentId)
-                put("gradeClass", InputSanitizer.sanitize(acc.gradeClass))
-                put("sectionName", InputSanitizer.sanitize(acc.sectionName))
+                put("gradeClass", InputSanitizer.sanitize(pureGradeClass))
+                put("sectionName", InputSanitizer.sanitize(pureSectionName))
                 put("address", InputSanitizer.sanitize(acc.address))
                 put("photoBase64", acc.photoBase64)
                 put("schoolId", schoolId)
+                put("canModerateActivities", acc.canModerateActivities)
             })
         }
         val jsonStr = arr.toString()
@@ -653,12 +699,16 @@ class SchoolRepository(context: Context) {
                 val o = arr.getJSONObject(i)
                 val itemSchoolId = o.optString("schoolId", schoolId).ifBlank { schoolId }
                 if (schoolId.isNotEmpty() && itemSchoolId != schoolId) continue
+                val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
+                    o.optString("gradeClass"),
+                    o.optString("sectionName")
+                )
                 list.add(
                     StudentRecord(
                         id = o.optString("id"),
                         studentName = o.optString("studentName"),
-                        gradeClass = o.optString("gradeClass"),
-                        sectionName = o.optString("sectionName"),
+                        gradeClass = pureGradeClass,
+                        sectionName = pureSectionName,
                         parentName = o.optString("parentName"),
                         parentPhone = o.optString("parentPhone"),
                         address = o.optString("address", "الموصل - زمار"),
@@ -692,13 +742,17 @@ class SchoolRepository(context: Context) {
         if (schoolId.isBlank()) return
         val arr = JSONArray()
         students.forEach { s ->
+            val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
+                s.gradeClass,
+                s.sectionName
+            )
             val cleanLikedBy = s.likedByUserIds.filter { it.isNotBlank() }.distinct()
             val finalHeartCount = if (cleanLikedBy.isNotEmpty() || s.heartCount == 0) cleanLikedBy.size else s.heartCount
             arr.put(JSONObject().apply {
                 put("id", s.id)
                 put("studentName", InputSanitizer.sanitize(s.studentName))
-                put("gradeClass", InputSanitizer.sanitize(s.gradeClass))
-                put("sectionName", InputSanitizer.sanitize(s.sectionName))
+                put("gradeClass", InputSanitizer.sanitize(pureGradeClass))
+                put("sectionName", InputSanitizer.sanitize(pureSectionName))
                 put("parentName", InputSanitizer.sanitize(s.parentName))
                 put("parentPhone", InputSanitizer.sanitize(s.parentPhone))
                 put("address", InputSanitizer.sanitize(s.address))
@@ -1849,7 +1903,7 @@ class SchoolRepository(context: Context) {
                         id = o.optString("id"),
                         title = o.optString("title"),
                         message = o.optString("message"),
-                        senderName = o.optString("senderName", "المطور أحمد أبو رسلان"),
+                        senderName = o.optString("senderName", "إدارة المنصة التقنية").replace("المطور أحمد أبو رسلان", "إدارة المنصة التقنية").replace("أبو رسلان", "").trim().ifBlank { "إدارة المنصة التقنية" },
                         createdAt = o.optString("createdAt"),
                         targetSchoolId = o.optString("targetSchoolId", "ALL")
                     )
@@ -2736,7 +2790,8 @@ class SchoolRepository(context: Context) {
                             authorPhotoBase64 = ro.optString("authorPhotoBase64", ""),
                             text = ro.optString("text"),
                             createdAt = ro.optString("createdAt"),
-                            createdAtMillis = ro.optLong("createdAtMillis", System.currentTimeMillis())
+                            createdAtMillis = ro.optLong("createdAtMillis", System.currentTimeMillis()),
+                            syncStatus = ro.optString("syncStatus", "synced")
                         )
                     )
                 }
@@ -2753,7 +2808,8 @@ class SchoolRepository(context: Context) {
                         text = co.optString("text"),
                         createdAt = co.optString("createdAt"),
                         createdAtMillis = co.optLong("createdAtMillis", System.currentTimeMillis()),
-                        replies = repliesList
+                        replies = repliesList,
+                        syncStatus = co.optString("syncStatus", "synced")
                     )
                 )
             }
@@ -2864,6 +2920,7 @@ class SchoolRepository(context: Context) {
                         put("text", InputSanitizer.sanitize(r.text))
                         put("createdAt", r.createdAt)
                         put("createdAtMillis", r.createdAtMillis)
+                        put("syncStatus", r.syncStatus)
                     })
                 }
                 val safeCommentClass = if (c.authorRole == UserRole.ADMIN || c.authorRole == UserRole.TEACHER) "" else InputSanitizer.sanitize(c.authorGradeClass)
@@ -2879,6 +2936,7 @@ class SchoolRepository(context: Context) {
                     put("text", InputSanitizer.sanitize(c.text))
                     put("createdAt", c.createdAt)
                     put("createdAtMillis", c.createdAtMillis)
+                    put("syncStatus", c.syncStatus)
                     put("replies", repliesArr)
                 })
             }

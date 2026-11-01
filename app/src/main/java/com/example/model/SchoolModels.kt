@@ -177,7 +177,19 @@ enum class SchoolStage(
             "الأحياء",
             "الحاسوب"
         )
-    )
+    );
+
+    val staffTitleSingular: String
+        get() = if (this == PRIMARY) "المعلم" else "المدرس"
+
+    val staffTitlePlural: String
+        get() = if (this == PRIMARY) "المعلمين" else "المدرسين"
+
+    val staffIndefiniteSingular: String
+        get() = if (this == PRIMARY) "معلم" else "مدرس"
+
+    val staffIndefinitePlural: String
+        get() = if (this == PRIMARY) "معلمين" else "مدرسين"
 }
 
 /**
@@ -353,7 +365,8 @@ data class UserAccount(
     val sectionName: String = "أ",
     val address: String = "الموصل - زمار",
     val photoBase64: String = "",
-    val schoolId: String = ""
+    val schoolId: String = "",
+    val canModerateActivities: Boolean = false
 ) {
     val teacherSubjectsList: List<String>
         get() = specialty.split("،", ",", "|")
@@ -365,30 +378,96 @@ data class UserAccount(
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
-    val teacherAssignedClassesOnly: List<String>
-        get() = teacherClassSectionPairs.mapNotNull { pair ->
-            val raw = if (pair.contains("-")) pair.substringBefore("-").trim() else pair.trim()
-            val cleanedSec = raw.replace("شعبة", "").replace("الشعبة", "").trim()
-            // Ignore standalone section tokens like "أ", "ب", "شعبة أ"
-            if (raw.isEmpty() || (!pair.contains("-") && (raw.startsWith("شعبة") || cleanedSec.length <= 2))) {
-                null
-            } else {
-                raw
+    /**
+     * Parses each assigned item into a clean (pureClass, optionalPureSection) pair.
+     */
+    val parsedClassAndSectionEntries: List<Pair<String, String>>
+        get() {
+            val rawTokens = teacherClassSectionPairs
+            val explicitPairs = mutableListOf<Pair<String, String>>()
+            val standaloneClasses = mutableListOf<String>()
+            val standaloneSections = mutableListOf<String>()
+
+            rawTokens.forEach { token ->
+                val trimmed = token.trim()
+                if (trimmed.isEmpty()) return@forEach
+                val cleanedSecCheck = trimmed
+                    .replace("شعبة", "")
+                    .replace("الشعبة", "")
+                    .replace("(", "")
+                    .replace(")", "")
+                    .trim()
+                val isStandaloneSec = !trimmed.contains("-") &&
+                    (trimmed.startsWith("شعبة") || trimmed.startsWith("الشعبة") || cleanedSecCheck.length == 1)
+                if (isStandaloneSec) {
+                    val pureSec = ArabicTextNormalizer.cleanPureSectionName(cleanedSecCheck)
+                    if (pureSec.isNotEmpty() && !ArabicTextNormalizer.isBogusSectionName(pureSec)) {
+                        standaloneSections.add(pureSec)
+                    }
+                } else {
+                    val (pureClass, extractedSec) = ArabicTextNormalizer.normalizeAndExtractClass(trimmed, fallbackSection = "")
+                    if (pureClass.isNotEmpty() && !ArabicTextNormalizer.isBogusClassName(pureClass)) {
+                        if (extractedSec.isNotEmpty() && !ArabicTextNormalizer.isBogusSectionName(extractedSec)) {
+                            explicitPairs.add(pureClass to extractedSec)
+                        } else {
+                            standaloneClasses.add(pureClass)
+                        }
+                    }
+                }
             }
-        }.distinctBy { ArabicTextNormalizer.normalizeClass(it) }
+
+            if (standaloneClasses.isNotEmpty()) {
+                if (standaloneSections.isNotEmpty()) {
+                    standaloneClasses.forEach { cls ->
+                        standaloneSections.forEach { sec ->
+                            explicitPairs.add(cls to sec)
+                        }
+                    }
+                } else {
+                    standaloneClasses.forEach { cls ->
+                        explicitPairs.add(cls to "")
+                    }
+                }
+            }
+            return explicitPairs.distinctBy { (c, s) ->
+                "${ArabicTextNormalizer.normalizeClass(c)}__${ArabicTextNormalizer.normalizeSection(s)}"
+            }
+        }
+
+    val teacherAssignedClassesOnly: List<String>
+        get() = parsedClassAndSectionEntries
+            .map { it.first }
+            .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusClassName(it) }
+            .distinctBy { ArabicTextNormalizer.normalizeClass(it) }
 
     val teacherAssignedSectionsOnly: List<String>
-        get() = teacherClassSectionPairs.mapNotNull { pair ->
-            if (pair.contains("-")) {
-                pair.substringAfter("-").replace("شعبة", "").replace("الشعبة", "").trim().takeIf { it.isNotEmpty() }
-            } else {
-                val raw = pair.trim()
-                val cleanedSec = raw.replace("شعبة", "").replace("الشعبة", "").trim()
-                if (raw.startsWith("شعبة") || (cleanedSec.isNotEmpty() && cleanedSec.length <= 2)) {
-                    cleanedSec
-                } else null
+        get() = parsedClassAndSectionEntries
+            .map { it.second }
+            .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusSectionName(it) }
+            .distinctBy { ArabicTextNormalizer.normalizeSection(it) }
+
+    /**
+     * Clean, human-readable summary of the teacher's assigned classes & sections for the green welcome card
+     * (e.g., "الثاني الابتدائي (أ، ب)" or "الأول المتوسط (أ) • الثاني المتوسط (ب)").
+     */
+    val formattedAssignedClassesForDisplay: String
+        get() {
+            val entries = parsedClassAndSectionEntries
+            if (entries.isEmpty()) {
+                return assignedClasses.trim().ifBlank { "جميع الصفوف المسندة" }
             }
-        }.distinctBy { ArabicTextNormalizer.normalizeSection(it) }
+            val grouped = linkedMapOf<String, MutableList<String>>()
+            entries.forEach { (cls, sec) ->
+                val existingKey = grouped.keys.firstOrNull { ArabicTextNormalizer.matchesClass(it, cls) } ?: cls
+                val secList = grouped.getOrPut(existingKey) { mutableListOf() }
+                if (sec.isNotBlank() && secList.none { ArabicTextNormalizer.matchesSection(it, sec) }) {
+                    secList.add(sec)
+                }
+            }
+            return grouped.entries.joinToString(" • ") { (cls, secs) ->
+                if (secs.isEmpty()) cls else "$cls (${secs.joinToString("، ")})"
+            }
+        }
 
     fun canTeacherAccessClassSection(gradeClass: String, sectionName: String? = null): Boolean {
         if (role == UserRole.ADMIN) return true
@@ -397,36 +476,25 @@ data class UserAccount(
         if (pairs.isEmpty()) return false
         if (pairs.any { ArabicTextNormalizer.isAllClassesToken(it) }) return true
 
-        val normTargetClass = ArabicTextNormalizer.normalizeClass(gradeClass)
-        val normTargetSec = sectionName?.let { ArabicTextNormalizer.normalizeSection(it) }.orEmpty()
+        val (pureTargetClass, extractedFromTargetClass) = ArabicTextNormalizer.normalizeAndExtractClass(
+            rawInput = gradeClass,
+            fallbackSection = sectionName.orEmpty()
+        )
+        val normTargetClass = ArabicTextNormalizer.normalizeClass(pureTargetClass)
+        val effectiveTargetSec = sectionName?.takeIf { it.isNotBlank() } ?: extractedFromTargetClass
+        val normTargetSec = ArabicTextNormalizer.normalizeSection(effectiveTargetSec)
 
-        val dashPairs = pairs.filter { it.contains("-") }
-        if (dashPairs.isNotEmpty()) {
-            val matchedDash = dashPairs.any { item ->
-                val parts = item.split("-").map { it.trim() }
-                val cls = parts.getOrNull(0) ?: ""
-                val sec = parts.getOrNull(1) ?: ""
-                val classMatches = ArabicTextNormalizer.normalizeClass(cls) == normTargetClass || ArabicTextNormalizer.isAllClassesToken(cls)
-                val secNorm = ArabicTextNormalizer.normalizeSection(sec)
-                classMatches && (sectionName == null || normTargetSec.isEmpty() || secNorm.isEmpty() || secNorm == normTargetSec || ArabicTextNormalizer.isAllClassesToken(sec))
-            }
-            if (matchedDash) return true
+        val entries = parsedClassAndSectionEntries
+        if (entries.isEmpty()) return false
+
+        return entries.any { (assignedCls, assignedSec) ->
+            val clsMatch = ArabicTextNormalizer.isAllClassesToken(assignedCls) ||
+                ArabicTextNormalizer.normalizeClass(assignedCls) == normTargetClass
+            if (!clsMatch) return@any false
+            if (sectionName == null || normTargetSec.isEmpty() || assignedSec.isBlank()) return@any true
+            val normAssignedSec = ArabicTextNormalizer.normalizeSection(assignedSec)
+            normAssignedSec.isEmpty() || normAssignedSec == normTargetSec || ArabicTextNormalizer.isAllClassesToken(assignedSec)
         }
-
-        val standaloneClasses = teacherAssignedClassesOnly
-        val standaloneSections = teacherAssignedSectionsOnly
-        if (standaloneClasses.isNotEmpty()) {
-            val classMatches = standaloneClasses.any {
-                ArabicTextNormalizer.isAllClassesToken(it) || ArabicTextNormalizer.normalizeClass(it) == normTargetClass
-            }
-            if (!classMatches) return false
-            if (sectionName == null || normTargetSec.isEmpty() || standaloneSections.isEmpty()) return true
-            return standaloneSections.any {
-                ArabicTextNormalizer.isAllClassesToken(it) || ArabicTextNormalizer.normalizeSection(it) == normTargetSec
-            }
-        }
-
-        return false
     }
 
     fun canTeacherAccessSubject(subjectName: String): Boolean {
@@ -444,6 +512,29 @@ data class UserAccount(
 }
 
 object ArabicTextNormalizer {
+    private val validSectionLetters = setOf("أ", "ا", "ب", "ج", "د", "هـ", "ه", "و", "a", "b", "c", "d")
+
+    private val officialBaseClasses = listOf(
+        "الأول الابتدائي",
+        "الثاني الابتدائي",
+        "الثالث الابتدائي",
+        "الرابع الابتدائي",
+        "الخامس الابتدائي",
+        "السادس الابتدائي",
+        "الأول المتوسط",
+        "الثاني المتوسط",
+        "الثالث المتوسط",
+        "الرابع الإعدادي",
+        "الخامس الإعدادي",
+        "السادس الإعدادي",
+        "الرابع العلمي",
+        "الرابع الأدبي",
+        "الخامس العلمي",
+        "الخامس الأدبي",
+        "السادس العلمي",
+        "السادس الأدبي"
+    )
+
     fun normalizeText(input: String): String {
         return input.trim()
             .replace(Regex("[أإآٱ]"), "ا")
@@ -456,21 +547,132 @@ object ArabicTextNormalizer {
             .lowercase()
     }
 
-    fun normalizeClass(gradeClass: String): String {
-        val cleaned = gradeClass.trim()
+    /**
+     * Separates any attached section letter or "شعبة ..." from a class string and returns:
+     * Pair(pureClassName, pureSectionName)
+     * Example:
+     *   "الثاني الابتدائي أ - شعبة أ" -> Pair("الثاني الابتدائي", "أ")
+     *   "الصف الثاني الابتدائي (ب)" -> Pair("الثاني الابتدائي", "ب")
+     *   "الثاني الابتدائي أ" -> Pair("الثاني الابتدائي", "أ")
+     */
+    fun normalizeAndExtractClass(rawInput: String, fallbackSection: String = "أ"): Pair<String, String> {
+        var working = rawInput.trim()
             .replace("الصف", "")
+            .replace(Regex("\\s+"), " ")
             .trim()
-        return normalizeText(cleaned)
+
+        var extractedSection = ""
+
+        // 1. Check if there is a dash separator: "الثاني الابتدائي - شعبة أ" or "الثاني الابتدائي أ - أ"
+        if (working.contains("-")) {
+            val beforeDash = working.substringBefore("-").trim()
+            val afterDash = working.substringAfter("-").trim()
+            val secCandidate = cleanPureSectionName(afterDash)
+            if (secCandidate.isNotEmpty()) {
+                extractedSection = secCandidate
+            }
+            working = beforeDash
+        }
+
+        // 2. Check if there is a parenthesized section: "الثاني الابتدائي (أ)" or "(شعبة ب)"
+        val parenRegex = Regex("\\(([^)]+)\\)")
+        val parenMatch = parenRegex.find(working)
+        if (parenMatch != null) {
+            val inside = parenMatch.groupValues[1].trim()
+            val secCandidate = cleanPureSectionName(inside)
+            if (secCandidate.isNotEmpty() && extractedSection.isEmpty()) {
+                extractedSection = secCandidate
+            }
+            working = working.replace(parenMatch.value, "").trim()
+        }
+
+        // 3. Check if "شعبة X" is attached at the end of working
+        val shubaRegex = Regex("(?:شعبة|الشعبة|شعبه|الشعبه)\\s*([أابجدهوA-Da-d])\\s*$")
+        val shubaMatch = shubaRegex.find(working)
+        if (shubaMatch != null) {
+            val secCandidate = cleanPureSectionName(shubaMatch.groupValues[1])
+            if (secCandidate.isNotEmpty() && extractedSection.isEmpty()) {
+                extractedSection = secCandidate
+            }
+            working = working.removeRange(shubaMatch.range).trim()
+        }
+
+        // 4. Check if a trailing single section letter (أ، ب، ج، د) is attached after the stage word
+        val tokens = working.split(" ").map { it.trim() }.filter { it.isNotEmpty() }
+        if (tokens.size >= 3) {
+            val lastToken = tokens.last()
+            val normLast = normalizeText(lastToken)
+            if (lastToken.length == 1 && (lastToken in validSectionLetters || normLast in validSectionLetters)) {
+                if (extractedSection.isEmpty()) {
+                    extractedSection = cleanPureSectionName(lastToken)
+                }
+                working = tokens.dropLast(1).joinToString(" ").trim()
+            }
+        }
+
+        // 5. Canonicalize against official Iraqi school class names if it matches
+        val normWorking = normalizeText(working)
+        val canonicalClass = officialBaseClasses.firstOrNull { normalizeText(it) == normWorking }
+            ?: working.trim()
+
+        val finalSection = extractedSection.ifBlank { cleanPureSectionName(fallbackSection) }
+        return canonicalClass to finalSection
+    }
+
+    fun cleanPureClassName(rawClass: String): String {
+        return normalizeAndExtractClass(rawClass, fallbackSection = "").first
+    }
+
+    fun cleanPureSectionName(rawSection: String): String {
+        val cleaned = rawSection.trim()
+            .replace("شعبة", "")
+            .replace("الشعبة", "")
+            .replace("شعبه", "")
+            .replace("الشعبه", "")
+            .replace("(", "")
+            .replace(")", "")
+            .replace("-", "")
+            .trim()
+        if (cleaned.isEmpty()) return ""
+        val firstToken = cleaned.split(" ").firstOrNull()?.trim().orEmpty()
+        return when (normalizeText(firstToken)) {
+            "ا" -> "أ"
+            "ب" -> "ب"
+            "ج" -> "ج"
+            "د" -> "د"
+            "ه" -> "هـ"
+            else -> firstToken
+        }
+    }
+
+    fun isBogusClassName(className: String): Boolean {
+        val norm = normalizeClass(className)
+        if (norm.isEmpty()) return true
+        // Filter out non-Iraqi or bogus legacy test strings like "الصف العاشر", "الحادي عشر", "الثاني عشر", "شعبة ط"
+        return norm.contains("عاشر") ||
+            norm.contains("حادي عشر") ||
+            norm.contains("ثاني عشر") ||
+            norm == "ط" ||
+            norm.startsWith("شعبه")
+    }
+
+    fun isBogusSectionName(sectionName: String): Boolean {
+        val pure = cleanPureSectionName(sectionName)
+        if (pure.isEmpty()) return true
+        val norm = normalizeText(pure)
+        // Filter out bogus section letters like "ط" or long non-section strings
+        if (norm == "ط" || pure.length > 3) return true
+        return false
+    }
+
+    fun normalizeClass(gradeClass: String): String {
+        val pure = cleanPureClassName(gradeClass)
+        return normalizeText(pure)
     }
 
     fun normalizeSection(sectionName: String): String {
-        val cleaned = sectionName.trim()
-            .replace("شعبة", "")
-            .replace("الشعبة", "")
-            .replace("(", "")
-            .replace(")", "")
-            .trim()
-        return normalizeText(cleaned)
+        val pure = cleanPureSectionName(sectionName)
+        return normalizeText(pure)
     }
 
     fun matchesClass(c1: String, c2: String): Boolean {
@@ -955,7 +1157,7 @@ data class DeveloperBroadcastItem(
     val id: String,
     val title: String,
     val message: String,
-    val senderName: String = "المطور أحمد أبو رسلان",
+    val senderName: String = "إدارة المنصة التقنية",
     val createdAt: String,
     val targetSchoolId: String = "ALL"
 )
@@ -1467,7 +1669,8 @@ data class StudentActivityReply(
     val authorPhotoBase64: String = "",
     val text: String,
     val createdAt: String,
-    val createdAtMillis: Long = System.currentTimeMillis()
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val syncStatus: String = "synced"
 )
 
 data class StudentActivityComment(
@@ -1481,7 +1684,8 @@ data class StudentActivityComment(
     val text: String,
     val createdAt: String,
     val createdAtMillis: Long = System.currentTimeMillis(),
-    val replies: List<StudentActivityReply> = emptyList()
+    val replies: List<StudentActivityReply> = emptyList(),
+    val syncStatus: String = "synced"
 )
 
 data class StudentActivityPost(

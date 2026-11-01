@@ -37,14 +37,20 @@ fun AdminAccountsScreen(
     val accounts by viewModel.accounts.collectAsState()
     val students by viewModel.students.collectAsState()
 
+    val staffSingular = schoolConfig.schoolStage.staffTitleSingular
+    val staffPlural = schoolConfig.schoolStage.staffTitlePlural
+    val staffIndefinite = schoolConfig.schoolStage.staffIndefiniteSingular
+
     val registeredClasses = remember(schoolConfig, students) {
-        (schoolConfig.schoolStage.defaultClasses + schoolConfig.registeredClasses + students.map { it.gradeClass.trim() })
-            .filter { it.isNotBlank() }
+        (schoolConfig.schoolStage.defaultClasses + schoolConfig.registeredClasses + students.map { it.gradeClass })
+            .map { ArabicTextNormalizer.cleanPureClassName(it) }
+            .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusClassName(it) }
             .distinctBy { ArabicTextNormalizer.normalizeClass(it) }
     }
     val registeredSections = remember(schoolConfig, students) {
-        (schoolConfig.registeredSections.ifEmpty { listOf("أ", "ب", "ج") } + students.map { it.sectionName.trim() })
-            .filter { it.isNotBlank() }
+        (schoolConfig.registeredSections.ifEmpty { listOf("أ", "ب", "ج") } + students.map { it.sectionName })
+            .map { ArabicTextNormalizer.cleanPureSectionName(it) }
+            .filter { it.isNotBlank() && !ArabicTextNormalizer.isBogusSectionName(it) }
             .distinctBy { ArabicTextNormalizer.normalizeSection(it) }
     }
     val registeredSubjects = remember(schoolConfig) {
@@ -55,7 +61,7 @@ fun AdminAccountsScreen(
 
     // Search & Filters (شريط بحث فوري + فلتر حسب الدور + فلتر حسب الصف)
     var searchQuery by remember { mutableStateOf("") }
-    var selectedRoleFilter by remember { mutableStateOf("الكل") } // الكل, معلم, ولي أمر, طالب
+    var selectedRoleFilter by remember { mutableStateOf("الكل") }
     var selectedClassFilter by remember { mutableStateOf("الكل") }
 
     var showTeacherDialog by remember { mutableStateOf(false) }
@@ -89,12 +95,12 @@ fun AdminAccountsScreen(
                 stu.parentName.contains(searchQuery, ignoreCase = true) ||
                 stu.studentUsername.contains(searchQuery, ignoreCase = true) ||
                 stu.parentUsername.contains(searchQuery, ignoreCase = true)
-            val clsMatch = selectedClassFilter == "الكل" || stu.gradeClass == selectedClassFilter
+            val clsMatch = selectedClassFilter == "الكل" || ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClassFilter)
             qMatch && clsMatch
         }
     }
 
-    val showTeachersList = selectedRoleFilter == "الكل" || selectedRoleFilter == "معلم"
+    val showTeachersList = selectedRoleFilter == "الكل" || selectedRoleFilter == "معلم" || selectedRoleFilter == "مدرس" || selectedRoleFilter == staffIndefinite
     val showStudentsParentsList = selectedRoleFilter == "الكل" || selectedRoleFilter == "ولي أمر" || selectedRoleFilter == "طالب"
 
     LazyColumn(
@@ -147,7 +153,7 @@ fun AdminAccountsScreen(
                     }
 
                     Text(
-                        text = "مرتبط ديناميكياً بالصفوف والشعب المسجلة (${registeredClasses.size} صفوف). اختر الصفوف والمواد للمعلمين وأولياء الأمور والطلاب.",
+                        text = "مرتبط ديناميكياً بالصفوف والشعب المسجلة (${registeredClasses.size} صفوف). اختر الصفوف والمواد لـ$staffPlural وأولياء الأمور والطلاب.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -157,7 +163,7 @@ fun AdminAccountsScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         VectorActionButton(
-                            text = "إضافة معلم",
+                            text = "إضافة $staffIndefinite",
                             icon = Icons.Filled.PersonAdd,
                             onClick = {
                                 editingTeacher = null
@@ -226,7 +232,7 @@ fun AdminAccountsScreen(
                         )
                         Text("الدور:", style = MaterialTheme.typography.labelLarge)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(listOf("الكل", "معلم", "ولي أمر", "طالب")) { roleOption ->
+                            items(listOf("الكل", staffIndefinite, "ولي أمر", "طالب")) { roleOption ->
                                 FilterChip(
                                     selected = selectedRoleFilter == roleOption,
                                     onClick = { selectedRoleFilter = roleOption },
@@ -271,7 +277,7 @@ fun AdminAccountsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "حسابات الكادر التدريسي (${teachers.size})",
+                        text = "حسابات $staffPlural (${teachers.size})",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -318,10 +324,19 @@ fun AdminAccountsScreen(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
-                                        text = "الصفوف والشعب المسندة: ${teacher.assignedClasses}",
+                                        text = "الصفوف والشعب المسندة: ${teacher.formattedAssignedClassesForDisplay}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    if (teacher.canModerateActivities) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        NoWrapBadge(
+                                            text = "مخول بمراجعة نشاطات الطلبة",
+                                            icon = Icons.Filled.VerifiedUser,
+                                            containerColor = DeepEmerald.copy(alpha = 0.14f),
+                                            contentColor = DeepEmerald
+                                        )
+                                    }
                                 }
                             }
 
@@ -635,6 +650,7 @@ fun AdminAccountsScreen(
         }
         var password by remember(currentEditing) { mutableStateOf(currentEditing?.password ?: (1000..9999).random().toString()) }
         var teacherPhotoBase64 by remember(currentEditing) { mutableStateOf(currentEditing?.photoBase64 ?: "") }
+        var canModerateActivities by remember(currentEditing) { mutableStateOf(currentEditing?.canModerateActivities ?: false) }
 
         // Multi-select subjects from registeredSubjects
         val initialSubjects = remember(currentEditing) {
@@ -670,19 +686,19 @@ fun AdminAccountsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (currentEditing == null) "إضافة معلم وتحديد صفوفه ومادته" else "تعديل بيانات وصلاحيات المعلم")
+                    Text(if (currentEditing == null) "إضافة $staffIndefinite وتحديد صفوفه ومادته" else "تعديل بيانات وصلاحيات $staffSingular")
                 }
             },
             text = {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.heightIn(max = 440.dp)
+                    modifier = Modifier.heightIn(max = 460.dp)
                 ) {
                     item {
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it },
-                            label = { Text("اسم المعلم الثلاثي") },
+                            label = { Text("اسم $staffSingular الثلاثي") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -891,6 +907,56 @@ fun AdminAccountsScreen(
                         }
                     }
                     item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.VerifiedUser,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = "صلاحية مراجعة واعتماد نشاطات الطلبة",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "السماح لـ$staffSingular برؤية وإدارة (قائمة المراجعة) في قسم نشاطات الطلبة",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = canModerateActivities,
+                                    onCheckedChange = { canModerateActivities = it },
+                                    modifier = Modifier.testTag("teacher_moderate_activities_switch")
+                                )
+                            }
+                        }
+                    }
+                    item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = username,
@@ -924,34 +990,38 @@ fun AdminAccountsScreen(
                     icon = Icons.Filled.CheckCircle,
                     onClick = {
                         if (name.isNotBlank()) {
-                            val specialtyStr = selectedSubjects.joinToString("، ")
-                            val targetSecs = selectedTeacherSections.ifEmpty { registeredSections.toSet() }
-                            val classesStr = selectedTeacherClasses.flatMap { cls ->
-                                targetSecs.map { sec -> "$cls - $sec" }
-                            }.joinToString("، ")
-                            if (currentEditing == null) {
-                                viewModel.addTeacherAccount(
-                                    fullName = name,
-                                    specialty = specialtyStr,
-                                    assignedClasses = classesStr,
-                                    phone = phone,
-                                    username = username,
-                                    password = password,
-                                    photoBase64 = teacherPhotoBase64
-                                )
-                            } else {
-                                viewModel.updateTeacherAccount(
-                                    teacherId = currentEditing.id,
-                                    fullName = name,
-                                    specialty = specialtyStr,
-                                    assignedClasses = classesStr,
-                                    phone = phone,
-                                    username = username,
-                                    password = password,
-                                    photoBase64 = teacherPhotoBase64
-                                )
+                            viewModel.requireOnlineAndExecute {
+                                val specialtyStr = selectedSubjects.joinToString("، ")
+                                val targetSecs = selectedTeacherSections.ifEmpty { registeredSections.toSet() }
+                                val classesStr = selectedTeacherClasses.joinToString(" | ") { cls ->
+                                    "${ArabicTextNormalizer.cleanPureClassName(cls)} (${targetSecs.map { ArabicTextNormalizer.cleanPureSectionName(it) }.joinToString("، ")})"
+                                }
+                                if (currentEditing == null) {
+                                    viewModel.addTeacherAccount(
+                                        fullName = name,
+                                        specialty = specialtyStr,
+                                        assignedClasses = classesStr,
+                                        phone = phone,
+                                        username = username,
+                                        password = password,
+                                        photoBase64 = teacherPhotoBase64,
+                                        canModerateActivities = canModerateActivities
+                                    )
+                                } else {
+                                    viewModel.updateTeacherAccount(
+                                        teacherId = currentEditing.id,
+                                        fullName = name,
+                                        specialty = specialtyStr,
+                                        assignedClasses = classesStr,
+                                        phone = phone,
+                                        username = username,
+                                        password = password,
+                                        photoBase64 = teacherPhotoBase64,
+                                        canModerateActivities = canModerateActivities
+                                    )
+                                }
+                                showTeacherDialog = false
                             }
-                            showTeacherDialog = false
                         }
                     }
                 )
@@ -1317,38 +1387,40 @@ fun AdminAccountsScreen(
                     icon = Icons.Filled.CheckCircle,
                     onClick = {
                         if (studentName.isNotBlank() && parentName.isNotBlank()) {
-                            if (currentStu == null) {
-                                viewModel.addStudentAndParentAccounts(
-                                    studentName = studentName,
-                                    gradeClass = gradeClass,
-                                    sectionName = sectionName,
-                                    parentName = parentName,
-                                    parentPhone = parentPhone,
-                                    address = address.ifBlank { "الموصل - زمار" },
-                                    totalFee = totalFeeText.toLongOrNull() ?: 1500000L,
-                                    photoBase64 = photoBase64,
-                                    studentUsername = sUser,
-                                    studentPassword = sPass,
-                                    parentUsername = pUser,
-                                    parentPassword = pPass
-                                )
-                            } else {
-                                viewModel.updateStudentAndParentAccounts(
-                                    studentId = currentStu.id,
-                                    studentName = studentName,
-                                    gradeClass = gradeClass,
-                                    sectionName = sectionName,
-                                    parentName = parentName,
-                                    parentPhone = parentPhone,
-                                    address = address,
-                                    studentUsername = sUser,
-                                    studentPassword = sPass,
-                                    parentUsername = pUser,
-                                    parentPassword = pPass,
-                                    photoBase64 = photoBase64
-                                )
+                            viewModel.requireOnlineAndExecute {
+                                if (currentStu == null) {
+                                    viewModel.addStudentAndParentAccounts(
+                                        studentName = studentName,
+                                        gradeClass = gradeClass,
+                                        sectionName = sectionName,
+                                        parentName = parentName,
+                                        parentPhone = parentPhone,
+                                        address = address.ifBlank { "الموصل - زمار" },
+                                        totalFee = totalFeeText.toLongOrNull() ?: 1500000L,
+                                        photoBase64 = photoBase64,
+                                        studentUsername = sUser,
+                                        studentPassword = sPass,
+                                        parentUsername = pUser,
+                                        parentPassword = pPass
+                                    )
+                                } else {
+                                    viewModel.updateStudentAndParentAccounts(
+                                        studentId = currentStu.id,
+                                        studentName = studentName,
+                                        gradeClass = gradeClass,
+                                        sectionName = sectionName,
+                                        parentName = parentName,
+                                        parentPhone = parentPhone,
+                                        address = address,
+                                        studentUsername = sUser,
+                                        studentPassword = sPass,
+                                        parentUsername = pUser,
+                                        parentPassword = pPass,
+                                        photoBase64 = photoBase64
+                                    )
+                                }
+                                showStudentDialog = false
                             }
-                            showStudentDialog = false
                         }
                     }
                 )

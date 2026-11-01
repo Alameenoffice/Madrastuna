@@ -62,15 +62,17 @@ fun formatActivityAuthorRoleLabel(
     role: UserRole,
     gradeClass: String,
     authorUserId: String,
-    accounts: List<UserAccount>
+    accounts: List<UserAccount>,
+    schoolStage: SchoolStage = SchoolStage.MIDDLE
 ): String {
     return when (role) {
         UserRole.ADMIN -> "المدير"
         UserRole.TEACHER -> {
+            val staffLabel = schoolStage.staffIndefiniteSingular
             val teacherAcc = accounts.firstOrNull { it.id == authorUserId }
             val spec = teacherAcc?.teacherSubjectsList?.joinToString("، ")?.ifBlank { teacherAcc.specialty }
                 ?: ""
-            if (spec.isNotBlank()) "معلم • $spec" else "معلم"
+            if (spec.isNotBlank()) "$staffLabel • $spec" else staffLabel
         }
         UserRole.STUDENT, UserRole.PARENT -> {
             if (gradeClass.isNotBlank()) "${role.arabicTitle} • $gradeClass" else role.arabicTitle
@@ -220,7 +222,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
 
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val isTeacher = currentUser?.role == UserRole.TEACHER
-    val canModerate = isAdmin || isTeacher
+    val canModerate = isAdmin || (isTeacher && currentUser?.canModerateActivities == true)
     val myUserId = currentUser?.id ?: ""
 
     var selectedMainTab by remember { mutableIntStateOf(0) } // 0: Feed, 1: Moderation Queue, 2: Reports (Admin)
@@ -1039,12 +1041,14 @@ fun StudentActivityPostCard(
     var editingReplyKey by remember { mutableStateOf<Pair<String, String>?>(null) }
     var editingReplyValue by remember { mutableStateOf("") }
 
-    val formattedAuthorSubtitle = remember(post.authorRole, post.authorGradeClass, post.authorUserId, accounts, post.createdAt) {
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val formattedAuthorSubtitle = remember(post.authorRole, post.authorGradeClass, post.authorUserId, accounts, post.createdAt, schoolConfig.schoolStage) {
         val rolePart = formatActivityAuthorRoleLabel(
             role = post.authorRole,
             gradeClass = post.authorGradeClass,
             authorUserId = post.authorUserId,
-            accounts = accounts
+            accounts = accounts,
+            schoolStage = schoolConfig.schoolStage
         )
         "$rolePart • ${post.createdAt}"
     }
@@ -1380,7 +1384,8 @@ fun StudentActivityPostCard(
                                 role = comment.authorRole,
                                 gradeClass = comment.authorGradeClass,
                                 authorUserId = comment.authorUserId,
-                                accounts = accounts
+                                accounts = accounts,
+                                schoolStage = schoolConfig.schoolStage
                             )
 
                             Card(
@@ -1538,6 +1543,35 @@ fun StudentActivityPostCard(
                                         )
                                     }
 
+                                    if (comment.syncStatus == "pending_sync") {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = GoldAccent.copy(alpha = 0.14f),
+                                            border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Schedule,
+                                                    contentDescription = null,
+                                                    tint = GoldDeep,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Text(
+                                                    text = "سيتم نشره حال توفر الإنترنت",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = GoldDeep,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     // Nested Replies inside this Comment
                                     if (comment.replies.isNotEmpty()) {
                                         Column(
@@ -1554,7 +1588,8 @@ fun StudentActivityPostCard(
                                                     role = reply.authorRole,
                                                     gradeClass = "",
                                                     authorUserId = reply.authorUserId,
-                                                    accounts = accounts
+                                                    accounts = accounts,
+                                                    schoolStage = schoolConfig.schoolStage
                                                 )
 
                                                 Surface(
@@ -1668,6 +1703,28 @@ fun StudentActivityPostCard(
                                                                 color = MaterialTheme.colorScheme.onSurface,
                                                                 fontSize = 12.sp
                                                             )
+                                                        }
+
+                                                        if (reply.syncStatus == "pending_sync") {
+                                                            Spacer(modifier = Modifier.height(3.dp))
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Filled.Schedule,
+                                                                    contentDescription = null,
+                                                                    tint = GoldDeep,
+                                                                    modifier = Modifier.size(11.dp)
+                                                                )
+                                                                Text(
+                                                                    text = "سيتم نشره حال توفر الإنترنت",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = GoldDeep,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 9.sp
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }

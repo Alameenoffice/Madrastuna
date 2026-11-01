@@ -490,34 +490,7 @@ fun MadrasatiRootApp(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Top Luxury Capsule Badge (مطابق لترويسة شاشة الترحيب)
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = if (isDarkOffline) Color.White.copy(alpha = 0.08f) else DeepEmerald.copy(alpha = 0.09f),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isDarkOffline) GoldAccent.copy(alpha = 0.35f) else DeepEmerald.copy(alpha = 0.22f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(GoldAccent)
-                            )
-                            Text(
-                                text = "نظام الحماية والمزامنة السحابية",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (isDarkOffline) GoldLight else DeepEmerald,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Center Multi-Layer JSON/Lottie-Style Animated Scene + Concise Typography
                     Column(

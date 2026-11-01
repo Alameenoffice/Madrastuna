@@ -284,13 +284,13 @@ fun DeveloperCreditFooter(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Verified,
-                    contentDescription = "مطور المنصة",
+                    contentDescription = "الدعم الفني للمنصة",
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "تصميم وتطوير: أحمد أبو رسلان | 07512362567",
+                    text = "الدعم الفني للمنصة التعليمية | 07512362567",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -424,33 +424,97 @@ fun VectorActionButton(
     enabled: Boolean = true,
     containerColor: Color = MaterialTheme.colorScheme.primary,
     contentColor: Color = Color.White,
-    testTag: String = ""
+    testTag: String = "",
+    isLoading: Boolean = false
 ) {
+    val cloudWriteInFlight by com.example.data.FirebaseCloudSync.isCloudWriteInFlight.collectAsState()
+    var triggeredByThisButton by remember { mutableStateOf(false) }
+
+    LaunchedEffect(cloudWriteInFlight, triggeredByThisButton) {
+        if (triggeredByThisButton) {
+            if (!cloudWriteInFlight) {
+                kotlinx.coroutines.delay(220)
+                if (!com.example.data.FirebaseCloudSync.isCloudWriteInFlight.value) {
+                    triggeredByThisButton = false
+                }
+            }
+        }
+    }
+
+    val showSpinner = isLoading || (triggeredByThisButton && cloudWriteInFlight)
+
     Button(
-        onClick = onClick,
-        enabled = enabled,
+        onClick = {
+            if (!showSpinner) {
+                triggeredByThisButton = true
+                onClick()
+            }
+        },
+        enabled = enabled && !showSpinner,
         modifier = modifier
             .heightIn(min = 48.dp)
             .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
-            contentColor = contentColor
+            contentColor = contentColor,
+            disabledContainerColor = if (showSpinner) containerColor.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+            disabledContentColor = if (showSpinner) contentColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
         ),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = text,
-            modifier = Modifier.size(18.dp)
-        )
+        if (showSpinner) {
+            LuxuryVectorButtonSpinner(tint = contentColor, modifier = Modifier.size(18.dp))
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = text,
+                modifier = Modifier.size(18.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            text = text,
+            text = if (showSpinner) "جاري الحفظ..." else text,
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun LuxuryVectorButtonSpinner(
+    tint: Color = Color.White,
+    modifier: Modifier = Modifier.size(18.dp)
+) {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "btn_spinner")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(
+                durationMillis = 850,
+                easing = androidx.compose.animation.core.LinearEasing
+            )
+        ),
+        label = "btn_spinner_angle"
+    )
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val stroke = 2.2.dp.toPx()
+        drawCircle(
+            color = tint.copy(alpha = 0.25f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
+        )
+        drawArc(
+            color = tint,
+            startAngle = angle,
+            sweepAngle = 250f,
+            useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = stroke,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
         )
     }
 }

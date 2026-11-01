@@ -198,7 +198,7 @@ fun DashboardScreen(
                                         isParentOrStudent && myStudent != null ->
                                             "الطالب: ${myStudent.studentName} • الصف: ${myStudent.gradeClass} (شعبة ${myStudent.sectionName})"
                                         isTeacher ->
-                                            "المواد: ${currentUser?.specialty ?: ""} • الصفوف: ${currentUser?.assignedClasses ?: ""}"
+                                            "المواد: ${currentUser?.specialty?.ifBlank { "كادر تدريسي" } ?: ""} • الصفوف: ${currentUser?.formattedAssignedClassesForDisplay ?: ""}"
                                         else ->
                                             "${schoolConfig.schoolName} (${schoolConfig.address}) — ${schoolConfig.academicYear}"
                                     },
@@ -490,13 +490,20 @@ fun DashboardScreen(
                 }
             } else {
                 // ADMIN OR SCOPED TEACHER DASHBOARD STATS
-                val scopedStudentIds = scopedStudents.map { it.id }.toSet()
+                val scopedStudentIds = scopedStudents.map { it.id.trim() }.toSet()
                 val scopedAttendance = attendance.filter {
-                    it.studentId in scopedStudentIds &&
+                    it.studentId.trim() in scopedStudentIds &&
                         ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == todayIso
                 }
-                val presentCount = scopedAttendance.count { it.status == AttendanceStatus.PRESENT }
                 val absentCount = scopedAttendance.count { it.status == AttendanceStatus.ABSENT }
+                val excusedCount = scopedAttendance.count { it.status == AttendanceStatus.EXCUSED }
+                val lateCount = scopedAttendance.count { it.status == AttendanceStatus.LATE }
+                val explicitPresentCount = scopedAttendance.count { it.status == AttendanceStatus.PRESENT }
+                val presentCount = if (scopedStudents.isEmpty()) {
+                    0
+                } else {
+                    (scopedStudents.size - absentCount - excusedCount - lateCount).coerceAtLeast(explicitPresentCount)
+                }
                 val scopedHomeworks = remember(homeworks, currentUser, isTeacher) {
                     if (isTeacher && currentUser != null) {
                         homeworks.filter { hw ->
@@ -513,6 +520,7 @@ fun DashboardScreen(
                     students.count { it.isOnHonorRoll }
                 }
                 val teachersCount = accounts.count { it.role == UserRole.TEACHER }
+                val staffPluralLabel = schoolConfig.schoolStage.staffTitlePlural
 
                 Text(
                     text = if (isTeacher) "إحصائيات صفوفك وطلابك المسندين فقط" else "لوحة الإحصائيات العامة للمدرسة",
@@ -529,7 +537,7 @@ fun DashboardScreen(
                         SmartStatCard(
                             title = if (isTeacher) "طلابي المسندون" else "إجمالي الطلبة",
                             value = "${scopedStudents.size} طالب",
-                            subtitle = if (isTeacher) "المسجلون في صفوفك وشعبك" else "الكادر التدريسي: $teachersCount",
+                            subtitle = if (isTeacher) "المسجلون في صفوفك وشعبك" else "$staffPluralLabel: $teachersCount",
                             icon = Icons.Filled.Groups,
                             accentColor = PrimaryLight,
                             modifier = Modifier.weight(1f),
@@ -538,7 +546,11 @@ fun DashboardScreen(
                         SmartStatCard(
                             title = "سجل الحضور اليومي",
                             value = if (todayHolidayLabel != null) "عطلة رسمية" else "$presentCount حاضر",
-                            subtitle = if (todayHolidayLabel != null) todayHolidayLabel else "حالات الغياب: $absentCount",
+                            subtitle = if (todayHolidayLabel != null) {
+                                todayHolidayLabel
+                            } else {
+                                "الغياب: $absentCount • مجاز: $excusedCount${if (lateCount > 0) " • متأخر: $lateCount" else ""}"
+                            },
                             icon = Icons.Filled.FactCheck,
                             accentColor = if (todayHolidayLabel != null) GoldAccent else InfoBlue,
                             modifier = Modifier.weight(1f),
@@ -963,6 +975,8 @@ fun DailyAttendanceScreen(
     var showLostAndFoundDialog by remember { mutableStateOf(false) }
     var selectedStudentForIdCard by remember { mutableStateOf<StudentRecord?>(null) }
     var attendanceBehaviorVisibleCount by remember(selectedParentChildId) { mutableStateOf(3) }
+    var studentLeaveRequestsVisibleCount by remember(selectedParentChildId) { mutableStateOf(3) }
+    var adminLeaveRequestsVisibleCount by remember { mutableStateOf(3) }
     var studentAttendanceRecordsVisibleCount by remember(selectedParentChildId) { mutableStateOf(6) }
     var teacherStudentsVisibleCount by remember(selectedClass, selectedSection, searchName) { mutableStateOf(6) }
 
@@ -1242,13 +1256,27 @@ fun DailyAttendanceScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    items(myLeaveRequests, key = { it.id }) { req ->
+                    val visibleMyLeaves = myLeaveRequests.take(studentLeaveRequestsVisibleCount)
+                    items(visibleMyLeaves, key = { it.id }) { req ->
                         LeaveRequestCardItem(
                             req = req,
                             isAdmin = false,
                             onApprove = {},
                             onReject = {}
                         )
+                    }
+                    if (myLeaveRequests.size > 3) {
+                        item(key = "student_leaves_load_more") {
+                            ProgressiveInfiniteScrollFooter(
+                                visibleCount = visibleMyLeaves.size,
+                                totalCount = myLeaveRequests.size,
+                                step = 3,
+                                itemLabel = "طلب إجازة",
+                                onLoadMore = {
+                                    studentLeaveRequestsVisibleCount = (studentLeaveRequestsVisibleCount + 3).coerceAtMost(myLeaveRequests.size)
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -1712,15 +1740,31 @@ fun DailyAttendanceScreen(
                                 }
                             }
 
-                            leaveRequests.take(6).forEach { req ->
+                            val visibleAdminLeaves = leaveRequests.take(adminLeaveRequestsVisibleCount)
+                            visibleAdminLeaves.forEach { req ->
                                 LeaveRequestCardItem(
                                     req = req,
                                     isAdmin = true,
                                     onApprove = {
-                                        viewModel.respondToLeaveRequest(req.id, approve = true)
+                                        viewModel.requireOnlineAndExecute {
+                                            viewModel.respondToLeaveRequest(req.id, approve = true)
+                                        }
                                     },
                                     onReject = {
-                                        viewModel.respondToLeaveRequest(req.id, approve = false)
+                                        viewModel.requireOnlineAndExecute {
+                                            viewModel.respondToLeaveRequest(req.id, approve = false)
+                                        }
+                                    }
+                                )
+                            }
+                            if (leaveRequests.size > 3) {
+                                ProgressiveInfiniteScrollFooter(
+                                    visibleCount = visibleAdminLeaves.size,
+                                    totalCount = leaveRequests.size,
+                                    step = 3,
+                                    itemLabel = "طلب إجازة",
+                                    onLoadMore = {
+                                        adminLeaveRequestsVisibleCount = (adminLeaveRequestsVisibleCount + 3).coerceAtMost(leaveRequests.size)
                                     }
                                 )
                             }
@@ -1737,8 +1781,8 @@ fun DailyAttendanceScreen(
                     it.studentId.trim() == stu.id.trim() &&
                         ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanSelDate
                 }
-                var optimisticStatus by remember(stu.id, cleanSelDate) {
-                    mutableStateOf<AttendanceStatus?>(null)
+                var optimisticStatus by remember(stu.id, cleanSelDate, currentEntry?.status) {
+                    mutableStateOf<AttendanceStatus?>(currentEntry?.status)
                 }
                 LaunchedEffect(currentEntry?.status) {
                     if (currentEntry != null) {
@@ -1900,8 +1944,10 @@ fun DailyAttendanceScreen(
                                             .weight(1f)
                                             .clip(RoundedCornerShape(10.dp))
                                             .clickable(enabled = canEdit) {
-                                                optimisticStatus = st
-                                                viewModel.recordStudentAttendance(stu, selectedDate, st)
+                                                viewModel.requireOnlineAndExecute {
+                                                    optimisticStatus = st
+                                                    viewModel.recordStudentAttendance(stu, selectedDate, st)
+                                                }
                                             }
                                             .testTag("att_btn_${stu.id}_${st.name}"),
                                         color = if (isSelected) statusColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
