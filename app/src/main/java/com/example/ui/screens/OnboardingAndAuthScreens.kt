@@ -54,7 +54,9 @@ fun OnboardingScreen(
     isDarkMode: Boolean,
     onToggleDarkMode: () -> Unit,
     onFinishOnboarding: () -> Unit,
-    occasionThemeConfig: OccasionThemeConfig = OccasionThemeConfig()
+    occasionThemeConfig: OccasionThemeConfig = OccasionThemeConfig(),
+    discoveredSchoolName: String? = null,
+    schoolLogoBase64: String = ""
 ) {
     val slides = remember {
         listOf(
@@ -112,7 +114,11 @@ fun OnboardingScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NoWrapBadge(
-                    text = "منصة مدرستي • الموصل - زمار",
+                    text = if (!discoveredSchoolName.isNullOrBlank()) {
+                        "منصة مدرستي الذكية • $discoveredSchoolName"
+                    } else {
+                        "منصة مدرستي الذكية • الموصل - زمار"
+                    },
                     icon = Icons.Filled.School,
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -175,7 +181,53 @@ fun OnboardingScreen(
                 ) {
                     OnboardingAnimatedScene(slideIndex = index)
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    if (!discoveredSchoolName.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, GoldAccent)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                if (schoolLogoBase64.isNotBlank()) {
+                                    Base64AvatarImage(
+                                        base64Data = schoolLogoBase64,
+                                        fallbackIcon = Icons.Filled.School,
+                                        contentDescription = discoveredSchoolName,
+                                        size = 34.dp,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.School,
+                                        contentDescription = null,
+                                        tint = GoldDeep,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.Start) {
+                                    Text(
+                                        text = "منصة مدرستي الذكية",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = GoldDeep,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = discoveredSchoolName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     NoWrapBadge(
                         text = slide.badge,

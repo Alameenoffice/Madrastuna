@@ -179,6 +179,26 @@ fun MadrasatiRootApp(
         )
     }
 
+    val activeDiscoveredSchoolName = remember(
+        discoveredSchoolName,
+        schoolConfig.isSetupCompleted,
+        schoolConfig.schoolId,
+        schoolConfig.schoolName,
+        biometricCredentials?.schoolName
+    ) {
+        when {
+            !discoveredSchoolName.isNullOrBlank() -> discoveredSchoolName
+            schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank() && schoolConfig.schoolName.isNotBlank() -> schoolConfig.schoolName
+            !biometricCredentials?.schoolName.isNullOrBlank() -> biometricCredentials?.schoolName
+            else -> null
+        }
+    }
+    val activeSchoolLogoBase64 = remember(schoolConfig.isSetupCompleted, schoolConfig.schoolId, schoolConfig.logoBase64) {
+        if (schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank()) schoolConfig.logoBase64 else ""
+    }
+
+    var showSplashScreen by remember { mutableStateOf(true) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         when {
             !onboardingSeen -> {
@@ -186,7 +206,9 @@ fun MadrasatiRootApp(
                     isDarkMode = isDarkMode,
                     onToggleDarkMode = { viewModel.toggleDarkMode() },
                     onFinishOnboarding = { viewModel.completeOnboarding() },
-                    occasionThemeConfig = occasionThemeConfig
+                    occasionThemeConfig = occasionThemeConfig,
+                    discoveredSchoolName = activeDiscoveredSchoolName,
+                    schoolLogoBase64 = activeSchoolLogoBase64
                 )
             }
             isDeveloperAuthenticated -> {
@@ -224,7 +246,7 @@ fun MadrasatiRootApp(
                     onVerifyActivationCode = { code, callback ->
                         viewModel.verifyActivationCodeAndUnlockSetup(code, callback)
                     },
-                    discoveredSchoolName = discoveredSchoolName,
+                    discoveredSchoolName = activeDiscoveredSchoolName,
                     loginConnectingMessage = loginConnectingMessage,
                     onUsernameChanged = { u -> viewModel.previewSchoolNameByUsername(u) },
                     occasionThemeConfig = occasionThemeConfig,
@@ -237,6 +259,23 @@ fun MadrasatiRootApp(
             else -> {
                 AuthenticatedMainPlatform(viewModel = viewModel)
             }
+        }
+
+        // Choreographed Multi-Element Vector Splash Screen on Launch
+        AnimatedVisibility(
+            visible = showSplashScreen,
+            enter = fadeIn(animationSpec = tween(180)),
+            exit = fadeOut(animationSpec = tween(420)),
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(9999f)
+        ) {
+            com.example.ui.components.ChoreographedSplashScreen(
+                discoveredSchoolName = activeDiscoveredSchoolName,
+                schoolLogoBase64 = activeSchoolLogoBase64,
+                isDarkMode = isDarkMode,
+                onSplashFinished = { showSplashScreen = false }
+            )
         }
 
         // Global Smooth Interactive Image Lightbox Dialog
