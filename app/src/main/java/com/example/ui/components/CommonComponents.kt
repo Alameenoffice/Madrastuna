@@ -1293,110 +1293,60 @@ fun ChoreographedSplashScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Animated Platform Badge & Automatic Discovered School Name
+            // Minimalist Luxury Typography for Platform Title & Discovered School Name
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.graphicsLayer(
-                    alpha = reveal.coerceIn(0f, 1f),
-                    scaleX = 0.88f + 0.12f * reveal,
-                    scaleY = 0.88f + 0.12f * reveal,
-                    translationY = (1f - reveal) * 28f
-                )
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (isDarkMode) Color(0xFF064E3B) else DeepEmerald.copy(alpha = 0.10f),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.2.dp,
-                        GoldAccent.copy(alpha = 0.70f)
+                modifier = Modifier
+                    .graphicsLayer(
+                        alpha = reveal.coerceIn(0f, 1f),
+                        scaleX = 0.88f + 0.12f * reveal,
+                        scaleY = 0.88f + 0.12f * reveal,
+                        translationY = (1f - reveal) * 28f
                     )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.School,
-                            contentDescription = null,
-                            tint = GoldAccent,
-                            modifier = Modifier.size(16.dp)
+                    .testTag("splash_discovered_school_card")
+            ) {
+                Text(
+                    text = "منصة مدرستي الذكية",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp,
+                    color = if (isDarkMode) Color(0xFF6EE7B7) else Color(0xFF047857),
+                    textAlign = TextAlign.Center
+                )
+
+                Box(
+                    modifier = Modifier
+                        .padding(vertical = 6.dp)
+                        .width(48.dp)
+                        .height(2.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color(0xFFF59E0B),
+                                    Color.Transparent
+                                )
+                            )
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "منصة مدرستي الذكية",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isDarkMode) Color(0xFFFEF3C7) else DeepForestGreen
-                        )
-                    }
-                }
+                )
 
                 if (hasDiscoveredSchool) {
-                    // Display the actual discovered school name & logo with a luxury Emerald/Gold badge card
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.85f) else Color.White,
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GoldAccent),
-                        shadowElevation = 8.dp,
-                        modifier = Modifier
-                            .padding(top = 4.dp)
-                            .testTag("splash_discovered_school_card")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            if (schoolLogoBase64.isNotBlank()) {
-                                Base64AvatarImage(
-                                    base64Data = schoolLogoBase64,
-                                    fallbackIcon = Icons.Filled.School,
-                                    contentDescription = discoveredSchoolName ?: "",
-                                    size = 44.dp,
-                                    tint = DeepEmerald
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            Brush.linearGradient(
-                                                colors = listOf(DeepEmerald, Color(0xFF0D9488))
-                                            )
-                                        )
-                                        .border(1.5.dp, GoldAccent, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.School,
-                                        contentDescription = null,
-                                        tint = Color(0xFFFEF3C7),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-
-                            Text(
-                                text = discoveredSchoolName.orEmpty(),
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkMode) Color.White else DeepForestGreen,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                } else {
-                    // First launch before any school login: show official platform title only
                     Text(
-                        text = "منصة مدرستي الذكية المتكاملة",
-                        style = MaterialTheme.typography.headlineSmall,
+                        text = discoveredSchoolName.orEmpty(),
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color.White else DeepForestGreen,
+                        color = if (isDarkMode) Color.White else Color(0xFF022C22),
                         textAlign = TextAlign.Center
                     )
+                } else {
+                    Text(
+                        text = "منصة مدرستي الذكية المتكاملة",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDarkMode) Color.White else Color(0xFF022C22),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "بيئة تعليمية وإدارية سحابية فائقة الفخامة",
                         style = MaterialTheme.typography.bodyMedium,

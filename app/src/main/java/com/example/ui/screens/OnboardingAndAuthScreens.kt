@@ -182,48 +182,39 @@ fun OnboardingScreen(
                     OnboardingAnimatedScene(slideIndex = index)
 
                     if (!discoveredSchoolName.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, GoldAccent)
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                if (schoolLogoBase64.isNotBlank()) {
-                                    Base64AvatarImage(
-                                        base64Data = schoolLogoBase64,
-                                        fallbackIcon = Icons.Filled.School,
-                                        contentDescription = discoveredSchoolName,
-                                        size = 34.dp,
-                                        tint = MaterialTheme.colorScheme.primary
+                            Text(
+                                text = "منصة مدرستي الذكية",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF047857),
+                                textAlign = TextAlign.Center
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .padding(vertical = 6.dp)
+                                    .width(48.dp)
+                                    .height(2.dp)
+                                    .background(
+                                        androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color.Transparent,
+                                                Color(0xFFF59E0B),
+                                                Color.Transparent
+                                            )
+                                        )
                                     )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Filled.School,
-                                        contentDescription = null,
-                                        tint = GoldDeep,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Column(horizontalAlignment = Alignment.Start) {
-                                    Text(
-                                        text = "منصة مدرستي الذكية",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = GoldDeep,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = discoveredSchoolName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
+                            )
+                            Text(
+                                text = discoveredSchoolName,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
 
@@ -381,9 +372,7 @@ fun OnboardingScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                DeveloperCreditFooter()
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
@@ -811,9 +800,7 @@ fun SchoolSetupScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            DeveloperCreditFooter()
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
@@ -1279,9 +1266,7 @@ fun UnifiedLoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            DeveloperCreditFooter()
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }

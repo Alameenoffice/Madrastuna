@@ -2461,6 +2461,16 @@ class SchoolRepository(context: Context) {
                         answersMap[k] = answersObj.optInt(k, 0)
                     }
                 }
+                val timestampsObj = o.optJSONObject("answerTimestamps")
+                val timestampsMap = mutableMapOf<String, String>()
+                if (timestampsObj != null) {
+                    val keys = timestampsObj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        val ts = timestampsObj.optString(k, "").trim()
+                        if (ts.isNotEmpty()) timestampsMap[k] = ts
+                    }
+                }
                 list.add(
                     QuickQuizItem(
                         id = o.optString("id"),
@@ -2472,8 +2482,11 @@ class SchoolRepository(context: Context) {
                         quizType = qType,
                         options = jsonArrayToList(o.optJSONArray("options")),
                         correctOptionIndex = o.optInt("correctOptionIndex", 0),
-                        createdAt = o.optString("createdAt"),
+                        createdAt = ArabicTextNormalizer.normalizeDateIso(o.optString("createdAt")),
                         studentAnswers = answersMap,
+                        answerTimestamps = timestampsMap,
+                        points = o.optInt("points", 5).coerceAtLeast(1),
+                        isClosed = o.optBoolean("isClosed", false),
                         schoolId = itemSid
                     )
                 )
@@ -2490,6 +2503,8 @@ class SchoolRepository(context: Context) {
         items.forEach { q ->
             val ansObj = JSONObject()
             q.studentAnswers.forEach { (stuId, idx) -> ansObj.put(stuId, idx) }
+            val tsObj = JSONObject()
+            q.answerTimestamps.forEach { (stuId, ts) -> tsObj.put(stuId, ts) }
             arr.put(JSONObject().apply {
                 put("id", q.id)
                 put("gradeClass", InputSanitizer.sanitize(q.gradeClass))
@@ -2500,8 +2515,11 @@ class SchoolRepository(context: Context) {
                 put("quizType", q.quizType.name)
                 put("options", JSONArray(q.options))
                 put("correctOptionIndex", q.correctOptionIndex)
-                put("createdAt", q.createdAt)
+                put("createdAt", ArabicTextNormalizer.normalizeDateIso(q.createdAt))
                 put("studentAnswers", ansObj)
+                put("answerTimestamps", tsObj)
+                put("points", q.points)
+                put("isClosed", q.isClosed)
                 put("schoolId", schoolId)
             })
         }

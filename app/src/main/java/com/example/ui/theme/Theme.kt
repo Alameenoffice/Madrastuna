@@ -63,8 +63,14 @@ fun MyApplicationTheme(
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = Typography,
-            content = content
-        )
+            typography = Typography
+        ) {
+            CompositionLocalProvider(
+                androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.merge(
+                    androidx.compose.ui.text.TextStyle(fontFamily = CairoFontFamily)
+                ),
+                content = content
+            )
+        }
     }
 }

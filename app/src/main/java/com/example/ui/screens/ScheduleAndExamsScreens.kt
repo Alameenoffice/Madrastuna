@@ -129,11 +129,77 @@ fun ScheduleAndHomeworkScreen(
         filteredHomeworks.take(homeworksVisibleCount)
     }
 
-    val filteredQuickQuizzes = remember(quickQuizzes, selectedClass, selectedSection) {
+    val classScopedQuickQuizzes = remember(quickQuizzes, selectedClass, selectedSection, currentUser) {
         quickQuizzes.filter { q ->
-            ArabicTextNormalizer.matchesClass(q.gradeClass, selectedClass) &&
+            val clsMatch = ArabicTextNormalizer.matchesClass(q.gradeClass, selectedClass) &&
                 (q.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(q.sectionName, selectedSection))
+            val subjMatch = if (currentUser?.role == UserRole.TEACHER) {
+                currentUser?.canTeacherAccessSubject(q.subjectName) == true
+            } else true
+            clsMatch && subjMatch
         }
+    }
+
+    var quizStatusFilter by remember { mutableIntStateOf(0) } // 0 = الاختبارات النشطة (الجارية), 1 = الاختبارات المنتهية (الأرشيف), 2 = الكل
+    var selectedQuizSubject by remember { mutableStateOf("الكل") }
+    var selectedQuizDateFilter by remember { mutableStateOf("الكل") }
+    var quizSortDescending by remember { mutableStateOf(true) }
+    var inspectingQuizParticipants by remember { mutableStateOf<QuickQuizItem?>(null) }
+
+    val availableQuizSubjects = remember(classScopedQuickQuizzes, allowedSubjects) {
+        (listOf("الكل") + classScopedQuickQuizzes.map { it.subjectName.trim() } + allowedSubjects.map { it.trim() })
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
+    val availableQuizDates = remember(classScopedQuickQuizzes) {
+        listOf("الكل") + classScopedQuickQuizzes.map { it.createdAt.trim() }.filter { it.isNotEmpty() }.distinct().sortedDescending()
+    }
+
+    val activeQuizzesCount = remember(classScopedQuickQuizzes) {
+        classScopedQuickQuizzes.count { !it.isClosed }
+    }
+    val closedQuizzesCount = remember(classScopedQuickQuizzes) {
+        classScopedQuickQuizzes.count { it.isClosed }
+    }
+
+    val filteredQuickQuizzes = remember(
+        classScopedQuickQuizzes,
+        quizStatusFilter,
+        selectedQuizSubject,
+        selectedQuizDateFilter,
+        quizSortDescending
+    ) {
+        val filtered = classScopedQuickQuizzes.filter { q ->
+            val statusMatches = when (quizStatusFilter) {
+                0 -> !q.isClosed
+                1 -> q.isClosed
+                else -> true
+            }
+            val subjectMatches = selectedQuizSubject == "الكل" ||
+                ArabicTextNormalizer.normalizeText(q.subjectName) == ArabicTextNormalizer.normalizeText(selectedQuizSubject)
+            val dateMatches = selectedQuizDateFilter == "الكل" || q.createdAt.trim() == selectedQuizDateFilter
+            statusMatches && subjectMatches && dateMatches
+        }
+        if (quizSortDescending) {
+            filtered.sortedByDescending { it.createdAt }
+        } else {
+            filtered.sortedBy { it.createdAt }
+        }
+    }
+
+    val classSectionStudents = remember(students, selectedClass, selectedSection, schoolConfig.schoolId) {
+        students.filter { stu ->
+            (stu.schoolId.isEmpty() || stu.schoolId == schoolConfig.schoolId) &&
+                ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
+                ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection)
+        }
+    }
+    var selectedSummaryStudentId by remember(activeStudent?.id, classSectionStudents) {
+        mutableStateOf(activeStudent?.id ?: classSectionStudents.firstOrNull()?.id.orEmpty())
+    }
+    val summaryTargetStudent = remember(activeStudent, classSectionStudents, selectedSummaryStudentId, isParentOrStudent) {
+        if (isParentOrStudent) activeStudent
+        else classSectionStudents.firstOrNull { it.id == selectedSummaryStudentId } ?: classSectionStudents.firstOrNull()
     }
 
     val filteredPeriods = remember(schedules, selectedClass, selectedSection, selectedDay) {
@@ -310,21 +376,333 @@ fun ScheduleAndHomeworkScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
-                // Quick Quizzes Section (الاختبارات السريعة والتصحيح التلقائي)
-                if (featureSettings.quickQuizzesEnabled && filteredQuickQuizzes.isNotEmpty()) {
+                // Quick Quizzes Section (الاختبارات السريعة والتصحيح التلقائي والفرز الاحترافي)
+                if (featureSettings.quickQuizzesEnabled && classScopedQuickQuizzes.isNotEmpty()) {
                     item {
-                        Text(
-                            text = "الاختبارات السريعة المؤقتة والتصحيح الفوري (${filteredQuickQuizzes.size}):",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = DeepEmerald
-                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Quiz,
+                                            contentDescription = null,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "مركز الاختبارات السريعة والأرشيف (${classScopedQuickQuizzes.size})",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                    }
+                                    Surface(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { quizSortDescending = !quizSortDescending },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = DeepEmerald.copy(alpha = 0.10f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.FilterList,
+                                                contentDescription = null,
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = if (quizSortDescending) "الأحدث أولاً" else "الأقدم أولاً",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 1. تبويبات الفرز حسب الحالة: النشطة (الجارية) / المنتهية (الأرشيف) / الكل
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = { quizStatusFilter = 0 },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 40.dp)
+                                            .testTag("quiz_tab_active"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (quizStatusFilter == 0) DeepEmerald else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (quizStatusFilter == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    ) {
+                                        Icon(Icons.Filled.PlayCircle, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "الاختبارات النشطة ($activeQuizzesCount)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = { quizStatusFilter = 1 },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 40.dp)
+                                            .testTag("quiz_tab_archived"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (quizStatusFilter == 1) DeepForestGreen else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (quizStatusFilter == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    ) {
+                                        Icon(Icons.Filled.Inventory2, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "المنتهية والأرشيف ($closedQuizzesCount)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                // 2. الفرز والعزل حسب المادة الدراسية
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "فرز وعزل حسب المادة الدراسية:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextMutedGreen
+                                    )
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(availableQuizSubjects) { subj ->
+                                            FilterChip(
+                                                selected = selectedQuizSubject == subj,
+                                                onClick = { selectedQuizSubject = subj },
+                                                label = { Text(subj, maxLines = 1) },
+                                                leadingIcon = if (selectedQuizSubject == subj) {
+                                                    {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Check,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(15.dp)
+                                                        )
+                                                    }
+                                                } else null
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // الفرز حسب التاريخ
+                                if (availableQuizDates.size > 2) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "فلترة حسب تاريخ الاختبار:",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextMutedGreen
+                                        )
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            items(availableQuizDates) { dt ->
+                                                FilterChip(
+                                                    selected = selectedQuizDateFilter == dt,
+                                                    onClick = { selectedQuizDateFilter = dt },
+                                                    label = { Text(if (dt == "الكل") "كل التواريخ" else dt, maxLines = 1) }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 3. ملخص درجات الطالب حسب المادة والتاريخ (عند اختيار مادة معينة أو للطالب المحدد)
+                                if (selectedQuizSubject != "الكل" && summaryTargetStudent != null) {
+                                    val subjectQuizzes = classScopedQuickQuizzes
+                                        .filter { ArabicTextNormalizer.normalizeText(it.subjectName) == ArabicTextNormalizer.normalizeText(selectedQuizSubject) }
+                                        .sortedByDescending { it.createdAt }
+
+                                    if (subjectQuizzes.isNotEmpty()) {
+                                        val totalPossible = subjectQuizzes.sumOf { it.points }
+                                        val totalEarned = subjectQuizzes.sumOf { q ->
+                                            val ans = q.studentAnswers[summaryTargetStudent.id]
+                                            if (ans != null && ans == q.correctOptionIndex) q.points else 0
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = "ملخص درجات الاختبارات السريعة • مادة $selectedQuizSubject",
+                                                            style = MaterialTheme.typography.labelLarge,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepForestGreen
+                                                        )
+                                                        Text(
+                                                            text = "الطالب: ${summaryTargetStudent.fullNameWithFather} (${subjectQuizzes.size} اختبار)",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = TextMutedGreen
+                                                        )
+                                                    }
+                                                    Surface(
+                                                        shape = RoundedCornerShape(50),
+                                                        color = DeepEmerald
+                                                    ) {
+                                                        Text(
+                                                            text = "المجموع: $totalEarned من $totalPossible",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color.White,
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                if (!isParentOrStudent && classSectionStudents.size > 1) {
+                                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        items(classSectionStudents, key = { it.id }) { stu ->
+                                                            FilterChip(
+                                                                selected = stu.id == summaryTargetStudent.id,
+                                                                onClick = { selectedSummaryStudentId = stu.id },
+                                                                label = { Text(stu.studentName, maxLines = 1) }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                subjectQuizzes.forEach { sq ->
+                                                    val ansIdx = sq.studentAnswers[summaryTargetStudent.id]
+                                                    val participated = ansIdx != null
+                                                    val isCorrect = ansIdx == sq.correctOptionIndex
+                                                    val earned = if (participated && isCorrect) sq.points else 0
+                                                    Surface(
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = Color.White,
+                                                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = sq.questionText,
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = DeepForestGreen,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                                Text(
+                                                                    text = "التاريخ: ${sq.createdAt} • الحالة: ${if (sq.isClosed) "منتهي" else "نشط"}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = TextMutedGreen
+                                                                )
+                                                            }
+                                                            Surface(
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                color = when {
+                                                                    !participated -> WarningAmber.copy(alpha = 0.14f)
+                                                                    isCorrect -> SuccessGreen.copy(alpha = 0.15f)
+                                                                    else -> DangerRed.copy(alpha = 0.15f)
+                                                                }
+                                                            ) {
+                                                                Text(
+                                                                    text = if (!participated) {
+                                                                        "لم يشارك (0 من ${sq.points})"
+                                                                    } else {
+                                                                        "$earned من ${sq.points}"
+                                                                    },
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = when {
+                                                                        !participated -> WarningAmber
+                                                                        isCorrect -> SuccessGreen
+                                                                        else -> DangerRed
+                                                                    },
+                                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
+
+                    if (filteredQuickQuizzes.isEmpty()) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.2f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = if (quizStatusFilter == 0) {
+                                        "لا توجد اختبارات نشطة مطابقة للفلتر المحدد حالياً. يمكنك تصفح تبويب (المنتهية والأرشيف)."
+                                    } else {
+                                        "لا توجد اختبارات منتهية في الأرشيف مطابقة للفلتر المحدد."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMutedGreen,
+                                    modifier = Modifier.padding(16.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
                     items(filteredQuickQuizzes, key = { "quiz_${it.id}" }) { quiz ->
-                        val quizAnsForStudent = remember(quickQuizAnswers, quiz.id, activeStudent?.id) {
+                        val quizAnsForStudent = remember(quickQuizAnswers, quiz.id, activeStudent?.id, quiz.studentAnswers) {
                             quickQuizAnswers.firstOrNull { it.quizId == quiz.id && it.studentId == activeStudent?.id }
                         }
-                        val allQuizAnswers = remember(quickQuizAnswers, quiz.id) {
+                        val allQuizAnswers = remember(quickQuizAnswers, quiz.id, quiz.studentAnswers) {
                             quickQuizAnswers.filter { it.quizId == quiz.id }
                         }
                         var selectedOptIndex by remember(quiz.id) { mutableIntStateOf(-1) }
@@ -333,9 +711,12 @@ fun ScheduleAndHomeworkScreen(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFFECFDF5)
+                                containerColor = if (quiz.isClosed) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f) else Color(0xFFECFDF5)
                             ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.45f))
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (quiz.isClosed) MaterialTheme.colorScheme.outlineVariant else EmeraldAccent.copy(alpha = 0.45f)
+                            )
                         ) {
                             Column(
                                 modifier = Modifier.padding(14.dp),
@@ -346,17 +727,46 @@ fun ScheduleAndHomeworkScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    NoWrapBadge(
-                                        text = "اختبار سريع • ${quiz.subjectName}",
-                                        icon = Icons.Filled.Quiz,
-                                        containerColor = DeepEmerald.copy(alpha = 0.14f),
-                                        contentColor = DeepEmerald
-                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        NoWrapBadge(
+                                            text = "اختبار سريع • ${quiz.subjectName}",
+                                            icon = Icons.Filled.Quiz,
+                                            containerColor = DeepEmerald.copy(alpha = 0.14f),
+                                            contentColor = DeepEmerald
+                                        )
+                                        NoWrapBadge(
+                                            text = if (quiz.isClosed) "منتهي (مؤرشف)" else "نشط (جاري)",
+                                            icon = if (quiz.isClosed) Icons.Filled.Lock else Icons.Filled.PlayCircle,
+                                            containerColor = if (quiz.isClosed) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.16f),
+                                            contentColor = if (quiz.isClosed) DangerRed else SuccessGreen
+                                        )
+                                    }
                                     NoWrapBadge(
                                         text = "الدرجة: ${quiz.points}",
                                         icon = Icons.Filled.Stars,
                                         containerColor = DeepEmerald.copy(alpha = 0.14f),
                                         contentColor = DeepEmerald
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "الأستاذ: ${quiz.teacherName} • الصف: ${quiz.gradeClass} (${quiz.sectionName})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextMutedGreen
+                                    )
+                                    Text(
+                                        text = "التاريخ: ${quiz.createdAt}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepForestGreen
                                     )
                                 }
 
@@ -368,6 +778,7 @@ fun ScheduleAndHomeworkScreen(
 
                                 quiz.options.forEachIndexed { idx, optText ->
                                     val isAnswered = quizAnsForStudent != null
+                                    val revealCorrect = isAnswered || quiz.isClosed || !isParentOrStudent
                                     val isCorrectOption = idx == quiz.correctOptionIndex
                                     val isChosenOption = (quizAnsForStudent?.selectedOptionIndex ?: selectedOptIndex) == idx
 
@@ -375,12 +786,12 @@ fun ScheduleAndHomeworkScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(10.dp))
-                                            .clickable(enabled = isParentOrStudent && !isAnswered) {
+                                            .clickable(enabled = isParentOrStudent && !isAnswered && !quiz.isClosed) {
                                                 selectedOptIndex = idx
                                             },
                                         shape = RoundedCornerShape(10.dp),
                                         color = when {
-                                            isAnswered && isCorrectOption -> SuccessGreen.copy(alpha = 0.18f)
+                                            revealCorrect && isCorrectOption -> SuccessGreen.copy(alpha = 0.18f)
                                             isAnswered && isChosenOption && !isCorrectOption -> DangerRed.copy(alpha = 0.18f)
                                             isChosenOption -> DeepEmerald.copy(alpha = 0.15f)
                                             else -> MaterialTheme.colorScheme.surface
@@ -388,7 +799,7 @@ fun ScheduleAndHomeworkScreen(
                                         border = androidx.compose.foundation.BorderStroke(
                                             1.dp,
                                             when {
-                                                isAnswered && isCorrectOption -> SuccessGreen
+                                                revealCorrect && isCorrectOption -> SuccessGreen
                                                 isAnswered && isChosenOption && !isCorrectOption -> DangerRed
                                                 isChosenOption -> DeepEmerald
                                                 else -> MaterialTheme.colorScheme.outlineVariant
@@ -403,9 +814,9 @@ fun ScheduleAndHomeworkScreen(
                                             Text(
                                                 text = "${idx + 1}. $optText",
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = if (isChosenOption || (isAnswered && isCorrectOption)) FontWeight.Bold else FontWeight.Normal
+                                                fontWeight = if (isChosenOption || (revealCorrect && isCorrectOption)) FontWeight.Bold else FontWeight.Normal
                                             )
-                                            if (isAnswered && isCorrectOption) {
+                                            if (revealCorrect && isCorrectOption) {
                                                 Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
                                             } else if (isAnswered && isChosenOption && !isCorrectOption) {
                                                 Icon(Icons.Filled.Cancel, contentDescription = null, tint = DangerRed, modifier = Modifier.size(18.dp))
@@ -423,15 +834,36 @@ fun ScheduleAndHomeworkScreen(
                                         ) {
                                             Text(
                                                 text = if (quizAnsForStudent.isCorrect) {
-                                                    "إجابة صحيحة ممتازة! حصلت على (${quizAnsForStudent.earnedPoints} / ${quiz.points})"
+                                                    "إجابة صحيحة ممتازة! احتُسبت لك الدرجة: (${quizAnsForStudent.earnedPoints} من ${quiz.points})"
                                                 } else {
-                                                    "إجابة غير صحيحة • الإجابة الصحيحة هي: ${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""}"
+                                                    "إجابة خاطئة (احتُسبت لك: 0 من ${quiz.points}) • الإجابة الصحيحة هي: ${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""}"
                                                 },
                                                 modifier = Modifier.padding(10.dp),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (quizAnsForStudent.isCorrect) DeepEmerald else DangerRed
                                             )
+                                        }
+                                    } else if (quiz.isClosed) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = WarningAmber.copy(alpha = 0.14f),
+                                            border = BorderStroke(1.dp, WarningAmber.copy(alpha = 0.45f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Lock, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(18.dp))
+                                                Text(
+                                                    text = "هذا الاختبار منتهي ومغلق من قِبل الأستاذ • لم يتم تسجيل مشاركة سابقة (الدرجة: 0 من ${quiz.points}) • الإجابة الصحيحة: ${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""}",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepForestGreen
+                                                )
+                                            }
                                         }
                                     } else {
                                         Button(
@@ -453,13 +885,99 @@ fun ScheduleAndHomeworkScreen(
                                         }
                                     }
                                 } else if (canPublish) {
+                                    val targetQuizStudents = remember(students, quiz.gradeClass, quiz.sectionName, schoolConfig.schoolId) {
+                                        students.filter { stu ->
+                                            (stu.schoolId.isEmpty() || stu.schoolId == schoolConfig.schoolId) &&
+                                                ArabicTextNormalizer.matchesClass(stu.gradeClass, quiz.gradeClass) &&
+                                                (quiz.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(stu.sectionName, quiz.sectionName))
+                                        }
+                                    }
+                                    val participantsCount = quiz.studentAnswers.size
+                                    val nonParticipantsCount = (targetQuizStudents.size - participantsCount).coerceAtLeast(0)
                                     val correctCount = allQuizAnswers.count { it.isCorrect }
-                                    Text(
-                                        text = "إحصائية الإجابات: شارك ${allQuizAnswers.size} طالب • إجابات صحيحة: $correctCount • الإجابة الصحيحة: (${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""})",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = DeepEmerald,
-                                        fontWeight = FontWeight.Bold
-                                    )
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { inspectingQuizParticipants = quiz }
+                                            .testTag("open_quiz_participants_btn_${quiz.id}"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = DeepEmerald.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.45f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Groups,
+                                                        contentDescription = null,
+                                                        tint = DeepEmerald,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        text = "كشف المشاركين وإجابات الطلبة التفصيلية",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "المشاركون: $participantsCount طالب (صحيحة: $correctCount) • غير المشاركين: $nonParticipantsCount طالب",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepEmerald
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Filled.Visibility,
+                                                contentDescription = "عرض الكشف التفصيلي",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // زر تحكم الأستاذ بحالة الاختبار (إنهاء الاختبار وإغلاق الإجابات / إعادة تفعيل الاختبار)
+                                    Button(
+                                        onClick = { viewModel.toggleQuickQuizClosedStatus(quiz.id) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 40.dp)
+                                            .testTag("toggle_quiz_status_btn_${quiz.id}"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (quiz.isClosed) DeepEmerald else WarningAmber,
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = if (quiz.isClosed) Icons.Filled.PlayCircle else Icons.Filled.Lock,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (quiz.isClosed) {
+                                                "إعادة تفعيل الاختبار وفتح استقبال الإجابات"
+                                            } else {
+                                                "إنهاء الاختبار وإغلاق الإجابات"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1347,6 +1865,20 @@ fun ScheduleAndHomeworkScreen(
                 }
             }
         }
+    }
+
+    if (inspectingQuizParticipants != null) {
+        val liveQuiz = quickQuizzes.firstOrNull { it.id == inspectingQuizParticipants?.id } ?: inspectingQuizParticipants!!
+        val targetStudents = students.filter { stu ->
+            (stu.schoolId.isEmpty() || stu.schoolId == schoolConfig.schoolId) &&
+                ArabicTextNormalizer.matchesClass(stu.gradeClass, liveQuiz.gradeClass) &&
+                (liveQuiz.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(stu.sectionName, liveQuiz.sectionName))
+        }
+        QuickQuizParticipantsModal(
+            quiz = liveQuiz,
+            targetStudents = targetStudents,
+            onDismiss = { inspectingQuizParticipants = null }
+        )
     }
 
     // Publish Quick Quiz Modal
@@ -3446,4 +3978,328 @@ private fun ScoreCell(
         }
     }
 }
+
+@Composable
+fun QuickQuizParticipantsModal(
+    quiz: QuickQuizItem,
+    targetStudents: List<StudentRecord>,
+    onDismiss: () -> Unit
+) {
+    var selectedModalTab by remember { mutableIntStateOf(0) } // 0 = الطلبة المشاركون, 1 = الطلبة غير المشاركين
+
+    data class ParticipantDetail(
+        val studentId: String,
+        val studentName: String,
+        val gradeAndSection: String,
+        val chosenOptionText: String,
+        val isCorrect: Boolean,
+        val earnedPoints: Int,
+        val answeredAt: String
+    )
+
+    val participantDetails = remember(quiz, targetStudents) {
+        val studentMap = targetStudents.associateBy { it.id }
+        quiz.studentAnswers.entries.map { (stuId, optIdx) ->
+            val stu = studentMap[stuId]
+            val chosenText = quiz.options.getOrNull(optIdx) ?: "خيار ${optIdx + 1}"
+            val isCorrect = optIdx == quiz.correctOptionIndex
+            ParticipantDetail(
+                studentId = stuId,
+                studentName = stu?.fullNameWithFather ?: "طالب ($stuId)",
+                gradeAndSection = if (stu != null) "${stu.gradeClass} - شعبة ${stu.sectionName}" else "${quiz.gradeClass} - ${quiz.sectionName}",
+                chosenOptionText = chosenText,
+                isCorrect = isCorrect,
+                earnedPoints = if (isCorrect) quiz.points else 0,
+                answeredAt = quiz.answerTimestamps[stuId] ?: quiz.createdAt
+            )
+        }
+    }
+
+    val nonParticipants = remember(quiz, targetStudents) {
+        targetStudents.filter { stu -> !quiz.studentAnswers.containsKey(stu.id) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Groups,
+                        contentDescription = null,
+                        tint = DeepEmerald
+                    )
+                    Text(
+                        text = "كشف المشاركين وإجابات الطلبة التفصيلية",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                }
+                Text(
+                    text = "مادة ${quiz.subjectName} • الصف ${quiz.gradeClass} (${quiz.sectionName}) • الدرجة: ${quiz.points}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMutedGreen
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 470.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = DeepEmerald.copy(alpha = 0.08f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = "السؤال: ${quiz.questionText}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        Text(
+                            text = "الإجابة النموذجية الصحيحة: (${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""})",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessGreen
+                        )
+                    }
+                }
+
+                // تبويبين: 1. الطلبة المشاركون (X طالب) | 2. الطلبة غير المشاركين (Y طالب)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Button(
+                        onClick = { selectedModalTab = 0 },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 40.dp)
+                            .testTag("modal_tab_participants"),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedModalTab == 0) DeepEmerald else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (selectedModalTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text(
+                            text = "الطلبة المشاركون (${participantDetails.size} طالب)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
+                        )
+                    }
+
+                    Button(
+                        onClick = { selectedModalTab = 1 },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 40.dp)
+                            .testTag("modal_tab_non_participants"),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedModalTab == 1) WarningAmber else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (selectedModalTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text(
+                            text = "غير المشاركين (${nonParticipants.size} طالب)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = DeepEmerald.copy(alpha = 0.15f))
+
+                if (selectedModalTab == 0) {
+                    if (participantDetails.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "لم يشارك أي طالب في هذا الاختبار حتى الآن.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMutedGreen
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(participantDetails, key = { it.studentId }) { item ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (item.isCorrect) SuccessGreen.copy(alpha = 0.10f) else DangerRed.copy(alpha = 0.10f),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (item.isCorrect) SuccessGreen.copy(alpha = 0.40f) else DangerRed.copy(alpha = 0.40f)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = item.studentName,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = if (item.isCorrect) SuccessGreen else DangerRed
+                                            ) {
+                                                Text(
+                                                    text = if (item.isCorrect) "إجابة صحيحة ✓" else "إجابة خاطئة ✗",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Text(
+                                            text = "الإجابة المختارة: (${item.chosenOptionText})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (item.isCorrect) DeepEmerald else DangerRed
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = MaterialTheme.colorScheme.surface
+                                            ) {
+                                                Text(
+                                                    text = "احتُسبت له: ${item.earnedPoints} من ${quiz.points}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (item.isCorrect) SuccessGreen else DangerRed,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = "وقت الإجابة: ${item.answeredAt}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if (nonParticipants.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "ممتاز! جميع طلاب الصف والشعبة شاركوا في هذا الاختبار.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = SuccessGreen
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(nonParticipants, key = { it.id }) { stu ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = WarningAmber.copy(alpha = 0.10f),
+                                    border = BorderStroke(1.dp, WarningAmber.copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = stu.fullNameWithFather,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "الصف: ${stu.gradeClass} - شعبة ${stu.sectionName}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = WarningAmber.copy(alpha = 0.20f)
+                                        ) {
+                                            Text(
+                                                text = "لم يشارك بعد",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = WarningAmber,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+            ) {
+                Text("إغلاق الكشف", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
 

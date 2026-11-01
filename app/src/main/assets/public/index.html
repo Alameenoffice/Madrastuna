@@ -6,7 +6,7 @@
   <title>منصة مدرستي المتكاملة</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js" defer></script>
   <script type="importmap">
   {
@@ -71,11 +71,11 @@
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
       --shadow-lg: 0 18px 42px rgba(0, 0, 0, 0.60);
     }
-    * {
+    *, body, button, input, select, textarea, h1, h2, h3, h4, p, span, div {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: 'Cairo', sans-serif;
+      font-family: 'Cairo', sans-serif !important;
       -webkit-tap-highlight-color: transparent;
     }
     body {
@@ -87,6 +87,8 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      line-height: 1.65;
+      font-size: 15px;
       user-select: none;
       -webkit-user-select: none;
       overflow-x: hidden;
@@ -1124,31 +1126,31 @@
       if (!infoEl) return;
       const discovered = getDiscoveredSchoolMeta();
       if (discovered && discovered.schoolName) {
-        const logoHtml = discovered.logoBase64
-          ? `<img src="${discovered.logoBase64}" alt="شعار المدرسة" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #F59E0B;flex-shrink:0;" />`
-          : `<span style="width:42px;height:42px;border-radius:50%;background:var(--primary-grad);border:1.5px solid #F59E0B;display:inline-flex;align-items:center;justify-content:center;color:#FEF3C7;flex-shrink:0;">${ICONS.school}</span>`;
         infoEl.innerHTML = `
-          <div style="margin-bottom:10px;">
-            <span class="badge gold" style="padding:6px 16px;font-size:0.84rem;border:1.2px solid #F59E0B;">
-              ${ICONS.award} منصة مدرستي الذكية
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+            <span style="font-size:0.875rem;font-weight:600;color:var(--primary);letter-spacing:0.04em;line-height:1.5;">
+              منصة مدرستي الذكية
             </span>
-          </div>
-          <div style="display:inline-flex;align-items:center;gap:12px;background:var(--surface);border:1.8px solid #F59E0B;border-radius:22px;padding:12px 20px;box-shadow:var(--shadow-lg);">
-            ${logoHtml}
-            <div style="text-align:right;">
-              <div style="font-size:1.18rem;font-weight:900;color:var(--text);">${sanitizeText(discovered.schoolName)}</div>
-            </div>
+            <div style="width:48px;height:2px;margin:6px auto;background:linear-gradient(90deg, transparent, #F59E0B, transparent);border-radius:2px;"></div>
+            <h2 style="font-size:1.25rem;font-weight:800;color:var(--text);line-height:1.5;margin:0;">
+              ${sanitizeText(discovered.schoolName)}
+            </h2>
           </div>
         `;
       } else {
         infoEl.innerHTML = `
-          <div style="margin-bottom:8px;">
-            <span class="badge gold" style="padding:6px 16px;font-size:0.84rem;border:1.2px solid #F59E0B;">
-              ${ICONS.award} منصة مدرستي الذكية
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+            <span style="font-size:0.875rem;font-weight:600;color:var(--primary);letter-spacing:0.04em;line-height:1.5;">
+              منصة مدرستي الذكية
             </span>
+            <div style="width:48px;height:2px;margin:6px auto;background:linear-gradient(90deg, transparent, #F59E0B, transparent);border-radius:2px;"></div>
+            <h2 style="font-size:1.25rem;font-weight:800;color:var(--text);line-height:1.5;margin:0 0 4px 0;">
+              منصة مدرستي الذكية المتكاملة
+            </h2>
+            <p style="font-size:0.88rem;color:var(--text-muted);font-weight:600;line-height:1.5;">
+              بيئة تعليمية وإدارية سحابية فائقة الفخامة
+            </p>
           </div>
-          <h2 style="font-size:1.35rem;font-weight:900;color:var(--text);margin-bottom:4px;">منصة مدرستي الذكية المتكاملة</h2>
-          <p style="font-size:0.9rem;color:var(--text-muted);font-weight:600;">بيئة تعليمية وإدارية سحابية فائقة الفخامة</p>
         `;
       }
     }

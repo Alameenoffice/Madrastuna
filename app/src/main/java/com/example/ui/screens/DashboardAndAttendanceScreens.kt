@@ -342,88 +342,16 @@ fun DashboardScreen(
                     }
                 }
 
-                // Recent Daily Follow-Up & Behavior Log for Student/Parent (3 by 3 progressive loading + ClipboardCheckVectorIcon)
+                // Recent Daily Follow-Up & Behavior Log for Student/Parent (Compact top 3 + Full Log Modal)
                 if (featureSettings.dailyBehaviorEnabled && allMyBehaviors.isNotEmpty()) {
-                    Card(
+                    CompactDailyBehaviorCard(
+                        title = "دفتر المتابعة اليومي والسلوك (${myStudent.studentName}):",
+                        studentName = myStudent.fullNameWithFather,
+                        behaviors = allMyBehaviors,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 10.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = ClipboardCheckVectorIcon,
-                                    contentDescription = "دفتر المتابعة اليومي والسلوك",
-                                    tint = DeepEmerald,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "دفتر المتابعة اليومي والسلوك (${myStudent.studentName}):",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = DeepForestGreen
-                                )
-                            }
-                            myBehaviors.forEach { beh ->
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = if (beh.behaviorType.isPositive) {
-                                        SuccessGreen.copy(alpha = 0.12f)
-                                    } else {
-                                        DeepEmerald.copy(alpha = 0.08f)
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Icon(
-                                                imageVector = if (beh.behaviorType.isPositive) ClipboardCheckVectorIcon else Icons.Filled.Info,
-                                                contentDescription = null,
-                                                tint = DeepEmerald,
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                            Text(
-                                                text = "${beh.behaviorType.arabicTitle} • ${beh.subjectName}",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = DeepForestGreen
-                                            )
-                                        }
-                                        Text(
-                                            text = beh.date,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = TextMutedGreen
-                                        )
-                                    }
-                                }
-                            }
-                            ProgressiveInfiniteScrollFooter(
-                                visibleCount = myBehaviors.size,
-                                totalCount = allMyBehaviors.size,
-                                step = 3,
-                                itemLabel = "ملاحظة",
-                                onLoadMore = {
-                                    dashboardBehaviorVisibleCount = (dashboardBehaviorVisibleCount + 3).coerceAtMost(allMyBehaviors.size)
-                                }
-                            )
-                        }
-                    }
+                            .padding(bottom = 10.dp)
+                    )
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1187,88 +1115,15 @@ fun DailyAttendanceScreen(
                     }
                 }
 
-                // Daily Behavior & Classroom Follow-Up Log for Student/Parent (3 by 3 progressive loading + ClipboardCheckVectorIcon)
+                // Daily Behavior & Classroom Follow-Up Log for Student/Parent (Compact top 3 + Full Log Modal)
                 if (featureSettings.dailyBehaviorEnabled && myBehaviors.isNotEmpty()) {
-                    val visibleBehaviors = myBehaviors.take(attendanceBehaviorVisibleCount)
                     item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = ClipboardCheckVectorIcon,
-                                        contentDescription = "دفتر المتابعة اليومي والسلوك",
-                                        tint = DeepEmerald
-                                    )
-                                    Text(
-                                        text = "دفتر المتابعة اليومي والسلوك الصفي (${myBehaviors.size}):",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-                                visibleBehaviors.forEach { beh ->
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (beh.behaviorType.isPositive) {
-                                            SuccessGreen.copy(alpha = 0.12f)
-                                        } else {
-                                            DeepEmerald.copy(alpha = 0.08f)
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = beh.behaviorType.arabicTitle,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = DeepForestGreen
-                                                )
-                                                Text(
-                                                    text = "المادة: ${beh.subjectName} • بواسطة: ${beh.teacherName}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = TextMutedGreen
-                                                )
-                                                if (beh.note.isNotBlank()) {
-                                                    Text(
-                                                        text = beh.note,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = DeepEmerald
-                                                    )
-                                                }
-                                            }
-                                            Text(
-                                                text = beh.date,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = TextMutedGreen
-                                            )
-                                        }
-                                    }
-                                }
-                                ProgressiveInfiniteScrollFooter(
-                                    visibleCount = visibleBehaviors.size,
-                                    totalCount = myBehaviors.size,
-                                    step = 3,
-                                    itemLabel = "ملاحظة",
-                                    onLoadMore = {
-                                        attendanceBehaviorVisibleCount = (attendanceBehaviorVisibleCount + 3).coerceAtMost(myBehaviors.size)
-                                    }
-                                )
-                            }
-                        }
+                        CompactDailyBehaviorCard(
+                            title = "دفتر المتابعة اليومي والسلوك الصفي (${myBehaviors.size}):",
+                            studentName = myStu.fullNameWithFather,
+                            behaviors = myBehaviors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
 
@@ -2084,6 +1939,16 @@ fun DailyAttendanceScreen(
                                         }
                                     }
                                 }
+
+                                val studentBehaviors = dailyBehaviors.filter { it.studentId == stu.id }
+                                if (studentBehaviors.isNotEmpty()) {
+                                    CompactDailyBehaviorCard(
+                                        title = "آخر ملاحظات المتابعة والسلوك (${studentBehaviors.size}):",
+                                        studentName = stu.fullNameWithFather,
+                                        behaviors = studentBehaviors,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
                         }
 
@@ -2777,5 +2642,359 @@ private fun LostAndFoundRegistryDialog(
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CompactDailyBehaviorCard(
+    title: String,
+    studentName: String,
+    behaviors: List<DailyBehaviorLogItem>,
+    modifier: Modifier = Modifier
+) {
+    var showFullLogModal by remember { mutableStateOf(false) }
+    val sortedBehaviors = remember(behaviors) {
+        behaviors.sortedByDescending { it.date }
+    }
+    val topThree = remember(sortedBehaviors) {
+        sortedBehaviors.take(3)
+    }
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = ClipboardCheckVectorIcon,
+                        contentDescription = "دفتر المتابعة اليومي والسلوك",
+                        tint = DeepEmerald,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = DeepEmerald.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = "آخر ${topThree.size} من ${sortedBehaviors.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            topThree.forEach { beh ->
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (beh.behaviorType.isPositive) {
+                        SuccessGreen.copy(alpha = 0.12f)
+                    } else {
+                        DeepEmerald.copy(alpha = 0.08f)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (beh.behaviorType.isPositive) ClipboardCheckVectorIcon else Icons.Filled.Info,
+                                    contentDescription = null,
+                                    tint = if (beh.behaviorType.isPositive) SuccessGreen else DeepEmerald,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = "${beh.behaviorType.arabicTitle} • ${beh.subjectName}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = DeepForestGreen
+                                )
+                            }
+                            if (beh.teacherName.isNotBlank()) {
+                                Text(
+                                    text = "بواسطة: ${beh.teacherName}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen
+                                )
+                            }
+                        }
+                        Text(
+                            text = beh.date,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextMutedGreen
+                        )
+                    }
+                }
+            }
+
+            if (sortedBehaviors.size > 3) {
+                OutlinedButton(
+                    onClick = { showFullLogModal = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("open_full_behavior_log_btn"),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = DeepEmerald)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.History,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "عرض السجل الكامل للمتابعة والسلوك (إجمالي ${sortedBehaviors.size} ملاحظة)",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+        }
+    }
+
+    if (showFullLogModal) {
+        DailyBehaviorFullLogModal(
+            studentName = studentName,
+            behaviors = sortedBehaviors,
+            onDismiss = { showFullLogModal = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DailyBehaviorFullLogModal(
+    studentName: String,
+    behaviors: List<DailyBehaviorLogItem>,
+    onDismiss: () -> Unit
+) {
+    var selectedTypeFilter by remember { mutableStateOf<DailyBehaviorType?>(null) }
+    var selectedSubjectFilter by remember { mutableStateOf("الكل") }
+
+    val availableSubjects = remember(behaviors) {
+        listOf("الكل") + behaviors.map { it.subjectName.trim() }.filter { it.isNotEmpty() }.distinct()
+    }
+
+    val filteredBehaviors = remember(behaviors, selectedTypeFilter, selectedSubjectFilter) {
+        behaviors
+            .sortedByDescending { it.date }
+            .filter { item ->
+                val matchesType = selectedTypeFilter == null || item.behaviorType == selectedTypeFilter
+                val matchesSubject = selectedSubjectFilter == "الكل" || item.subjectName.trim() == selectedSubjectFilter
+                matchesType && matchesSubject
+            }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = ClipboardCheckVectorIcon,
+                        contentDescription = null,
+                        tint = DeepEmerald
+                    )
+                    Text(
+                        text = "السجل الكامل للمتابعة والسلوك",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                }
+                Text(
+                    text = "الطالب: $studentName • إجمالي الملاحظات المطابقة: ${filteredBehaviors.size} من ${behaviors.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMutedGreen
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "فلترة حسب نوع الملاحظة:",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = DeepForestGreen
+                )
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = selectedTypeFilter == null,
+                            onClick = { selectedTypeFilter = null },
+                            label = { Text("الكل (${behaviors.size})") }
+                        )
+                    }
+                    items(DailyBehaviorType.entries) { type ->
+                        val count = behaviors.count { it.behaviorType == type }
+                        FilterChip(
+                            selected = selectedTypeFilter == type,
+                            onClick = {
+                                selectedTypeFilter = if (selectedTypeFilter == type) null else type
+                            },
+                            label = { Text("${type.arabicTitle} ($count)") }
+                        )
+                    }
+                }
+
+                if (availableSubjects.size > 2) {
+                    Text(
+                        text = "فلترة حسب المادة الدراسية:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepForestGreen
+                    )
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(availableSubjects) { subj ->
+                            FilterChip(
+                                selected = selectedSubjectFilter == subj,
+                                onClick = { selectedSubjectFilter = subj },
+                                label = { Text(subj) }
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = DeepEmerald.copy(alpha = 0.15f))
+
+                if (filteredBehaviors.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "لا توجد ملاحظات مطابقة للفلتر المحدد.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextMutedGreen
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filteredBehaviors, key = { it.id }) { beh ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (beh.behaviorType.isPositive) {
+                                    SuccessGreen.copy(alpha = 0.12f)
+                                } else {
+                                    DeepEmerald.copy(alpha = 0.08f)
+                                },
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (beh.behaviorType.isPositive) SuccessGreen.copy(alpha = 0.35f) else DeepEmerald.copy(alpha = 0.22f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Text(
+                                            text = beh.behaviorType.arabicTitle,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                        Text(
+                                            text = "المادة: ${beh.subjectName} • بواسطة: ${beh.teacherName}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMutedGreen
+                                        )
+                                        if (beh.note.isNotBlank()) {
+                                            Text(
+                                                text = beh.note,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface
+                                    ) {
+                                        Text(
+                                            text = beh.date,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepForestGreen,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+            ) {
+                Text("إغلاق السجل", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
 
 

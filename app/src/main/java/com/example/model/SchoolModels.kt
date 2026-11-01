@@ -1419,7 +1419,8 @@ data class QuickQuizAnswerView(
     val studentId: String,
     val selectedOptionIndex: Int,
     val isCorrect: Boolean,
-    val earnedPoints: Int
+    val earnedPoints: Int,
+    val answeredAt: String = ""
 )
 
 data class QuickQuizItem(
@@ -1434,7 +1435,9 @@ data class QuickQuizItem(
     val correctOptionIndex: Int,
     val createdAt: String,
     val studentAnswers: Map<String, Int> = emptyMap(), // studentId -> chosenIndex
+    val answerTimestamps: Map<String, String> = emptyMap(), // studentId -> timestamp
     val points: Int = 5,
+    val isClosed: Boolean = false,
     val schoolId: String = ""
 )
 

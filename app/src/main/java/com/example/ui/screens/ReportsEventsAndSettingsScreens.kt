@@ -2836,7 +2836,9 @@ fun SettingsScreen(
             }
         }
 
-        DeveloperCreditFooter()
+        if (isAdmin) {
+            DeveloperCreditFooter()
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
     }

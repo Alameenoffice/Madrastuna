@@ -163,7 +163,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     studentId = stuId,
                     selectedOptionIndex = chosenIdx,
                     isCorrect = correct,
-                    earnedPoints = if (correct) q.points else 0
+                    earnedPoints = if (correct) q.points else 0,
+                    answeredAt = q.answerTimestamps[stuId] ?: q.createdAt
                 )
             }
         }
@@ -4961,6 +4962,26 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert("تم حذف الاختبار السريع نهائياً", isSuccess = true)
     }
 
+    fun toggleQuickQuizClosedStatus(quizId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        var nowClosed = false
+        val updated = _quickQuizzes.value.map { q ->
+            if (q.id == quizId) {
+                nowClosed = !q.isClosed
+                q.copy(isClosed = nowClosed)
+            } else q
+        }
+        _quickQuizzes.value = updated
+        _quickQuizAnswers.value = buildQuickQuizAnswerViews(updated)
+        repo.saveQuickQuizzes(updated, sid)
+        if (nowClosed) {
+            showToastAlert("تم إنهاء الاختبار وإغلاق استقبال الإجابات ونقله للأرشيف", isSuccess = true)
+        } else {
+            showToastAlert("تمت إعادة تفعيل الاختبار السريع لاستقبال إجابات الطلبة", isSuccess = true)
+        }
+    }
+
     fun submitQuickQuizAnswer(quiz: QuickQuizItem, chosenIndex: Int) {
         submitQuickQuizAnswer(quiz.id, chosenIndex)
     }
@@ -4968,15 +4989,23 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun submitQuickQuizAnswer(quizId: String, chosenIndex: Int) {
         val user = _currentUser.value ?: return
         val sid = _schoolConfig.value.schoolId
+        val targetQuiz = _quickQuizzes.value.firstOrNull { it.id == quizId } ?: return
+        if (targetQuiz.isClosed) {
+            showToastAlert("هذا الاختبار منتهي ومغلق من قِبل الأستاذ ولا يمكن إرسال إجابة جديدة", isSuccess = false)
+            return
+        }
         val stuId = getScopedStudentsForUser(user).firstOrNull()?.id ?: user.linkedStudentId.ifBlank { user.id }
         var isCorrect = false
+        val timestampNow = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
 
         val updated = _quickQuizzes.value.map { q ->
             if (q.id == quizId) {
                 isCorrect = (chosenIndex == q.correctOptionIndex)
                 val nextMap = q.studentAnswers.toMutableMap()
                 nextMap[stuId] = chosenIndex
-                q.copy(studentAnswers = nextMap)
+                val nextTs = q.answerTimestamps.toMutableMap()
+                nextTs[stuId] = timestampNow
+                q.copy(studentAnswers = nextMap, answerTimestamps = nextTs)
             } else q
         }
         _quickQuizzes.value = updated
