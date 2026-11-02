@@ -66,15 +66,14 @@ fun MyApplicationTheme(
             colorScheme = colorScheme,
             typography = Typography
         ) {
-            CompositionLocalProvider(
-                androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.merge(
-                    androidx.compose.ui.text.TextStyle(
-                        fontFamily = CairoFontFamily,
-                        letterSpacing = 0.sp
-                    )
-                ),
-                content = content
-            )
+            androidx.compose.material3.ProvideTextStyle(
+                value = androidx.compose.ui.text.TextStyle(
+                    fontFamily = CairoFontFamily,
+                    letterSpacing = 0.sp
+                )
+            ) {
+                content()
+            }
         }
     }
 }

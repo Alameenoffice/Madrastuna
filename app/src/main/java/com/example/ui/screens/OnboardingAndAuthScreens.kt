@@ -357,7 +357,7 @@ fun OnboardingScreen(
                         )
                     ) {
                         Icon(
-                            imageVector = if (currentSlide == slides.lastIndex) Icons.Filled.RocketLaunch else Icons.AutoMirrored.Filled.ArrowForward,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "البدء الآن",
                             modifier = Modifier.size(18.dp)
                         )

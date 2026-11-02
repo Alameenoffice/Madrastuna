@@ -52,6 +52,63 @@ object DocumentAndIdExporter {
     private const val COLOR_DARK_TEXT = 0xFF102A1E.toInt()
     private const val COLOR_MUTED_TEXT = 0xFF4A6659.toInt()
 
+    @Volatile
+    var activeWalletPassExportMode: Boolean = false
+
+    private fun loadCairoTypeface(context: Context?, style: Int): Typeface {
+        if (context != null) {
+            try {
+                val resId = when (style) {
+                    Typeface.BOLD -> com.example.R.font.cairo_bold
+                    else -> com.example.R.font.cairo_regular
+                }
+                val tf = androidx.core.content.res.ResourcesCompat.getFont(context, resId)
+                    ?: androidx.core.content.res.ResourcesCompat.getFont(context, com.example.R.font.cairo)
+                if (tf != null) {
+                    return Typeface.create(tf, style)
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return Typeface.create(Typeface.DEFAULT, style)
+    }
+
+    private fun drawFittedRightText(
+        canvas: Canvas,
+        text: String,
+        rightX: Float,
+        y: Float,
+        maxWidth: Float,
+        paint: Paint
+    ) {
+        val originalSize = paint.textSize
+        var currentSize = originalSize
+        while (currentSize > 16f && paint.measureText(text) > maxWidth) {
+            currentSize -= 1.5f
+            paint.textSize = currentSize
+        }
+        canvas.drawText(text, rightX, y, paint)
+        paint.textSize = originalSize
+    }
+
+    private fun drawFittedCenterText(
+        canvas: Canvas,
+        text: String,
+        centerX: Float,
+        y: Float,
+        maxWidth: Float,
+        paint: Paint
+    ) {
+        val originalSize = paint.textSize
+        var currentSize = originalSize
+        while (currentSize > 13f && paint.measureText(text) > maxWidth) {
+            currentSize -= 1f
+            paint.textSize = currentSize
+        }
+        canvas.drawText(text, centerX, y, paint)
+        paint.textSize = originalSize
+    }
+
     /**
      * Generates a 100% real ISO/IEC 18004 standard QR Code Bitmap in pure black on a pure white background
      * so any standard camera or QR scanner app reads the student's payload immediately.
@@ -63,16 +120,22 @@ object DocumentAndIdExporter {
     /**
      * Renders a high-resolution (1280 x 820 px) official Student ID Badge Bitmap
      * ready for saving as PNG or embedding into PDF for thermal lamination.
+     * Supports both Academic Attendance ID mode and Canteen Wallet Pass mode with zero text overlap.
      */
     fun renderStudentIdCardBitmap(
         student: StudentRecord,
         schoolConfig: SchoolConfig,
-        badges: List<StudentAutoBadge> = emptyList()
+        badges: List<StudentAutoBadge> = emptyList(),
+        isWalletMode: Boolean = activeWalletPassExportMode,
+        context: Context? = null
     ): Bitmap {
         val width = 1280
         val height = 820
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
+
+        val boldTypeface = loadCairoTypeface(context, Typeface.BOLD)
+        val regularTypeface = loadCairoTypeface(context, Typeface.NORMAL)
 
         val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_OFF_WHITE
@@ -81,7 +144,7 @@ object DocumentAndIdExporter {
         canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), height.toFloat()), 36f, 36f, bgPaint)
 
         // Header luxury emerald gradient
-        val headerHeight = 225f
+        val headerHeight = 220f
         val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(
                 0f, 0f, width.toFloat(), headerHeight,
@@ -96,13 +159,13 @@ object DocumentAndIdExporter {
             color = COLOR_GOLD
             style = Paint.Style.FILL
         }
-        canvas.drawRect(0f, headerHeight - 10f, width.toFloat(), headerHeight + 4f, goldPaint)
+        canvas.drawRect(0f, headerHeight - 8f, width.toFloat(), headerHeight + 4f, goldPaint)
 
         // School Logo or Crest in top-right
         val logoDecoded = decodeBase64Bitmap(schoolConfig.logoBase64)
-        val logoCenterX = width - 115f
-        val logoCenterY = 110f
-        val logoRadius = 68f
+        val logoCenterX = width - 110f
+        val logoCenterY = 108f
+        val logoRadius = 64f
         val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             style = Paint.Style.FILL
@@ -127,43 +190,53 @@ object DocumentAndIdExporter {
         } else {
             val initialsPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = COLOR_DEEP_EMERALD
-                textSize = 42f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textSize = 36f
+                typeface = boldTypeface
                 textAlign = Paint.Align.CENTER
             }
-            canvas.drawText("مدرستي", logoCenterX, logoCenterY + 14f, initialsPaint)
+            canvas.drawText("مدرستي", logoCenterX, logoCenterY + 12f, initialsPaint)
         }
 
         // Header Text (Right-aligned adjacent to logo)
         val headerTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 46f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 42f
+            typeface = boldTypeface
             textAlign = Paint.Align.RIGHT
         }
         val headerSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_LIGHT_GOLD
-            textSize = 27f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textSize = 25f
+            typeface = regularTypeface
             textAlign = Paint.Align.RIGHT
         }
-        val textRightX = width - 210f
-        canvas.drawText(schoolConfig.schoolName.ifBlank { "منصة مدرستي النموذجية" }, textRightX, 82f, headerTitlePaint)
-        canvas.drawText(
-            "بطاقة الهوية المدرسية الرسمية • ${schoolConfig.schoolStage.arabicLabel}",
+        val textRightX = width - 200f
+        val maxHeaderWidth = textRightX - 310f
+        drawFittedRightText(
+            canvas,
+            schoolConfig.schoolName.ifBlank { "منصة مدرستي النموذجية" },
             textRightX,
-            130f,
-            headerSubPaint
+            78f,
+            maxHeaderWidth,
+            headerTitlePaint
         )
-        canvas.drawText(
-            "العام الدراسي: ${schoolConfig.academicYear}  |  ${schoolConfig.address}",
-            textRightX,
-            175f,
-            headerSubPaint
-        )
+        val subtitleText = if (isWalletMode) {
+            "بطاقة محفظة الحانوت الذكية • ${schoolConfig.schoolStage.arabicLabel}"
+        } else {
+            "بطاقة الهوية المدرسية الرسمية • ${schoolConfig.schoolStage.arabicLabel}"
+        }
+        drawFittedRightText(canvas, subtitleText, textRightX, 126f, maxHeaderWidth, headerSubPaint)
+
+        val cleanHeaderAddr = com.example.model.ArabicTextNormalizer.cleanDefaultAddress(schoolConfig.address)
+        val yearLine = if (cleanHeaderAddr.isNotBlank()) {
+            "العام الدراسي: ${schoolConfig.academicYear}  |  $cleanHeaderAddr"
+        } else {
+            "العام الدراسي: ${schoolConfig.academicYear}"
+        }
+        drawFittedRightText(canvas, yearLine, textRightX, 170f, maxHeaderWidth, headerSubPaint)
 
         // Left side of header: School Code badge
-        val badgeRect = RectF(48f, 52f, 290f, 140f)
+        val badgeRect = RectF(46f, 48f, 290f, 134f)
         val badgeBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x33D4AF37
             style = Paint.Style.FILL
@@ -178,32 +251,58 @@ object DocumentAndIdExporter {
 
         val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_LIGHT_GOLD
-            textSize = 26f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 24f
+            typeface = boldTypeface
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText(
+        drawFittedCenterText(
+            canvas,
             "كود المدرسة: ${schoolConfig.schoolId.ifBlank { "100" }}",
             badgeRect.centerX(),
-            badgeRect.centerY() + 10f,
+            badgeRect.centerY() + 9f,
+            badgeRect.width() - 24f,
             badgeTextPaint
         )
 
-        // Student Photo Box on the Right Side
-        val photoBoxRect = RectF(width - 310f, 275f, width - 65f, 555f)
+        // Mode indicator pill under school code in header
+        val modePillRect = RectF(46f, 146f, 290f, 192f)
+        val modePillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x26FFFFFF
+            style = Paint.Style.FILL
+        }
+        canvas.drawRoundRect(modePillRect, 14f, 14f, modePillPaint)
+        val modePillTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 20f
+            typeface = boldTypeface
+            textAlign = Paint.Align.CENTER
+        }
+        drawFittedCenterText(
+            canvas,
+            if (isWalletMode) "بطاقة محفظة الحانوت" else "هوية الحضور الأكاديمية",
+            modePillRect.centerX(),
+            modePillRect.centerY() + 7f,
+            modePillRect.width() - 16f,
+            modePillTextPaint
+        )
+
+        // =========================================================================
+        // ZONE 1 (RIGHT): Student Photo Box + Student Username Pill (x = 965..1215)
+        // =========================================================================
+        val photoBoxRect = RectF(965f, 262f, 1215f, 532f)
         canvas.drawRoundRect(
-            RectF(photoBoxRect.left - 6f, photoBoxRect.top - 6f, photoBoxRect.right + 6f, photoBoxRect.bottom + 6f),
-            28f,
-            28f,
+            RectF(photoBoxRect.left - 5f, photoBoxRect.top - 5f, photoBoxRect.right + 5f, photoBoxRect.bottom + 5f),
+            26f,
+            26f,
             goldPaint
         )
-        canvas.drawRoundRect(photoBoxRect, 24f, 24f, circlePaint)
+        canvas.drawRoundRect(photoBoxRect, 22f, 22f, circlePaint)
 
         val studentPhoto = decodeBase64Bitmap(student.photoBase64)
         if (studentPhoto != null) {
             val saveCount = canvas.save()
             val clipPath = Path().apply {
-                addRoundRect(photoBoxRect, 24f, 24f, Path.Direction.CW)
+                addRoundRect(photoBoxRect, 22f, 22f, Path.Direction.CW)
             }
             canvas.clipPath(clipPath)
             canvas.drawBitmap(studentPhoto, null, photoBoxRect, Paint(Paint.FILTER_BITMAP_FLAG))
@@ -213,103 +312,228 @@ object DocumentAndIdExporter {
                 color = 0xFFE6F2EC.toInt()
                 style = Paint.Style.FILL
             }
-            canvas.drawRoundRect(photoBoxRect, 24f, 24f, placeholderBg)
+            canvas.drawRoundRect(photoBoxRect, 22f, 22f, placeholderBg)
             val initials = student.fullNameWithFather.trim().take(1).ifBlank { "ط" }
             val avatarTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = COLOR_DEEP_EMERALD
-                textSize = 110f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textSize = 104f
+                typeface = boldTypeface
                 textAlign = Paint.Align.CENTER
             }
-            canvas.drawText(initials, photoBoxRect.centerX(), photoBoxRect.centerY() + 36f, avatarTextPaint)
+            canvas.drawText(initials, photoBoxRect.centerX(), photoBoxRect.centerY() + 34f, avatarTextPaint)
         }
 
-        // Student Details in the Center-Right
-        val infoRightX = photoBoxRect.left - 42f
+        // Student Code Pill directly beneath Photo Box (x = 965..1215, y = 552..608)
+        val codeBadgeRect = RectF(965f, 552f, 1215f, 608f)
+        val codeBadgeBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFE6F4EA.toInt()
+            style = Paint.Style.FILL
+        }
+        val codeBadgeBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_ROYAL_GREEN
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        canvas.drawRoundRect(codeBadgeRect, 16f, 16f, codeBadgeBg)
+        canvas.drawRoundRect(codeBadgeRect, 16f, 16f, codeBadgeBorder)
+        val codeBadgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_DEEP_EMERALD
+            textSize = 23f
+            typeface = boldTypeface
+            textAlign = Paint.Align.CENTER
+        }
+        drawFittedCenterText(
+            canvas,
+            "كود الطالب: ${student.studentUsername}",
+            codeBadgeRect.centerX(),
+            codeBadgeRect.centerY() + 8f,
+            codeBadgeRect.width() - 20f,
+            codeBadgeTextPaint
+        )
+
+        // =========================================================================
+        // ZONE 2 (CENTER-RIGHT): Student Details & Badges (strictly x = 415..930)
+        // =========================================================================
+        val infoRightX = 930f
+        val infoLeftLimitX = 415f
+        val maxInfoWidth = infoRightX - infoLeftLimitX
+
         val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_MUTED_TEXT
-            textSize = 26f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textSize = 24f
+            typeface = regularTypeface
             textAlign = Paint.Align.RIGHT
         }
         val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_DARK_TEXT
-            textSize = 38f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 36f
+            typeface = boldTypeface
             textAlign = Paint.Align.RIGHT
         }
         val subValuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_ROYAL_GREEN
-            textSize = 31f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 29f
+            typeface = boldTypeface
             textAlign = Paint.Align.RIGHT
         }
 
-        canvas.drawText("اسم الطالب الكامل:", infoRightX, 305f, labelPaint)
-        canvas.drawText(student.fullNameWithFather, infoRightX, 355f, valuePaint)
+        // Row 1: Student Full Name on a single clean line
+        canvas.drawText("اسم الطالب الكامل:", infoRightX, 292f, labelPaint)
+        drawFittedRightText(canvas, student.fullNameWithFather, infoRightX, 340f, maxInfoWidth, valuePaint)
 
-        canvas.drawText("الصف والشعبة الدراسية:", infoRightX, 415f, labelPaint)
-        canvas.drawText("${student.gradeClass}  —  شعبة (${student.sectionName})", infoRightX, 462f, subValuePaint)
-
-        canvas.drawText("كود الطالب الموحد / هاتف ولي الأمر:", infoRightX, 520f, labelPaint)
-        canvas.drawText(
-            "${student.studentUsername}   |   ${student.parentPhone.ifBlank { "غير مسجل" }}",
+        // Row 2: Grade & Section
+        canvas.drawText("الصف والشعبة الدراسية:", infoRightX, 398f, labelPaint)
+        drawFittedRightText(
+            canvas,
+            "${student.gradeClass}  —  شعبة (${student.sectionName})",
             infoRightX,
-            564f,
+            444f,
+            maxInfoWidth,
             subValuePaint
         )
 
-        // Badges strip if student has auto-badges or honor title
-        val badgeTitles = buildList {
-            if (student.isOnHonorRoll) add(student.honorTitle)
-            badges.forEach { add(it.title) }
-        }.distinct()
-
-        if (badgeTitles.isNotEmpty()) {
-            val badgeStripRect = RectF(390f, 595f, infoRightX, 658f)
-            val stripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_LIGHT_GOLD
-                style = Paint.Style.FILL
-            }
-            canvas.drawRoundRect(badgeStripRect, 18f, 18f, stripPaint)
-            canvas.drawRoundRect(badgeStripRect, 18f, 18f, badgeBorderPaint)
-
-            val stripTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                textSize = 25f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            canvas.drawText(
-                "الأوسمة: " + badgeTitles.joinToString(" • "),
-                badgeStripRect.right - 20f,
-                badgeStripRect.centerY() + 9f,
-                stripTextPaint
+        // Row 3: Mode-specific details (Academic vs Canteen Wallet)
+        if (!isWalletMode) {
+            canvas.drawText("كود الطالب الموحد / هاتف ولي الأمر:", infoRightX, 502f, labelPaint)
+            drawFittedRightText(
+                canvas,
+                "${student.studentUsername}   |   ${student.parentPhone.ifBlank { "غير مسجل" }}",
+                infoRightX,
+                548f,
+                maxInfoWidth,
+                subValuePaint
+            )
+        } else {
+            val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            val spentToday = student.getSpentToday(todayIso)
+            val limitLabel = if (student.dailySpendLimit > 0) "${student.dailySpendLimit} د.ع" else "مفتوح"
+            canvas.drawText("رصيد محفظة الحانوت / الحد اليومي للمصروف:", infoRightX, 502f, labelPaint)
+            drawFittedRightText(
+                canvas,
+                "الرصيد: ${student.walletBalance} د.ع  |  الحد: $limitLabel  |  مصروف اليوم: $spentToday د.ع",
+                infoRightX,
+                548f,
+                maxInfoWidth,
+                subValuePaint
             )
         }
 
-        // QR Code Box on the Left Side
-        val qrSize = 300
-        val qrBitmap = generateQrCodeBitmap(student.qrCodeValue, qrSize)
-        val qrLeft = 58f
-        val qrTop = 270f
+        // Row 4: Badges strip strictly within x = 415..930 (NEVER touches Left QR Zone!)
+        val badgeTitles = buildList {
+            if (student.isOnHonorRoll && student.honorTitle.isNotBlank()) add(student.honorTitle)
+            badges.forEach { add(it.title) }
+            if (isEmpty()) add("وسام الالتزام الذهبي")
+        }.distinct()
+
+        val badgeStripRect = RectF(infoLeftLimitX, 582f, infoRightX, 650f)
+        val stripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_LIGHT_GOLD
+            style = Paint.Style.FILL
+        }
+        canvas.drawRoundRect(badgeStripRect, 18f, 18f, stripPaint)
+        canvas.drawRoundRect(badgeStripRect, 18f, 18f, badgeBorderPaint)
+
+        val stripTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_DEEP_EMERALD
+            textSize = 24f
+            typeface = boldTypeface
+            textAlign = Paint.Align.RIGHT
+        }
+        drawFittedRightText(
+            canvas,
+            "الأوسمة: " + badgeTitles.joinToString(" • "),
+            badgeStripRect.right - 18f,
+            badgeStripRect.centerY() + 9f,
+            badgeStripRect.width() - 36f,
+            stripTextPaint
+        )
+
+        // =========================================================================
+        // ZONE 3 (LEFT): Self-Contained QR Code Card (strictly x = 46..382)
+        // =========================================================================
+        val qrCardRect = RectF(46f, 252f, 382f, 682f)
+        val qrCardBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
+        val qrCardBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_GOLD
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f
+        }
+        canvas.drawRoundRect(qrCardRect, 24f, 24f, qrCardBgPaint)
+        canvas.drawRoundRect(qrCardRect, 24f, 24f, qrCardBorderPaint)
+
+        val activeQrPayload = if (isWalletMode) student.walletBarcode else student.qrCodeValue
+        val qrSize = 248
+        val qrBitmap = generateQrCodeBitmap(activeQrPayload, qrSize)
+        val qrLeft = qrCardRect.centerX() - qrSize / 2f
+        val qrTop = 266f
         canvas.drawBitmap(qrBitmap, qrLeft, qrTop, null)
 
         val qrCaptionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_DEEP_EMERALD
-            textSize = 23f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 21f
+            typeface = boldTypeface
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText("امسح رمز QR لتسجيل الحضور الفوري", qrLeft + qrSize / 2f, qrTop + qrSize + 36f, qrCaptionPaint)
+        val qrCaption = if (isWalletMode) {
+            "باركود محفظة الحانوت المدرسي"
+        } else {
+            "امسح رمز QR لتسجيل الحضور الفوري"
+        }
+        drawFittedCenterText(
+            canvas,
+            qrCaption,
+            qrCardRect.centerX(),
+            544f,
+            qrCardRect.width() - 24f,
+            qrCaptionPaint
+        )
+
+        // Sleek inner pill for the QR code string (MADRASATI|... or WALLET-...)
+        val codePillRect = RectF(60f, 562f, 368f, 610f)
+        val codePillBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_OFF_WHITE
+            style = Paint.Style.FILL
+        }
+        val codePillBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x330F4C35
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+        }
+        canvas.drawRoundRect(codePillRect, 12f, 12f, codePillBg)
+        canvas.drawRoundRect(codePillRect, 12f, 12f, codePillBorder)
 
         val qrIdPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = COLOR_MUTED_TEXT
-            textSize = 20f
+            color = COLOR_DARK_TEXT
+            textSize = 18f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText(student.qrCodeValue, qrLeft + qrSize / 2f, qrTop + qrSize + 68f, qrIdPaint)
+        drawFittedCenterText(
+            canvas,
+            activeQrPayload,
+            codePillRect.centerX(),
+            codePillRect.centerY() + 6f,
+            codePillRect.width() - 20f,
+            qrIdPaint
+        )
+
+        val qrSubNotePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_MUTED_TEXT
+            textSize = 18f
+            typeface = regularTypeface
+            textAlign = Paint.Align.CENTER
+        }
+        drawFittedCenterText(
+            canvas,
+            if (isWalletMode) "صالح للدفع الإلكتروني في الحانوت" else "بصمة حضور ذكية معتمدة للمدرسة",
+            qrCardRect.centerX(),
+            650f,
+            qrCardRect.width() - 24f,
+            qrSubNotePaint
+        )
 
         // Bottom official footer bar
         val footerTop = height - 92f
@@ -322,14 +546,17 @@ object DocumentAndIdExporter {
 
         val footerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 24f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 23f
+            typeface = boldTypeface
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText(
-            "هوية مدرسية معتمدة صادرة عبر منصة مدرستي الذكية  •  هاتف الإدارة: ${schoolConfig.phone}",
+        val footerPhone = schoolConfig.phone.ifBlank { "الإدارة المدرسية" }
+        drawFittedCenterText(
+            canvas,
+            "هوية مدرسية معتمدة صادرة عبر منصة مدرستي الذكية  •  هاتف الإدارة: $footerPhone",
             width / 2f,
             footerTop + 54f,
+            width - 90f,
             footerTextPaint
         )
 
@@ -351,12 +578,14 @@ object DocumentAndIdExporter {
         context: Context,
         student: StudentRecord,
         schoolConfig: SchoolConfig,
-        badges: List<StudentAutoBadge> = emptyList()
+        badges: List<StudentAutoBadge> = emptyList(),
+        isWalletMode: Boolean = activeWalletPassExportMode
     ): Result<String> {
         return try {
-            val bitmap = renderStudentIdCardBitmap(student, schoolConfig, badges)
+            val bitmap = renderStudentIdCardBitmap(student, schoolConfig, badges, isWalletMode, context)
             val safeName = student.fullNameWithFather.replace(Regex("[^\\p{L}\\p{N}_-]+"), "_")
-            val fileName = "Madrasati_ID_${safeName}_${System.currentTimeMillis()}.png"
+            val modePrefix = if (isWalletMode) "Wallet" else "ID"
+            val fileName = "Madrasati_${modePrefix}_${safeName}_${System.currentTimeMillis()}.png"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
@@ -397,10 +626,11 @@ object DocumentAndIdExporter {
         context: Context,
         student: StudentRecord,
         schoolConfig: SchoolConfig,
-        badges: List<StudentAutoBadge> = emptyList()
+        badges: List<StudentAutoBadge> = emptyList(),
+        isWalletMode: Boolean = activeWalletPassExportMode
     ): Result<String> {
         return try {
-            val idBitmap = renderStudentIdCardBitmap(student, schoolConfig, badges)
+            val idBitmap = renderStudentIdCardBitmap(student, schoolConfig, badges, isWalletMode, context)
             val pdfDocument = PdfDocument()
             val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
             val page = pdfDocument.startPage(pageInfo)
@@ -408,14 +638,19 @@ object DocumentAndIdExporter {
 
             canvas.drawColor(Color.WHITE)
 
+            val boldTypeface = loadCairoTypeface(context, Typeface.BOLD)
             val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = COLOR_DEEP_EMERALD
                 textSize = 18f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                typeface = boldTypeface
                 textAlign = Paint.Align.CENTER
             }
             canvas.drawText(
-                "بطاقة الهوية المدرسية الذكية — جاهزة للطباعة أو الكبس الحراري",
+                if (isWalletMode) {
+                    "بطاقة محفظة الحانوت المدرسية الذكية — جاهزة للطباعة أو الكبس الحراري"
+                } else {
+                    "بطاقة الهوية المدرسية الذكية — جاهزة للطباعة أو الكبس الحراري"
+                },
                 595 / 2f,
                 65f,
                 titlePaint

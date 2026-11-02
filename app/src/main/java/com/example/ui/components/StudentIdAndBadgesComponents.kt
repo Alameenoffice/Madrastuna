@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AddCard
@@ -46,7 +47,9 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -60,6 +63,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -167,6 +171,9 @@ fun DigitalStudentIdCardView(
     modifier: Modifier = Modifier
 ) {
     var isWalletPassMode by remember(student.id, initialWalletMode) { mutableStateOf(initialWalletMode) }
+    LaunchedEffect(isWalletPassMode) {
+        DocumentAndIdExporter.activeWalletPassExportMode = isWalletPassMode
+    }
     val todayIso = remember {
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
     }
@@ -183,19 +190,26 @@ fun DigitalStudentIdCardView(
     }
     val activeQrString = if (isWalletPassMode) student.walletBarcode else student.qrCodeValue
     val qrBitmap = remember(activeQrString) {
-        DocumentAndIdExporter.generateQrCodeBitmap(activeQrString, 320).asImageBitmap()
+        DocumentAndIdExporter.generateQrCodeBitmap(activeQrString, 360).asImageBitmap()
     }
     val spentToday = remember(student, todayIso) { student.getSpentToday(todayIso) }
+    val primaryBadgeTitle = remember(student, badges) {
+        when {
+            student.isOnHonorRoll && student.honorTitle.isNotBlank() -> student.honorTitle
+            badges.isNotEmpty() -> badges.first().title
+            else -> "وسام الالتزام الذهبي"
+        }
+    }
 
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = CardSurfaceWhite),
-        border = BorderStroke(2.dp, GoldFoil),
+        border = BorderStroke(1.5.dp, GoldFoil),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Official Emerald & Gold Header
+            // 1. رأس البطاقة (Header): الشريط الزمردي الفخم مع اسم المدرسة والعام الدراسي وكود المدرسة
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -204,7 +218,7 @@ fun DigitalStudentIdCardView(
                             colors = listOf(DeepForestGreen, DeepEmerald, RoyalGreen)
                         )
                     )
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -213,21 +227,23 @@ fun DigitalStudentIdCardView(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         AvatarOrPhotoView(
                             base64Image = schoolConfig.logoBase64,
                             fallbackName = schoolConfig.schoolName,
-                            size = 52.dp,
+                            size = 46.dp,
                             borderColor = GoldFoil
                         )
-                        Column {
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(
                                 text = schoolConfig.schoolName,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = Color.White,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = if (isWalletPassMode) {
@@ -237,7 +253,9 @@ fun DigitalStudentIdCardView(
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = WarmGoldLight,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             val cleanCardAddr = com.example.model.ArabicTextNormalizer.cleanDefaultAddress(schoolConfig.address)
                             Text(
@@ -247,10 +265,14 @@ fun DigitalStudentIdCardView(
                                     "العام الدراسي: ${schoolConfig.academicYear}"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.85f)
+                                color = Color.White.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -272,7 +294,8 @@ fun DigitalStudentIdCardView(
                                 text = "كود ${schoolConfig.schoolId.ifBlank { "100" }}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = WarmGoldLight,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
                             )
                         }
                     }
@@ -283,22 +306,22 @@ fun DigitalStudentIdCardView(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
+                    .height(3.dp)
                     .background(GoldFoil)
             )
 
-            // Main ID Card Body: Capsule Mode Switcher + Student Photo + Info + QR Code
+            // Main ID Card Body: Sequential Vertical Layout (Zero Crowding)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Capsule Mode Switcher: (1) هوية الحضور الأكاديمية | (2) بطاقة محفظة الحانوت
+                // 2. شريط التبديل الكبسولي (Segmented Capsule): [هوية الحضور الأكاديمية] | [بطاقة محفظة الحانوت]
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(50),
-                    color = DeepForestGreen.copy(alpha = 0.07f),
+                    color = DeepForestGreen.copy(alpha = 0.06f),
                     border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.55f))
                 ) {
                     Row(
@@ -333,7 +356,8 @@ fun DigitalStudentIdCardView(
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (!isWalletPassMode) Color.White else DeepForestGreen,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -364,191 +388,422 @@ fun DigitalStudentIdCardView(
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (isWalletPassMode) Color.White else DeepForestGreen,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                     }
                 }
 
-                Row(
+                // 3. بطاقة بيانات الطالب بعرض كامل (fillMaxWidth) بدون تقطيع كلمات
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f))
                 ) {
-                    // Student Photo + Badges
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        AvatarOrPhotoView(
-                            base64Image = student.photoBase64,
-                            fallbackName = student.fullNameWithFather,
-                            size = 84.dp,
-                            borderColor = GoldFoil
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = DeepEmerald.copy(alpha = 0.1f)
+                        // على اليمين: صورة الطالب الدائرية بإطار ذهبي ناعم وتحتها شارة الكود الصغير
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                text = student.studentUsername,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = DeepEmerald,
-                                fontWeight = FontWeight.Bold
+                            AvatarOrPhotoView(
+                                base64Image = student.photoBase64,
+                                fallbackName = student.fullNameWithFather,
+                                size = 64.dp,
+                                borderColor = GoldFoil
                             )
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = DeepEmerald.copy(alpha = 0.12f),
+                                border = BorderStroke(0.8.dp, DeepEmerald.copy(alpha = 0.25f))
+                            ) {
+                                Text(
+                                    text = student.studentUsername,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = DeepEmerald,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1
+                                )
+                            }
                         }
-                    }
 
-                    // Student Details
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "الاسم الكامل للطالب:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMutedGreen
-                        )
-                        Text(
-                            text = student.fullNameWithFather,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = DeepForestGreen,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = EmeraldAccent.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.35f))
+                        // على اليسار: عمود واسع (weight(1f)) لاسم الطالب الثلاثي في سطر واحد كامل وتحته الصف والشعبة والوسام
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "${student.gradeClass} — شعبة (${student.sectionName})",
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = DeepEmerald,
-                                fontWeight = FontWeight.Bold
+                                text = "الاسم الكامل للطالب:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMutedGreen
                             )
-                        }
-                        if (!isWalletPassMode) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = DeepForestGreen.copy(alpha = 0.08f)
+                            Text(
+                                text = student.fullNameWithFather,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = DeepForestGreen,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            // سطر واحد أنيق: شارة الصف والشعبة + شارة وسام الالتزام الذهبي
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text(
-                                    text = "حالة الدوام اليوم: $todayAttendanceLabel",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = DeepForestGreen,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            if (student.parentPhone.isNotBlank()) {
-                                Text(
-                                    text = "هاتف ولي الأمر: ${student.parentPhone}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextMutedGreen
-                                )
-                            }
-                        } else {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFECFDF5),
-                                border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.75f))
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = EmeraldAccent.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.35f))
                                 ) {
                                     Text(
-                                        text = "الرصيد المتوفر: ${student.walletBalance} د.ع",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = DeepForestGreen,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                    Text(
-                                        text = "الحد اليومي: ${if (student.dailySpendLimit > 0) "${student.dailySpendLimit} د.ع" else "مفتوح"} • المصروف اليوم: $spentToday د.ع",
+                                        text = "${student.gradeClass} — شعبة (${student.sectionName})",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = DeepEmerald,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFFFFBEB),
+                                    border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.75f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.WorkspacePremium,
+                                            contentDescription = null,
+                                            tint = Color(0xFFD97706),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = primaryBadgeTitle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF92400E),
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. قسم الباركود والبيانات المالية في الأسفل (تحت بيانات الطالب مباشرة وبشكل متمركز ومتوازن)
+                if (!isWalletPassMode) {
+                    // عند اختيار [هوية الحضور الأكاديمية]:
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFF0FDF4).copy(alpha = 0.65f),
+                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // في المنتصف صندوق QR Code كبير وواضح بإطار أنيق
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.8.dp, GoldFoil),
+                                shadowElevation = 3.dp
+                            ) {
+                                Image(
+                                    bitmap = qrBitmap,
+                                    contentDescription = "رمز QR للطالب ${student.fullNameWithFather}",
+                                    modifier = Modifier
+                                        .size(138.dp)
+                                        .padding(6.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+
+                            // شارة حالة الدوام اليوم
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = DeepEmerald.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.VerifiedUser,
+                                            contentDescription = null,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "حالة الدوام اليوم: $todayAttendanceLabel",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = DeepForestGreen,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                if (student.parentPhone.isNotBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = DeepForestGreen.copy(alpha = 0.06f)
+                                    ) {
+                                        Text(
+                                            text = "ولي الأمر: ${student.parentPhone}",
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMutedGreen,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+
+                            // شريط كود المسح الضوئي الموحد
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, DeepForestGreen.copy(alpha = 0.14f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCode2,
+                                            contentDescription = null,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "معرّف المسح الضوئي:",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMutedGreen,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Text(
+                                        text = activeQrString,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
                         }
                     }
-
-                    // QR Code Box
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                } else {
+                    // عند اختيار [بطاقة محفظة الحانوت]:
+                    // شريط مالي أفقي مقسم لـ 3 خانات متوازنة: (الرصيد المتوفر) | (الحد اليومي) | (مصروف اليوم)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color.White,
-                            border = BorderStroke(1.5.dp, GoldFoil),
-                            shadowElevation = 2.dp
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f))
                         ) {
-                            Image(
-                                bitmap = qrBitmap,
-                                contentDescription = "رمز QR للطالب ${student.fullNameWithFather}",
-                                modifier = Modifier
-                                    .size(96.dp)
-                                    .padding(4.dp),
-                                contentScale = ContentScale.Fit
-                            )
+                            Column(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "الرصيد المتوفر",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "${student.walletBalance} د.ع",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
-                        Text(
-                            text = if (isWalletPassMode) "باركود محفظة الحانوت" else "بصمة الحضور QR",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = DeepEmerald,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp
-                        )
+
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.65f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "الحد اليومي",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF92400E),
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = if (student.dailySpendLimit > 0) "${student.dailySpendLimit} د.ع" else "مفتوح",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color(0xFF78350F),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, DeepForestGreen.copy(alpha = 0.16f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "مصروف اليوم",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "$spentToday د.ع",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = DeepEmerald,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
-                }
 
-                // Auto-badges row inside the ID card
-                if (badges.isNotEmpty()) {
-                    StudentAutoBadgesRow(badges = badges)
-                }
-
-                // QR Code text value pill
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    color = DeepForestGreen.copy(alpha = 0.05f),
-                    border = BorderStroke(1.dp, DeepForestGreen.copy(alpha = 0.12f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    // وتحته في المنتصف صندوق باركود محفظة الحانوت الكبير (Wallet QR Code) وتحته شريط كود WALLET-...
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFF0FDF4).copy(alpha = 0.65f),
+                        border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.55f))
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                imageVector = if (isWalletPassMode) Icons.Default.AccountBalanceWallet else Icons.Default.QrCode2,
-                                contentDescription = null,
-                                tint = DeepEmerald,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.8.dp, GoldFoil),
+                                shadowElevation = 3.dp
+                            ) {
+                                Image(
+                                    bitmap = qrBitmap,
+                                    contentDescription = "باركود محفظة الحانوت للطالب ${student.fullNameWithFather}",
+                                    modifier = Modifier
+                                        .size(138.dp)
+                                        .padding(6.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+
                             Text(
-                                text = if (isWalletPassMode) "باركود الدفع بالحانوت:" else "معرّف المسح الضوئي:",
+                                text = "امسح الباركود في نقطة بيع الحانوت المدرسي للدفع الفوري",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = TextMutedGreen
+                                color = DeepEmerald,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
                             )
+
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.55f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountBalanceWallet,
+                                            contentDescription = null,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "باركود محفظة الحانوت:",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMutedGreen,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Text(
+                                        text = activeQrString,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
-                        Text(
-                            text = activeQrString,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = DeepForestGreen
-                        )
                     }
                 }
 
@@ -560,10 +815,13 @@ fun DigitalStudentIdCardView(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = onSavePng,
+                        onClick = {
+                            DocumentAndIdExporter.activeWalletPassExportMode = isWalletPassMode
+                            onSavePng()
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .height(46.dp)
                             .testTag("save_id_png_button_${student.id}"),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -575,21 +833,29 @@ fun DigitalStudentIdCardView(
                             imageVector = Icons.Default.Download,
                             contentDescription = null,
                             tint = GoldFoil,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "حفظ الهوية في الجهاز (صورة عالية الدقة PNG)",
+                            text = if (isWalletPassMode) {
+                                "حفظ بطاقة محفظة الحانوت في الجهاز (PNG)"
+                            } else {
+                                "حفظ الهوية في الجهاز (صورة عالية الدقة PNG)"
+                            },
                             fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.labelLarge
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1
                         )
                     }
 
                     OutlinedButton(
-                        onClick = onExportPdf,
+                        onClick = {
+                            DocumentAndIdExporter.activeWalletPassExportMode = isWalletPassMode
+                            onExportPdf()
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .height(46.dp)
                             .testTag("export_id_pdf_button_${student.id}"),
                         shape = RoundedCornerShape(14.dp),
                         border = BorderStroke(1.5.dp, GoldFoil),
@@ -601,13 +867,14 @@ fun DigitalStudentIdCardView(
                             imageVector = Icons.Default.PictureAsPdf,
                             contentDescription = null,
                             tint = DeepEmerald,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "طباعة / تصدير PDF (بحجم البطاقة القياسي)",
                             fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.labelLarge
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1
                         )
                     }
                 }
@@ -635,15 +902,16 @@ fun DigitalStudentIdDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .padding(vertical = 16.dp),
+                .padding(vertical = 12.dp),
             shape = RoundedCornerShape(24.dp),
             color = CardSurfaceWhite
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -652,7 +920,8 @@ fun DigitalStudentIdDialog(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Badge,
@@ -663,7 +932,9 @@ fun DigitalStudentIdDialog(
                             text = "بطاقة هوية الطالب الذكية ومحفظة الحانوت",
                             style = MaterialTheme.typography.titleMedium,
                             color = DeepForestGreen,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     IconButton(onClick = onDismiss) {

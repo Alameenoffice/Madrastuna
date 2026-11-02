@@ -229,202 +229,118 @@ fun UrgentSchoolAlertBannerCard(
 ) {
     if (!alert.isActive || alert.message.isBlank()) return
 
-    val infiniteTransition = rememberInfiniteTransition(label = "urgent_alert_pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseAlpha"
-    )
-
-    Card(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .border(
-                width = 1.5.dp,
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFFD97706).copy(alpha = pulseAlpha),
-                        Color(0xFF059669).copy(alpha = pulseAlpha),
-                        Color(0xFFD97706).copy(alpha = pulseAlpha)
-                    )
-                ),
-                shape = RoundedCornerShape(20.dp)
-            )
             .testTag("urgent_school_alert_banner_card"),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFFFFFBEB),
+        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.45f)),
+        shadowElevation = 1.dp
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFF064E3B),
-                            Color(0xFF047857),
-                            Color(0xFF065F46)
-                        )
-                    )
-                )
-                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            // أيقونة جرس صغيرة وأنيقة
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFEF3C7)),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(
+                Icon(
+                    imageVector = Icons.Filled.NotificationsActive,
+                    contentDescription = "تنبيه عاجل",
+                    tint = Color(0xFFD97706),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            // شارة صغيرة "تنبيه عاجل"
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color(0xFFFDE68A).copy(alpha = 0.75f),
+                border = BorderStroke(0.8.dp, Color(0xFFF59E0B).copy(alpha = 0.55f))
+            ) {
+                Text(
+                    text = "تنبيه عاجل",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF92400E),
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+
+            // نص التنبيه مباشرة بخط داكن واضح دون أي مستطيل داخلي فارغ
+            Text(
+                text = alert.message,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF78350F),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+
+            // في أقصى اليسار أزرار أيقونات صغيرة ومختصرة (تعديل / إيقاف للمدير، وزر إغلاق X)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (isAdmin) {
+                    IconButton(
+                        onClick = onEditRequest,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(28.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFF59E0B).copy(alpha = 0.22f))
-                            .border(1.dp, Color(0xFFFCD34D), CircleShape),
-                        contentAlignment = Alignment.Center
+                            .background(Color(0xFFFEF3C7))
+                            .testTag("admin_edit_urgent_alert_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.NotificationsActive,
-                            contentDescription = "تنبيه عاجل للمدرسة",
-                            tint = Color(0xFFFDE68A),
-                            modifier = Modifier.size(22.dp)
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "تعديل التنبيه",
+                            tint = Color(0xFFB45309),
+                            modifier = Modifier.size(15.dp)
                         )
                     }
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFFF59E0B),
-                                contentColor = Color(0xFF042F2E)
-                            ) {
-                                Text(
-                                    text = "تنبيه عاجل للمدرسة",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                            if (alert.updatedAt.isNotBlank()) {
-                                Text(
-                                    text = alert.updatedAt,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFFA7F3D0)
-                                )
-                            }
-                        }
-                        if (alert.authorName.isNotBlank()) {
-                            Text(
-                                text = "صادر عن: ${alert.authorName}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.8f)
-                            )
-                        }
+
+                    IconButton(
+                        onClick = onDeleteAlert,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFEE2E2))
+                            .testTag("admin_delete_urgent_alert_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.DeleteOutline,
+                            contentDescription = "إيقاف التنبيه",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(15.dp)
+                        )
                     }
                 }
 
                 IconButton(
                     onClick = onDismissForUser,
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(28.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.14f))
+                        .background(Color(0xFFFDE68A).copy(alpha = 0.45f))
                         .testTag("dismiss_urgent_alert_button")
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Close,
-                        contentDescription = "إغلاق التنبيه بعد قراءته",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                        contentDescription = "إغلاق التنبيه",
+                        tint = Color(0xFF78350F),
+                        modifier = Modifier.size(15.dp)
                     )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = Color.White.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.35f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = alert.message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    lineHeight = 22.sp,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                )
-            }
-
-            if (isAdmin) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onEditRequest,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("admin_edit_urgent_alert_button"),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = Color.White.copy(alpha = 0.12f),
-                            contentColor = Color(0xFFFDE68A)
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "تعديل التنبيه",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = onDeleteAlert,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("admin_delete_urgent_alert_button"),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = Color(0xFF7F1D1D).copy(alpha = 0.45f),
-                            contentColor = Color(0xFFFECACA)
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.DeleteOutline,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "حذف / إيقاف التنبيه",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
                 }
             }
         }

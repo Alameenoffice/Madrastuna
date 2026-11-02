@@ -718,85 +718,56 @@ fun OfficialHolidayBannerCard(
         modifier = modifier
             .fillMaxWidth()
             .testTag("official_holiday_banner_card"),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.Transparent,
-        border = BorderStroke(1.2.dp, GoldAccent.copy(alpha = 0.55f))
+        shape = RoundedCornerShape(50),
+        color = Color(0xFFF1F5F9),
+        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            Color(0xFF042F2E),
-                            DeepEmerald,
-                            Color(0xFF065F46)
-                        )
-                    )
-                )
-                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = GoldAccent.copy(alpha = 0.18f),
-                            border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f)),
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Filled.CalendarMonth,
-                                    contentDescription = null,
-                                    tint = GoldAccent,
-                                    modifier = Modifier.size(21.dp)
-                                )
-                            }
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "اليوم عطلة ($holidayLabel)",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "التاريخ: ${ArabicCalendarDateHelper.formatFullArabicDateWithDay(dateIso)} • يوم عطلة رسمية (موثق في السجل)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GoldLight,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CalendarMonth,
+                    contentDescription = null,
+                    tint = DeepEmerald,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "اليوم عطلة رسمية ($holidayLabel)",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF334155),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
-                    if (isAdmin && onManageHolidaysClick != null) {
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable { onManageHolidaysClick() }
-                                .testTag("banner_manage_holidays_btn"),
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color.White.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f))
-                        ) {
-                            Text(
-                                text = "إدارة العطل",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = GoldAccent,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
+            if (isAdmin && onManageHolidaysClick != null) {
+                Surface(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onManageHolidaysClick() }
+                        .testTag("banner_manage_holidays_btn"),
+                    shape = RoundedCornerShape(50),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
+                ) {
+                    Text(
+                        text = "إدارة العطل",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald,
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
                 }
             }
         }

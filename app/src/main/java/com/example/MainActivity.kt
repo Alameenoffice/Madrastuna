@@ -923,23 +923,21 @@ fun AuthenticatedMainPlatform(
                 }
 
                 ModalDrawerSheet(
-                    drawerContainerColor = Color.Transparent,
-                    drawerContentColor = Color.White,
-                    drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
-                    modifier = Modifier.width(310.dp)
+                    drawerContainerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White,
+                    drawerContentColor = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A),
+                    drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
+                    modifier = Modifier.width(308.dp)
                 ) {
+                    val drawerBg = if (isDarkMode) Color(0xFF0F172A) else Color.White
+                    val headerCardBg = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF8FAFC)
+                    val headerBorderColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                    val primaryTextColor = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+                    val secondaryTextColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
+
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color(0xFF022C22),
-                                        Color(0xFF064E3B),
-                                        Color(0xFF042F2E)
-                                    )
-                                )
-                            )
+                            .background(drawerBg)
                     ) {
                         Column(
                             modifier = Modifier
@@ -947,11 +945,11 @@ fun AuthenticatedMainPlatform(
                                 .padding(horizontal = 14.dp, vertical = 14.dp),
                             verticalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // ب) رأس القائمة الفخم (Premium Profile & School Header)
+                            // ب) رأس القائمة الأنيق والنظيف (Clean Profile & School Header)
                             Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = Color.White.copy(alpha = 0.07f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent.copy(alpha = 0.38f)),
+                                shape = RoundedCornerShape(16.dp),
+                                color = headerCardBg,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, headerBorderColor),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -961,17 +959,17 @@ fun AuthenticatedMainPlatform(
                                 ) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = DeepEmerald.copy(alpha = 0.55f),
-                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.80f)),
-                                        modifier = Modifier.size(50.dp)
+                                        color = Color(0xFFECFDF5),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f)),
+                                        modifier = Modifier.size(48.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Base64AvatarImage(
                                                 base64Data = currentUser?.photoBase64?.ifBlank { schoolConfig.logoBase64 }.orEmpty(),
                                                 fallbackIcon = Icons.Filled.School,
                                                 contentDescription = schoolConfig.schoolName,
-                                                size = 46.dp,
-                                                tint = GoldLight
+                                                size = 44.dp,
+                                                tint = Color(0xFF059669)
                                             )
                                         }
                                     }
@@ -991,7 +989,7 @@ fun AuthenticatedMainPlatform(
                                             Text(
                                                 text = displayUserName,
                                                 style = MaterialTheme.typography.titleSmall,
-                                                color = Color.White,
+                                                color = primaryTextColor,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
@@ -999,13 +997,13 @@ fun AuthenticatedMainPlatform(
                                             )
                                             Surface(
                                                 shape = RoundedCornerShape(50),
-                                                color = GoldAccent.copy(alpha = 0.20f),
-                                                border = androidx.compose.foundation.BorderStroke(0.8.dp, GoldAccent.copy(alpha = 0.55f))
+                                                color = Color(0xFFECFDF5),
+                                                border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.35f))
                                             ) {
                                                 Text(
                                                     text = userRoleTitle,
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    color = GoldLight,
+                                                    color = Color(0xFF065F46),
                                                     fontWeight = FontWeight.Bold,
                                                     maxLines = 1,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -1015,7 +1013,7 @@ fun AuthenticatedMainPlatform(
                                         Text(
                                             text = schoolConfig.schoolName,
                                             style = MaterialTheme.typography.labelMedium,
-                                            color = Color(0xFFA7F3D0),
+                                            color = secondaryTextColor,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
@@ -1029,14 +1027,13 @@ fun AuthenticatedMainPlatform(
                                             .clickable { coroutineScope.launch { drawerState.close() } }
                                             .testTag("drawer_close_btn"),
                                         shape = CircleShape,
-                                        color = Color.White.copy(alpha = 0.10f),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
+                                        color = if (isDarkMode) Color(0xFF334155) else Color(0xFFF1F5F9)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
                                                 imageVector = Icons.Filled.Close,
                                                 contentDescription = "إغلاق القائمة الجانبية",
-                                                tint = Color.White.copy(alpha = 0.90f),
+                                                tint = secondaryTextColor,
                                                 modifier = Modifier.size(16.dp)
                                             )
                                         }
@@ -1044,23 +1041,25 @@ fun AuthenticatedMainPlatform(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                            // ج) تنظيم العناصر في مجموعات مقسمة داخل حاويات زجاجية ناعمة
+                            // ج) تنظيم العناصر في مجموعات نظيفة بدون صناديق أو إطارات صفراء
                             LazyColumn(
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 // المجموعة الأولى: الأقسام التعليمية
                                 item(key = "drawer_group_academic") {
                                     LuxuryDrawerGroupCard(
-                                        groupTitle = "الأقسام التعليمية"
+                                        groupTitle = "الأقسام التعليمية",
+                                        isDarkMode = isDarkMode
                                     ) {
                                         academicGroupSections.forEach { (section, icon) ->
                                             LuxuryDrawerMenuItem(
                                                 title = section.arabicTitle,
                                                 icon = icon,
                                                 selected = activeSection == section,
+                                                isDarkMode = isDarkMode,
                                                 testTag = "drawer_nav_${section.name}",
                                                 onClick = {
                                                     viewModel.navigateToSection(section)
@@ -1074,13 +1073,15 @@ fun AuthenticatedMainPlatform(
                                 // المجموعة الثانية: المجتمع والتواصل
                                 item(key = "drawer_group_community") {
                                     LuxuryDrawerGroupCard(
-                                        groupTitle = "المجتمع والتواصل"
+                                        groupTitle = "المجتمع والتواصل",
+                                        isDarkMode = isDarkMode
                                     ) {
                                         communityGroupSections.forEach { (section, icon) ->
                                             LuxuryDrawerMenuItem(
                                                 title = section.arabicTitle,
                                                 icon = icon,
                                                 selected = activeSection == section,
+                                                isDarkMode = isDarkMode,
                                                 testTag = "drawer_nav_${section.name}",
                                                 onClick = {
                                                     viewModel.navigateToSection(section)
@@ -1097,14 +1098,15 @@ fun AuthenticatedMainPlatform(
                                         val hasActiveUrgent = schoolConfig.urgentAlert.isActive &&
                                             schoolConfig.urgentAlert.message.isNotBlank()
                                         LuxuryDrawerGroupCard(
-                                            groupTitle = "أدوات الإدارة السريعة"
+                                            groupTitle = "أدوات الإدارة السريعة",
+                                            isDarkMode = isDarkMode
                                         ) {
                                             LuxuryDrawerMenuItem(
                                                 title = "بث تنبيه عاجل",
                                                 subtitle = if (hasActiveUrgent) "تنبيه عاجل مفعّل حالياً" else "نشر أو إيقاف تنبيه للمدرسة",
                                                 icon = Icons.Filled.Campaign,
                                                 selected = hasActiveUrgent,
-                                                accentGold = true,
+                                                isDarkMode = isDarkMode,
                                                 statusDotColor = if (hasActiveUrgent) DangerRed else null,
                                                 testTag = "drawer_urgent_school_alert_button",
                                                 onClick = {
@@ -1117,7 +1119,7 @@ fun AuthenticatedMainPlatform(
                                                 subtitle = "العطل الأسبوعية والرسمية وتوثيق السجل",
                                                 icon = Icons.Filled.EventAvailable,
                                                 selected = false,
-                                                accentGold = true,
+                                                isDarkMode = isDarkMode,
                                                 testTag = "drawer_holidays_management_button",
                                                 onClick = {
                                                     coroutineScope.launch { drawerState.close() }
@@ -1129,7 +1131,7 @@ fun AuthenticatedMainPlatform(
                                                 subtitle = "إدارة الأساتذة والطلبة وأولياء الأمور",
                                                 icon = Icons.Filled.ManageAccounts,
                                                 selected = activeSection == AppSection.ADMIN_ACCOUNTS,
-                                                accentGold = false,
+                                                isDarkMode = isDarkMode,
                                                 testTag = "drawer_nav_${AppSection.ADMIN_ACCOUNTS.name}",
                                                 onClick = {
                                                     viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS)
@@ -1141,20 +1143,21 @@ fun AuthenticatedMainPlatform(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
                             // د) تذييل القائمة الجانبية (Sticky Drawer Footer)
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+                                HorizontalDivider(color = headerBorderColor)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    val isSettingsSelected = activeSection == AppSection.SETTINGS
                                     // زر الإعدادات الكبسولي
                                     Surface(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(44.dp)
+                                            .height(42.dp)
                                             .clip(RoundedCornerShape(50))
                                             .clickable {
                                                 viewModel.navigateToSection(AppSection.SETTINGS)
@@ -1162,15 +1165,15 @@ fun AuthenticatedMainPlatform(
                                             }
                                             .testTag("drawer_nav_${AppSection.SETTINGS.name}"),
                                         shape = RoundedCornerShape(50),
-                                        color = if (activeSection == AppSection.SETTINGS) {
-                                            Color(0xFF10B981).copy(alpha = 0.28f)
+                                        color = if (isSettingsSelected) {
+                                            if (isDarkMode) Color(0xFF065F46).copy(alpha = 0.40f) else Color(0xFFECFDF5)
                                         } else {
-                                            Color.White.copy(alpha = 0.08f)
+                                            headerCardBg
                                         },
                                         border = androidx.compose.foundation.BorderStroke(
                                             1.dp,
-                                            if (activeSection == AppSection.SETTINGS) GoldAccent.copy(alpha = 0.70f)
-                                            else Color.White.copy(alpha = 0.16f)
+                                            if (isSettingsSelected) Color(0xFF059669).copy(alpha = 0.45f)
+                                            else headerBorderColor
                                         )
                                     ) {
                                         Row(
@@ -1181,7 +1184,7 @@ fun AuthenticatedMainPlatform(
                                             Icon(
                                                 imageVector = Icons.Filled.Settings,
                                                 contentDescription = "الإعدادات",
-                                                tint = GoldLight,
+                                                tint = if (isSettingsSelected) Color(0xFF059669) else secondaryTextColor,
                                                 modifier = Modifier.size(17.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
@@ -1189,7 +1192,11 @@ fun AuthenticatedMainPlatform(
                                                 text = "الإعدادات",
                                                 style = MaterialTheme.typography.labelLarge,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.White,
+                                                color = if (isSettingsSelected) {
+                                                    if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                                                } else {
+                                                    primaryTextColor
+                                                },
                                                 maxLines = 1
                                             )
                                         }
@@ -1199,7 +1206,7 @@ fun AuthenticatedMainPlatform(
                                     Surface(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(44.dp)
+                                            .height(42.dp)
                                             .clip(RoundedCornerShape(50))
                                             .clickable {
                                                 coroutineScope.launch { drawerState.close() }
@@ -1207,10 +1214,10 @@ fun AuthenticatedMainPlatform(
                                             }
                                             .testTag("drawer_logout_btn"),
                                         shape = RoundedCornerShape(50),
-                                        color = DangerRed.copy(alpha = 0.18f),
+                                        color = if (isDarkMode) Color(0xFF7F1D1D).copy(alpha = 0.30f) else Color(0xFFFEF2F2),
                                         border = androidx.compose.foundation.BorderStroke(
                                             1.dp,
-                                            Color(0xFFFCA5A5).copy(alpha = 0.40f)
+                                            Color(0xFFEF4444).copy(alpha = 0.35f)
                                         )
                                     ) {
                                         Row(
@@ -1221,7 +1228,7 @@ fun AuthenticatedMainPlatform(
                                             Icon(
                                                 imageVector = Icons.AutoMirrored.Filled.Logout,
                                                 contentDescription = "تسجيل الخروج",
-                                                tint = Color(0xFFFCA5A5),
+                                                tint = Color(0xFFDC2626),
                                                 modifier = Modifier.size(17.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
@@ -1229,7 +1236,7 @@ fun AuthenticatedMainPlatform(
                                                 text = "تسجيل الخروج",
                                                 style = MaterialTheme.typography.labelLarge,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFFECACA),
+                                                color = if (isDarkMode) Color(0xFFFCA5A5) else Color(0xFFB91C1C),
                                                 maxLines = 1
                                             )
                                         }
@@ -1819,27 +1826,23 @@ fun AuthenticatedMainPlatform(
 @Composable
 private fun LuxuryDrawerGroupCard(
     groupTitle: String,
+    isDarkMode: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White.copy(alpha = 0.05f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = groupTitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = GoldLight.copy(alpha = 0.90f),
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-            )
-            content()
-        }
+        Text(
+            text = groupTitle,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+        content()
     }
 }
 
@@ -1850,51 +1853,45 @@ private fun LuxuryDrawerMenuItem(
     selected: Boolean,
     testTag: String,
     subtitle: String? = null,
-    accentGold: Boolean = false,
+    isDarkMode: Boolean = false,
     statusDotColor: Color? = null,
     onClick: () -> Unit
 ) {
+    val activeBg = if (isDarkMode) Color(0xFF065F46).copy(alpha = 0.35f) else Color(0xFFECFDF5)
+    val activeTextColor = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+    val inactiveTextColor = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+    val subtitleColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
+    val activeIconColor = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
+    val inactiveIconColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
             .testTag(testTag),
-        shape = RoundedCornerShape(14.dp),
-        color = if (selected) {
-            Color(0xFF10B981).copy(alpha = 0.22f)
-        } else {
-            Color.Transparent
-        },
-        border = if (selected) {
-            androidx.compose.foundation.BorderStroke(1.dp, GoldAccent.copy(alpha = 0.55f))
-        } else null
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) activeBg else Color.Transparent
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 36.dp rounded-12.dp glowing icon container
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = when {
-                    selected -> GoldAccent.copy(alpha = 0.24f)
-                    accentGold -> GoldAccent.copy(alpha = 0.15f)
-                    else -> Color(0xFF10B981).copy(alpha = 0.18f)
+                shape = RoundedCornerShape(10.dp),
+                color = if (selected) {
+                    if (isDarkMode) Color(0xFF059669).copy(alpha = 0.25f) else Color(0xFFD1FAE5)
+                } else {
+                    if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
                 },
-                border = androidx.compose.foundation.BorderStroke(
-                    0.8.dp,
-                    if (selected || accentGold) GoldAccent.copy(alpha = 0.45f)
-                    else Color(0xFF34D399).copy(alpha = 0.30f)
-                ),
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(34.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = icon,
                         contentDescription = title,
-                        tint = if (selected || accentGold) GoldAccent else Color(0xFFA7F3D0),
+                        tint = if (selected) activeIconColor else inactiveIconColor,
                         modifier = Modifier.size(19.dp)
                     )
                 }
@@ -1908,7 +1905,7 @@ private fun LuxuryDrawerMenuItem(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                    color = Color.White,
+                    color = if (selected) activeTextColor else inactiveTextColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1916,7 +1913,7 @@ private fun LuxuryDrawerMenuItem(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFA7F3D0).copy(alpha = 0.85f),
+                        color = subtitleColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1926,7 +1923,7 @@ private fun LuxuryDrawerMenuItem(
             if (statusDotColor != null) {
                 Box(
                     modifier = Modifier
-                        .size(9.dp)
+                        .size(8.dp)
                         .clip(CircleShape)
                         .background(statusDotColor)
                 )
@@ -1936,10 +1933,11 @@ private fun LuxuryDrawerMenuItem(
                         .width(4.dp)
                         .height(18.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(GoldAccent)
+                        .background(Color(0xFF059669))
                 )
             }
         }
     }
 }
+
 

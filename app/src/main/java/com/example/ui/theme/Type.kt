@@ -9,13 +9,13 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 
 val CairoFontFamily = FontFamily(
-    Font(R.font.cairo, FontWeight.Light),
-    Font(R.font.cairo, FontWeight.Normal),
-    Font(R.font.cairo, FontWeight.Medium),
-    Font(R.font.cairo, FontWeight.SemiBold),
-    Font(R.font.cairo, FontWeight.Bold),
-    Font(R.font.cairo, FontWeight.ExtraBold),
-    Font(R.font.cairo, FontWeight.Black)
+    Font(R.font.cairo_regular, FontWeight.Light),
+    Font(R.font.cairo_regular, FontWeight.Normal),
+    Font(R.font.cairo_medium, FontWeight.Medium),
+    Font(R.font.cairo_medium, FontWeight.SemiBold),
+    Font(R.font.cairo_bold, FontWeight.Bold),
+    Font(R.font.cairo_extrabold, FontWeight.ExtraBold),
+    Font(R.font.cairo_extrabold, FontWeight.Black)
 )
 
 val Typography = Typography(
