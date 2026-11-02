@@ -1707,6 +1707,8 @@ fun SmartCanteenPosAndWalletDialog(
     onFindStudentByQr: (String) -> StudentRecord?,
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     var activeTab by remember { mutableStateOf(0) } // 0 = POS Purchase, 1 = Top-Up Wallet, 2 = Transactions
     var selectedStudentId by remember { mutableStateOf(students.firstOrNull()?.id ?: "") }
     val selectedStudent = remember(students, selectedStudentId) {
@@ -2314,6 +2316,8 @@ fun SmartCanteenPosAndWalletDialog(
                                         if (canApprovePurchase) {
                                             Button(
                                                 onClick = {
+                                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                    com.example.util.ExternalIntents.triggerCanteenHapticVibration(context, 180L)
                                                     onProcessPurchase(
                                                         selectedStudent.id,
                                                         parsedPurchaseAmount,
@@ -2377,6 +2381,8 @@ fun SmartCanteenPosAndWalletDialog(
                                                     }
                                                     Button(
                                                         onClick = {
+                                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                            com.example.util.ExternalIntents.triggerCanteenHapticVibration(context, 220L)
                                                             onProcessPurchase(
                                                                 selectedStudent.id,
                                                                 parsedPurchaseAmount,
@@ -2489,6 +2495,8 @@ fun SmartCanteenPosAndWalletDialog(
                                     Button(
                                         onClick = {
                                             if (parsedTopUp > 0) {
+                                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                com.example.util.ExternalIntents.triggerCanteenHapticVibration(context, 180L)
                                                 onTopUpWallet(selectedStudent.id, parsedTopUp, topUpNote) { ok, msg ->
                                                     feedbackBannerSuccess = ok
                                                     feedbackBannerMessage = msg

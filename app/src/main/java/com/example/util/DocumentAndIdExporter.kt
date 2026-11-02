@@ -392,31 +392,17 @@ object DocumentAndIdExporter {
             subValuePaint
         )
 
-        // Row 3: Mode-specific details (Academic vs Canteen Wallet)
-        if (!isWalletMode) {
-            canvas.drawText("كود الطالب الموحد / هاتف ولي الأمر:", infoRightX, 502f, labelPaint)
-            drawFittedRightText(
-                canvas,
-                "${student.studentUsername}   |   ${student.parentPhone.ifBlank { "غير مسجل" }}",
-                infoRightX,
-                548f,
-                maxInfoWidth,
-                subValuePaint
-            )
-        } else {
-            val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-            val spentToday = student.getSpentToday(todayIso)
-            val limitLabel = if (student.dailySpendLimit > 0) "${student.dailySpendLimit} د.ع" else "مفتوح"
-            canvas.drawText("رصيد محفظة الحانوت / الحد اليومي للمصروف:", infoRightX, 502f, labelPaint)
-            drawFittedRightText(
-                canvas,
-                "الرصيد: ${student.walletBalance} د.ع  |  الحد: $limitLabel  |  مصروف اليوم: $spentToday د.ع",
-                infoRightX,
-                548f,
-                maxInfoWidth,
-                subValuePaint
-            )
-        }
+        // Row 3: Static Student Code & Parent Phone (Wallet Balance/Limit/Spent are NEVER printed on physical/saved cards)
+        val cleanParentPhone = student.parentPhone.trim().takeIf { it.isNotEmpty() && it != "07512362567" } ?: "غير مسجل"
+        canvas.drawText("كود الطالب الموحد / هاتف ولي الأمر:", infoRightX, 502f, labelPaint)
+        drawFittedRightText(
+            canvas,
+            "${student.studentUsername}   |   $cleanParentPhone",
+            infoRightX,
+            548f,
+            maxInfoWidth,
+            subValuePaint
+        )
 
         // Row 4: Badges strip strictly within x = 415..930 (NEVER touches Left QR Zone!)
         val badgeTitles = buildList {
@@ -550,10 +536,15 @@ object DocumentAndIdExporter {
             typeface = boldTypeface
             textAlign = Paint.Align.CENTER
         }
-        val footerPhone = schoolConfig.phone.ifBlank { "الإدارة المدرسية" }
+        val cleanSchoolPhone = schoolConfig.phone.trim().takeIf { it.isNotEmpty() && it != "07512362567" }
+        val footerText = if (cleanSchoolPhone != null) {
+            "هوية مدرسية معتمدة صادرة عبر منصة مدرستي الذكية  •  هاتف الإدارة: $cleanSchoolPhone"
+        } else {
+            "هوية مدرسية معتمدة صادرة عبر منصة مدرستي الذكية  •  العام الدراسي: ${schoolConfig.academicYear}"
+        }
         drawFittedCenterText(
             canvas,
-            "هوية مدرسية معتمدة صادرة عبر منصة مدرستي الذكية  •  هاتف الإدارة: $footerPhone",
+            footerText,
             width / 2f,
             footerTop + 54f,
             width - 90f,

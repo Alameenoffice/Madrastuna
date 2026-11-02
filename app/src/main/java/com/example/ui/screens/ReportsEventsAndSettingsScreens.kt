@@ -1831,6 +1831,12 @@ fun SettingsScreen(
 
     var schoolName by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolName) }
     var address by remember(schoolConfig) { mutableStateOf(schoolConfig.address) }
+    var schoolPhone by remember(schoolConfig) {
+        mutableStateOf(IraqiPhoneCarrierValidator.sanitizeDigits(schoolConfig.phone))
+    }
+    var schoolPhoneKorekOverride by remember(schoolConfig) {
+        mutableStateOf(IraqiPhoneCarrierValidator.isKorekNumber(schoolConfig.phone))
+    }
     var selectedType by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolType) }
     var selectedStage by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolStage) }
     var registeredClasses by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredClasses) }
@@ -2423,6 +2429,15 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    SmartIraqiPhoneInputField(
+                        value = schoolPhone,
+                        onValueChange = { schoolPhone = it },
+                        label = "رقم هاتف إدارة المدرسة (11 رقماً — اختياري)",
+                        korekOverrideApproved = schoolPhoneKorekOverride,
+                        onKorekOverrideChange = { schoolPhoneKorekOverride = it },
+                        testTag = "settings_school_phone_input"
+                    )
+
                     Text(
                         text = "نوع المدرسة (يُظهر الأقساط للأهلية ويخفيها للحكومية تلقائياً):",
                         style = MaterialTheme.typography.labelLarge
@@ -2591,6 +2606,15 @@ fun SettingsScreen(
                         text = "حفظ إعدادات المدرسة والصفوف المسجلة",
                         icon = Icons.Filled.Save,
                         onClick = {
+                            val (phoneOk, phoneErr) = IraqiPhoneCarrierValidator.validateForSave(
+                                phone = schoolPhone,
+                                korekOverrideApproved = schoolPhoneKorekOverride,
+                                allowEmpty = true
+                            )
+                            if (!phoneOk) {
+                                viewModel.showToastAlert(phoneErr, isSuccess = false)
+                                return@VectorActionButton
+                            }
                             viewModel.updateSchoolInfo(
                                 schoolName = schoolName,
                                 address = address.trim(),
@@ -2599,7 +2623,8 @@ fun SettingsScreen(
                                 schoolStage = selectedStage,
                                 registeredClasses = registeredClasses,
                                 registeredSections = registeredSections,
-                                registeredSubjects = registeredSubjects
+                                registeredSubjects = registeredSubjects,
+                                phone = schoolPhone
                             )
                             savedMessage = "تم حفظ إعدادات المدرسة وتحديث الصفوف والشعب المسجلة بنجاح"
                         },

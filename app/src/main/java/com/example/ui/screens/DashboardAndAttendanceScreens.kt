@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -2256,6 +2257,9 @@ fun DailyAttendanceScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
+                                var showCustomBehaviorDialog by remember(stu.id) { mutableStateOf(false) }
+                                var manualBehaviorNoteText by remember(stu.id) { mutableStateOf("") }
+
                                 DailyBehaviorType.entries.chunked(2).forEach { rowItems ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -2266,18 +2270,22 @@ fun DailyAttendanceScreen(
                                                 DailyBehaviorType.EXCELLENT_PARTICIPATION -> Icons.Filled.EmojiEvents
                                                 DailyBehaviorType.FORGOT_BOOK -> Icons.Filled.MenuBook
                                                 DailyBehaviorType.MISSED_HOMEWORK -> Icons.Filled.AssignmentLate
-                                                DailyBehaviorType.BEHAVIOR_NOTE -> Icons.Filled.Info
+                                                DailyBehaviorType.BEHAVIOR_NOTE -> Icons.Filled.EditNote
                                             }
                                             Surface(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .clip(RoundedCornerShape(12.dp))
                                                     .clickable {
-                                                        viewModel.sendDailyBehaviorEvaluation(
-                                                            student = stu,
-                                                            behaviorType = behType,
-                                                            subjectName = teacherDefaultSubj
-                                                        )
+                                                        if (behType == DailyBehaviorType.BEHAVIOR_NOTE) {
+                                                            showCustomBehaviorDialog = true
+                                                        } else {
+                                                            viewModel.sendDailyBehaviorEvaluation(
+                                                                student = stu,
+                                                                behaviorType = behType,
+                                                                subjectName = teacherDefaultSubj
+                                                            )
+                                                        }
                                                     }
                                                     .testTag("behavior_chip_${stu.id}_${behType.name}"),
                                                 shape = RoundedCornerShape(12.dp),
@@ -2318,6 +2326,154 @@ fun DailyAttendanceScreen(
                                             }
                                         }
                                     }
+                                }
+
+                                // حقل مباشر لكتابة تنبيه أو ملاحظة سلوكية يدوية مخصصة وإرسالها فوراً لولي الأمر
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = manualBehaviorNoteText,
+                                        onValueChange = { manualBehaviorNoteText = it },
+                                        placeholder = {
+                                            Text(
+                                                "اكتب تنبيهاً أو ملاحظة سلوكية يدوية مخصصة لولي الأمر...",
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Filled.EditNote,
+                                                contentDescription = null,
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("custom_behavior_note_input_${stu.id}")
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val cleanCustom = manualBehaviorNoteText.trim()
+                                            if (cleanCustom.isNotEmpty()) {
+                                                viewModel.sendDailyBehaviorEvaluation(
+                                                    student = stu,
+                                                    behaviorType = DailyBehaviorType.BEHAVIOR_NOTE,
+                                                    subjectName = teacherDefaultSubj,
+                                                    customNote = cleanCustom
+                                                )
+                                                manualBehaviorNoteText = ""
+                                            } else {
+                                                showCustomBehaviorDialog = true
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = DeepEmerald,
+                                            contentColor = Color.White
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                        modifier = Modifier
+                                            .height(48.dp)
+                                            .testTag("send_custom_behavior_note_btn_${stu.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Send,
+                                            contentDescription = "إرسال الملاحظة السلوكية",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "إرسال",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+
+                                if (showCustomBehaviorDialog) {
+                                    var dialogNoteInput by remember { mutableStateOf(manualBehaviorNoteText) }
+                                    AlertDialog(
+                                        onDismissRequest = { showCustomBehaviorDialog = false },
+                                        icon = {
+                                            Icon(
+                                                imageVector = Icons.Filled.EditNote,
+                                                contentDescription = null,
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        },
+                                        title = {
+                                            Text(
+                                                text = "كتابة ملاحظة سلوكية أو تنبيه يدوي",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                        },
+                                        text = {
+                                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                Text(
+                                                    text = "الطالب: ${stu.fullNameWithFather} (${stu.gradeClass} - ${stu.sectionName})",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = DeepEmerald,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                OutlinedTextField(
+                                                    value = dialogNoteInput,
+                                                    onValueChange = { dialogNoteInput = it },
+                                                    label = { Text("نص الملاحظة السلوكية أو التنبيه التربوي") },
+                                                    placeholder = { Text("اكتب تفاصيل الملاحظة السلوكية ليصل إشعار فوري لولي الأمر...") },
+                                                    minLines = 3,
+                                                    maxLines = 5,
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .testTag("dialog_custom_behavior_note_field_${stu.id}")
+                                                )
+                                            }
+                                        },
+                                        confirmButton = {
+                                            Button(
+                                                onClick = {
+                                                    val finalCustom = dialogNoteInput.trim()
+                                                    viewModel.sendDailyBehaviorEvaluation(
+                                                        student = stu,
+                                                        behaviorType = DailyBehaviorType.BEHAVIOR_NOTE,
+                                                        subjectName = teacherDefaultSubj,
+                                                        customNote = finalCustom
+                                                    )
+                                                    manualBehaviorNoteText = ""
+                                                    showCustomBehaviorDialog = false
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = DeepEmerald,
+                                                    contentColor = Color.White
+                                                ),
+                                                shape = RoundedCornerShape(12.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("حفظ وإرسال لولي الأمر", fontWeight = FontWeight.Bold)
+                                            }
+                                        },
+                                        dismissButton = {
+                                            TextButton(onClick = { showCustomBehaviorDialog = false }) {
+                                                Text("إلغاء")
+                                            }
+                                        }
+                                    )
                                 }
 
                                 val studentBehaviors = dailyBehaviors.filter { it.studentId == stu.id }

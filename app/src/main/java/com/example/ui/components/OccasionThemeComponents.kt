@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -229,6 +230,26 @@ fun UrgentSchoolAlertBannerCard(
 ) {
     if (!alert.isActive || alert.message.isBlank()) return
 
+    val infiniteTransition = rememberInfiniteTransition(label = "urgent_bell_ring")
+    val bellRotation by infiniteTransition.animateFloat(
+        initialValue = -18f,
+        targetValue = 18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bell_rotation"
+    )
+    val bellPulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 840, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bell_pulse_scale"
+    )
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -245,11 +266,11 @@ fun UrgentSchoolAlertBannerCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // أيقونة جرس صغيرة وأنيقة
+            // أيقونة جرس تفاعلية نابضة ومتحركة بأسلوب JSON/Lottie
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFFFEF3C7)),
                 contentAlignment = Alignment.Center
             ) {
@@ -257,7 +278,13 @@ fun UrgentSchoolAlertBannerCard(
                     imageVector = Icons.Filled.NotificationsActive,
                     contentDescription = "تنبيه عاجل",
                     tint = Color(0xFFD97706),
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier
+                        .size(17.dp)
+                        .graphicsLayer {
+                            rotationZ = bellRotation
+                            scaleX = bellPulseScale
+                            scaleY = bellPulseScale
+                        }
                 )
             }
 
@@ -288,19 +315,20 @@ fun UrgentSchoolAlertBannerCard(
                 modifier = Modifier.weight(1f)
             )
 
-            // في أقصى اليسار أزرار أيقونات صغيرة ومختصرة (تعديل / إيقاف للمدير، وزر إغلاق X)
+            // في أقصى اليسار أزرار أيقونات أنيقة بدون هالات دائرية متداخلة (26dp)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (isAdmin) {
-                    IconButton(
-                        onClick = onEditRequest,
+                    Box(
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFEF3C7))
-                            .testTag("admin_edit_urgent_alert_button")
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(Color(0xFFFEF3C7).copy(alpha = 0.7f))
+                            .clickable(onClick = onEditRequest)
+                            .testTag("admin_edit_urgent_alert_button"),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Edit,
@@ -310,13 +338,14 @@ fun UrgentSchoolAlertBannerCard(
                         )
                     }
 
-                    IconButton(
-                        onClick = onDeleteAlert,
+                    Box(
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFEE2E2))
-                            .testTag("admin_delete_urgent_alert_button")
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(Color(0xFFFEE2E2).copy(alpha = 0.65f))
+                            .clickable(onClick = onDeleteAlert)
+                            .testTag("admin_delete_urgent_alert_button"),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.DeleteOutline,
@@ -327,13 +356,13 @@ fun UrgentSchoolAlertBannerCard(
                     }
                 }
 
-                IconButton(
-                    onClick = onDismissForUser,
+                Box(
                     modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFFDE68A).copy(alpha = 0.45f))
-                        .testTag("dismiss_urgent_alert_button")
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .clickable(onClick = onDismissForUser)
+                        .testTag("dismiss_urgent_alert_button"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Close,

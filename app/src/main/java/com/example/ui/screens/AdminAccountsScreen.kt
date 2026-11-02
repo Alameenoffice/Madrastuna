@@ -648,7 +648,12 @@ fun AdminAccountsScreen(
     if (showTeacherDialog) {
         val currentEditing = editingTeacher
         var name by remember(currentEditing) { mutableStateOf(currentEditing?.fullName ?: "") }
-        var phone by remember(currentEditing) { mutableStateOf(currentEditing?.phone ?: "07512362567") }
+        var phone by remember(currentEditing) {
+            mutableStateOf(IraqiPhoneCarrierValidator.sanitizeDigits(currentEditing?.phone ?: ""))
+        }
+        var teacherKorekOverride by remember(currentEditing) {
+            mutableStateOf(IraqiPhoneCarrierValidator.isKorekNumber(currentEditing?.phone ?: ""))
+        }
         var username by remember(currentEditing) {
             mutableStateOf(
                 currentEditing?.username ?: FirebaseConfigConstants.applySchoolPrefix(
@@ -888,12 +893,13 @@ fun AdminAccountsScreen(
                     }
 
                     item {
-                        OutlinedTextField(
+                        SmartIraqiPhoneInputField(
                             value = phone,
                             onValueChange = { phone = it },
-                            label = { Text("رقم واتساب المعلم") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            label = "رقم هاتف / واتساب $staffSingular (11 رقماً)",
+                            korekOverrideApproved = teacherKorekOverride,
+                            onKorekOverrideChange = { teacherKorekOverride = it },
+                            testTag = "teacher_phone_input_field"
                         )
                     }
                     item {
@@ -1049,6 +1055,19 @@ fun AdminAccountsScreen(
                     text = if (currentEditing == null) "اعتماد وتفعيل الحساب" else "حفظ التعديلات",
                     icon = Icons.Filled.CheckCircle,
                     onClick = {
+                        if (name.isBlank()) {
+                            viewModel.showToastAlert("يرجى إدخال اسم $staffSingular الثلاثي", isSuccess = false)
+                            return@VectorActionButton
+                        }
+                        val (phoneValid, phoneErr) = IraqiPhoneCarrierValidator.validateForSave(
+                            phone = phone,
+                            korekOverrideApproved = teacherKorekOverride,
+                            allowEmpty = true
+                        )
+                        if (!phoneValid) {
+                            viewModel.showToastAlert(phoneErr, isSuccess = false)
+                            return@VectorActionButton
+                        }
                         if (name.isNotBlank()) {
                             viewModel.requireOnlineAndExecute {
                                 val specialtyStr = selectedSubjects.joinToString("، ")
@@ -1105,7 +1124,12 @@ fun AdminAccountsScreen(
             mutableStateOf(currentStu?.sectionName?.takeIf { it in registeredSections } ?: registeredSections.first())
         }
         var parentName by remember(currentStu) { mutableStateOf(currentStu?.parentName ?: "") }
-        var parentPhone by remember(currentStu) { mutableStateOf(currentStu?.parentPhone ?: "07512362567") }
+        var parentPhone by remember(currentStu) {
+            mutableStateOf(IraqiPhoneCarrierValidator.sanitizeDigits(currentStu?.parentPhone ?: ""))
+        }
+        var parentKorekOverride by remember(currentStu) {
+            mutableStateOf(IraqiPhoneCarrierValidator.isKorekNumber(currentStu?.parentPhone ?: ""))
+        }
         var address by remember(currentStu) { mutableStateOf(currentStu?.address ?: "") }
         var totalFeeText by remember { mutableStateOf("1500000") }
         var photoBase64 by remember(currentStu) { mutableStateOf(currentStu?.photoBase64 ?: "") }
@@ -1346,15 +1370,16 @@ fun AdminAccountsScreen(
                         )
                     }
                     item {
-                        OutlinedTextField(
+                        SmartIraqiPhoneInputField(
                             value = parentPhone,
                             onValueChange = {
                                 parentPhone = it
                                 isLinkedToExistingParent = false
                             },
-                            label = { Text("رقم واتساب ولي الأمر") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            label = "رقم هاتف / واتساب ولي الأمر (11 رقماً)",
+                            korekOverrideApproved = parentKorekOverride,
+                            onKorekOverrideChange = { parentKorekOverride = it },
+                            testTag = "parent_phone_input_field"
                         )
                     }
                     item {
@@ -1448,6 +1473,19 @@ fun AdminAccountsScreen(
                     text = if (currentStu == null) "إنشاء وتفعيل الحسابين" else "حفظ التعديلات",
                     icon = Icons.Filled.CheckCircle,
                     onClick = {
+                        if (studentName.isBlank() || parentName.isBlank()) {
+                            viewModel.showToastAlert("يرجى إدخال اسم الطالب واسم ولي الأمر بالكامل", isSuccess = false)
+                            return@VectorActionButton
+                        }
+                        val (phoneValid, phoneErr) = IraqiPhoneCarrierValidator.validateForSave(
+                            phone = parentPhone,
+                            korekOverrideApproved = parentKorekOverride,
+                            allowEmpty = true
+                        )
+                        if (!phoneValid) {
+                            viewModel.showToastAlert(phoneErr, isSuccess = false)
+                            return@VectorActionButton
+                        }
                         if (studentName.isNotBlank() && parentName.isNotBlank()) {
                             viewModel.requireOnlineAndExecute {
                                 if (currentStu == null) {

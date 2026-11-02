@@ -324,7 +324,7 @@ data class SchoolConfig(
     val subjectConfigs: List<SubjectConfigItem> = emptyList(),
     val logoBase64: String = "",
     val academicYear: String = "2026 - 2027",
-    val phone: String = "07512362567",
+    val phone: String = "",
     val subscriptionExpiryDate: String = "2027-10-29",
     val featureSettings: SchoolFeatureSettings = SchoolFeatureSettings(),
     val urgentAlert: UrgentSchoolAlert = UrgentSchoolAlert(),

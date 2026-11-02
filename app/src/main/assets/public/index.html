@@ -1642,7 +1642,7 @@
                   </div>
                   <div>
                     <label class="field-label">رقم هاتف المدير</label>
-                    <input id="setup_admin_phone" placeholder="07512362567" />
+                    <input id="setup_admin_phone" placeholder="يجب أن يتكون رقم الهاتف من 11 رقماً (مثال: 078XXXXXXXX)" maxlength="11" />
                   </div>
                 </div>
 
@@ -2977,7 +2977,7 @@
       const schoolType = document.getElementById('setup_type')?.value || 'PRIVATE';
       const schoolStage = document.getElementById('setup_stage')?.value || 'MIDDLE';
       const adminName = sanitizeText(document.getElementById('setup_admin_name')?.value);
-      const adminPhone = sanitizeText(document.getElementById('setup_admin_phone')?.value) || '07512362567';
+      const adminPhone = sanitizeText(document.getElementById('setup_admin_phone')?.value) || '';
       const adminUser = sanitizeText(document.getElementById('setup_admin_user')?.value);
       const adminPass = sanitizeText(document.getElementById('setup_admin_pass')?.value);
 

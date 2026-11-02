@@ -361,6 +361,7 @@ fun MadrasatiRootApp(
         }
 
         // Global Toast / Snackbar Completion Alert Banner (Green on Success, Red with Reason on Error)
+        // Rendered both in the root Box (zIndex MAX_VALUE) AND inside a top-level Popup window so it ALWAYS floats above any open Dialog or Modal!
         AnimatedVisibility(
             visible = toastAlert != null,
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
@@ -369,14 +370,14 @@ fun MadrasatiRootApp(
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
-                .zIndex(99f)
+                .zIndex(Float.MAX_VALUE)
         ) {
             val alert = toastAlert
             if (alert != null) {
                 Surface(
                     color = if (alert.isSuccess) SuccessGreen else DangerRed,
                     shape = RoundedCornerShape(16.dp),
-                    shadowElevation = 8.dp,
+                    shadowElevation = 12.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("global_toast_alert_banner")
@@ -414,6 +415,79 @@ fun MadrasatiRootApp(
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Top-most Window Popup Layer so Toast / Action Banner ALWAYS appears above open Dialogs / Modals
+        val activeToastForPopup = toastAlert
+        if (activeToastForPopup != null) {
+            androidx.compose.ui.window.Popup(
+                alignment = Alignment.TopCenter,
+                properties = androidx.compose.ui.window.PopupProperties(
+                    focusable = false,
+                    dismissOnBackPress = false,
+                    dismissOnClickOutside = false,
+                    clippingEnabled = false
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .zIndex(Float.MAX_VALUE),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Surface(
+                        color = if (activeToastForPopup.isSuccess) SuccessGreen else DangerRed,
+                        shape = RoundedCornerShape(16.dp),
+                        shadowElevation = 16.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            Color.White.copy(alpha = 0.28f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = if (activeToastForPopup.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.Error,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Text(
+                                    text = activeToastForPopup.message,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { viewModel.dismissToastAlert() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "إغلاق التنبيه",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }

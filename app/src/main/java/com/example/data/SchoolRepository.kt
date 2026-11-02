@@ -176,7 +176,7 @@ class SchoolRepository(context: Context) {
                 subjectConfigs = subjectConfigs,
                 logoBase64 = obj.optString("logoBase64", ""),
                 academicYear = obj.optString("academicYear", "2026 - 2027"),
-                phone = obj.optString("phone", "07512362567"),
+                phone = obj.optString("phone", "").let { if (it == "07512362567") "" else it },
                 subscriptionExpiryDate = obj.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                 featureSettings = parsedFeatures,
                 urgentAlert = parsedUrgentAlert,

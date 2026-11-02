@@ -355,11 +355,11 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = Color.White.copy(alpha = 0.15f),
-                                border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.5f)),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
                                 modifier = Modifier.size(48.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    StudentActivitiesVectorIcon(tint = GoldAccent, size = 26.dp)
+                                    StudentActivitiesVectorIcon(tint = Color.White, size = 26.dp)
                                 }
                             }
                             Column {
@@ -403,7 +403,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                     Icon(
                                         Icons.Default.Person,
                                         contentDescription = "ملفي الإبداعي",
-                                        tint = GoldAccent,
+                                        tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Text(
@@ -521,7 +521,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         color = Color.Transparent,
                         border = BorderStroke(
                             1.2.dp,
-                            if (isMuted) Color.White.copy(alpha = 0.25f) else GoldAccent.copy(alpha = 0.65f)
+                            if (isMuted) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.65f)
                         )
                     ) {
                         Box(
@@ -554,14 +554,14 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                             ) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = GoldAccent.copy(alpha = 0.20f),
+                                    color = Color.White.copy(alpha = 0.20f),
                                     modifier = Modifier.size(28.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             Icons.Default.AddCircleOutline,
                                             contentDescription = null,
-                                            tint = if (isMuted) Color.White.copy(alpha = 0.6f) else GoldAccent,
+                                            tint = if (isMuted) Color.White.copy(alpha = 0.6f) else Color.White,
                                             modifier = Modifier.size(17.dp)
                                         )
                                     }
@@ -2520,7 +2520,7 @@ private fun UserCreativeProfileModalDialog(
                             Text(
                                 text = "الملف الإبداعي في مجتمع المدرسة",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = GoldAccent,
+                                color = Color.White,
                                 fontWeight = FontWeight.Bold
                             )
                             IconButton(
@@ -2773,7 +2773,7 @@ private fun ProfileStatItem(count: String, label: String) {
             text = count,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.ExtraBold,
-            color = GoldAccent
+            color = Color.White
         )
         Text(
             text = label,

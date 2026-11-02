@@ -263,14 +263,13 @@ fun GlobalImageLightboxDialog() {
 }
 
 /**
- * Single-line Developer Credit Bar required at the bottom of Onboarding, Login, and Settings:
- * "تصميم وتطوير: أحمد أبو رسلان | 07512362567" with direct Call and WhatsApp buttons.
+ * Single-line Platform Footer Bar at the bottom of Onboarding, Login, and Settings
+ * (Cleaned of any hardcoded phone number).
  */
 @Composable
 fun DeveloperCreditFooter(
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -284,94 +283,302 @@ fun DeveloperCreditFooter(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.Center
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Verified,
-                    contentDescription = "الدعم الفني للمنصة",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "الدعم الفني للمنصة التعليمية | 07512362567",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Icon(
+                imageVector = Icons.Filled.Verified,
+                contentDescription = "الدعم الفني للمنصة",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "الدعم الفني للمنصة التعليمية — نظام الإدارة السحابية المتكاملة",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Smart 11-Digit Iraqi Telecom Carrier Validator & Interactive Phone Input Field
+ * (078 Zain Iraq, 077 Asiacell, 075 Korek with explicit Override Toggle).
+ */
+object IraqiPhoneCarrierValidator {
+    fun sanitizeDigits(raw: String): String {
+        val cleaned = raw.trim().let { if (it == "07512362567") "" else it }
+        return cleaned.filter { it.isDigit() }.take(11)
+    }
+
+    fun isKorekNumber(phone: String): Boolean {
+        return sanitizeDigits(phone).startsWith("075")
+    }
+
+    /**
+     * Validates a phone number before saving.
+     * - Blocks saving if non-empty and not 11 digits.
+     * - Blocks saving if starting with 075 (Korek) unless [korekOverrideApproved] is true.
+     */
+    fun validateForSave(
+        phone: String,
+        korekOverrideApproved: Boolean,
+        allowEmpty: Boolean = true
+    ): Pair<Boolean, String> {
+        val digits = sanitizeDigits(phone)
+        if (digits.isEmpty()) {
+            return if (allowEmpty) {
+                true to ""
+            } else {
+                false to "يرجى إدخال رقم الهاتف المكون من 11 رقماً (مثال: 078XXXXXXXX)"
             }
+        }
+        if (digits.length != 11) {
+            return false to "يجب أن يتكون رقم الهاتف من 11 رقماً بالضبط (المدخل حالياً: ${digits.length} أرقام)"
+        }
+        if (!digits.startsWith("07")) {
+            return false to "يجب أن يبدأ رقم الهاتف العراقي بـ 078 أو 077 أو 075 ويتكون من 11 رقماً"
+        }
+        if (digits.startsWith("075") && !korekOverrideApproved) {
+            return false to "تنبيه: هذا الرقم تابع لشركة كورك (075) ولا يمكن اعتماده إلا بالضغط على زر (تجاوز المنع واعتماد الرقم استثنائياً)"
+        }
+        return true to ""
+    }
+}
 
-            Spacer(modifier = Modifier.width(8.dp))
+@Composable
+fun SmartIraqiPhoneInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String = "رقم الهاتف (11 رقماً)",
+    modifier: Modifier = Modifier,
+    korekOverrideApproved: Boolean = false,
+    onKorekOverrideChange: ((Boolean) -> Unit)? = null,
+    testTag: String = "smart_iraqi_phone_input"
+) {
+    val cleanDigits = remember(value) { IraqiPhoneCarrierValidator.sanitizeDigits(value) }
+    var internalKorekOverride by remember { mutableStateOf(korekOverrideApproved) }
+    val effectiveKorekOverride = if (onKorekOverrideChange != null) korekOverrideApproved else internalKorekOverride
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // Direct Phone Call Button (tel:07512362567)
+    val prefix3 = cleanDigits.take(3)
+    val isZain = prefix3 == "078"
+    val isAsiacell = prefix3 == "077"
+    val isKorek = prefix3 == "075"
+    val isComplete11 = cleanDigits.length == 11
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        OutlinedTextField(
+            value = cleanDigits,
+            onValueChange = { rawInput ->
+                val filtered = rawInput.filter { it.isDigit() }.take(11)
+                if (!filtered.startsWith("075")) {
+                    internalKorekOverride = false
+                    onKorekOverrideChange?.invoke(false)
+                }
+                onValueChange(filtered)
+            },
+            label = { Text(label) },
+            placeholder = {
+                Text(
+                    text = "يجب أن يتكون رقم الهاتف من 11 رقماً (مثال: 078XXXXXXXX)",
+                    style = MaterialTheme.typography.labelSmall
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.PhoneIphone,
+                    contentDescription = null,
+                    tint = when {
+                        isKorek && !effectiveKorekOverride -> Color(0xFFDC2626)
+                        isZain || isAsiacell -> DeepEmerald
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                )
+            },
+            trailingIcon = {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(50),
+                    color = if (isComplete11) DeepEmerald.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = "${cleanDigits.length}/11",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isComplete11) DeepEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            },
+            isError = (cleanDigits.isNotEmpty() && cleanDigits.length != 11) || (isKorek && !effectiveKorekOverride),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(testTag)
+        )
+
+        // رسالة التوجيه الأساسية لـ 11 رقماً
+        Text(
+            text = if (cleanDigits.isEmpty() || cleanDigits.length == 11) {
+                "يجب أن يتكون رقم الهاتف من 11 رقماً (مثال: 078XXXXXXXX)"
+            } else {
+                "يجب أن يتكون رقم الهاتف من 11 رقماً — متبقي ${11 - cleanDigits.length} أرقام (مثال: 078XXXXXXXX)"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = if (cleanDigits.isNotEmpty() && cleanDigits.length != 11) {
+                Color(0xFFB45309)
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            fontWeight = FontWeight.SemiBold
+        )
+
+        // الفحص اللحظي لشركات الاتصالات العراقية (أول 3 أرقام: 078 / 077 / 075)
+        when {
+            isZain -> {
+                Surface(
                     modifier = Modifier
-                        .height(32.dp)
-                        .clickable { ExternalIntents.dialPhoneNumber(context, "07512362567") }
-                        .testTag("dev_call_button")
+                        .fillMaxWidth()
+                        .testTag("${testTag}_zain_badge"),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFECFDF5),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.55f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Call,
-                            contentDescription = "اتصال بالمطور",
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp)
+                            imageVector = Icons.Filled.Verified,
+                            contentDescription = null,
+                            tint = Color(0xFF059669),
+                            modifier = Modifier.size(17.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "اتصال",
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            softWrap = false
+                            text = "خط شركة زين العراق (Zain) — معتمد (11 رقماً)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF065F46)
                         )
                     }
                 }
+            }
 
-                // Direct WhatsApp Button (https://wa.me/9647512362567)
+            isAsiacell -> {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = WhatsAppGreen,
                     modifier = Modifier
-                        .height(32.dp)
-                        .clickable { ExternalIntents.openDeveloperWhatsApp(context) }
-                        .testTag("dev_whatsapp_button")
+                        .fillMaxWidth()
+                        .testTag("${testTag}_asiacell_badge"),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFF0FDFA),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0D9488).copy(alpha = 0.55f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Chat,
-                            contentDescription = "واتساب المطور",
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp)
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF0D9488),
+                            modifier = Modifier.size(17.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "واتساب",
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            softWrap = false
+                            text = "خط شركة آسياسيل (Asiacell) — معتمد (11 رقماً)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF115E59)
                         )
+                    }
+                }
+            }
+
+            isKorek -> {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("${testTag}_korek_warning"),
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (effectiveKorekOverride) Color(0xFFFFFBEB) else Color(0xFFFEF2F2),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.2.dp,
+                        if (effectiveKorekOverride) Color(0xFFF59E0B) else Color(0xFFEF4444)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (effectiveKorekOverride) Icons.Filled.CheckCircle else Icons.Filled.WarningAmber,
+                                contentDescription = null,
+                                tint = if (effectiveKorekOverride) Color(0xFFD97706) else Color(0xFFDC2626),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = if (effectiveKorekOverride) {
+                                    "تم تفعيل الاستثناء اليدوي لاعتماد رقم شركة كورك (Korek - 075)"
+                                } else {
+                                    "تنبيه: هذا الرقم تابع لشركة كورك (Korek) ولا يمكن اعتماد خطها حالياً في النظام"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (effectiveKorekOverride) Color(0xFF92400E) else Color(0xFF991B1B),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val nextState = !effectiveKorekOverride
+                                    internalKorekOverride = nextState
+                                    onKorekOverrideChange?.invoke(nextState)
+                                }
+                                .testTag("${testTag}_korek_override_btn"),
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (effectiveKorekOverride) Color(0xFF059669) else Color(0xFFB45309)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (effectiveKorekOverride) Icons.Filled.VerifiedUser else Icons.Filled.LockOpen,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (effectiveKorekOverride) {
+                                        "تم تجاوز المنع واعتماد الرقم استثنائياً (اضغط لإلغاء التجاوز)"
+                                    } else {
+                                        "تجاوز المنع واعتماد الرقم استثنائياً"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                            }
+                        }
                     }
                 }
             }

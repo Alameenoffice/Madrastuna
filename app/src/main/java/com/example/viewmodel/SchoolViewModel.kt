@@ -1575,7 +1575,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             stu.id == user.linkedStudentId ||
                 stu.parentUsername.equals(user.username, ignoreCase = true) ||
                 (cleanParentName.isNotEmpty() && stu.parentName.trim().equals(cleanParentName, ignoreCase = true)) ||
-                (cleanParentPhone.length >= 10 && cleanParentPhone != "07512362567" && stu.parentPhone.trim() == cleanParentPhone)
+                (cleanParentPhone.length >= 10 && stu.parentPhone.trim() == cleanParentPhone)
         }.distinctBy { it.id }
     }
 
@@ -2164,11 +2164,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         adminPassword: String,
         schoolStage: SchoolStage = SchoolStage.SECONDARY,
         customSections: List<String> = listOf("أ", "ب", "ج"),
-        customSchoolId: String = ""
+        customSchoolId: String = "",
+        adminPhone: String = ""
     ) {
         val cleanName = InputSanitizer.sanitize(schoolName)
         val cleanUser = InputSanitizer.sanitizeUsername(adminUsername)
         val cleanPass = InputSanitizer.sanitize(adminPassword)
+        val cleanPhone = InputSanitizer.sanitize(adminPhone)
         if (cleanName.isBlank() || cleanUser.isBlank() || cleanPass.isBlank()) {
             showToastAlert("يرجى إدخال اسم المدرسة واسم المستخدم وكلمة المرور للمدير", isSuccess = false)
             return
@@ -2209,7 +2211,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             subjectConfigs = initialSubjectConfigs,
             logoBase64 = logoBase64,
             academicYear = "2026 - 2027",
-            phone = "07512362567"
+            phone = cleanPhone
         )
         repo.setActiveSchoolId(generatedSchoolId)
         repo.saveSchoolConfig(config)
@@ -2223,7 +2225,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             fullName = InputSanitizer.sanitize(adminFullName).ifBlank { "المدير" },
             role = UserRole.ADMIN,
             isActive = true,
-            phone = "07512362567",
+            phone = cleanPhone,
             specialty = "المدير",
             assignedClasses = "جميع الصفوف والشعب",
             address = finalAddress,
@@ -2350,7 +2352,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         schoolStage: SchoolStage = _schoolConfig.value.schoolStage,
         registeredClasses: List<String> = _schoolConfig.value.registeredClasses,
         registeredSections: List<String> = _schoolConfig.value.registeredSections,
-        registeredSubjects: List<String> = _schoolConfig.value.registeredSubjects
+        registeredSubjects: List<String> = _schoolConfig.value.registeredSubjects,
+        phone: String = _schoolConfig.value.phone
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val cleanName = InputSanitizer.sanitize(schoolName)
@@ -2388,7 +2391,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             registeredSections = finalSections,
             registeredSubjects = finalSubjects,
             subjectConfigs = updatedConfigs,
-            logoBase64 = logoBase64.ifBlank { _schoolConfig.value.logoBase64 }
+            logoBase64 = logoBase64.ifBlank { _schoolConfig.value.logoBase64 },
+            phone = InputSanitizer.sanitize(phone)
         )
         repo.saveSchoolConfig(updated)
         _schoolConfig.value = updated
@@ -2787,7 +2791,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             fullName = cleanName,
             role = UserRole.TEACHER,
             isActive = true,
-            phone = InputSanitizer.sanitize(phone).ifBlank { "07512362567" },
+            phone = InputSanitizer.sanitize(phone),
             specialty = InputSanitizer.sanitize(specialty),
             assignedClasses = normalizedAssignedStr,
             gradeClass = primaryClass,
@@ -2932,7 +2936,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             } else emptyList()
 
             val phoneMatches = cleanPhoneInput.length >= 10 &&
-                cleanPhoneInput != "07512362567" &&
                 existing.parentPhone.trim() == cleanPhoneInput
 
             // Strictly require at least 3 words (الاسم الثلاثي أو الرباعي لولي الأمر) — NEVER match on a single first name!
@@ -3003,7 +3006,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val sid = _schoolConfig.value.schoolId
         val stuId = "stu_${UUID.randomUUID().toString().take(6)}"
         val finalAddress = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address))
-        val finalPhone = InputSanitizer.sanitize(parentPhone).ifBlank { "07512362567" }
+        val finalPhone = InputSanitizer.sanitize(parentPhone)
         val rawSUser = InputSanitizer.sanitizeUsername(studentUsername).ifBlank { "stu${(10..99).random()}" }
         val sUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawSUser)
         val sPass = InputSanitizer.sanitize(studentPassword).ifBlank { (1000..9999).random().toString() }
@@ -3875,6 +3878,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveStudents(updatedStudents, sid)
 
         val msg = "تم شحن محفظة الحانوت للطالب ${targetStu.fullNameWithFather} بمبلغ $amountIqd د.ع. الرصيد الحالي: $newBalance د.ع"
+        com.example.util.ExternalIntents.triggerCanteenHapticVibration(appContext, 180L)
         showToastAlert(msg, isSuccess = true)
         pushNotification(
             title = "شحن محفظة الحانوت: ${targetStu.fullNameWithFather}",
@@ -3942,6 +3946,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
             _students.value = updatedStudents
             repo.saveStudents(updatedStudents, sid)
+            com.example.util.ExternalIntents.triggerCanteenHapticVibration(appContext, 220L)
             showToastAlert(rejectReason, isSuccess = false)
             pushNotification(
                 title = "رفض عملية شراء من الحانوت: ${targetStu.fullNameWithFather}",
@@ -3979,6 +3984,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
             _students.value = updatedStudents
             repo.saveStudents(updatedStudents, sid)
+            com.example.util.ExternalIntents.triggerCanteenHapticVibration(appContext, 220L)
             showToastAlert(rejectReason, isSuccess = false)
             pushNotification(
                 title = "تنبيه تجاوز الحد اليومي للحانوت: ${targetStu.fullNameWithFather}",
@@ -4025,6 +4031,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveStudents(updatedStudents, sid)
 
         val successMsg = "عملية شراء من الحانوت للطالب ${targetStu.fullNameWithFather} بمبلغ $amountIqd د.ع — الرصيد المتبقي: $newBalance د.ع"
+        com.example.util.ExternalIntents.triggerCanteenHapticVibration(appContext, 180L)
         showToastAlert(successMsg, isSuccess = true)
         pushNotification(
             title = "عملية شراء من الحانوت: ${targetStu.fullNameWithFather}",
@@ -5107,11 +5114,25 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _dailyBehaviors.value = updated
         repo.saveDailyBehaviors(updated, sid)
 
-        showToastAlert("تم إرسال تقييم (${behaviorType.arabicLabel}) للطالب ${student.fullNameWithFather} وإشعار ولي أمره فوراً", isSuccess = true)
+        val isManualCustomNote = customNote.trim().isNotEmpty()
+        val toastText = if (isManualCustomNote) {
+            "تم إرسال الملاحظة السلوكية المخصصة للطالب ${student.fullNameWithFather} وإشعار ولي أمره فوراً"
+        } else {
+            "تم إرسال تقييم (${behaviorType.arabicLabel}) للطالب ${student.fullNameWithFather} وإشعار ولي أمره فوراً"
+        }
+        showToastAlert(toastText, isSuccess = true)
 
         pushNotification(
-            title = "${behaviorType.notificationTitle} - ${student.fullNameWithFather}",
-            body = "تقييم يومي من ($teacherName - $subjectName): ${behaviorType.arabicLabel}. ملاحظة: $finalNote",
+            title = if (isManualCustomNote) {
+                "ملاحظة سلوكية ومتابعة يومية - ${student.fullNameWithFather}"
+            } else {
+                "${behaviorType.notificationTitle} - ${student.fullNameWithFather}"
+            },
+            body = if (isManualCustomNote) {
+                "ملاحظة سلوكية من ($teacherName - $subjectName): $finalNote"
+            } else {
+                "تقييم يومي من ($teacherName - $subjectName): ${behaviorType.arabicLabel}. ملاحظة: $finalNote"
+            },
             type = NotificationType.REPORT,
             targetStudentId = student.id
         )

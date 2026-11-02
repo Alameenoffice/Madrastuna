@@ -408,6 +408,8 @@ fun SchoolSetupScreen(
     var selectedSchoolStage by remember { mutableStateOf(SchoolStage.SECONDARY) }
     var logoBase64 by remember { mutableStateOf("") }
     var adminFullName by remember { mutableStateOf("المدير") }
+    var adminPhone by remember { mutableStateOf("") }
+    var adminPhoneKorekOverride by remember { mutableStateOf(false) }
     var adminUsername by remember { mutableStateOf("admin") }
     var adminPassword by remember { mutableStateOf("123456") }
     var showPassword by remember { mutableStateOf(false) }
@@ -709,6 +711,15 @@ fun SchoolSetupScreen(
                         shape = RoundedCornerShape(12.dp)
                     )
 
+                    SmartIraqiPhoneInputField(
+                        value = adminPhone,
+                        onValueChange = { adminPhone = it },
+                        label = "رقم هاتف المدير / الإدارة (11 رقماً)",
+                        korekOverrideApproved = adminPhoneKorekOverride,
+                        onKorekOverrideChange = { adminPhoneKorekOverride = it },
+                        testTag = "setup_admin_phone_input"
+                    )
+
                     OutlinedTextField(
                         value = adminUsername,
                         onValueChange = { adminUsername = it },
@@ -779,8 +790,15 @@ fun SchoolSetupScreen(
                         text = "تأسيس المنصة واعتماد الصفوف وحساب المدير",
                         icon = Icons.Filled.CheckCircle,
                         onClick = {
+                            val (phoneOk, phoneErr) = IraqiPhoneCarrierValidator.validateForSave(
+                                phone = adminPhone,
+                                korekOverrideApproved = adminPhoneKorekOverride,
+                                allowEmpty = true
+                            )
                             if (schoolName.isBlank() || adminUsername.isBlank() || adminPassword.isBlank()) {
                                 errorMessage = "يرجى إدخال اسم المدرسة واسم المستخدم وكلمة المرور للمدير"
+                            } else if (!phoneOk) {
+                                errorMessage = phoneErr
                             } else {
                                 onCompleteSetup(
                                     schoolName,
@@ -2158,15 +2176,11 @@ fun DeveloperControlPanelScreen(
                         }
                     }
 
-                    OutlinedTextField(
+                    SmartIraqiPhoneInputField(
                         value = directorPhoneForWhatsApp,
                         onValueChange = { directorPhoneForWhatsApp = it },
-                        label = { Text("رقم واتساب مدير المدرسة الجديدة (اختياري قبل الإرسال)") },
-                        placeholder = { Text("مثال: 0751XXXXXXX") },
-                        leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        label = "رقم واتساب مدير المدرسة الجديدة (11 رقماً — اختياري قبل الإرسال)",
+                        testTag = "dev_license_director_phone_input"
                     )
 
                     if (licenses.isEmpty()) {
@@ -2304,7 +2318,7 @@ fun DeveloperControlPanelScreen(
                                                     }
                                                     ExternalIntents.sendWhatsAppMessage(
                                                         context = context,
-                                                        rawPhone = directorPhoneForWhatsApp.ifBlank { "07512362567" },
+                                                        rawPhone = directorPhoneForWhatsApp.trim(),
                                                         message = msg
                                                     )
                                                 },
