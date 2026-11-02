@@ -244,6 +244,18 @@ class SchoolRepository(context: Context) {
         saveSchoolConfig(currentCfg.copy(schoolId = sid, urgentAlert = alert.copy(schoolId = sid)))
     }
 
+    fun getLastShownUrgentAlertId(schoolId: String = getActiveSchoolId()): String {
+        val sid = schoolId.ifBlank { getActiveSchoolId() }
+        if (sid.isBlank()) return ""
+        return prefs.getString("last_shown_urgent_alert_$sid", "") ?: ""
+    }
+
+    fun setLastShownUrgentAlertId(signatureKey: String, schoolId: String = getActiveSchoolId()) {
+        val sid = schoolId.ifBlank { getActiveSchoolId() }
+        if (sid.isBlank()) return
+        prefs.edit().putString("last_shown_urgent_alert_$sid", signatureKey).apply()
+    }
+
     fun loadHolidaysConfig(schoolId: String = getActiveSchoolId()): SchoolHolidaysConfig {
         val sid = schoolId.ifBlank { getActiveSchoolId() }
         if (sid.isBlank()) return SchoolHolidaysConfig()
@@ -629,7 +641,8 @@ class SchoolRepository(context: Context) {
                         address = ArabicTextNormalizer.cleanDefaultAddress(o.optString("address", "")),
                         photoBase64 = o.optString("photoBase64", ""),
                         schoolId = itemSchoolId,
-                        canModerateActivities = o.optBoolean("canModerateActivities", false)
+                        canModerateActivities = o.optBoolean("canModerateActivities", false),
+                        canManageCanteen = o.optBoolean("canManageCanteen", false)
                     )
                 )
             }
@@ -677,6 +690,7 @@ class SchoolRepository(context: Context) {
                 put("photoBase64", acc.photoBase64)
                 put("schoolId", schoolId)
                 put("canModerateActivities", acc.canModerateActivities)
+                put("canManageCanteen", acc.canManageCanteen)
             })
         }
         val jsonStr = arr.toString()
@@ -745,6 +759,43 @@ class SchoolRepository(context: Context) {
                 } else {
                     o.optInt("lateDays", 0)
                 }
+                val dailySpentObj = o.optJSONObject("dailySpentMap")
+                val parsedDailySpentMap = linkedMapOf<String, Int>()
+                if (dailySpentObj != null) {
+                    val dKeys = dailySpentObj.keys()
+                    while (dKeys.hasNext()) {
+                        val rawDKey = dKeys.next()
+                        val cleanDKey = ArabicTextNormalizer.normalizeDateIso(rawDKey.trim())
+                        val spentVal = dailySpentObj.optInt(rawDKey, 0).coerceAtLeast(0)
+                        if (cleanDKey.isNotEmpty() && spentVal > 0) {
+                            parsedDailySpentMap[cleanDKey] = spentVal
+                        }
+                    }
+                }
+                val txArr = o.optJSONArray("walletTransactions")
+                val parsedWalletTxs = mutableListOf<CanteenWalletTransaction>()
+                if (txArr != null) {
+                    for (tIdx in 0 until txArr.length()) {
+                        val tObj = txArr.optJSONObject(tIdx) ?: continue
+                        val txType = runCatching {
+                            CanteenTransactionType.valueOf(tObj.optString("type", CanteenTransactionType.TOP_UP.name))
+                        }.getOrDefault(CanteenTransactionType.TOP_UP)
+                        parsedWalletTxs.add(
+                            CanteenWalletTransaction(
+                                id = tObj.optString("id", "wtx_$tIdx"),
+                                studentId = tObj.optString("studentId", o.optString("id")),
+                                studentName = tObj.optString("studentName", o.optString("studentName")),
+                                type = txType,
+                                amount = tObj.optInt("amount", 0),
+                                balanceAfter = tObj.optInt("balanceAfter", 0),
+                                date = ArabicTextNormalizer.normalizeDateIso(tObj.optString("date", "")),
+                                timestamp = tObj.optString("timestamp", ""),
+                                actorName = tObj.optString("actorName", "كاشير الحانوت"),
+                                note = tObj.optString("note", "")
+                            )
+                        )
+                    }
+                }
                 list.add(
                     StudentRecord(
                         id = o.optString("id"),
@@ -776,7 +827,11 @@ class SchoolRepository(context: Context) {
                         todayStatusDate = effectiveTodayDate,
                         absenceDays = computedAbsenceDays,
                         excusedDays = computedExcusedDays,
-                        lateDays = computedLateDays
+                        lateDays = computedLateDays,
+                        walletBalance = o.optInt("walletBalance", 0).coerceAtLeast(0),
+                        dailySpendLimit = o.optInt("dailySpendLimit", 0).coerceAtLeast(0),
+                        dailySpentMap = parsedDailySpentMap,
+                        walletTransactions = parsedWalletTxs
                     )
                 )
             }
@@ -859,6 +914,33 @@ class SchoolRepository(context: Context) {
                 put("absenceDays", calcAbsenceDays)
                 put("excusedDays", calcExcusedDays)
                 put("lateDays", calcLateDays)
+                put("walletBalance", s.walletBalance.coerceAtLeast(0))
+                put("dailySpendLimit", s.dailySpendLimit.coerceAtLeast(0))
+                put("walletBarcode", s.walletBarcode)
+                val dailySpentJson = JSONObject()
+                s.dailySpentMap.forEach { (dKey, spentAmt) ->
+                    val cleanDKey = ArabicTextNormalizer.normalizeDateIso(dKey.trim())
+                    if (cleanDKey.isNotEmpty() && spentAmt > 0) {
+                        dailySpentJson.put(cleanDKey, spentAmt)
+                    }
+                }
+                put("dailySpentMap", dailySpentJson)
+                val txJsonArr = JSONArray()
+                s.walletTransactions.take(60).forEach { tx ->
+                    txJsonArr.put(JSONObject().apply {
+                        put("id", tx.id)
+                        put("studentId", tx.studentId)
+                        put("studentName", InputSanitizer.sanitize(tx.studentName))
+                        put("type", tx.type.name)
+                        put("amount", tx.amount)
+                        put("balanceAfter", tx.balanceAfter)
+                        put("date", ArabicTextNormalizer.normalizeDateIso(tx.date))
+                        put("timestamp", InputSanitizer.sanitize(tx.timestamp))
+                        put("actorName", InputSanitizer.sanitize(tx.actorName))
+                        put("note", InputSanitizer.sanitize(tx.note))
+                    })
+                }
+                put("walletTransactions", txJsonArr)
             })
         }
         val jsonStr = arr.toString()
@@ -1551,7 +1633,9 @@ class SchoolRepository(context: Context) {
                         targetItemId = o.optString("targetItemId", ""),
                         createdAt = o.optString("createdAt"),
                         isRead = o.optBoolean("isRead", false),
-                        schoolId = itemSid
+                        schoolId = itemSid,
+                        isUrgent = o.optBoolean("isUrgent", false),
+                        priority = o.optString("priority", "normal")
                     )
                 )
             }
@@ -1582,6 +1666,8 @@ class SchoolRepository(context: Context) {
                 put("createdAt", InputSanitizer.sanitize(n.createdAt))
                 put("isRead", n.isRead)
                 put("schoolId", schoolId)
+                put("isUrgent", n.isUrgent)
+                put("priority", n.priority)
             })
         }
         val jsonStr = arr.toString()

@@ -1771,10 +1771,14 @@ fun AuthenticatedMainPlatform(
         val stuBadges = remember(targetStu.id, allStudents) {
             viewModel.getStudentAutoBadges(targetStu.id)
         }
+        val todayIsoStr: String = remember { com.example.ui.components.ArabicCalendarDateHelper.todayIsoDate() }
+        val todayStatusLabel = viewModel.getStudentStatusForDate(targetStu, todayIsoStr).arabicLabel
         DigitalStudentIdDialog(
             student = targetStu,
             schoolConfig = schoolConfig,
             badges = stuBadges,
+            todayAttendanceLabel = todayStatusLabel,
+            todayIso = todayIsoStr,
             onSavePng = {
                 val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
                     context = context,

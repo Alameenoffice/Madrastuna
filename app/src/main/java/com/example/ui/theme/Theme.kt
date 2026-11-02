@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.sp
 
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryDark,
@@ -67,7 +68,10 @@ fun MyApplicationTheme(
         ) {
             CompositionLocalProvider(
                 androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.merge(
-                    androidx.compose.ui.text.TextStyle(fontFamily = CairoFontFamily)
+                    androidx.compose.ui.text.TextStyle(
+                        fontFamily = CairoFontFamily,
+                        letterSpacing = 0.sp
+                    )
                 ),
                 content = content
             )

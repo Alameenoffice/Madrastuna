@@ -337,6 +337,15 @@ fun AdminAccountsScreen(
                                             contentColor = DeepEmerald
                                         )
                                     }
+                                    if (teacher.canManageCanteen) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        NoWrapBadge(
+                                            text = "مخول بإدارة كاشير الحانوت وشحن المحفظة",
+                                            icon = Icons.Filled.Storefront,
+                                            containerColor = DeepEmerald.copy(alpha = 0.14f),
+                                            contentColor = DeepEmerald
+                                        )
+                                    }
                                 }
                             }
 
@@ -651,6 +660,7 @@ fun AdminAccountsScreen(
         var password by remember(currentEditing) { mutableStateOf(currentEditing?.password ?: (1000..9999).random().toString()) }
         var teacherPhotoBase64 by remember(currentEditing) { mutableStateOf(currentEditing?.photoBase64 ?: "") }
         var canModerateActivities by remember(currentEditing) { mutableStateOf(currentEditing?.canModerateActivities ?: false) }
+        var canManageCanteen by remember(currentEditing) { mutableStateOf(currentEditing?.canManageCanteen ?: false) }
 
         // Multi-select subjects from registeredSubjects
         val initialSubjects = remember(currentEditing) {
@@ -957,6 +967,56 @@ fun AdminAccountsScreen(
                         }
                     }
                     item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Storefront,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = "إدارة كاشير الحانوت وشحن المحفظة",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "السماح لـ$staffSingular بمسح باركود محفظة الطالب للشراء وشحن الأرصدة في الحانوت",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = canManageCanteen,
+                                    onCheckedChange = { canManageCanteen = it },
+                                    modifier = Modifier.testTag("teacher_manage_canteen_switch")
+                                )
+                            }
+                        }
+                    }
+                    item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = username,
@@ -1005,7 +1065,8 @@ fun AdminAccountsScreen(
                                         username = username,
                                         password = password,
                                         photoBase64 = teacherPhotoBase64,
-                                        canModerateActivities = canModerateActivities
+                                        canModerateActivities = canModerateActivities,
+                                        canManageCanteen = canManageCanteen
                                     )
                                 } else {
                                     viewModel.updateTeacherAccount(
@@ -1017,7 +1078,8 @@ fun AdminAccountsScreen(
                                         username = username,
                                         password = password,
                                         photoBase64 = teacherPhotoBase64,
-                                        canModerateActivities = canModerateActivities
+                                        canModerateActivities = canModerateActivities,
+                                        canManageCanteen = canManageCanteen
                                     )
                                 }
                                 showTeacherDialog = false

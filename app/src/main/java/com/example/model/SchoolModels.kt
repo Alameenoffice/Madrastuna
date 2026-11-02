@@ -366,7 +366,8 @@ data class UserAccount(
     val address: String = "",
     val photoBase64: String = "",
     val schoolId: String = "",
-    val canModerateActivities: Boolean = false
+    val canModerateActivities: Boolean = false,
+    val canManageCanteen: Boolean = false
 ) {
     val teacherSubjectsList: List<String>
         get() = specialty.split("،", ",", "|")
@@ -754,6 +755,25 @@ object ArabicTextNormalizer {
     }
 }
 
+enum class CanteenTransactionType(val arabicLabel: String) {
+    TOP_UP("شحن رصيد"),
+    PURCHASE_APPROVED("شراء من الحانوت"),
+    PURCHASE_REJECTED("محاولة شراء مرفوضة")
+}
+
+data class CanteenWalletTransaction(
+    val id: String,
+    val studentId: String,
+    val studentName: String,
+    val type: CanteenTransactionType,
+    val amount: Int,
+    val balanceAfter: Int,
+    val date: String,
+    val timestamp: String,
+    val actorName: String = "كاشير الحانوت",
+    val note: String = ""
+)
+
 data class StudentRecord(
     val id: String,
     val studentName: String,
@@ -781,10 +801,27 @@ data class StudentRecord(
     val todayStatusDate: String = "",
     val absenceDays: Int = 0,
     val excusedDays: Int = 0,
-    val lateDays: Int = 0
+    val lateDays: Int = 0,
+    val walletBalance: Int = 0,
+    val dailySpendLimit: Int = 0,
+    val dailySpentMap: Map<String, Int> = emptyMap(),
+    val walletTransactions: List<CanteenWalletTransaction> = emptyList()
 ) {
     val qrCodeValue: String
         get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
+
+    val walletBarcode: String
+        get() = "WALLET-${schoolId.ifBlank { "100" }}-$id"
+
+    fun getSpentToday(todayIso: String): Int {
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(todayIso.trim())
+        if (cleanDate.isEmpty()) return 0
+        return dailySpentMap[cleanDate]
+            ?: dailySpentMap.entries.firstOrNull { (k, _) ->
+                ArabicTextNormalizer.normalizeDateIso(k.trim()) == cleanDate
+            }?.value
+            ?: 0
+    }
 
     /**
      * Returns the student's full compound name including their father's name (الاسم الثنائي/الكامل)
@@ -1077,7 +1114,9 @@ data class AppNotification(
     val targetItemId: String = "",    // Deep-link specific item/post/contact/homework ID
     val createdAt: String,
     val isRead: Boolean = false,
-    val schoolId: String = ""
+    val schoolId: String = "",
+    val isUrgent: Boolean = false,
+    val priority: String = "normal"
 ) {
     /**
      * Strict Notification Targeting Rule:

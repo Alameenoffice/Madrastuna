@@ -129,4 +129,37 @@ object SystemNotificationHelper {
             // Ignore security or runtime exceptions in restricted test environments
         }
     }
+
+    fun showUrgentExternalNotification(
+        context: Context,
+        schoolName: String,
+        urgentMessage: String,
+        signatureKey: String
+    ) {
+        val cleanSchool = schoolName.trim().ifBlank { "المدرسة" }
+        val title = "تنبيه عاجل من إدارة $cleanSchool"
+        showSystemPushNotification(
+            context = context,
+            title = title,
+            body = urgentMessage.trim(),
+            tagId = "urgent_${signatureKey.ifBlank { urgentMessage.hashCode().toString() }}"
+        )
+        try {
+            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            if (vibrator != null && vibrator.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(
+                        android.os.VibrationEffect.createWaveform(
+                            longArrayOf(0L, 300L, 120L, 300L),
+                            -1
+                        )
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(longArrayOf(0L, 300L, 120L, 300L), -1)
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
 }

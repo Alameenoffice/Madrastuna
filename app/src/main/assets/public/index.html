@@ -17,6 +17,7 @@
   }
   </script>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap');
     :root {
       --bg: #ECFDF5;
       --bg-gradient: linear-gradient(160deg, #ECFDF5 0%, #E0F2FE 55%, #FEF3C7 100%);
@@ -71,11 +72,12 @@
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
       --shadow-lg: 0 18px 42px rgba(0, 0, 0, 0.60);
     }
-    *, body, button, input, select, textarea, h1, h2, h3, h4, p, span, div {
+    *, *::before, *::after, body, html, button, input, select, textarea, h1, h2, h3, h4, p, span, div, .font-sans, .font-serif, .font-mono {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
       font-family: 'Cairo', sans-serif !important;
+      letter-spacing: 0px !important;
       -webkit-tap-highlight-color: transparent;
     }
     body {
@@ -3817,7 +3819,31 @@
       const settingsRef = doc(db, 'schools', schoolId, 'settings', 'config');
       const unsubSettings = onSnapshot(settingsRef, (snap) => {
         if (snap.exists()) {
-          window.appState.schoolConfig = { id: snap.id, ...snap.data() };
+          const cfg = { id: snap.id, ...snap.data() };
+          window.appState.schoolConfig = cfg;
+          if (cfg.urgentAlert && cfg.urgentAlert.isActive && cfg.urgentAlert.message) {
+            const sig = cfg.urgentAlert.signatureKey || (cfg.urgentAlert.updatedAt + '_' + cfg.urgentAlert.message);
+            const lastShown = localStorage.getItem('lastShownUrgentAlertId_' + schoolId);
+            if (lastShown !== sig) {
+              localStorage.setItem('lastShownUrgentAlertId_' + schoolId, sig);
+              const schoolTitle = cfg.schoolName || 'إدارة المدرسة';
+              if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification('تنبيه عاجل من إدارة ' + schoolTitle, {
+                    body: cfg.urgentAlert.message,
+                    tag: 'urgent-' + sig,
+                    requireInteraction: true
+                  });
+                } catch (_) {}
+              }
+              if (navigator.vibrate) {
+                try { navigator.vibrate([300, 120, 300]); } catch (_) {}
+              }
+              if (window.triggerExternalSystemNotification) {
+                window.triggerExternalSystemNotification('تنبيه عاجل من إدارة ' + schoolTitle, cfg.urgentAlert.message, 'urgent_' + sig);
+              }
+            }
+          }
           window.renderApp();
         }
       }, () => {});

@@ -534,6 +534,19 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _studentActivityPosts.value = repo.loadStudentActivityPosts(schoolId)
         _activityViolationReports.value = repo.loadActivityViolationReports(schoolId)
         _userProfilesAndSanctions.value = repo.loadUserProfilesAndSanctions(schoolId)
+        val loadedUrg = _schoolConfig.value.urgentAlert
+        if (loadedUrg.isActive && loadedUrg.message.isNotBlank()) {
+            val sig = loadedUrg.signatureKey.ifBlank { "${loadedUrg.updatedAt}_${loadedUrg.message.hashCode()}" }
+            if (sig.isNotBlank() && repo.getLastShownUrgentAlertId(schoolId) != sig) {
+                repo.setLastShownUrgentAlertId(sig, schoolId)
+                SystemNotificationHelper.showUrgentExternalNotification(
+                    context = appContext,
+                    schoolName = _schoolConfig.value.schoolName,
+                    urgentMessage = loadedUrg.message,
+                    signatureKey = sig
+                )
+            }
+        }
     }
 
     // =========================================================================
@@ -1222,6 +1235,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 val parsedUrg = repo.parseUrgentSchoolAlertJson(remoteUrgRaw, sid)
                                 if (parsedUrg != _schoolConfig.value.urgentAlert) {
                                     _schoolConfig.value = _schoolConfig.value.copy(urgentAlert = parsedUrg)
+                                }
+                                if (parsedUrg.isActive && parsedUrg.message.isNotBlank()) {
+                                    val sig = parsedUrg.signatureKey.ifBlank { "${parsedUrg.updatedAt}_${parsedUrg.message.hashCode()}" }
+                                    if (sig.isNotBlank() && repo.getLastShownUrgentAlertId(sid) != sig) {
+                                        repo.setLastShownUrgentAlertId(sig, sid)
+                                        SystemNotificationHelper.showUrgentExternalNotification(
+                                            context = appContext,
+                                            schoolName = _schoolConfig.value.schoolName,
+                                            urgentMessage = parsedUrg.message,
+                                            signatureKey = sig
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2715,7 +2740,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         username: String,
         password: String,
         photoBase64: String = "",
-        canModerateActivities: Boolean = false
+        canModerateActivities: Boolean = false,
+        canManageCanteen: Boolean = false
     ): UserAccount? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val staffLabel = _schoolConfig.value.schoolStage.staffTitleSingular
@@ -2769,7 +2795,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             address = "",
             photoBase64 = photoBase64,
             schoolId = sid,
-            canModerateActivities = canModerateActivities
+            canModerateActivities = canModerateActivities,
+            canManageCanteen = canManageCanteen
         )
         val updated = listOf(newTeacher) + _accounts.value
         _accounts.value = updated
@@ -2787,7 +2814,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         username: String,
         password: String,
         photoBase64: String = "",
-        canModerateActivities: Boolean? = null
+        canModerateActivities: Boolean? = null,
+        canManageCanteen: Boolean? = null
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
@@ -2827,7 +2855,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     password = InputSanitizer.sanitize(password).ifBlank { acc.password },
                     photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
                     schoolId = sid,
-                    canModerateActivities = canModerateActivities ?: acc.canModerateActivities
+                    canModerateActivities = canModerateActivities ?: acc.canModerateActivities,
+                    canManageCanteen = canManageCanteen ?: acc.canManageCanteen
                 )
             } else acc
         }
@@ -2839,6 +2868,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         showToastAlert("تم تحديث بيانات وصلاحيات $staffLabel بنجاح", isSuccess = true)
+    }
+
+    fun canUserManageCanteen(user: UserAccount? = _currentUser.value): Boolean {
+        if (user == null) return false
+        return user.role == UserRole.ADMIN || (user.role == UserRole.TEACHER && user.canManageCanteen)
     }
 
     fun toggleAccountActive(accountId: String) {
@@ -3220,7 +3254,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         targetRole: String = "",
         targetSection: String = "",
         targetTab: Int = 0,
-        targetItemId: String = ""
+        targetItemId: String = "",
+        isUrgent: Boolean = false,
+        priority: String = "normal"
     ) {
         val sid = _schoolConfig.value.schoolId
         val senderId = _currentUser.value?.id.orEmpty()
@@ -3257,7 +3293,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             targetItemId = targetItemId,
             createdAt = "الآن ($timeLabel)",
             isRead = false,
-            schoolId = sid
+            schoolId = sid,
+            isUrgent = isUrgent,
+            priority = priority
         )
         val updated = listOf(notif) + _notifications.value
         _notifications.value = updated
@@ -3518,6 +3556,42 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * Parent submits an electronic leave request (طلب إجازة للطالب: مرضية / زمنية / عذر عائلي).
      */
+    fun isDateCoveredByLeaveRequest(req: LeaveRequestItem, targetDateIso: String): Boolean {
+        val cleanTarget = ArabicTextNormalizer.normalizeDateIso(targetDateIso.trim())
+        val cleanStart = ArabicTextNormalizer.normalizeDateIso(req.leaveDate.trim())
+        if (cleanTarget.isEmpty() || cleanStart.isEmpty()) return false
+        if (cleanTarget == cleanStart) return true
+        val daysCount = req.durationDays.coerceIn(1, 30)
+        if (daysCount <= 1) return false
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val startDateObj = sdf.parse(cleanStart) ?: return false
+            (0 until daysCount).any { offset ->
+                val cal = java.util.Calendar.getInstance().apply {
+                    time = startDateObj
+                    add(java.util.Calendar.DAY_OF_YEAR, offset)
+                }
+                sdf.format(cal.time) == cleanTarget
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun getStudentLeaveRequestForDate(studentId: String, dateIso: String): LeaveRequestItem? {
+        val cleanStuId = studentId.trim()
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(dateIso.trim()).ifBlank {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        }
+        return _leaveRequests.value.firstOrNull { req ->
+            req.studentId.trim() == cleanStuId && isDateCoveredByLeaveRequest(req, cleanDate)
+        }
+    }
+
+    /**
+     * Parent/Student submits an electronic leave request (طلب إجازة للطالب: مرضية / زمنية / عذر عائلي).
+     * Strictly allows only ONE leave request per day per student.
+     */
     fun submitLeaveRequest(
         student: StudentRecord,
         leaveType: LeaveType,
@@ -3532,9 +3606,31 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val sid = _schoolConfig.value.schoolId
-        val cleanDate = InputSanitizer.sanitize(leaveDate).ifBlank {
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(
+            InputSanitizer.sanitize(leaveDate).ifBlank {
+                SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            }
+        ).ifBlank {
             SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         }
+
+        // Enforce 1-per-day leave request & excused check
+        val currentStatusForDate = getStudentStatusForDate(student, cleanDate)
+        if (currentStatusForDate == AttendanceStatus.EXCUSED) {
+            showToastAlert("الطالب مجاز رسمياً في تاريخ ($cleanDate) ولا حاجة لإرسال طلب جديد", isSuccess = false)
+            return
+        }
+        val existingForDate = getStudentLeaveRequestForDate(student.id, cleanDate)
+        if (existingForDate != null) {
+            val msg = when (existingForDate.status) {
+                LeaveRequestStatus.PENDING -> "الطلب بانتظار الموافقة — لا يمكن إرسال أكثر من طلب إجازة واحد في نفس اليوم ($cleanDate)"
+                LeaveRequestStatus.APPROVED -> "تمت الموافقة مسبقاً على إجازة الطالب لتاريخ ($cleanDate)"
+                LeaveRequestStatus.REJECTED -> "تم إرسال طلب إجازة لتاريخ ($cleanDate) مسبقاً وتم البت فيه (يُسمح بطلب واحد في اليوم)"
+            }
+            showToastAlert(msg, isSuccess = false)
+            return
+        }
+
         val item = LeaveRequestItem(
             id = "lv_${UUID.randomUUID().toString().take(6)}",
             studentId = student.id,
@@ -3555,28 +3651,45 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _leaveRequests.value = updated
         repo.saveLeaveRequests(updated, sid)
 
-        showToastAlert("تم إرسال طلب الإجازة (${leaveType.arabicLabel}) إلى إدارة المدرسة بنجاح", isSuccess = true)
+        showToastAlert("تم إرسال طلب الإجازة (${leaveType.arabicLabel}) إلى إدارة المدرسة وأساتذة الصف بنجاح", isSuccess = true)
 
         pushNotification(
             title = "طلب إجازة جديد: ${student.fullNameWithFather}",
-            body = "قدم ولي أمر الطالب (${student.fullNameWithFather}) طلب ${leaveType.arabicLabel} ليوم $cleanDate (${item.durationDays} يوم) — السبب: $cleanReason",
+            body = "قدم ولي أمر الطالب (${student.fullNameWithFather} - ${student.gradeClass} شعبة ${student.sectionName}) طلب ${leaveType.arabicLabel} ليوم $cleanDate (${item.durationDays} يوم) — السبب: $cleanReason",
             type = NotificationType.ATTENDANCE,
-            targetRole = UserRole.ADMIN.name
+            targetRole = UserRole.ADMIN.name,
+            targetSection = AppSection.ATTENDANCE.name
+        )
+        pushNotification(
+            title = "طلب إجازة طالب في صفك: ${student.fullNameWithFather}",
+            body = "يوجد طلب ${leaveType.arabicLabel} معلق للطالب (${student.fullNameWithFather} - ${student.gradeClass} شعبة ${student.sectionName}) ليوم $cleanDate — السبب: $cleanReason",
+            type = NotificationType.ATTENDANCE,
+            targetRole = UserRole.TEACHER.name,
+            targetSection = AppSection.ATTENDANCE.name
         )
     }
 
     /**
-     * Admin approves or rejects a parent's leave request.
-     * Upon approval, the student's attendance for that date is automatically recorded as EXCUSED ("مجاز (غائب بعذر)").
+     * Admin or authorized class Teacher approves or rejects a parent's leave request.
+     * Upon approval, the student's attendance for that date is automatically and instantaneously
+     * recorded as EXCUSED ("مجاز (غائب بعذر)") across StudentRecord.dailyAttendance, _attendance,
+     * Dashboard counters, Attendance student card, and Parent/Student view.
      */
     fun respondToLeaveRequest(
         requestId: String,
         approve: Boolean,
         adminNote: String = ""
     ) {
-        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
         val targetReq = _leaveRequests.value.firstOrNull { it.id == requestId } ?: return
+        val currentUser = _currentUser.value
+        if (currentUser?.role == UserRole.TEACHER &&
+            !currentUser.canTeacherAccessClassSection(targetReq.gradeClass, targetReq.sectionName)
+        ) {
+            showToastAlert("عفواً، يمكنك البت في طلبات إجازة طلاب صفوفك وشعبك المسندة فقط", isSuccess = false)
+            return
+        }
         val nextStatus = if (approve) LeaveRequestStatus.APPROVED else LeaveRequestStatus.REJECTED
 
         val updatedLeaves = _leaveRequests.value.map { req ->
@@ -3656,19 +3769,287 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val statusAction = if (approve) "تمت الموافقة على" else "تم رفض"
-        showToastAlert("$statusAction طلب إجازة الطالب (${targetReq.studentName})", isSuccess = approve)
+        showToastAlert("$statusAction طلب إجازة الطالب (${targetReq.studentName}) وتحديث حالة الدوام فوراً", isSuccess = approve)
 
+        // Notify both Parent and Student immediately
         pushNotification(
             title = "$statusAction طلب الإجازة: ${targetReq.studentName}",
             body = if (approve) {
-                "وافقت إدارة المدرسة على طلب (${targetReq.leaveType.arabicLabel}) للطالب ${targetReq.studentName} بتاريخ ${targetReq.leaveDate} وتم تسجيله (مجاز بعذر)."
+                "تمت الموافقة الرسمية على طلب (${targetReq.leaveType.arabicLabel}) للطالب ${targetReq.studentName} بتاريخ ${targetReq.leaveDate} وتحديث حالته إلى (مجاز اليوم رسمياً)."
             } else {
                 "اعتذرت إدارة المدرسة عن قبول طلب الإجازة للطالب ${targetReq.studentName} لتاريخ ${targetReq.leaveDate}."
             },
             type = NotificationType.ATTENDANCE,
             targetStudentId = targetReq.studentId,
-            targetRole = UserRole.PARENT.name
+            targetSection = AppSection.ATTENDANCE.name
         )
+    }
+
+    // =========================================================================
+    // SMART CANTEEN E-WALLET & POS (محفظة حانوت المدرسة ونقطة البيع الذكية السحابية)
+    // =========================================================================
+
+    fun findStudentByWalletOrQrCode(rawCodeOrId: String): StudentRecord? {
+        val clean = rawCodeOrId.trim()
+        if (clean.isEmpty()) return null
+        val sid = _schoolConfig.value.schoolId
+        val schoolStudents = _students.value.filter { it.schoolId.isEmpty() || it.schoolId == sid }
+        // 1. Direct match by walletBarcode, qrCodeValue, id, or username
+        schoolStudents.firstOrNull {
+            it.walletBarcode.equals(clean, ignoreCase = true) ||
+                it.qrCodeValue.equals(clean, ignoreCase = true) ||
+                it.id.equals(clean, ignoreCase = true) ||
+                it.studentUsername.equals(clean, ignoreCase = true)
+        }?.let { return it }
+
+        // 2. Parse WALLET-{schoolId}-{studentId}
+        if (clean.uppercase().startsWith("WALLET-")) {
+            val parts = clean.split("-")
+            if (parts.size >= 3) {
+                val extractedStuId = parts.drop(2).joinToString("-").trim()
+                schoolStudents.firstOrNull { it.id.equals(extractedStuId, ignoreCase = true) }?.let { return it }
+            }
+        }
+
+        // 3. Parse MADRASATI|{schoolId}|{studentId}|...
+        if (clean.contains("|")) {
+            val parts = clean.split("|")
+            if (parts.size >= 3) {
+                val extractedStuId = parts[2].trim()
+                schoolStudents.firstOrNull { it.id.equals(extractedStuId, ignoreCase = true) }?.let { return it }
+            }
+        }
+        return null
+    }
+
+    fun topUpStudentWallet(
+        studentId: String,
+        amountIqd: Int,
+        note: String = "شحن رصيد نقدي في الحانوت المدرسي",
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        if (!canUserManageCanteen()) {
+            val err = "عفواً، صلاحية شحن محفظة الحانوت مخصصة لمدير المدرسة أو الأستاذ المخوّل بإدارة الحانوت فقط"
+            showToastAlert(err, isSuccess = false)
+            onResult(false, err)
+            return
+        }
+        if (amountIqd <= 0) {
+            val err = "يرجى اختيار أو كتابة مبلغ شحن صحيح بالدينار العراقي"
+            showToastAlert(err, isSuccess = false)
+            onResult(false, err)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val targetStu = _students.value.firstOrNull { it.id == studentId } ?: run {
+            val err = "لم يتم العثور على سجل الطالب"
+            showToastAlert(err, isSuccess = false)
+            onResult(false, err)
+            return
+        }
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val nowTime = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val actor = _currentUser.value?.fullName?.takeIf { it.isNotBlank() } ?: "إدارة الحانوت"
+        val newBalance = targetStu.walletBalance.coerceAtLeast(0) + amountIqd
+        val tx = CanteenWalletTransaction(
+            id = "wtx_${UUID.randomUUID().toString().take(8)}",
+            studentId = targetStu.id,
+            studentName = targetStu.fullNameWithFather,
+            type = CanteenTransactionType.TOP_UP,
+            amount = amountIqd,
+            balanceAfter = newBalance,
+            date = todayIso,
+            timestamp = nowTime,
+            actorName = actor,
+            note = InputSanitizer.sanitize(note).ifBlank { "شحن رصيد محفظة الحانوت" }
+        )
+        val updatedStudents = _students.value.map { s ->
+            if (s.id == targetStu.id) {
+                s.copy(
+                    walletBalance = newBalance,
+                    walletTransactions = (listOf(tx) + s.walletTransactions).take(60)
+                )
+            } else s
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+
+        val msg = "تم شحن محفظة الحانوت للطالب ${targetStu.fullNameWithFather} بمبلغ $amountIqd د.ع. الرصيد الحالي: $newBalance د.ع"
+        showToastAlert(msg, isSuccess = true)
+        pushNotification(
+            title = "شحن محفظة الحانوت: ${targetStu.fullNameWithFather}",
+            body = msg,
+            type = NotificationType.TUITION,
+            targetStudentId = targetStu.id
+        )
+        onResult(true, msg)
+    }
+
+    fun processCanteenPurchase(
+        studentIdOrBarcode: String,
+        amountIqd: Int,
+        itemNote: String = "شراء من حانوت المدرسة",
+        onResult: (Boolean, String, StudentRecord?) -> Unit = { _, _, _ -> }
+    ) {
+        if (!canUserManageCanteen()) {
+            val err = "عفواً، صلاحية كاشير الحانوت مخصصة لمدير المدرسة أو الأستاذ المخوّل فقط"
+            showToastAlert(err, isSuccess = false)
+            onResult(false, err, null)
+            return
+        }
+        if (amountIqd <= 0) {
+            val err = "يرجى تحديد مبلغ الشراء بالدينار العراقي"
+            showToastAlert(err, isSuccess = false)
+            onResult(false, err, null)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        val targetStu = findStudentByWalletOrQrCode(studentIdOrBarcode) ?: run {
+            val err = "لم يتم العثور على الطالب، تأكد من مسح باركود المحفظة الصحيح"
+            showToastAlert(err, isSuccess = false)
+            onResult(false, err, null)
+            return
+        }
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val nowTime = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val actor = _currentUser.value?.fullName?.takeIf { it.isNotBlank() } ?: "كاشير الحانوت"
+        val currentBalance = targetStu.walletBalance.coerceAtLeast(0)
+        val spentToday = targetStu.getSpentToday(todayIso)
+        val dailyLimit = targetStu.dailySpendLimit.coerceAtLeast(0)
+
+        // Check 1: Sufficient Wallet Balance
+        if (currentBalance < amountIqd) {
+            val rejectReason = "رفض العملية: الرصيد غير كافٍ (الرصيد المتوفر: $currentBalance د.ع، المطلوب: $amountIqd د.ع)"
+            val rejectedTx = CanteenWalletTransaction(
+                id = "wtx_${UUID.randomUUID().toString().take(8)}",
+                studentId = targetStu.id,
+                studentName = targetStu.fullNameWithFather,
+                type = CanteenTransactionType.PURCHASE_REJECTED,
+                amount = amountIqd,
+                balanceAfter = currentBalance,
+                date = todayIso,
+                timestamp = nowTime,
+                actorName = actor,
+                note = rejectReason
+            )
+            var updatedStuRecord: StudentRecord? = null
+            val updatedStudents = _students.value.map { s ->
+                if (s.id == targetStu.id) {
+                    val u = s.copy(walletTransactions = (listOf(rejectedTx) + s.walletTransactions).take(60))
+                    updatedStuRecord = u
+                    u
+                } else s
+            }
+            _students.value = updatedStudents
+            repo.saveStudents(updatedStudents, sid)
+            showToastAlert(rejectReason, isSuccess = false)
+            pushNotification(
+                title = "رفض عملية شراء من الحانوت: ${targetStu.fullNameWithFather}",
+                body = "محاولة شراء مرفوضة للطالب ${targetStu.fullNameWithFather} بمبلغ $amountIqd د.ع — السبب: الرصيد غير كافٍ (الرصيد الحالي: $currentBalance د.ع).",
+                type = NotificationType.TUITION,
+                targetStudentId = targetStu.id
+            )
+            onResult(false, rejectReason, updatedStuRecord ?: targetStu)
+            return
+        }
+
+        // Check 2: Parent's Daily Spend Limit (if > 0)
+        if (dailyLimit > 0 && (spentToday + amountIqd) > dailyLimit) {
+            val remainingAllowed = (dailyLimit - spentToday).coerceAtLeast(0)
+            val rejectReason = "رفض العملية: تجاوز الحد اليومي المسموح من ولي الأمر (السقف اليومي: $dailyLimit د.ع، المصروف اليوم: $spentToday د.ع، المتبقي المسموح اليوم: $remainingAllowed د.ع)"
+            val rejectedTx = CanteenWalletTransaction(
+                id = "wtx_${UUID.randomUUID().toString().take(8)}",
+                studentId = targetStu.id,
+                studentName = targetStu.fullNameWithFather,
+                type = CanteenTransactionType.PURCHASE_REJECTED,
+                amount = amountIqd,
+                balanceAfter = currentBalance,
+                date = todayIso,
+                timestamp = nowTime,
+                actorName = actor,
+                note = rejectReason
+            )
+            var updatedStuRecord: StudentRecord? = null
+            val updatedStudents = _students.value.map { s ->
+                if (s.id == targetStu.id) {
+                    val u = s.copy(walletTransactions = (listOf(rejectedTx) + s.walletTransactions).take(60))
+                    updatedStuRecord = u
+                    u
+                } else s
+            }
+            _students.value = updatedStudents
+            repo.saveStudents(updatedStudents, sid)
+            showToastAlert(rejectReason, isSuccess = false)
+            pushNotification(
+                title = "تنبيه تجاوز الحد اليومي للحانوت: ${targetStu.fullNameWithFather}",
+                body = "محاولة شراء مرفوضة للطالب ${targetStu.fullNameWithFather} بمبلغ $amountIqd د.ع — السبب: تجاوز السقف اليومي المحدد من ولي الأمر ($dailyLimit د.ع).",
+                type = NotificationType.TUITION,
+                targetStudentId = targetStu.id
+            )
+            onResult(false, rejectReason, updatedStuRecord ?: targetStu)
+            return
+        }
+
+        // Approved Purchase: Deduct & Sync Immediately
+        val newBalance = currentBalance - amountIqd
+        val newSpentToday = spentToday + amountIqd
+        val updatedDailySpent = LinkedHashMap(targetStu.dailySpentMap).apply {
+            put(todayIso, newSpentToday)
+        }
+        val cleanNote = InputSanitizer.sanitize(itemNote).ifBlank { "شراء من الحانوت المدرسي" }
+        val approvedTx = CanteenWalletTransaction(
+            id = "wtx_${UUID.randomUUID().toString().take(8)}",
+            studentId = targetStu.id,
+            studentName = targetStu.fullNameWithFather,
+            type = CanteenTransactionType.PURCHASE_APPROVED,
+            amount = amountIqd,
+            balanceAfter = newBalance,
+            date = todayIso,
+            timestamp = nowTime,
+            actorName = actor,
+            note = cleanNote
+        )
+        var updatedStuRecord: StudentRecord? = null
+        val updatedStudents = _students.value.map { s ->
+            if (s.id == targetStu.id) {
+                val u = s.copy(
+                    walletBalance = newBalance,
+                    dailySpentMap = updatedDailySpent,
+                    walletTransactions = (listOf(approvedTx) + s.walletTransactions).take(60)
+                )
+                updatedStuRecord = u
+                u
+            } else s
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+
+        val successMsg = "عملية شراء من الحانوت للطالب ${targetStu.fullNameWithFather} بمبلغ $amountIqd د.ع — الرصيد المتبقي: $newBalance د.ع"
+        showToastAlert(successMsg, isSuccess = true)
+        pushNotification(
+            title = "عملية شراء من الحانوت: ${targetStu.fullNameWithFather}",
+            body = successMsg,
+            type = NotificationType.TUITION,
+            targetStudentId = targetStu.id
+        )
+        onResult(true, successMsg, updatedStuRecord ?: targetStu)
+    }
+
+    fun updateStudentDailySpendLimit(studentId: String, dailyLimitIqd: Int) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.PARENT, UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val cleanLimit = dailyLimitIqd.coerceAtLeast(0)
+        var studentName = ""
+        val updatedStudents = _students.value.map { s ->
+            if (s.id == studentId) {
+                studentName = s.fullNameWithFather
+                s.copy(dailySpendLimit = cleanLimit)
+            } else s
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+        val limitText = if (cleanLimit == 0) "مفتوح بدون سقف يومي" else "$cleanLimit د.ع يومياً"
+        showToastAlert("تم حفظ الحد الأقصى للشراء اليومي للطالب ($studentName): $limitText", isSuccess = true)
     }
 
     /**
@@ -3779,6 +4160,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 ArabicTextNormalizer.normalizeDateIso(it.date) == targetDate
         }?.status
         if (fromAttList != null) return fromAttList
+
+        // Also check if an APPROVED leave request covers targetDate
+        val approvedLeave = _leaveRequests.value.any { req ->
+            req.studentId.trim() == student.id.trim() &&
+                req.status == LeaveRequestStatus.APPROVED &&
+                isDateCoveredByLeaveRequest(req, targetDate)
+        }
+        if (approvedLeave) return AttendanceStatus.EXCUSED
+
         return AttendanceStatus.PRESENT
     }
 
@@ -5450,7 +5840,22 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _dismissedUrgentAlertSignature.value = ""
         _schoolConfig.value = _schoolConfig.value.copy(urgentAlert = newAlert)
         repo.saveUrgentSchoolAlert(newAlert, sid)
-        showToastAlert("تم نشر/تحديث التنبيه العاجل أعلى الشاشة لجميع حسابات مدرستك فوراً", isSuccess = true)
+        repo.setLastShownUrgentAlertId(sig, sid)
+        val schoolTitle = _schoolConfig.value.schoolName.ifBlank { "المدرسة" }
+        pushNotification(
+            title = "تنبيه عاجل من إدارة $schoolTitle",
+            body = cleanMsg,
+            type = NotificationType.GENERAL,
+            isUrgent = true,
+            priority = "high"
+        )
+        SystemNotificationHelper.showUrgentExternalNotification(
+            context = appContext,
+            schoolName = schoolTitle,
+            urgentMessage = cleanMsg,
+            signatureKey = sig
+        )
+        showToastAlert("تم نشر التنبيه العاجل وإطلاقه في الإشعارات الخارجية لهواتف جميع منتسبي المدرسة فوراً", isSuccess = true)
     }
 
     fun deleteOrStopUrgentSchoolAlert() {

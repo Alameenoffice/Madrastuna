@@ -67,6 +67,9 @@ fun DashboardScreen(
 
     var isEditingUrgentAlertRequested by remember { mutableStateOf(false) }
     var dashboardBehaviorVisibleCount by remember(selectedParentChildId) { mutableStateOf(3) }
+    var showCanteenPosDialog by remember { mutableStateOf(false) }
+    var walletPassStudent by remember { mutableStateOf<StudentRecord?>(null) }
+    val canManageCanteen = remember(currentUser) { viewModel.canUserManageCanteen(currentUser) }
 
     // Scoped data based on logged-in user role (and active child for Parent)
     val scopedStudents = remember(students, currentUser, selectedParentChildId) {
@@ -418,6 +421,20 @@ fun DashboardScreen(
                             onClick = { viewModel.navigateToSection(AppSection.TUITION_FEES) }
                         )
                     }
+
+                    // Smart Canteen E-Wallet Card for Parent & Student
+                    ParentStudentCanteenWalletCard(
+                        student = myStudent,
+                        todayIso = todayIso,
+                        isParentRole = currentUser?.role == UserRole.PARENT,
+                        onUpdateDailyLimit = { newLimit, onComplete ->
+                            viewModel.updateStudentDailySpendLimit(myStudent.id, newLimit)
+                            onComplete(true, "تم حفظ السقف اليومي بنجاح")
+                        },
+                        onOpenWalletBarcodePass = {
+                            walletPassStudent = myStudent
+                        }
+                    )
                 }
             } else {
                 // ADMIN OR SCOPED TEACHER DASHBOARD STATS
@@ -534,6 +551,84 @@ fun DashboardScreen(
                             busSubscribersCount = busSubscribersCount,
                             onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) }
                         )
+                    }
+
+                    // Smart Canteen POS & Wallet Management Card (for Principal and Authorized Teacher/Cashier)
+                    if (canManageCanteen) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showCanteenPosDialog = true }
+                                .testTag("dashboard_open_canteen_pos_card"),
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color(0xFF0A2E22),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, GoldFoil.copy(alpha = 0.65f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(GoldFoil.copy(alpha = 0.18f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Storefront,
+                                            contentDescription = null,
+                                            tint = GoldFoil,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "نظام كاشير ومحفظة الحانوت الذكية",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                        Text(
+                                            text = "نقطة بيع الباركود (POS) وشحن أرصدة الطلاب سحابياً",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFFA7F3D0)
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = GoldFoil
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.QrCodeScanner,
+                                            contentDescription = null,
+                                            tint = DeepForestGreen,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "فتح الكاشير",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = DeepForestGreen,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -767,6 +862,74 @@ fun DashboardScreen(
                 }
             }
         }
+    }
+
+    if (showCanteenPosDialog) {
+        val activeSchoolStudents = remember(students, schoolConfig.schoolId) {
+            students.filter { it.schoolId.isEmpty() || it.schoolId == schoolConfig.schoolId }
+        }
+        SmartCanteenPosAndWalletDialog(
+            students = activeSchoolStudents,
+            todayIso = todayIso,
+            onTopUpWallet = { stuId, amountIqd, note, onComplete ->
+                viewModel.topUpStudentWallet(stuId, amountIqd, note, onComplete)
+            },
+            onProcessPurchase = { stuId, amountIqd, itemSummary, onComplete ->
+                viewModel.processCanteenPurchase(stuId, amountIqd, itemSummary) { ok, msg, _ ->
+                    onComplete(ok, msg)
+                }
+            },
+            onFindStudentByQr = { rawQr ->
+                viewModel.findStudentByWalletOrQrCode(rawQr)
+            },
+            onDismiss = { showCanteenPosDialog = false }
+        )
+    }
+
+    walletPassStudent?.let { stu ->
+        val stuBadges = viewModel.getStudentAutoBadges(stu.id)
+        val stuTodayLabel = viewModel.getStudentStatusForDate(stu, todayIso).arabicLabel
+        DigitalStudentIdDialog(
+            student = stu,
+            schoolConfig = schoolConfig,
+            badges = stuBadges,
+            todayAttendanceLabel = stuTodayLabel,
+            todayIso = todayIso,
+            initialWalletMode = true,
+            onSavePng = {
+                val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
+                    context = context,
+                    student = stu,
+                    schoolConfig = schoolConfig,
+                    badges = stuBadges
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert(
+                        "تم حفظ الهوية المدرسية بدقة عالية (PNG) في المعرض",
+                        isSuccess = true
+                    )
+                } else {
+                    viewModel.showToastAlert("تعذر حفظ الصورة: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                }
+            },
+            onExportPdf = {
+                val res = DocumentAndIdExporter.exportStudentIdCardPdf(
+                    context = context,
+                    student = stu,
+                    schoolConfig = schoolConfig,
+                    badges = stuBadges
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert(
+                        "تم تصدير الهوية المدرسية بصيغة PDF بنجاح",
+                        isSuccess = true
+                    )
+                } else {
+                    viewModel.showToastAlert("تعذر تصدير PDF: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                }
+            },
+            onDismiss = { walletPassStudent = null }
+        )
     }
 }
 
@@ -1062,20 +1225,137 @@ fun DailyAttendanceScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 if (featureSettings.leaveRequestsEnabled) {
-                                    Button(
-                                        onClick = { showLeaveRequestDialog = true },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("open_leave_request_dialog_btn"),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = DeepEmerald,
-                                            contentColor = Color.White
-                                        )
-                                    ) {
-                                        Icon(Icons.Filled.EventNote, contentDescription = null, tint = GoldFoil, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("طلب إجازة للطالب", fontWeight = FontWeight.Bold)
+                                    val todayLeaveReq = remember(leaveRequests, myStu.id, selectedDate) {
+                                        viewModel.getStudentLeaveRequestForDate(myStu.id, selectedDate)
+                                    }
+                                    val isExcusedToday = todayStatus == AttendanceStatus.EXCUSED ||
+                                        todayLeaveReq?.status == LeaveRequestStatus.APPROVED
+                                    val isPendingToday = todayLeaveReq?.status == LeaveRequestStatus.PENDING
+                                    val isRejectedToday = todayLeaveReq?.status == LeaveRequestStatus.REJECTED
+
+                                    when {
+                                        isExcusedToday -> {
+                                            Surface(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(48.dp)
+                                                    .testTag("student_excused_today_badge"),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color(0xFF065F46),
+                                                border = androidx.compose.foundation.BorderStroke(1.2.dp, GoldFoil)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .padding(horizontal = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.CheckCircle,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFA7F3D0),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "الطالب مجاز اليوم رسمياً",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        isPendingToday -> {
+                                            Surface(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(48.dp)
+                                                    .testTag("leave_pending_today_badge"),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = WarningAmber.copy(alpha = 0.16f),
+                                                border = androidx.compose.foundation.BorderStroke(1.2.dp, WarningAmber)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .padding(horizontal = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.PendingActions,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFB45309),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "الطلب بانتظار الموافقة",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color = Color(0xFF92400E),
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        isRejectedToday -> {
+                                            Surface(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(48.dp)
+                                                    .testTag("leave_rejected_today_badge"),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = DangerRed.copy(alpha = 0.14f),
+                                                border = androidx.compose.foundation.BorderStroke(1.2.dp, DangerRed)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .padding(horizontal = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Cancel,
+                                                        contentDescription = null,
+                                                        tint = DangerRed,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "تم رفض طلب إجازة اليوم",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color = DangerRed,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        else -> {
+                                            Button(
+                                                onClick = { showLeaveRequestDialog = true },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .testTag("open_leave_request_dialog_btn"),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = DeepEmerald,
+                                                    contentColor = Color.White
+                                                )
+                                            ) {
+                                                Icon(Icons.Filled.EventNote, contentDescription = null, tint = GoldFoil, modifier = Modifier.size(18.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("طلب إجازة للطالب", fontWeight = FontWeight.Bold)
+                                            }
+                                        }
                                     }
                                 }
 
@@ -1575,8 +1855,14 @@ fun DailyAttendanceScreen(
                 }
             }
 
-            // Electronic Leave Requests Section for Admin (with Approve / Reject buttons)
-            if (isAdmin && featureSettings.leaveRequestsEnabled && leaveRequests.isNotEmpty()) {
+            // Electronic Leave Requests Section for Admin & Authorized Class Teacher (with Approve / Reject buttons)
+            val scopedLeaveRequestsForManager = if (isAdmin) {
+                leaveRequests
+            } else {
+                val allowedIds = scopedStudents.map { it.id.trim() }.toSet()
+                leaveRequests.filter { it.studentId.trim() in allowedIds }
+            }
+            if (canEdit && featureSettings.leaveRequestsEnabled && scopedLeaveRequestsForManager.isNotEmpty()) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -1603,12 +1889,12 @@ fun DailyAttendanceScreen(
                                         tint = DeepEmerald
                                     )
                                     Text(
-                                        text = "طلبات الإجازات الإلكترونية من أولياء الأمور",
+                                        text = "طلبات الإجازة الواردة",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                 }
-                                val pendingCount = leaveRequests.count { it.status == LeaveRequestStatus.PENDING }
+                                val pendingCount = scopedLeaveRequestsForManager.count { it.status == LeaveRequestStatus.PENDING }
                                 if (pendingCount > 0) {
                                     NoWrapBadge(
                                         text = "$pendingCount قيد المراجعة",
@@ -1619,11 +1905,11 @@ fun DailyAttendanceScreen(
                                 }
                             }
 
-                            val visibleAdminLeaves = leaveRequests.take(adminLeaveRequestsVisibleCount)
+                            val visibleAdminLeaves = scopedLeaveRequestsForManager.take(adminLeaveRequestsVisibleCount)
                             visibleAdminLeaves.forEach { req ->
                                 LeaveRequestCardItem(
                                     req = req,
-                                    isAdmin = true,
+                                    isAdmin = canEdit,
                                     onApprove = {
                                         viewModel.requireOnlineAndExecute {
                                             viewModel.respondToLeaveRequest(req.id, approve = true)
@@ -1636,14 +1922,14 @@ fun DailyAttendanceScreen(
                                     }
                                 )
                             }
-                            if (leaveRequests.size > 3) {
+                            if (scopedLeaveRequestsForManager.size > 3) {
                                 ProgressiveInfiniteScrollFooter(
                                     visibleCount = visibleAdminLeaves.size,
-                                    totalCount = leaveRequests.size,
+                                    totalCount = scopedLeaveRequestsForManager.size,
                                     step = 3,
                                     itemLabel = "طلب إجازة",
                                     onLoadMore = {
-                                        adminLeaveRequestsVisibleCount = (adminLeaveRequestsVisibleCount + 3).coerceAtMost(leaveRequests.size)
+                                        adminLeaveRequestsVisibleCount = (adminLeaveRequestsVisibleCount + 3).coerceAtMost(scopedLeaveRequestsForManager.size)
                                     }
                                 )
                             }
@@ -1746,6 +2032,100 @@ fun DailyAttendanceScreen(
                                     containerColor = if (totalAbsences > 0) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.14f),
                                     contentColor = if (totalAbsences > 0) DangerRed else SuccessGreen
                                 )
+                            }
+                        }
+
+                        // Real-time Pending Leave Alert Banner directly on the Student Card for Principal & Teacher
+                        val pendingLeaveForDate = remember(leaveRequests, stu.id, cleanSelDate) {
+                            leaveRequests.firstOrNull {
+                                it.studentId.trim() == stu.id.trim() &&
+                                    it.status == LeaveRequestStatus.PENDING &&
+                                    viewModel.isDateCoveredByLeaveRequest(it, cleanSelDate)
+                            }
+                        }
+                        if (pendingLeaveForDate != null && canEdit) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("student_card_pending_leave_banner_${stu.id}"),
+                                shape = RoundedCornerShape(12.dp),
+                                color = WarningAmber.copy(alpha = 0.14f),
+                                border = androidx.compose.foundation.BorderStroke(1.2.dp, WarningAmber)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.PendingActions,
+                                            contentDescription = null,
+                                            tint = Color(0xFFB45309),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "يوجد طلب إجازة معلق لهذا اليوم (${pendingLeaveForDate.leaveType.arabicLabel})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = Color(0xFF92400E),
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                            Text(
+                                                text = "السبب: ${pendingLeaveForDate.reason} • المدة: ${pendingLeaveForDate.durationDays} يوم",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF78350F)
+                                            )
+                                        }
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                viewModel.requireOnlineAndExecute {
+                                                    viewModel.respondToLeaveRequest(pendingLeaveForDate.id, approve = true)
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(38.dp)
+                                                .testTag("quick_approve_leave_${stu.id}"),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = DeepEmerald,
+                                                contentColor = Color.White
+                                            )
+                                        ) {
+                                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFFA7F3D0), modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("موافقة (تحويل لمجاز)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.requireOnlineAndExecute {
+                                                    viewModel.respondToLeaveRequest(pendingLeaveForDate.id, approve = false)
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .weight(0.75f)
+                                                .height(38.dp)
+                                                .testTag("quick_reject_leave_${stu.id}"),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(Icons.Filled.Cancel, contentDescription = null, tint = DangerRed, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("رفض الطلب", style = MaterialTheme.typography.labelSmall, color = DangerRed, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -2049,10 +2429,13 @@ fun DailyAttendanceScreen(
 
     selectedStudentForIdCard?.let { stu ->
         val badges = viewModel.getStudentAutoBadges(stu.id)
+        val todayAttLabel = viewModel.getStudentStatusForDate(stu, selectedDate).arabicLabel
         DigitalStudentIdDialog(
             student = stu,
             schoolConfig = schoolConfig,
             badges = badges,
+            todayAttendanceLabel = todayAttLabel,
+            todayIso = selectedDate,
             onSavePng = {
                 val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
                     context = context,
