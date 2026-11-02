@@ -2409,7 +2409,9 @@ class SchoolRepository(context: Context) {
                         sectionName = o.optString("sectionName"),
                         subjectName = o.optString("subjectName", "عام"),
                         behaviorType = bType,
-                        note = o.optString("note"),
+                        note = o.optString("note").ifBlank {
+                            o.optString("customNote").ifBlank { o.optString("details") }
+                        },
                         teacherName = o.optString("teacherName"),
                         date = o.optString("date"),
                         schoolId = itemSid
@@ -2426,6 +2428,7 @@ class SchoolRepository(context: Context) {
         if (schoolId.isBlank()) return
         val arr = JSONArray()
         items.forEach { item ->
+            val sanitizedNote = InputSanitizer.sanitize(item.note)
             arr.put(JSONObject().apply {
                 put("id", item.id)
                 put("studentId", item.studentId)
@@ -2434,7 +2437,9 @@ class SchoolRepository(context: Context) {
                 put("sectionName", InputSanitizer.sanitize(item.sectionName))
                 put("subjectName", InputSanitizer.sanitize(item.subjectName))
                 put("behaviorType", item.behaviorType.name)
-                put("note", InputSanitizer.sanitize(item.note))
+                put("note", sanitizedNote)
+                put("customNote", sanitizedNote)
+                put("details", sanitizedNote)
                 put("teacherName", InputSanitizer.sanitize(item.teacherName))
                 put("date", item.date)
                 put("schoolId", schoolId)

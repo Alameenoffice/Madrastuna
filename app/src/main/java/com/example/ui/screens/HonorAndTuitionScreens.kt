@@ -94,9 +94,9 @@ fun HonorRollScreen(
                         .background(
                             Brush.linearGradient(
                                 colors = listOf(
-                                    Color(0xFF451A03),
-                                    Color(0xFFB45309),
-                                    Color(0xFFD97706)
+                                    Color(0xFF047857),
+                                    Color(0xFF059669),
+                                    Color(0xFF0D9488)
                                 )
                             )
                         )
@@ -109,8 +109,8 @@ fun HonorRollScreen(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = Color(0xFFFDE68A).copy(alpha = 0.22f),
-                            border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.65f))
+                            color = Color.White.copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
@@ -120,13 +120,13 @@ fun HonorRollScreen(
                                 Icon(
                                     imageVector = Icons.Filled.EmojiEvents,
                                     contentDescription = null,
-                                    tint = Color(0xFFFDE68A),
+                                    tint = Color.White,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Text(
                                     text = "لوحة الشرف • ${schoolConfig.schoolName}",
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = Color(0xFFFDE68A),
+                                    color = Color.White,
                                     maxLines = 1,
                                     softWrap = false
                                 )
@@ -142,7 +142,7 @@ fun HonorRollScreen(
                         Text(
                             text = "تفتخر إدارة (${schoolConfig.schoolName}) بتكريم كوكبة التفوق والإبداع العلمي",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFFDE68A)
+                            color = Color.White.copy(alpha = 0.92f)
                         )
                     }
                 }
@@ -173,8 +173,9 @@ fun HonorRollScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
-                    )
+                        containerColor = Color(0xFFECFDF5)
+                    ),
+                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                 ) {
                     Column(
                         modifier = Modifier.padding(14.dp),
@@ -192,20 +193,20 @@ fun HonorRollScreen(
                                 Icon(
                                     imageVector = Icons.Filled.PersonSearch,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = Color(0xFF059669)
                                 )
                                 Text(
                                     text = "إضافة سريعة للوحة الشرف (بحث بالاسم)",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    color = Color(0xFF065F46)
                                 )
                             }
                             NoWrapBadge(
                                 text = "اختيار بضغطة واحدة",
                                 icon = Icons.Filled.EmojiEvents,
-                                containerColor = GoldAccent.copy(alpha = 0.22f),
-                                contentColor = GoldDeep
+                                containerColor = Color(0xFFD1FAE5),
+                                contentColor = Color(0xFF059669)
                             )
                         }
 
@@ -214,7 +215,7 @@ fun HonorRollScreen(
                             onValueChange = { honorSearchQuery = it },
                             label = { Text("ابحث باسم الطالب أو اسم الأب لإضافته للوحة الشرف...") },
                             placeholder = { Text("اكتب اسم الطالب ليظهر فوراً وتختاره بضغطة واحدة") },
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Color(0xFF059669)) },
                             trailingIcon = {
                                 if (honorSearchQuery.isNotEmpty()) {
                                     IconButton(onClick = { honorSearchQuery = "" }) {
@@ -226,7 +227,13 @@ fun HonorRollScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("honor_student_search_input"),
-                            shape = RoundedCornerShape(14.dp)
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF059669),
+                                unfocusedBorderColor = Color(0xFFA7F3D0),
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
                         )
 
                         if (honorSearchQuery.isNotBlank() || filteredNominatableStudents.isNotEmpty()) {
@@ -237,7 +244,7 @@ fun HonorRollScreen(
                                     "طلبة مرشحون للإضافة إلى لوحة الشرف (اضغط لمنح وسام الشرف):"
                                 },
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFF065F46)
                             )
 
                             val displayCandidates = if (honorSearchQuery.isNotBlank()) {
@@ -262,8 +269,9 @@ fun HonorRollScreen(
                                                 .testTag("honor_nominate_student_${s.id}"),
                                             shape = RoundedCornerShape(14.dp),
                                             colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.surface
-                                            )
+                                                containerColor = Color.White
+                                            ),
+                                            border = BorderStroke(1.dp, Color(0xFFD1FAE5))
                                         ) {
                                             Row(
                                                 modifier = Modifier
@@ -277,7 +285,7 @@ fun HonorRollScreen(
                                                         text = s.fullNameWithFather,
                                                         style = MaterialTheme.typography.bodyMedium,
                                                         fontWeight = FontWeight.Bold,
-                                                        color = MaterialTheme.colorScheme.onSurface
+                                                        color = Color(0xFF1E293B)
                                                     )
                                                     Text(
                                                         text = "${s.gradeClass} • شعبة (${s.sectionName})",
@@ -287,7 +295,8 @@ fun HonorRollScreen(
                                                 }
                                                 Surface(
                                                     shape = RoundedCornerShape(10.dp),
-                                                    color = GoldAccent.copy(alpha = 0.2f),
+                                                    color = Color(0xFFECFDF5),
+                                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                                                     modifier = Modifier.clickable { editingStudent = s }
                                                 ) {
                                                     Row(
@@ -298,14 +307,14 @@ fun HonorRollScreen(
                                                         Icon(
                                                             imageVector = Icons.Filled.EmojiEvents,
                                                             contentDescription = null,
-                                                            tint = GoldDeep,
+                                                            tint = Color(0xFF059669),
                                                             modifier = Modifier.size(16.dp)
                                                         )
                                                         Text(
                                                             text = if (s.isOnHonorRoll) "تعديل الوسام" else "منح وسام الشرف",
                                                             style = MaterialTheme.typography.labelMedium,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = GoldDeep,
+                                                            color = Color(0xFF059669),
                                                             maxLines = 1,
                                                             softWrap = false
                                                         )
@@ -332,14 +341,12 @@ fun HonorRollScreen(
                     .fillMaxWidth()
                     .border(
                         width = 1.5.dp,
-                        brush = Brush.linearGradient(
-                            colors = listOf(GoldAccent, Color(0xFFFDE68A), GoldDeep)
-                        ),
+                        color = Color(0xFF059669).copy(alpha = 0.45f),
                         shape = RoundedCornerShape(22.dp)
                     ),
                 shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -362,7 +369,7 @@ fun HonorRollScreen(
                                 fallbackIcon = Icons.Filled.School,
                                 contentDescription = stu.fullNameWithFather,
                                 size = 60.dp,
-                                tint = GoldAccent
+                                tint = Color(0xFF059669)
                             )
 
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -370,7 +377,7 @@ fun HonorRollScreen(
                                     text = stu.fullNameWithFather,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = Color(0xFF1E293B)
                                 )
                                 Text(
                                     text = "الصف: ${stu.gradeClass} • شعبة (${stu.sectionName})",
@@ -381,7 +388,7 @@ fun HonorRollScreen(
                                     text = "سبب التكريم: ${stu.honorTitle}",
                                     icon = Icons.Filled.MilitaryTech,
                                     containerColor = Color(0xFFECFDF5),
-                                    contentColor = DeepEmerald
+                                    contentColor = Color(0xFF059669)
                                 )
                             }
                         }
@@ -389,7 +396,7 @@ fun HonorRollScreen(
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = Color(0xFFECFDF5),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.4f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA7F3D0)),
                             modifier = Modifier.padding(start = 6.dp)
                         ) {
                             Column(
@@ -399,13 +406,13 @@ fun HonorRollScreen(
                                 Icon(
                                     imageVector = Icons.Filled.EmojiEvents,
                                     contentDescription = null,
-                                    tint = DeepEmerald,
+                                    tint = Color(0xFF059669),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
                                     text = "${stu.excellencePoints} نقطة",
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = DeepForestGreen,
+                                    color = Color(0xFF065F46),
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     softWrap = false
@@ -419,7 +426,7 @@ fun HonorRollScreen(
                         StudentAutoBadgesRow(badges = autoBadges)
                     }
 
-                    HorizontalDivider(color = GoldAccent.copy(alpha = 0.22f))
+                    HorizontalDivider(color = Color(0xFFD1FAE5))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -433,7 +440,7 @@ fun HonorRollScreen(
                             Icon(
                                 imageVector = Icons.Filled.WorkspacePremium,
                                 contentDescription = null,
-                                tint = GoldDeep,
+                                tint = Color(0xFF059669),
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
@@ -455,9 +462,11 @@ fun HonorRollScreen(
                         OutlinedButton(
                             onClick = { editingStudent = stu },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF059669))
                         ) {
-                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF059669))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "تحديث نقاط التميز أو وسام الشرف",
@@ -492,7 +501,7 @@ fun HonorRollScreen(
                     OutlinedTextField(
                         value = honorTitle,
                         onValueChange = { honorTitle = it },
-                        label = { Text("عنوان الوسام الذهبي") },
+                        label = { Text("عنوان وسام الشرف") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -501,7 +510,7 @@ fun HonorRollScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("إظهار في لوحة الشرف الذهبية")
+                        Text("إظهار في لوحة الشرف")
                         Switch(checked = onHonor, onCheckedChange = { onHonor = it })
                     }
                 }

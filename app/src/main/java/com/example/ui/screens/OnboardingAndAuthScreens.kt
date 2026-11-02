@@ -997,30 +997,13 @@ fun UnifiedLoginScreen(
                         .testTag("platform_logo_five_taps"),
                     contentAlignment = Alignment.BottomEnd
                 ) {
-                    if (schoolConfig.logoBase64.isBlank() && occasionThemeConfig.isActive) {
-                        OccasionVectorEmblem(
-                            themeType = occasionThemeConfig.themeType,
-                            iconKey = OccasionIconKey.fromKey(occasionThemeConfig.selectedIconKey),
-                            customIconBase64 = occasionThemeConfig.customIconBase64,
-                            size = 84.dp
-                        )
-                    } else {
-                        Base64AvatarImage(
-                            base64Data = schoolConfig.logoBase64,
-                            fallbackIcon = Icons.Filled.School,
-                            contentDescription = discoveredSchoolName ?: schoolConfig.schoolName,
-                            size = 84.dp,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        if (occasionThemeConfig.isActive) {
-                            OccasionVectorEmblem(
-                                themeType = occasionThemeConfig.themeType,
-                                iconKey = OccasionIconKey.fromKey(occasionThemeConfig.selectedIconKey),
-                                customIconBase64 = occasionThemeConfig.customIconBase64,
-                                size = 30.dp
-                            )
-                        }
-                    }
+                    Base64AvatarImage(
+                        base64Data = schoolConfig.logoBase64,
+                        fallbackIcon = Icons.Filled.School,
+                        contentDescription = discoveredSchoolName ?: schoolConfig.schoolName,
+                        size = 84.dp,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))

@@ -60,6 +60,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -1597,49 +1598,60 @@ fun AdminSubscriptionAndBroadcastBanner(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("admin_developer_broadcast_banner"),
-                shape = RoundedCornerShape(14.dp),
-                color = Color(0xFFECFDF5),
-                border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.55f))
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFFF0FDF4),
+                border = BorderStroke(1.dp, Color(0xFFBBF7D0))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(32.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(DeepEmerald.copy(alpha = 0.12f)),
+                            .background(Color(0xFFD1FAE5)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Campaign,
                             contentDescription = null,
-                            tint = DeepEmerald,
-                            modifier = Modifier.size(20.dp)
+                            tint = Color(0xFF059669),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "تعميم مدراء المدارس: ${latestBroadcast.title}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = DeepForestGreen,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFD1FAE5),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                        ) {
+                            Text(
+                                text = "تعميم مدراء المدارس: ${latestBroadcast.title}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF065F46),
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                            )
+                        }
                         Text(
                             text = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = DeepEmerald
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF1E293B)
                         )
                     }
-                    Surface(
-                        shape = CircleShape,
-                        color = DeepEmerald.copy(alpha = 0.14f),
+                    Box(
                         modifier = Modifier
-                            .size(30.dp)
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFD1FAE5).copy(alpha = 0.65f))
                             .clickable {
                                 isBroadcastBannerDismissed = true
                                 developerBroadcasts.forEach { bc ->
@@ -1650,16 +1662,15 @@ fun AdminSubscriptionAndBroadcastBanner(
                                     }
                                 }
                             }
-                            .testTag("dismiss_developer_broadcast_btn")
+                            .testTag("dismiss_developer_broadcast_btn"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "تجاهل وإغلاق التعميم",
-                                tint = DeepForestGreen,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "تجاهل وإغلاق التعميم",
+                            tint = Color(0xFF065F46),
+                            modifier = Modifier.size(15.dp)
+                        )
                     }
                 }
             }
@@ -1854,7 +1865,7 @@ fun SmartCanteenPosAndWalletDialog(
                                         Icon(
                                             imageVector = icon,
                                             contentDescription = null,
-                                            tint = if (isSelected) GoldFoil else DeepForestGreen,
+                                            tint = if (isSelected) Color.White else DeepForestGreen,
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -2042,10 +2053,10 @@ fun SmartCanteenPosAndWalletDialog(
                                             }
                                             .testTag("canteen_select_student_${stu.id}"),
                                         shape = RoundedCornerShape(50),
-                                        color = if (isSel) DeepEmerald else Color.White,
+                                        color = if (isSel) Color(0xFF059669) else Color.White,
                                         border = BorderStroke(
                                             1.dp,
-                                            if (isSel) GoldFoil else DeepEmerald.copy(alpha = 0.28f)
+                                            if (isSel) Color(0xFF047857) else DeepEmerald.copy(alpha = 0.28f)
                                         )
                                     ) {
                                         Row(
@@ -2057,7 +2068,7 @@ fun SmartCanteenPosAndWalletDialog(
                                                 base64Image = stu.photoBase64,
                                                 fallbackName = stu.fullNameWithFather,
                                                 size = 22.dp,
-                                                borderColor = if (isSel) GoldFoil else DeepEmerald
+                                                borderColor = if (isSel) Color.White else DeepEmerald
                                             )
                                             Column {
                                                 Text(
@@ -2069,7 +2080,7 @@ fun SmartCanteenPosAndWalletDialog(
                                                 Text(
                                                     text = "${"%,d".format(java.util.Locale.US, stu.walletBalance)} د.ع • ${stu.gradeClass}",
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    color = if (isSel) Color(0xFFA7F3D0) else TextMutedGreen,
+                                                    color = if (isSel) Color.White.copy(alpha = 0.9f) else TextMutedGreen,
                                                     fontSize = 10.sp
                                                 )
                                             }
@@ -2091,8 +2102,8 @@ fun SmartCanteenPosAndWalletDialog(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
-                            color = Color(0xFF0A2E22),
-                            border = BorderStroke(1.5.dp, GoldFoil.copy(alpha = 0.65f))
+                            color = Color(0xFF059669),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
                         ) {
                             Column(
                                 modifier = Modifier
@@ -2114,7 +2125,7 @@ fun SmartCanteenPosAndWalletDialog(
                                             base64Image = selectedStudent.photoBase64,
                                             fallbackName = selectedStudent.fullNameWithFather,
                                             size = 44.dp,
-                                            borderColor = GoldFoil
+                                            borderColor = Color.White
                                         )
                                         Column {
                                             Text(
@@ -2126,14 +2137,14 @@ fun SmartCanteenPosAndWalletDialog(
                                             Text(
                                                 text = "${selectedStudent.gradeClass} (${selectedStudent.sectionName}) • ${selectedStudent.walletBarcode}",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFFA7F3D0)
+                                                color = Color.White.copy(alpha = 0.9f)
                                             )
                                         }
                                     }
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
-                                        color = GoldFoil.copy(alpha = 0.18f),
-                                        border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.6f))
+                                        color = Color.White.copy(alpha = 0.18f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
                                     ) {
                                         Column(
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -2142,13 +2153,13 @@ fun SmartCanteenPosAndWalletDialog(
                                             Text(
                                                 text = "الرصيد المتوفر",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = Color.White.copy(alpha = 0.8f),
+                                                color = Color.White.copy(alpha = 0.9f),
                                                 fontSize = 10.sp
                                             )
                                             Text(
                                                 text = "${"%,d".format(java.util.Locale.US, selectedStudent.walletBalance)} د.ع",
                                                 style = MaterialTheme.typography.titleSmall,
-                                                color = GoldFoil,
+                                                color = Color.White,
                                                 fontWeight = FontWeight.ExtraBold
                                             )
                                         }
@@ -2162,7 +2173,8 @@ fun SmartCanteenPosAndWalletDialog(
                                     Surface(
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(10.dp),
-                                        color = Color.White.copy(alpha = 0.08f)
+                                        color = Color.White.copy(alpha = 0.16f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
                                     ) {
                                         Column(
                                             modifier = Modifier.padding(8.dp),
@@ -2171,13 +2183,13 @@ fun SmartCanteenPosAndWalletDialog(
                                             Text(
                                                 text = "الحد اليومي من الأب",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = Color.White.copy(alpha = 0.72f),
+                                                color = Color.White.copy(alpha = 0.9f),
                                                 fontSize = 10.sp
                                             )
                                             Text(
                                                 text = if (dailyLimit > 0) "${"%,d".format(java.util.Locale.US, dailyLimit)} د.ع" else "مفتوح",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = Color(0xFFFDE68A),
+                                                color = Color.White,
                                                 fontWeight = FontWeight.ExtraBold
                                             )
                                         }
@@ -2185,7 +2197,8 @@ fun SmartCanteenPosAndWalletDialog(
                                     Surface(
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(10.dp),
-                                        color = Color.White.copy(alpha = 0.08f)
+                                        color = Color.White.copy(alpha = 0.16f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
                                     ) {
                                         Column(
                                             modifier = Modifier.padding(8.dp),
@@ -2194,7 +2207,7 @@ fun SmartCanteenPosAndWalletDialog(
                                             Text(
                                                 text = "المصروف اليوم",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = Color.White.copy(alpha = 0.72f),
+                                                color = Color.White.copy(alpha = 0.9f),
                                                 fontSize = 10.sp
                                             )
                                             Text(
@@ -2208,7 +2221,8 @@ fun SmartCanteenPosAndWalletDialog(
                                     Surface(
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(10.dp),
-                                        color = Color.White.copy(alpha = 0.08f)
+                                        color = Color.White.copy(alpha = 0.16f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
                                     ) {
                                         Column(
                                             modifier = Modifier.padding(8.dp),
@@ -2217,13 +2231,13 @@ fun SmartCanteenPosAndWalletDialog(
                                             Text(
                                                 text = "المتبقي المسموح اليوم",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = Color.White.copy(alpha = 0.72f),
+                                                color = Color.White.copy(alpha = 0.9f),
                                                 fontSize = 10.sp
                                             )
                                             Text(
                                                 text = if (dailyLimit > 0) "${"%,d".format(java.util.Locale.US, remainingAllowedToday)} د.ع" else "${"%,d".format(java.util.Locale.US, selectedStudent.walletBalance)} د.ع",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = Color(0xFFA7F3D0),
+                                                color = Color.White,
                                                 fontWeight = FontWeight.ExtraBold
                                             )
                                         }
@@ -2272,10 +2286,10 @@ fun SmartCanteenPosAndWalletDialog(
                                                     .clickable { purchaseAmountText = price.toString() }
                                                     .testTag("pos_quick_price_$price"),
                                                 shape = RoundedCornerShape(50),
-                                                color = if (isSelectedPrice) DeepEmerald else Color.White,
+                                                color = if (isSelectedPrice) Color(0xFF059669) else Color.White,
                                                 border = BorderStroke(
                                                     1.dp,
-                                                    if (isSelectedPrice) GoldFoil else DeepEmerald.copy(alpha = 0.35f)
+                                                    if (isSelectedPrice) Color(0xFF047857) else DeepEmerald.copy(alpha = 0.35f)
                                                 )
                                             ) {
                                                 Text(
@@ -2453,10 +2467,10 @@ fun SmartCanteenPosAndWalletDialog(
                                                     .clickable { topUpAmountText = amt.toString() }
                                                     .testTag("topup_quick_amt_$amt"),
                                                 shape = RoundedCornerShape(50),
-                                                color = if (isSelectedAmt) DeepEmerald else Color.White,
+                                                color = if (isSelectedAmt) Color(0xFF059669) else Color.White,
                                                 border = BorderStroke(
                                                     1.dp,
-                                                    if (isSelectedAmt) GoldFoil else DeepEmerald.copy(alpha = 0.35f)
+                                                    if (isSelectedAmt) Color(0xFF047857) else DeepEmerald.copy(alpha = 0.35f)
                                                 )
                                             ) {
                                                 Text(
@@ -2510,14 +2524,15 @@ fun SmartCanteenPosAndWalletDialog(
                                             .testTag("confirm_topup_wallet_btn"),
                                         shape = RoundedCornerShape(14.dp),
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = DeepEmerald,
+                                            containerColor = Color(0xFF059669),
                                             contentColor = Color.White
                                         )
                                     ) {
-                                        Icon(Icons.Default.AddCard, contentDescription = null, tint = GoldFoil)
+                                        Icon(Icons.Default.AddCard, contentDescription = null, tint = Color.White)
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = "شحن المحفظة سحابياً (+${"%,d".format(java.util.Locale.US, parsedTopUp)} د.ع)",
+                                            color = Color.White,
                                             fontWeight = FontWeight.ExtraBold
                                         )
                                     }
@@ -2631,9 +2646,9 @@ fun ParentStudentCanteenWalletCard(
             .fillMaxWidth()
             .testTag("parent_student_canteen_wallet_card"),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0A2E22)),
-        border = BorderStroke(1.5.dp, GoldFoil.copy(alpha = 0.65f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF059669)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Column(
             modifier = Modifier
@@ -2655,13 +2670,13 @@ fun ParentStudentCanteenWalletCard(
                         modifier = Modifier
                             .size(42.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(GoldFoil.copy(alpha = 0.18f)),
+                            .background(Color.White.copy(alpha = 0.18f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.AccountBalanceWallet,
                             contentDescription = null,
-                            tint = GoldFoil,
+                            tint = Color.White,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -2675,7 +2690,7 @@ fun ParentStudentCanteenWalletCard(
                         Text(
                             text = "${student.fullNameWithFather} • ${student.walletBarcode}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFA7F3D0)
+                            color = Color.White.copy(alpha = 0.92f)
                         )
                     }
                 }
@@ -2685,7 +2700,7 @@ fun ParentStudentCanteenWalletCard(
                         .clickable { onOpenWalletBarcodePass() }
                         .testTag("open_wallet_qr_pass_btn"),
                     shape = RoundedCornerShape(50),
-                    color = GoldFoil,
+                    color = Color.White,
                     shadowElevation = 2.dp
                 ) {
                     Row(
@@ -2696,13 +2711,13 @@ fun ParentStudentCanteenWalletCard(
                         Icon(
                             imageVector = Icons.Default.QrCode2,
                             contentDescription = null,
-                            tint = DeepForestGreen,
+                            tint = Color(0xFF047857),
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
                             text = "باركود الحانوت",
                             style = MaterialTheme.typography.labelSmall,
-                            color = DeepForestGreen,
+                            color = Color(0xFF047857),
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
@@ -2717,8 +2732,8 @@ fun ParentStudentCanteenWalletCard(
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color.White.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.35f))
+                    color = Color.White.copy(alpha = 0.16f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
                 ) {
                     Column(
                         modifier = Modifier.padding(10.dp),
@@ -2727,13 +2742,13 @@ fun ParentStudentCanteenWalletCard(
                         Text(
                             text = "الرصيد الحالي",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.78f),
+                            color = Color.White.copy(alpha = 0.9f),
                             fontSize = 10.sp
                         )
                         Text(
                             text = "${"%,d".format(java.util.Locale.US, student.walletBalance)} د.ع",
                             style = MaterialTheme.typography.titleSmall,
-                            color = GoldFoil,
+                            color = Color.White,
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
@@ -2741,7 +2756,8 @@ fun ParentStudentCanteenWalletCard(
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color.White.copy(alpha = 0.08f)
+                    color = Color.White.copy(alpha = 0.16f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
                 ) {
                     Column(
                         modifier = Modifier.padding(10.dp),
@@ -2750,7 +2766,7 @@ fun ParentStudentCanteenWalletCard(
                         Text(
                             text = "الحد اليومي المسموح",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.78f),
+                            color = Color.White.copy(alpha = 0.9f),
                             fontSize = 10.sp
                         )
                         Text(
@@ -2760,7 +2776,7 @@ fun ParentStudentCanteenWalletCard(
                                 "مفتوح"
                             },
                             style = MaterialTheme.typography.titleSmall,
-                            color = Color(0xFFFDE68A),
+                            color = Color.White,
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
@@ -2768,7 +2784,8 @@ fun ParentStudentCanteenWalletCard(
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color.White.copy(alpha = 0.08f)
+                    color = Color.White.copy(alpha = 0.16f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
                 ) {
                     Column(
                         modifier = Modifier.padding(10.dp),
@@ -2777,13 +2794,13 @@ fun ParentStudentCanteenWalletCard(
                         Text(
                             text = "ما تم صرفه اليوم",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.78f),
+                            color = Color.White.copy(alpha = 0.9f),
                             fontSize = 10.sp
                         )
                         Text(
                             text = "${"%,d".format(java.util.Locale.US, spentToday)} د.ع",
                             style = MaterialTheme.typography.titleSmall,
-                            color = Color(0xFFA7F3D0),
+                            color = Color.White,
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
@@ -2795,8 +2812,8 @@ fun ParentStudentCanteenWalletCard(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    color = Color.White.copy(alpha = 0.07f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+                    color = Color.White.copy(alpha = 0.14f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
                 ) {
                     Column(
                         modifier = Modifier
@@ -2807,7 +2824,7 @@ fun ParentStudentCanteenWalletCard(
                         Text(
                             text = "تحديد الحد الأقصى للشراء اليومي للطالب (د.ع) — (0 = مفتوح بدون سقف):",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFFDE68A),
+                            color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
                         FlowRow(
@@ -2827,16 +2844,16 @@ fun ParentStudentCanteenWalletCard(
                                         }
                                         .testTag("parent_quick_limit_$lim"),
                                     shape = RoundedCornerShape(50),
-                                    color = if (isSel) GoldFoil else Color.White.copy(alpha = 0.12f),
+                                    color = if (isSel) Color.White else Color.White.copy(alpha = 0.18f),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (isSel) GoldFoil else Color.White.copy(alpha = 0.25f)
+                                        if (isSel) Color.White else Color.White.copy(alpha = 0.35f)
                                     )
                                 ) {
                                     Text(
                                         text = if (lim == 0) "مفتوح (0)" else "${"%,d".format(java.util.Locale.US, lim)} د.ع",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (isSel) DeepForestGreen else Color.White,
+                                        color = if (isSel) Color(0xFF047857) else Color.White,
                                         fontWeight = FontWeight.ExtraBold,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                     )
@@ -2852,10 +2869,17 @@ fun ParentStudentCanteenWalletCard(
                             OutlinedTextField(
                                 value = limitInput,
                                 onValueChange = { limitInput = it.filter { ch -> ch.isDigit() } },
-                                label = { Text("الحد اليومي (د.ع)", color = Color.White.copy(alpha = 0.8f)) },
+                                label = { Text("الحد اليومي (د.ع)", color = Color.White) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = Color.White,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.55f),
+                                    cursorColor = Color.White
+                                )
                             )
                             Button(
                                 onClick = {
@@ -2864,13 +2888,13 @@ fun ParentStudentCanteenWalletCard(
                                 },
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = DeepEmerald,
-                                    contentColor = Color.White
+                                    containerColor = Color.White,
+                                    contentColor = Color(0xFF047857)
                                 )
                             ) {
-                                Icon(Icons.Default.Check, contentDescription = null, tint = GoldFoil)
+                                Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF047857))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("حفظ السقف", fontWeight = FontWeight.Bold)
+                                Text("حفظ السقف", color = Color(0xFF047857), fontWeight = FontWeight.ExtraBold)
                             }
                         }
 
@@ -2878,7 +2902,7 @@ fun ParentStudentCanteenWalletCard(
                             Text(
                                 text = statusMessage.orEmpty(),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFA7F3D0),
+                                color = Color.White,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -2901,20 +2925,20 @@ fun ParentStudentCanteenWalletCard(
                     Icon(
                         imageVector = Icons.Default.History,
                         contentDescription = null,
-                        tint = Color(0xFFA7F3D0),
+                        tint = Color.White,
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
                         text = "سجل حركات الشحن والشراء من الحانوت (${student.walletTransactions.size})",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFA7F3D0),
+                        color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 Text(
                     text = if (showTransactions) "إخفاء السجل" else "عرض السجل",
                     style = MaterialTheme.typography.labelSmall,
-                    color = GoldFoil,
+                    color = Color.White,
                     fontWeight = FontWeight.ExtraBold
                 )
             }
@@ -2924,24 +2948,19 @@ fun ParentStudentCanteenWalletCard(
                     Text(
                         text = "لا توجد حركات مالية مسجلة في المحفظة حتى الآن.",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.7f)
+                        color = Color.White.copy(alpha = 0.85f)
                     )
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         student.walletTransactions.take(15).forEach { tx ->
                             val isRejected = tx.type == CanteenTransactionType.PURCHASE_REJECTED
-                            val isTopUp = tx.type == CanteenTransactionType.TOP_UP
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                color = Color.White.copy(alpha = 0.08f),
+                                color = Color.White.copy(alpha = 0.14f),
                                 border = BorderStroke(
                                     1.dp,
-                                    when {
-                                        isRejected -> DangerRed.copy(alpha = 0.6f)
-                                        isTopUp -> SuccessGreen.copy(alpha = 0.6f)
-                                        else -> GoldFoil.copy(alpha = 0.35f)
-                                    }
+                                    if (isRejected) DangerRed.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.35f)
                                 )
                             ) {
                                 Row(
@@ -2955,24 +2974,20 @@ fun ParentStudentCanteenWalletCard(
                                         Text(
                                             text = "${tx.type.arabicLabel}: ${"%,d".format(java.util.Locale.US, tx.amount)} د.ع",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = when {
-                                                isRejected -> Color(0xFFFCA5A5)
-                                                isTopUp -> Color(0xFFA7F3D0)
-                                                else -> Color.White
-                                            },
+                                            color = if (isRejected) Color(0xFFFEE2E2) else Color.White,
                                             fontWeight = FontWeight.ExtraBold
                                         )
                                         Text(
                                             text = "${tx.note} • ${tx.timestamp}",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White.copy(alpha = 0.72f),
+                                            color = Color.White.copy(alpha = 0.85f),
                                             fontSize = 10.sp
                                         )
                                     }
                                     Text(
                                         text = "${"%,d".format(java.util.Locale.US, tx.balanceAfter)} د.ع",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = GoldFoil,
+                                        color = Color.White,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }

@@ -59,16 +59,27 @@ fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.remember(context) {
+        CairoFontManager.initSynchronouslyIfCached(context)
+        true
+    }
+    androidx.compose.runtime.LaunchedEffect(context) {
+        CairoFontManager.ensureCairoFontsLoaded(context)
+    }
+
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val activeTypography = CairoFontManager.currentTypography
+    val activeFontFamily = CairoFontManager.currentFontFamily
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = Typography
+            typography = activeTypography
         ) {
             androidx.compose.material3.ProvideTextStyle(
                 value = androidx.compose.ui.text.TextStyle(
-                    fontFamily = CairoFontFamily,
+                    fontFamily = activeFontFamily,
                     letterSpacing = 0.sp
                 )
             ) {
@@ -77,3 +88,4 @@ fun MyApplicationTheme(
         }
     }
 }
+

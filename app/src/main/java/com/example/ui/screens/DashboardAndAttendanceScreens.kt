@@ -520,11 +520,11 @@ fun DashboardScreen(
                         )
                         if (featureSettings.honorRollEnabled) {
                             SmartStatCard(
-                                title = "لوحة الشرف الذهبية",
+                                title = "لوحة الشرف للمتفوقين",
                                 value = "$honorCount متفوق",
                                 subtitle = if (isTeacher) "ضمن طلابك المسندين" else "أوائل الصفوف",
                                 icon = Icons.Filled.EmojiEvents,
-                                accentColor = GoldAccent,
+                                accentColor = Color(0xFF059669),
                                 modifier = Modifier.weight(1f),
                                 onClick = { viewModel.navigateToSection(AppSection.HONOR_ROLL) }
                             )
@@ -556,76 +556,88 @@ fun DashboardScreen(
 
                     // Smart Canteen POS & Wallet Management Card (for Principal and Authorized Teacher/Cashier)
                     if (canManageCanteen) {
-                        Surface(
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { showCanteenPosDialog = true }
                                 .testTag("dashboard_open_canteen_pos_card"),
                             shape = RoundedCornerShape(18.dp),
-                            color = Color(0xFF0A2E22),
-                            border = androidx.compose.foundation.BorderStroke(1.5.dp, GoldFoil.copy(alpha = 0.65f))
+                            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                         ) {
-                            Row(
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(
+                                                Color(0xFF047857),
+                                                Color(0xFF059669)
+                                            )
+                                        )
+                                    )
+                                    .padding(14.dp)
                             ) {
                                 Row(
+                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(GoldFoil.copy(alpha = 0.18f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Storefront,
-                                            contentDescription = null,
-                                            tint = GoldFoil,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "نظام كاشير ومحفظة الحانوت الذكية",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                        Text(
-                                            text = "نقطة بيع الباركود (POS) وشحن أرصدة الطلاب سحابياً",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFFA7F3D0)
-                                        )
-                                    }
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = GoldFoil
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.QrCodeScanner,
-                                            contentDescription = null,
-                                            tint = DeepForestGreen,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "فتح الكاشير",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = DeepForestGreen,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(Color.White.copy(alpha = 0.18f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Storefront,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "نظام كاشير ومحفظة الحانوت الذكية",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                            Text(
+                                                text = "نقطة بيع الباركود (POS) وشحن أرصدة الطلاب سحابياً",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White.copy(alpha = 0.92f)
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White,
+                                        shadowElevation = 2.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.QrCodeScanner,
+                                                contentDescription = null,
+                                                tint = Color(0xFF047857),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "فتح الكاشير",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF047857),
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -3245,55 +3257,75 @@ fun CompactDailyBehaviorCard(
             }
 
             topThree.forEach { beh ->
+                val cleanNote = beh.note.trim()
+                val hasDistinctNote = cleanNote.isNotEmpty()
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (beh.behaviorType.isPositive) {
-                        SuccessGreen.copy(alpha = 0.12f)
-                    } else {
-                        DeepEmerald.copy(alpha = 0.08f)
-                    },
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFF0FDF4),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
                                     imageVector = if (beh.behaviorType.isPositive) ClipboardCheckVectorIcon else Icons.Filled.Info,
                                     contentDescription = null,
-                                    tint = if (beh.behaviorType.isPositive) SuccessGreen else DeepEmerald,
-                                    modifier = Modifier.size(15.dp)
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Text(
                                     text = "${beh.behaviorType.arabicTitle} • ${beh.subjectName}",
                                     style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = DeepForestGreen
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF065F46)
                                 )
                             }
-                            if (beh.teacherName.isNotBlank()) {
+                            Text(
+                                text = beh.date,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF059669)
+                            )
+                        }
+
+                        if (hasDistinctNote) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.White,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD1FAE5)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Text(
-                                    text = "بواسطة: ${beh.teacherName}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextMutedGreen
+                                    text = cleanNote,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                                 )
                             }
                         }
-                        Text(
-                            text = beh.date,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextMutedGreen
-                        )
+
+                        if (beh.teacherName.isNotBlank()) {
+                            Text(
+                                text = "بواسطة: ${beh.teacherName}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMutedGreen
+                            )
+                        }
                     }
                 }
             }
@@ -3466,57 +3498,64 @@ fun DailyBehaviorFullLogModal(
                         items(filteredBehaviors, key = { it.id }) { beh ->
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (beh.behaviorType.isPositive) {
-                                    SuccessGreen.copy(alpha = 0.12f)
-                                } else {
-                                    DeepEmerald.copy(alpha = 0.08f)
-                                },
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (beh.behaviorType.isPositive) SuccessGreen.copy(alpha = 0.35f) else DeepEmerald.copy(alpha = 0.22f)
-                                ),
+                                color = Color(0xFFF0FDF4),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = beh.behaviorType.arabicTitle,
+                                            text = "${beh.behaviorType.arabicTitle} • ${beh.subjectName}",
                                             style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = DeepForestGreen
+                                            color = Color(0xFF065F46),
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        Text(
-                                            text = "المادة: ${beh.subjectName} • بواسطة: ${beh.teacherName}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = TextMutedGreen
-                                        )
-                                        if (beh.note.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFFD1FAE5)
+                                        ) {
                                             Text(
-                                                text = beh.note,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = DeepEmerald
+                                                text = beh.date,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF065F46),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                             )
                                         }
                                     }
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.surface
-                                    ) {
-                                        Text(
-                                            text = beh.date,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = DeepForestGreen,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        )
+
+                                    if (beh.note.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color.White,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD1FAE5)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = beh.note,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF1E293B),
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                            )
+                                        }
                                     }
+
+                                    Text(
+                                        text = "بواسطة: ${beh.teacherName}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextMutedGreen
+                                    )
                                 }
                             }
                         }

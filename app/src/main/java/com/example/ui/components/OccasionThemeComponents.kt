@@ -254,32 +254,32 @@ fun UrgentSchoolAlertBannerCard(
         modifier = modifier
             .fillMaxWidth()
             .testTag("urgent_school_alert_banner_card"),
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xFFFFFBEB),
-        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.45f)),
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFFF0FDF4),
+        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
         shadowElevation = 1.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 9.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // أيقونة جرس تفاعلية نابضة ومتحركة بأسلوب JSON/Lottie
+            // على اليمين: أيقونة تنبيه خطية زمردية صافية داخل مربع ناعم (32.dp)
             Box(
                 modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFFEF3C7)),
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFFD1FAE5)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Filled.NotificationsActive,
                     contentDescription = "تنبيه عاجل",
-                    tint = Color(0xFFD97706),
+                    tint = Color(0xFF059669),
                     modifier = Modifier
-                        .size(17.dp)
+                        .size(18.dp)
                         .graphicsLayer {
                             rotationZ = bellRotation
                             scaleX = bellPulseScale
@@ -288,34 +288,39 @@ fun UrgentSchoolAlertBannerCard(
                 )
             }
 
-            // شارة صغيرة "تنبيه عاجل"
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = Color(0xFFFDE68A).copy(alpha = 0.75f),
-                border = BorderStroke(0.8.dp, Color(0xFFF59E0B).copy(alpha = 0.55f))
+            // في الوسط: العنوان كشارة زمردية رقيقة + نص الرسالة بلون كحلي/رمادي مريح
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFFD1FAE5),
+                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                ) {
+                    Text(
+                        text = "تنبيه عاجل",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF065F46),
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+
                 Text(
-                    text = "تنبيه عاجل",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF92400E),
-                    maxLines = 1,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    text = alert.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            // نص التنبيه مباشرة بخط داكن واضح دون أي مستطيل داخلي فارغ
-            Text(
-                text = alert.message,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF78350F),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-
-            // في أقصى اليسار أزرار أيقونات أنيقة بدون هالات دائرية متداخلة (26dp)
+            // على اليسار: أزرار الإجراءات وزر إغلاق (X) صغير وأنيق لإخفائه فوراً
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -324,8 +329,8 @@ fun UrgentSchoolAlertBannerCard(
                     Box(
                         modifier = Modifier
                             .size(26.dp)
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(Color(0xFFFEF3C7).copy(alpha = 0.7f))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFD1FAE5))
                             .clickable(onClick = onEditRequest)
                             .testTag("admin_edit_urgent_alert_button"),
                         contentAlignment = Alignment.Center
@@ -333,7 +338,7 @@ fun UrgentSchoolAlertBannerCard(
                         Icon(
                             imageVector = Icons.Filled.Edit,
                             contentDescription = "تعديل التنبيه",
-                            tint = Color(0xFFB45309),
+                            tint = Color(0xFF059669),
                             modifier = Modifier.size(15.dp)
                         )
                     }
@@ -341,8 +346,8 @@ fun UrgentSchoolAlertBannerCard(
                     Box(
                         modifier = Modifier
                             .size(26.dp)
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(Color(0xFFFEE2E2).copy(alpha = 0.65f))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFFEE2E2).copy(alpha = 0.75f))
                             .clickable(onClick = onDeleteAlert)
                             .testTag("admin_delete_urgent_alert_button"),
                         contentAlignment = Alignment.Center
@@ -359,7 +364,8 @@ fun UrgentSchoolAlertBannerCard(
                 Box(
                     modifier = Modifier
                         .size(26.dp)
-                        .clip(RoundedCornerShape(7.dp))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFD1FAE5).copy(alpha = 0.6f))
                         .clickable(onClick = onDismissForUser)
                         .testTag("dismiss_urgent_alert_button"),
                     contentAlignment = Alignment.Center
@@ -367,7 +373,7 @@ fun UrgentSchoolAlertBannerCard(
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = "إغلاق التنبيه",
-                        tint = Color(0xFF78350F),
+                        tint = Color(0xFF065F46),
                         modifier = Modifier.size(15.dp)
                     )
                 }
@@ -766,15 +772,8 @@ fun OccasionVectorEmblem(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFFFDE68A).copy(alpha = 0.35f),
-                                Color(0xFF064E3B).copy(alpha = 0.85f)
-                            )
-                        )
-                    )
-                    .border(2.dp, Color(0xFFF59E0B), CircleShape)
+                    .background(Color(0xFFD1FAE5))
+                    .border(1.5.dp, Color(0xFF059669), CircleShape)
                     .padding(4.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -794,12 +793,12 @@ fun OccasionVectorEmblem(
                 val center = Offset(w / 2f, h / 2f)
                 val radius = (w.coerceAtMost(h) / 2f)
 
-                // Outer golden aura ring
+                // Soft emerald aura ring
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFFFDE68A).copy(alpha = 0.38f * glowPulse),
-                            Color(0xFFD97706).copy(alpha = 0.14f * glowPulse),
+                            Color(0xFFA7F3D0).copy(alpha = 0.40f * glowPulse),
+                            Color(0xFF10B981).copy(alpha = 0.14f * glowPulse),
                             Color.Transparent
                         ),
                         center = center,
@@ -812,20 +811,18 @@ fun OccasionVectorEmblem(
                 // Medallion background
                 drawCircle(
                     brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFF065F46), Color(0xFF022C22))
+                        colors = listOf(Color(0xFF047857), Color(0xFF059669))
                     ),
                     radius = radius * 0.82f,
                     center = center
                 )
 
-                // Luxury double gold border
+                // Clean emerald/white border
                 drawCircle(
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFFFDE68A), Color(0xFFD97706), Color(0xFFF59E0B))
-                    ),
+                    color = Color(0xFFA7F3D0),
                     radius = radius * 0.82f,
                     center = center,
-                    style = Stroke(width = radius * 0.065f)
+                    style = Stroke(width = radius * 0.055f)
                 )
 
                 when (resolvedIconKey) {
@@ -847,8 +844,8 @@ fun OccasionVectorEmblem(
 }
 
 private fun DrawScope.drawCrownEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     val crownPath = Path().apply {
         moveTo(w * 0.27f, h * 0.64f)
@@ -860,21 +857,21 @@ private fun DrawScope.drawCrownEmblem(w: Float, h: Float) {
         lineTo(w * 0.73f, h * 0.64f)
         close()
     }
-    drawPath(path = crownPath, brush = goldBrush)
+    drawPath(path = crownPath, brush = whiteBrush)
     drawRoundRect(
-        brush = goldBrush,
+        brush = whiteBrush,
         topLeft = Offset(w * 0.27f, h * 0.66f),
         size = Size(w * 0.46f, h * 0.07f),
         cornerRadius = CornerRadius(w * 0.03f, w * 0.03f)
     )
-    drawCircle(color = Color(0xFFFFFBEB), radius = w * 0.032f, center = Offset(w * 0.50f, h * 0.28f))
-    drawCircle(color = Color(0xFFFDE68A), radius = w * 0.025f, center = Offset(w * 0.23f, h * 0.37f))
-    drawCircle(color = Color(0xFFFDE68A), radius = w * 0.025f, center = Offset(w * 0.77f, h * 0.37f))
+    drawCircle(color = Color.White, radius = w * 0.032f, center = Offset(w * 0.50f, h * 0.28f))
+    drawCircle(color = Color(0xFFD1FAE5), radius = w * 0.025f, center = Offset(w * 0.23f, h * 0.37f))
+    drawCircle(color = Color(0xFFD1FAE5), radius = w * 0.025f, center = Offset(w * 0.77f, h * 0.37f))
 }
 
 private fun DrawScope.drawRamadanLanternEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     val crescentPath = Path().apply {
         val cx = w * 0.48f
@@ -901,18 +898,18 @@ private fun DrawScope.drawRamadanLanternEmblem(w: Float, h: Float) {
         }
         op(this, cutout, androidx.compose.ui.graphics.PathOperation.Difference)
     }
-    drawPath(path = crescentPath, brush = goldBrush)
+    drawPath(path = crescentPath, brush = whiteBrush)
     drawStar(
         center = Offset(w * 0.63f, h * 0.38f),
         outerRadius = w * 0.085f,
         innerRadius = w * 0.038f,
-        color = Color(0xFFFFFBEB)
+        color = Color.White
     )
 }
 
 private fun DrawScope.drawGraduationCapEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     val capTop = Path().apply {
         moveTo(w * 0.50f, h * 0.30f)
@@ -921,7 +918,7 @@ private fun DrawScope.drawGraduationCapEmblem(w: Float, h: Float) {
         lineTo(w * 0.22f, h * 0.44f)
         close()
     }
-    drawPath(capTop, brush = goldBrush)
+    drawPath(capTop, brush = whiteBrush)
     val skullCap = Path().apply {
         moveTo(w * 0.34f, h * 0.52f)
         lineTo(w * 0.34f, h * 0.66f)
@@ -930,24 +927,24 @@ private fun DrawScope.drawGraduationCapEmblem(w: Float, h: Float) {
         lineTo(w * 0.50f, h * 0.60f)
         close()
     }
-    drawPath(skullCap, color = Color(0xFFF59E0B))
+    drawPath(skullCap, color = Color(0xFFD1FAE5))
     drawLine(
-        color = Color(0xFFFFFBEB),
+        color = Color.White,
         start = Offset(w * 0.72f, h * 0.47f),
         end = Offset(w * 0.72f, h * 0.66f),
         strokeWidth = w * 0.03f,
         cap = StrokeCap.Round
     )
     drawCircle(
-        color = Color(0xFFFFFBEB),
+        color = Color.White,
         radius = w * 0.032f,
         center = Offset(w * 0.72f, h * 0.67f)
     )
 }
 
 private fun DrawScope.drawTrophyLaurelEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     val cupPath = Path().apply {
         moveTo(w * 0.34f, h * 0.30f)
@@ -956,15 +953,15 @@ private fun DrawScope.drawTrophyLaurelEmblem(w: Float, h: Float) {
         quadraticTo(w * 0.50f, h * 0.61f, w * 0.39f, h * 0.52f)
         close()
     }
-    drawPath(cupPath, brush = goldBrush)
+    drawPath(cupPath, brush = whiteBrush)
     drawLine(
-        color = Color(0xFFFBBF24),
+        color = Color.White,
         start = Offset(w * 0.50f, h * 0.56f),
         end = Offset(w * 0.50f, h * 0.68f),
         strokeWidth = w * 0.055f
     )
     drawRoundRect(
-        brush = goldBrush,
+        brush = whiteBrush,
         topLeft = Offset(w * 0.36f, h * 0.67f),
         size = Size(w * 0.28f, h * 0.065f),
         cornerRadius = CornerRadius(w * 0.02f, w * 0.02f)
@@ -973,13 +970,13 @@ private fun DrawScope.drawTrophyLaurelEmblem(w: Float, h: Float) {
         center = Offset(w * 0.50f, h * 0.42f),
         outerRadius = w * 0.065f,
         innerRadius = w * 0.028f,
-        color = Color(0xFF042F2E)
+        color = Color(0xFF047857)
     )
 }
 
 private fun DrawScope.drawShieldEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     val shield = Path().apply {
         moveTo(w * 0.50f, h * 0.26f)
@@ -990,21 +987,21 @@ private fun DrawScope.drawShieldEmblem(w: Float, h: Float) {
         lineTo(w * 0.28f, h * 0.34f)
         close()
     }
-    drawPath(shield, brush = goldBrush)
+    drawPath(shield, brush = whiteBrush)
     drawStar(
         center = Offset(w * 0.50f, h * 0.50f),
         outerRadius = w * 0.11f,
         innerRadius = w * 0.045f,
-        color = Color(0xFF042F2E)
+        color = Color(0xFF047857)
     )
 }
 
 private fun DrawScope.drawNationalBannerEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     drawLine(
-        brush = goldBrush,
+        brush = whiteBrush,
         start = Offset(w * 0.32f, h * 0.27f),
         end = Offset(w * 0.32f, h * 0.74f),
         strokeWidth = w * 0.045f,
@@ -1017,18 +1014,18 @@ private fun DrawScope.drawNationalBannerEmblem(w: Float, h: Float) {
         cubicTo(w * 0.58f, h * 0.58f, w * 0.46f, h * 0.47f, w * 0.34f, h * 0.53f)
         close()
     }
-    drawPath(flagPath, brush = goldBrush)
+    drawPath(flagPath, brush = whiteBrush)
     drawStar(
         center = Offset(w * 0.53f, h * 0.42f),
         outerRadius = w * 0.06f,
         innerRadius = w * 0.025f,
-        color = Color(0xFF042F2E)
+        color = Color(0xFF047857)
     )
 }
 
 private fun DrawScope.drawOpenBookEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     val leftPage = Path().apply {
         moveTo(w * 0.50f, h * 0.36f)
@@ -1044,10 +1041,10 @@ private fun DrawScope.drawOpenBookEmblem(w: Float, h: Float) {
         quadraticTo(w * 0.63f, h * 0.61f, w * 0.50f, h * 0.66f)
         close()
     }
-    drawPath(leftPage, brush = goldBrush)
-    drawPath(rightPage, brush = goldBrush)
+    drawPath(leftPage, brush = whiteBrush)
+    drawPath(rightPage, brush = whiteBrush)
     drawLine(
-        color = Color(0xFF042F2E),
+        color = Color(0xFF047857),
         start = Offset(w * 0.50f, h * 0.35f),
         end = Offset(w * 0.50f, h * 0.67f),
         strokeWidth = w * 0.03f
@@ -1059,49 +1056,49 @@ private fun DrawScope.drawRoyalStarEmblem(w: Float, h: Float) {
         center = Offset(w * 0.50f, h * 0.50f),
         outerRadius = w * 0.25f,
         innerRadius = w * 0.11f,
-        color = Color(0xFFFBBF24)
+        color = Color.White
     )
     drawStar(
         center = Offset(w * 0.50f, h * 0.50f),
         outerRadius = w * 0.13f,
         innerRadius = w * 0.055f,
-        color = Color(0xFFFFFBEB)
+        color = Color(0xFFD1FAE5)
     )
 }
 
 private fun DrawScope.drawCalendarEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     drawRoundRect(
-        brush = goldBrush,
+        brush = whiteBrush,
         topLeft = Offset(w * 0.28f, h * 0.31f),
         size = Size(w * 0.44f, h * 0.42f),
         cornerRadius = CornerRadius(w * 0.05f, w * 0.05f)
     )
     drawLine(
-        color = Color(0xFF042F2E),
+        color = Color(0xFF047857),
         start = Offset(w * 0.28f, h * 0.43f),
         end = Offset(w * 0.72f, h * 0.43f),
         strokeWidth = w * 0.03f
     )
     // Rings on top
     drawLine(
-        color = Color(0xFFFFFBEB),
+        color = Color.White,
         start = Offset(w * 0.38f, h * 0.26f),
         end = Offset(w * 0.38f, h * 0.35f),
         strokeWidth = w * 0.04f,
         cap = StrokeCap.Round
     )
     drawLine(
-        color = Color(0xFFFFFBEB),
+        color = Color.White,
         start = Offset(w * 0.62f, h * 0.26f),
         end = Offset(w * 0.62f, h * 0.35f),
         strokeWidth = w * 0.04f,
         cap = StrokeCap.Round
     )
     // Grid dots
-    val dotColor = Color(0xFF042F2E)
+    val dotColor = Color(0xFF047857)
     for (row in 0..1) {
         for (col in 0..2) {
             drawCircle(
@@ -1122,19 +1119,19 @@ private fun DrawScope.drawRoseEmblem(w: Float, h: Float) {
         val px = center.x + (ringDist * cos(angle)).toFloat()
         val py = center.y + (ringDist * sin(angle)).toFloat()
         drawCircle(
-            color = Color(0xFFFBBF24),
+            color = Color.White,
             radius = petalRadius,
             center = Offset(px, py)
         )
     }
     drawCircle(
-        color = Color(0xFFFFFBEB),
+        color = Color(0xFFA7F3D0),
         radius = w * 0.08f,
         center = center
     )
     // Stem
     drawLine(
-        color = Color(0xFF34D399),
+        color = Color(0xFFD1FAE5),
         start = Offset(w * 0.50f, h * 0.60f),
         end = Offset(w * 0.50f, h * 0.75f),
         strokeWidth = w * 0.035f,
@@ -1143,8 +1140,8 @@ private fun DrawScope.drawRoseEmblem(w: Float, h: Float) {
 }
 
 private fun DrawScope.drawBellEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
     val bellPath = Path().apply {
         moveTo(w * 0.50f, h * 0.27f)
@@ -1155,9 +1152,9 @@ private fun DrawScope.drawBellEmblem(w: Float, h: Float) {
         cubicTo(w * 0.67f, h * 0.42f, w * 0.64f, h * 0.27f, w * 0.50f, h * 0.27f)
         close()
     }
-    drawPath(bellPath, brush = goldBrush)
+    drawPath(bellPath, brush = whiteBrush)
     drawCircle(
-        color = Color(0xFFFFFBEB),
+        color = Color.White,
         radius = w * 0.048f,
         center = Offset(w * 0.50f, h * 0.69f)
     )
@@ -1202,92 +1199,101 @@ fun LiveOccasionBannerCard(
     modifier: Modifier = Modifier,
     forcePreview: Boolean = false
 ) {
+    var isLocallyDismissed by remember(config.effectiveTitle, config.effectiveBannerText, config.updatedAt) {
+        mutableStateOf(false)
+    }
     // Hidden by default unless explicitly activated by the developer (or previewed in Dev Panel)
-    if (!config.isActive && !forcePreview) return
+    if ((!config.isActive || isLocallyDismissed) && !forcePreview) return
 
-    val startColor = remember(config.effectivePrimaryHex) {
-        runCatching { Color(android.graphics.Color.parseColor(config.effectivePrimaryHex)) }
-            .getOrDefault(Color(0xFF042F2E))
-    }
-    val endColor = remember(config.effectiveGradientHex) {
-        runCatching { Color(android.graphics.Color.parseColor(config.effectiveGradientHex)) }
-            .getOrDefault(Color(0xFF047857))
-    }
-    val accentColor = Color(0xFFF59E0B)
-    val selectedIconKey = remember(config.selectedIconKey) {
-        OccasionIconKey.fromKey(config.selectedIconKey)
-    }
+    val titleText = config.effectiveTitle.ifBlank { "تنبيه عام" }
+    val bodyText = config.effectiveBannerText
 
-    Card(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .border(
-                width = 1.5.dp,
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        accentColor.copy(alpha = 0.7f),
-                        Color(0xFFFDE68A),
-                        accentColor.copy(alpha = 0.7f)
-                    )
-                ),
-                shape = RoundedCornerShape(22.dp)
-            )
             .testTag("live_occasion_banner_card"),
-        shape = RoundedCornerShape(22.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFFF0FDF4),
+        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+        shadowElevation = 1.dp
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(startColor, endColor)
-                    )
-                )
-                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            // على اليمين: أيقونة تنبيه خطية زمردية صافية داخل مربع ناعم (32.dp بلون Color(0xFFD1FAE5))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFFD1FAE5)),
+                contentAlignment = Alignment.Center
             ) {
-                OccasionVectorEmblem(
-                    themeType = config.themeType,
-                    iconKey = selectedIconKey,
-                    customIconBase64 = config.customIconBase64,
-                    size = 56.dp
+                Icon(
+                    imageVector = Icons.Filled.Campaign,
+                    contentDescription = titleText,
+                    tint = Color(0xFF059669),
+                    modifier = Modifier.size(18.dp)
                 )
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+            }
+
+            // في الوسط: العنوان كشارة زمردية رقيقة + نص الرسالة بلون كحلي/رمادي مريح (Color(0xFF1E293B))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFFD1FAE5),
+                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = accentColor.copy(alpha = 0.22f),
-                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.7f))
-                        ) {
-                            Text(
-                                text = config.effectiveTitle,
-                                color = Color(0xFFFDE68A),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                            )
-                        }
+                        Text(
+                            text = titleText,
+                            color = Color(0xFF065F46),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                        )
                     }
+                }
+                if (bodyText.isNotBlank()) {
                     Text(
-                        text = config.effectiveBannerText,
+                        text = bodyText,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.90f),
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1E293B),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         lineHeight = 18.sp
+                    )
+                }
+            }
+
+            // على اليسار: زر إغلاق (X) صغير وأنيق لإخفائه فوراً
+            if (!forcePreview) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFD1FAE5).copy(alpha = 0.65f))
+                        .clickable { isLocallyDismissed = true }
+                        .testTag("dismiss_live_occasion_banner_btn"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color(0xFF065F46),
+                        modifier = Modifier.size(15.dp)
                     )
                 }
             }

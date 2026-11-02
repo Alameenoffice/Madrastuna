@@ -1614,7 +1614,7 @@ fun GoldenVectorMedal(
                 lineTo(cx + 2f, cy + outerR * 0.7f)
                 close()
             }
-            drawPath(ribbonPath, color = GoldDeep)
+            drawPath(ribbonPath, color = Color(0xFF047857))
 
             // Starburst Laurel Points
             for (i in 0 until 12) {
@@ -1622,22 +1622,22 @@ fun GoldenVectorMedal(
                 val sx = cx + (outerR * 1.06f * cos(angle)).toFloat()
                 val sy = cy + (outerR * 1.06f * sin(angle)).toFloat()
                 drawCircle(
-                    color = GoldAccent,
+                    color = Color(0xFF10B981),
                     radius = 5f,
                     center = Offset(sx, sy)
                 )
             }
 
-            // Main Gold Medallion
+            // Main Emerald Medallion
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color(0xFFFDE68A), GoldAccent, GoldDeep)
+                    colors = listOf(Color(0xFF10B981), Color(0xFF059669), Color(0xFF047857))
                 ),
                 radius = outerR,
                 center = Offset(cx, cy)
             )
             drawCircle(
-                color = Color.White.copy(alpha = 0.6f),
+                color = Color.White.copy(alpha = 0.75f),
                 radius = outerR * 0.78f,
                 center = Offset(cx, cy),
                 style = Stroke(width = 2.5f, cap = StrokeCap.Round)
@@ -1646,8 +1646,8 @@ fun GoldenVectorMedal(
         Text(
             text = "#$rank",
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF451A03),
+            fontWeight = FontWeight.ExtraBold,
+            color = Color.White,
             maxLines = 1,
             softWrap = false
         )

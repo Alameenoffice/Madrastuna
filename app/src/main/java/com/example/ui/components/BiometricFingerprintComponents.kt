@@ -47,8 +47,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun BiometricFingerprintVectorIcon(
     size: Dp = 36.dp,
-    tint: Color = Color(0xFFA7F3D0),
-    accentTint: Color = Color(0xFFFBBF24),
+    tint: Color = Color(0xFF059669),
+    accentTint: Color = Color(0xFF059669),
     isScanning: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -122,7 +122,7 @@ fun BiometricFingerprintVectorIcon(
         if (isScanning) {
             val scanY = h * scanLineProgress
             drawLine(
-                color = accentTint,
+                color = accentTint.copy(alpha = 0.65f),
                 start = Offset(w * 0.12f, scanY),
                 end = Offset(w * 0.88f, scanY),
                 strokeWidth = strokeW * 0.9f,
@@ -155,12 +155,8 @@ fun BiometricSensorFallbackDialog(
                 modifier = Modifier
                     .size(74.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(DeepForestGreen, DeepEmerald)
-                        )
-                    )
-                    .border(2.dp, Color(0xFFFBBF24), CircleShape)
+                    .background(Color(0xFFD1FAE5))
+                    .border(1.5.dp, Color(0xFFA7F3D0), CircleShape)
                     .clickable(enabled = !isScanningNow) {
                         isScanningNow = true
                         scope.launch {
@@ -174,8 +170,8 @@ fun BiometricSensorFallbackDialog(
             ) {
                 BiometricFingerprintVectorIcon(
                     size = 44.dp,
-                    tint = Color(0xFFA7F3D0),
-                    accentTint = Color(0xFFFBBF24),
+                    tint = Color(0xFF059669),
+                    accentTint = Color(0xFF059669),
                     isScanning = true
                 )
             }
@@ -204,13 +200,13 @@ fun BiometricSensorFallbackDialog(
                 if (accountLabel.isNotBlank()) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = DeepEmerald.copy(alpha = 0.10f),
-                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f))
+                        color = Color(0xFFECFDF5),
+                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                     ) {
                         Text(
                             text = accountLabel,
                             style = MaterialTheme.typography.labelMedium,
-                            color = DeepEmerald,
+                            color = Color(0xFF065F46),
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
@@ -219,7 +215,7 @@ fun BiometricSensorFallbackDialog(
                 Text(
                     text = if (isScanningNow) "جاري قراءة بصمة الإصبع..." else "المس مستشعر البصمة أعلاه أو اضغط تأكيد البصمة",
                     style = MaterialTheme.typography.labelSmall,
-                    color = DeepEmerald,
+                    color = Color(0xFF059669),
                     fontWeight = FontWeight.ExtraBold
                 )
             }
@@ -237,7 +233,7 @@ fun BiometricSensorFallbackDialog(
                     }
                 },
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DeepEmerald,
+                    containerColor = Color(0xFF059669),
                     contentColor = Color.White
                 ),
                 shape = RoundedCornerShape(12.dp),
@@ -246,7 +242,7 @@ fun BiometricSensorFallbackDialog(
                 BiometricFingerprintVectorIcon(
                     size = 18.dp,
                     tint = Color.White,
-                    accentTint = Color(0xFFFDE68A)
+                    accentTint = Color.White
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("تأكيد بصمة الإصبع", fontWeight = FontWeight.ExtraBold)
@@ -328,7 +324,7 @@ fun BiometricSettingsSectionCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         border = BorderStroke(
             width = 1.dp,
-            color = if (isEnabledForThisAccount) EmeraldAccent.copy(alpha = 0.65f)
+            color = if (isEnabledForThisAccount) Color(0xFFA7F3D0)
             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
         )
     ) {
@@ -348,15 +344,15 @@ fun BiometricSettingsSectionCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = DeepForestGreen,
-                        border = BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.65f)),
+                        color = Color(0xFFD1FAE5),
+                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                         modifier = Modifier.size(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             BiometricFingerprintVectorIcon(
                                 size = 28.dp,
-                                tint = Color(0xFFA7F3D0),
-                                accentTint = Color(0xFFFBBF24),
+                                tint = Color(0xFF059669),
+                                accentTint = Color(0xFF059669),
                                 isScanning = isEnabledForThisAccount
                             )
                         }
@@ -378,7 +374,7 @@ fun BiometricSettingsSectionCard(
                                 "تحقق ببصمة إصبعك لحفظ جلسة الدخول المشفرة والدخول فوراً بدون كتابة كلمة المرور"
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isEnabledForThisAccount) DeepEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isEnabledForThisAccount) Color(0xFF059669) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -400,7 +396,7 @@ fun BiometricSettingsSectionCard(
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xFFECFDF5),
-                    border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.45f)),
+                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -418,14 +414,14 @@ fun BiometricSettingsSectionCard(
                             Icon(
                                 imageVector = Icons.Filled.VerifiedUser,
                                 contentDescription = null,
-                                tint = DeepEmerald,
+                                tint = Color(0xFF059669),
                                 modifier = Modifier.size(18.dp)
                             )
                             Column {
                                 Text(
                                     text = "الحساب المربوط بالبصمة: ${savedBiometricCredentials.fullName}",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = DeepEmerald,
+                                    color = Color(0xFF065F46),
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -433,7 +429,7 @@ fun BiometricSettingsSectionCard(
                                 Text(
                                     text = "المستخدم: ${savedBiometricCredentials.username} • ${savedBiometricCredentials.roleArabic}",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF065F46),
+                                    color = Color(0xFF059669),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -472,14 +468,14 @@ fun BiometricSettingsSectionCard(
                         .testTag("enable_biometric_now_button"),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = DeepEmerald,
+                        containerColor = Color(0xFF059669),
                         contentColor = Color.White
                     )
                 ) {
                     BiometricFingerprintVectorIcon(
                         size = 20.dp,
                         tint = Color.White,
-                        accentTint = Color(0xFFFDE68A)
+                        accentTint = Color.White
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -494,7 +490,7 @@ fun BiometricSettingsSectionCard(
 }
 
 /**
- * Luxury Emerald & Gold Biometric Fingerprint Quick Login Button displayed on UnifiedLoginScreen
+ * Clean Soft Emerald Biometric Fingerprint Quick Login Button displayed on UnifiedLoginScreen
  * below the primary "تسجيل الدخول" button when saved biometric credentials exist.
  */
 @Composable
@@ -546,76 +542,62 @@ fun BiometricQuickLoginButton(
             .clickable { triggerBiometricLogin() }
             .testTag("biometric_quick_login_button"),
         shape = RoundedCornerShape(16.dp),
-        color = Color.Transparent,
-        border = BorderStroke(1.5.dp, Color(0xFFFBBF24).copy(alpha = 0.85f)),
-        tonalElevation = 4.dp
+        color = Color(0xFFECFDF5),
+        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+        tonalElevation = 0.dp
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF064E3B),
-                            Color(0xFF047857),
-                            Color(0xFF065F46)
-                        )
-                    )
-                )
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFFD1FAE5),
+                modifier = Modifier.size(44.dp)
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.24f),
-                    border = BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.8f)),
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        BiometricFingerprintVectorIcon(
-                            size = 28.dp,
-                            tint = Color(0xFFA7F3D0),
-                            accentTint = Color(0xFFFBBF24),
-                            isScanning = true
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = "الدخول السريع ببصمة الإصبع",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "الدخول كـ: ${savedCredentials.fullName} (${savedCredentials.username})",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFFDE68A),
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    BiometricFingerprintVectorIcon(
+                        size = 26.dp,
+                        tint = Color(0xFF059669),
+                        accentTint = Color(0xFF059669),
+                        isScanning = false
                     )
                 }
+            }
 
-                Icon(
-                    imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = Color(0xFFFBBF24),
-                    modifier = Modifier.size(20.dp)
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "الدخول السريع ببصمة الإصبع",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color(0xFF065F46),
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "الدخول كـ: ${savedCredentials.fullName} (${savedCredentials.username})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF059669),
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = Color(0xFF059669),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
