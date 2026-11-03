@@ -88,11 +88,15 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.model.AttendanceStatus
 import com.example.model.CanteenTransactionType
 import com.example.model.CanteenWalletTransaction
+import com.example.model.DailyGateLogEntry
 import com.example.model.DeveloperBroadcastItem
+import com.example.model.GateScanMode
 import com.example.model.OccasionIconKey
 import com.example.model.SchoolConfig
 import com.example.model.StudentAutoBadge
 import com.example.model.StudentRecord
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
 import com.example.ui.theme.CardSurfaceWhite
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepEmerald
@@ -965,6 +969,7 @@ fun DigitalStudentIdDialog(
 fun QrAttendanceScannerDialog(
     students: List<StudentRecord>,
     selectedDate: String,
+    initialScanMode: GateScanMode = GateScanMode.CHECK_IN,
     onScanQrCode: (String) -> Unit,
     onScanStudentDetailed: (String) -> StudentRecord? = { code ->
         onScanQrCode(code)
@@ -981,23 +986,28 @@ fun QrAttendanceScannerDialog(
                 it.studentUsername.equals(trimmed, ignoreCase = true)
         }
     },
+    onScanStudentGateDetailed: (code: String, mode: GateScanMode) -> StudentRecord? = { code, _ ->
+        onScanStudentDetailed(code)
+    },
     onDismiss: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var activeScanMode by remember(initialScanMode) { mutableStateOf(initialScanMode) }
     var qrInput by remember { mutableStateOf("") }
     var searchFilter by remember { mutableStateOf("") }
     var showLiveCamera by remember { mutableStateOf(true) }
     var lastScannedStudent by remember { mutableStateOf<StudentRecord?>(null) }
+    var lastScannedMode by remember { mutableStateOf(initialScanMode) }
     var lastScanTimeText by remember { mutableStateOf("") }
 
     fun handleQrDetected(rawCode: String) {
         val clean = rawCode.trim()
         if (clean.isBlank()) return
-        com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(context)
-        val matched = onScanStudentDetailed(clean)
+        val matched = onScanStudentGateDetailed(clean, activeScanMode)
         if (matched != null) {
             lastScannedStudent = matched
-            lastScanTimeText = java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale("ar")).format(java.util.Date())
+            lastScannedMode = activeScanMode
+            lastScanTimeText = java.text.SimpleDateFormat("hh:mm a", java.util.Locale("ar")).format(java.util.Date())
         }
     }
 
@@ -1048,7 +1058,7 @@ fun QrAttendanceScannerDialog(
                                 Icon(
                                     imageVector = Icons.Default.QrCodeScanner,
                                     contentDescription = null,
-                                    tint = Color(0xFFA7F3D0),
+                                    tint = Color.White,
                                     modifier = Modifier
                                         .padding(10.dp)
                                         .size(22.dp)
@@ -1056,13 +1066,17 @@ fun QrAttendanceScannerDialog(
                             }
                             Column {
                                 Text(
-                                    text = "الماسح الضوئي الفعلي بالكاميرا (QR Scanner)",
+                                    text = "ماسح البوابة الذكية (قراءة باركود الدخول والمغادرة)",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = DeepForestGreen,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                                 Text(
-                                    text = "يقرأ رمز QR الحقيقي لهوية الطالب ويسجله (حاضر) ليوم $selectedDate",
+                                    text = if (activeScanMode == GateScanMode.CHECK_IN) {
+                                        "وضع الدخول (Check-In): يوثق وقت وصول الطالب ويسجله (حاضر) ليوم $selectedDate"
+                                    } else {
+                                        "وضع المغادرة (Check-Out): يوثق وقت انصراف الطالب من بوابة المدرسة ليوم $selectedDate"
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextMutedGreen
                                 )
@@ -1078,45 +1092,129 @@ fun QrAttendanceScannerDialog(
                     }
                 }
 
-                // Live Camera QR Scanner Header & Toggle Button (Fixed alignment, no text clipping)
+                // Capsule Mode Switcher: Check-In (تسجيل دخول) vs Check-Out (تسجيل مغادرة)
                 item {
-                    Row(
+                    Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        shape = RoundedCornerShape(50),
+                        color = DeepEmerald.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.24f))
                     ) {
-                        Text(
-                            text = if (showLiveCamera) "الكاميرا الحية نشطة — وجّه العدسة للباركود" else "الكاميرا متوقفة مؤقتاً",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = DeepEmerald,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedButton(
-                            onClick = { showLiveCamera = !showLiveCamera },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.heightIn(min = 38.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = null,
-                                tint = DeepEmerald,
-                                modifier = Modifier.size(15.dp)
+                            val modes = listOf(
+                                Triple(GateScanMode.CHECK_IN, "تسجيل دخول (حضور)", Icons.AutoMirrored.Filled.Login),
+                                Triple(GateScanMode.CHECK_OUT, "تسجيل مغادرة (انصراف)", Icons.AutoMirrored.Filled.Logout)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (showLiveCamera) "إيقاف الكاميرا" else "تشغيل الكاميرا",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = DeepEmerald,
-                                maxLines = 1,
-                                softWrap = false
-                            )
+                            modes.forEach { (mode, title, icon) ->
+                                val isSelected = activeScanMode == mode
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            activeScanMode = mode
+                                        }
+                                        .testTag("gate_scan_mode_${mode.name}"),
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isSelected) DeepEmerald else Color.Transparent
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 9.dp, horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = null,
+                                            tint = if (isSelected) Color.White else DeepForestGreen,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = title,
+                                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                            color = if (isSelected) Color.White else DeepForestGreen,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Live Camera QR Scanner Header & Full-Width Toggle Button (never wraps vertically)
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFF0FDF4),
+                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.QrCodeScanner,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = if (showLiveCamera) {
+                                        "الكاميرا الحية نشطة — وجّه العدسة لباركود هوية الطالب"
+                                    } else {
+                                        "الكاميرا متوقفة مؤقتاً — اضغط لتشغيل الماسح الضوئي"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Button(
+                                onClick = { showLiveCamera = !showLiveCamera },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(46.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (showLiveCamera) DangerRed else DeepEmerald,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = if (showLiveCamera) Icons.Default.Close else Icons.Default.QrCodeScanner,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (showLiveCamera) "إغلاق الكاميرا" else "مسح باركود البوابة بالكاميرا",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
@@ -1135,6 +1233,7 @@ fun QrAttendanceScannerDialog(
 
                 // Instant Scanned Student Confirmation Card
                 lastScannedStudent?.let { scannedStu ->
+                    val gateEntry = scannedStu.getGateLogForDate(selectedDate)
                     item {
                         Surface(
                             modifier = Modifier
@@ -1169,7 +1268,11 @@ fun QrAttendanceScannerDialog(
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Text(
-                                            text = "تم التعرف على الطالب وتسجيل حضوره فوراً!",
+                                            text = if (lastScannedMode == GateScanMode.CHECK_OUT) {
+                                                "تم توثيق مغادرة الطالب من البوابة بنجاح!"
+                                            } else {
+                                                "تم توثيق دخول الطالب وتسجيل حضوره بنجاح!"
+                                            },
                                             style = MaterialTheme.typography.labelMedium,
                                             color = DeepForestGreen,
                                             fontWeight = FontWeight.ExtraBold
@@ -1182,13 +1285,21 @@ fun QrAttendanceScannerDialog(
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                     Text(
-                                        text = "${scannedStu.gradeClass} — شعبة (${scannedStu.sectionName}) • وقت الوصول: $lastScanTimeText",
+                                        text = if (lastScannedMode == GateScanMode.CHECK_OUT || gateEntry?.isDeparted == true) {
+                                            "الدخول: ${gateEntry?.checkInTime?.ifBlank { lastScanTimeText } ?: lastScanTimeText} | غادر المدرسة: ${gateEntry?.checkOutTime?.ifBlank { lastScanTimeText } ?: lastScanTimeText}"
+                                        } else {
+                                            "وقت الدخول: ${gateEntry?.checkInTime?.ifBlank { lastScanTimeText } ?: lastScanTimeText} • متواجد بالمدرسة"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = DeepEmerald,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.ExtraBold
                                     )
                                     Text(
-                                        text = "تم إرسال إشعار فوري لولي الأمر (${scannedStu.parentName.ifBlank { "ولي الأمر" }}) بوصول الطالب للمدرسة",
+                                        text = if (lastScannedMode == GateScanMode.CHECK_OUT) {
+                                            "تم إرسال إشعار فوري لولي الأمر (${scannedStu.parentName.ifBlank { "ولي الأمر" }}) بمغادرة الطالب للبوابة"
+                                        } else {
+                                            "تم إرسال إشعار فوري لولي الأمر (${scannedStu.parentName.ifBlank { "ولي الأمر" }}) بوصول الطالب للمدرسة بأمان"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = TextMutedGreen
                                     )
@@ -1236,9 +1347,14 @@ fun QrAttendanceScannerDialog(
                                 contentColor = Color.White
                             )
                         ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFFA7F3D0))
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("تسجيل", fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (activeScanMode == GateScanMode.CHECK_OUT) "مغادرة" else "دخول",
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
@@ -1247,7 +1363,11 @@ fun QrAttendanceScannerDialog(
                     HorizontalDivider(color = DeepEmerald.copy(alpha = 0.12f))
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "المسح السريع لهويات الطلاب المسجلين عند البوابة:",
+                        text = if (activeScanMode == GateScanMode.CHECK_OUT) {
+                            "المسح السريع لتسجيل مغادرة الطلاب عند البوابة:"
+                        } else {
+                            "المسح السريع لتسجيل دخول الطلاب عند البوابة:"
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         color = DeepForestGreen,
                         fontWeight = FontWeight.Bold
@@ -1268,6 +1388,7 @@ fun QrAttendanceScannerDialog(
 
                 items(filteredStudents, key = { it.id }) { stu ->
                     val isJustScanned = lastScannedStudent?.id == stu.id
+                    val stuGateLog = stu.getGateLogForDate(selectedDate)
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1303,16 +1424,33 @@ fun QrAttendanceScannerDialog(
                                         text = stu.fullNameWithFather,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = DeepForestGreen,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "${stu.gradeClass} (${stu.sectionName})",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = TextMutedGreen
                                     )
+                                    if (stuGateLog != null && (stuGateLog.checkInTime.isNotBlank() || stuGateLog.checkOutTime.isNotBlank())) {
+                                        Text(
+                                            text = if (stuGateLog.isDeparted) {
+                                                "الدخول: ${stuGateLog.checkInTime.ifBlank { "—" }} | غادر: ${stuGateLog.checkOutTime}"
+                                            } else {
+                                                "وقت الدخول: ${stuGateLog.checkInTime} • متواجد بالمدرسة"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = DeepEmerald,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
 
+                            Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = if (isJustScanned) SuccessGreen else DeepEmerald
@@ -1323,16 +1461,26 @@ fun QrAttendanceScannerDialog(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(
-                                        imageVector = if (isJustScanned) Icons.Default.CheckCircle else Icons.Default.QrCodeScanner,
+                                        imageVector = when {
+                                            isJustScanned -> Icons.Default.CheckCircle
+                                            activeScanMode == GateScanMode.CHECK_OUT -> Icons.AutoMirrored.Filled.Logout
+                                            else -> Icons.Default.QrCodeScanner
+                                        },
                                         contentDescription = null,
-                                        tint = if (isJustScanned) Color.White else Color(0xFFA7F3D0),
+                                        tint = Color.White,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Text(
-                                        text = if (isJustScanned) "تم المسح" else "مسح QR",
+                                        text = when {
+                                            isJustScanned -> "تم المسح"
+                                            activeScanMode == GateScanMode.CHECK_OUT -> "مسح مغادرة"
+                                            else -> "مسح دخول"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = Color.White,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -1828,7 +1976,7 @@ fun SmartCanteenPosAndWalletDialog(
                     }
                 }
 
-                // Capsule Mode Switcher
+                // Capsule Mode Switcher (3 concise non-truncating tabs)
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -1840,11 +1988,11 @@ fun SmartCanteenPosAndWalletDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             val tabs = listOf(
-                                Triple(0, "نقطة بيع الحانوت", Icons.Default.ShoppingCart),
-                                Triple(1, "شحن رصيد طالب", Icons.Default.AddCard),
+                                Triple(0, "نقطة البيع", Icons.Default.ShoppingCart),
+                                Triple(1, "شحن رصيد", Icons.Default.AddCard),
                                 Triple(2, "سجل الحركات", Icons.Default.History)
                             )
                             tabs.forEach { (idx, title, icon) ->
@@ -1861,7 +2009,7 @@ fun SmartCanteenPosAndWalletDialog(
                                     color = if (isSelected) DeepEmerald else Color.Transparent
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
                                         horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -1869,15 +2017,16 @@ fun SmartCanteenPosAndWalletDialog(
                                             imageVector = icon,
                                             contentDescription = null,
                                             tint = if (isSelected) Color.White else DeepForestGreen,
-                                            modifier = Modifier.size(15.dp)
+                                            modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = title,
-                                            style = MaterialTheme.typography.labelSmall,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
                                             color = if (isSelected) Color.White else DeepForestGreen,
                                             fontWeight = FontWeight.ExtraBold,
                                             maxLines = 1,
+                                            softWrap = false,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                     }
@@ -1924,7 +2073,7 @@ fun SmartCanteenPosAndWalletDialog(
                     }
                 }
 
-                // Live Camera Barcode Scanner Toggle + Manual Barcode Reader
+                // Live Camera Barcode Scanner Toggle + Manual Barcode Reader (Title on top, full-width button below)
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -1936,54 +2085,56 @@ fun SmartCanteenPosAndWalletDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.QrCodeScanner,
-                                        contentDescription = null,
-                                        tint = DeepEmerald,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Text(
-                                        text = "مسح باركود محفظة الطالب (WALLET-...)",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = DeepForestGreen,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-                                Surface(
-                                    modifier = Modifier.clickable { showLiveCameraScanner = !showLiveCameraScanner },
-                                    shape = RoundedCornerShape(50),
-                                    color = if (showLiveCameraScanner) DangerRed else DeepEmerald
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (showLiveCameraScanner) Icons.Default.Close else Icons.Default.QrCodeScanner,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Text(
-                                            text = if (showLiveCameraScanner) "إغلاق الكاميرا" else "مسح بالكاميرا",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.QrCodeScanner,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "مسح باركود محفظة الطالب",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Button(
+                                onClick = { showLiveCameraScanner = !showLiveCameraScanner },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("canteen_toggle_camera_btn"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (showLiveCameraScanner) DangerRed else DeepEmerald,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = if (showLiveCameraScanner) Icons.Default.Close else Icons.Default.QrCodeScanner,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (showLiveCameraScanner) "إغلاق الكاميرا" else "مسح باركود المحفظة بالكاميرا",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
 
                             if (showLiveCameraScanner) {

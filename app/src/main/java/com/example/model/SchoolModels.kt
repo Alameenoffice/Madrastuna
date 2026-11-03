@@ -805,7 +805,8 @@ data class StudentRecord(
     val walletBalance: Int = 0,
     val dailySpendLimit: Int = 0,
     val dailySpentMap: Map<String, Int> = emptyMap(),
-    val walletTransactions: List<CanteenWalletTransaction> = emptyList()
+    val walletTransactions: List<CanteenWalletTransaction> = emptyList(),
+    val dailyGateLog: Map<String, DailyGateLogEntry> = emptyMap()
 ) {
     val qrCodeValue: String
         get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
@@ -821,6 +822,15 @@ data class StudentRecord(
                 ArabicTextNormalizer.normalizeDateIso(k.trim()) == cleanDate
             }?.value
             ?: 0
+    }
+
+    fun getGateLogForDate(dateIso: String): DailyGateLogEntry? {
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(dateIso.trim())
+        if (cleanDate.isEmpty()) return null
+        return dailyGateLog[cleanDate]
+            ?: dailyGateLog.entries.firstOrNull { (k, _) ->
+                ArabicTextNormalizer.normalizeDateIso(k.trim()) == cleanDate
+            }?.value
     }
 
     /**
@@ -846,6 +856,21 @@ data class StudentRecord(
                 "$cleanStudent $cleanFather"
             }
         }
+}
+
+enum class GateScanMode(val arabicTitle: String, val shortLabel: String) {
+    CHECK_IN("تسجيل دخول (حضور - Check-In)", "تسجيل دخول (حضور)"),
+    CHECK_OUT("تسجيل مغادرة (انصراف - Check-Out)", "تسجيل مغادرة (انصراف)")
+}
+
+data class DailyGateLogEntry(
+    val checkInTime: String = "",
+    val checkOutTime: String = "",
+    val gateStatus: String = "inside", // "inside" | "departed"
+    val departureNote: String = "انصراف رسمي / مغادرة البوابة"
+) {
+    val isDeparted: Boolean
+        get() = gateStatus.equals("departed", ignoreCase = true) || checkOutTime.isNotBlank()
 }
 
 data class AttendanceEntry(

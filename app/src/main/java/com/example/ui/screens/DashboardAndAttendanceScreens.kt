@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -281,6 +283,64 @@ fun DashboardScreen(
                     )
                 }
 
+                // Live Smart Gate Status Card for Parent & Student (Check-In / Check-Out timestamp)
+                val todayGateLog = myStudent.getGateLogForDate(todayIso)
+                if (todayGateLog != null && (todayGateLog.checkInTime.isNotBlank() || todayGateLog.checkOutTime.isNotBlank())) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp)
+                            .testTag("dashboard_student_gate_status_card"),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFECFDF5),
+                        border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = DeepEmerald
+                            ) {
+                                Icon(
+                                    imageVector = if (todayGateLog.isDeparted) Icons.AutoMirrored.Filled.Logout else Icons.AutoMirrored.Filled.Login,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .size(18.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (todayGateLog.isDeparted) {
+                                        "غادر المدرسة الساعة ${todayGateLog.checkOutTime} (وقت الدخول: ${todayGateLog.checkInTime.ifBlank { "—" }})"
+                                    } else {
+                                        "متواجد داخل المدرسة منذ الساعة ${todayGateLog.checkInTime}"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = if (todayGateLog.isDeparted) {
+                                        "حركة البوابة الذكية اليوم ($todayIso): ${todayGateLog.departureNote.ifBlank { "انصراف رسمي من البوابة" }}"
+                                    } else {
+                                        "حركة البوابة الذكية اليوم ($todayIso): تم تسجيل الدخول بأمان عبر بوابة المدرسة"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = DeepEmerald,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Smart 1-Tap Dismissal Call for Parents ("أنا أمام المدرسة لاستلام ابني")
                 if (currentUser?.role == UserRole.PARENT && featureSettings.dismissalCallEnabled) {
                     val activeCall = dismissalCalls.firstOrNull { it.studentId == myStudent.id && !it.isAcknowledged }
@@ -289,20 +349,19 @@ fun DashboardScreen(
                             .fillMaxWidth()
                             .padding(bottom = 10.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = if (activeCall != null) SuccessGreen.copy(alpha = 0.14f) else DeepForestGreen,
+                        color = if (activeCall != null) SuccessGreen.copy(alpha = 0.14f) else Color(0xFFECFDF5),
                         border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (activeCall != null) SuccessGreen else EmeraldAccent.copy(alpha = 0.45f)
+                            1.2.dp,
+                            if (activeCall != null) SuccessGreen else DeepEmerald.copy(alpha = 0.45f)
                         )
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     text = if (activeCall != null) {
                                         "تم إبلاغ الإدارة بوصولك (${activeCall.requestedAt})"
@@ -310,7 +369,7 @@ fun DashboardScreen(
                                         "الاستدعاء السريع عند الانصراف"
                                     },
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = if (activeCall != null) DeepForestGreen else Color(0xFFA7F3D0),
+                                    color = DeepForestGreen,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                                 Text(
@@ -320,26 +379,29 @@ fun DashboardScreen(
                                         "اضغط لإبلاغ الإدارة والمعلمين فور وصولك أمام المدرسة لاستلام ابنك"
                                     },
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (activeCall != null) DeepEmerald else Color.White.copy(alpha = 0.85f)
+                                    color = DeepEmerald
                                 )
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
                             Button(
                                 onClick = { viewModel.triggerParentDismissalCall(myStudent) },
-                                shape = RoundedCornerShape(50),
+                                shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = DeepEmerald,
                                     contentColor = Color.White
                                 ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.testTag("dashboard_parent_dismissal_call_btn")
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .testTag("dashboard_parent_dismissal_call_btn")
                             ) {
                                 Icon(Icons.Filled.DirectionsCar, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (activeCall != null) "إعادة تنبيه" else "أنا أمام المدرسة",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.ExtraBold
+                                    text = if (activeCall != null) "إعادة تنبيه الإدارة بوصولي" else "أنا أمام المدرسة لاستلام ابني",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -1083,6 +1145,7 @@ fun DailyAttendanceScreen(
     }
     var searchName by remember { mutableStateOf("") }
     var showQrScannerDialog by remember { mutableStateOf(false) }
+    var gateScannerInitialMode by remember { mutableStateOf(GateScanMode.CHECK_IN) }
     var showLeaveRequestDialog by remember { mutableStateOf(false) }
     var showLostAndFoundDialog by remember { mutableStateOf(false) }
     var selectedStudentForIdCard by remember { mutableStateOf<StudentRecord?>(null) }
@@ -1228,6 +1291,43 @@ fun DailyAttendanceScreen(
                                 text = "الصف: ${myStu.gradeClass} (شعبة ${myStu.sectionName}) • حالة اليوم ($selectedDate): ${todayStatus.arabicLabel}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
+
+                            val mySelectedDateGateLog = myStu.getGateLogForDate(selectedDate)
+                            if (mySelectedDateGateLog != null && (mySelectedDateGateLog.checkInTime.isNotBlank() || mySelectedDateGateLog.checkOutTime.isNotBlank())) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("attendance_student_gate_status_badge"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFECFDF5),
+                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.45f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (mySelectedDateGateLog.isDeparted) Icons.AutoMirrored.Filled.Logout else Icons.AutoMirrored.Filled.Login,
+                                            contentDescription = null,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = if (mySelectedDateGateLog.isDeparted) {
+                                                "غادر المدرسة الساعة ${mySelectedDateGateLog.checkOutTime} (وقت الدخول: ${mySelectedDateGateLog.checkInTime.ifBlank { "—" }})"
+                                            } else {
+                                                "متواجد داخل المدرسة منذ الساعة ${mySelectedDateGateLog.checkInTime}"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = DeepForestGreen,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+                            }
 
                             if (myBadges.isNotEmpty()) {
                                 StudentAutoBadgesRow(badges = myBadges)
@@ -1551,33 +1651,82 @@ fun DailyAttendanceScreen(
                             )
                         }
 
-                        // Action Buttons: QR Code Attendance Scan + Monthly Attendance PDF Export + Lost & Found
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (featureSettings.qrAttendanceEnabled) {
+                        // Action Buttons: Smart Gate QR Check-In / Check-Out + Monthly Attendance PDF Export + Lost & Found
+                        if (featureSettings.qrAttendanceEnabled) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Button(
-                                    onClick = { showQrScannerDialog = true },
+                                    onClick = {
+                                        gateScannerInitialMode = GateScanMode.CHECK_IN
+                                        showQrScannerDialog = true
+                                    },
                                     modifier = Modifier
                                         .weight(1f)
+                                        .height(46.dp)
                                         .testTag("open_qr_attendance_scanner_btn"),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = DeepEmerald,
                                         contentColor = Color.White
-                                    )
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.QrCodeScanner,
+                                        imageVector = Icons.AutoMirrored.Filled.Login,
                                         contentDescription = null,
-                                        tint = GoldFoil,
-                                        modifier = Modifier.size(18.dp)
+                                        tint = Color.White,
+                                        modifier = Modifier.size(17.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("مسح الهوية بالـ QR", fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Text(
+                                        text = "باركود الدخول (حضور)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        gateScannerInitialMode = GateScanMode.CHECK_OUT
+                                        showQrScannerDialog = true
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(46.dp)
+                                        .testTag("open_qr_checkout_scanner_btn"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "باركود المغادرة (انصراف)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = DeepForestGreen,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
 
                             if (isAdmin) {
                                 OutlinedButton(
@@ -2045,6 +2194,93 @@ fun DailyAttendanceScreen(
                                     containerColor = if (totalAbsences > 0) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.14f),
                                     contentColor = if (totalAbsences > 0) DangerRed else SuccessGreen
                                 )
+                            }
+                        }
+
+                        // 1.B: شارة حركة البوابة الذكية (وقت الدخول / وقت المغادرة + زر "تسجيل مغادرة" السريع)
+                        val stuGateLog = stu.getGateLogForDate(cleanSelDate)
+                        val isStudentPresentOrInside = currentStatus == AttendanceStatus.PRESENT ||
+                            currentStatus == AttendanceStatus.LATE ||
+                            stuGateLog != null
+                        if (selectedDateHolidayLabel == null && currentStatus != AttendanceStatus.HOLIDAY && isStudentPresentOrInside) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("student_gate_log_row_${stu.id}"),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFECFDF5),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.32f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (stuGateLog?.isDeparted == true) Icons.AutoMirrored.Filled.Logout else Icons.AutoMirrored.Filled.Login,
+                                            contentDescription = null,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = if (stuGateLog?.isDeparted == true) {
+                                                "الدخول: ${stuGateLog.checkInTime.ifBlank { "—" }} | غادر المدرسة: ${stuGateLog.checkOutTime}"
+                                            } else {
+                                                val cInText = stuGateLog?.checkInTime?.takeIf { it.isNotBlank() } ?: "مرصود اليوم"
+                                                "وقت الدخول: $cInText • متواجد بالمدرسة"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = DeepForestGreen,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    if (canEdit && stuGateLog?.isDeparted != true) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .clickable {
+                                                    viewModel.requireOnlineAndExecute {
+                                                        viewModel.recordStudentGateCheckOut(stu, cleanSelDate)
+                                                    }
+                                                }
+                                                .testTag("quick_gate_checkout_btn_${stu.id}"),
+                                            shape = RoundedCornerShape(50),
+                                            color = DeepEmerald
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = "تسجيل مغادرة",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -2544,11 +2780,15 @@ fun DailyAttendanceScreen(
         QrAttendanceScannerDialog(
             students = allSchoolStudents,
             selectedDate = selectedDate,
+            initialScanMode = gateScannerInitialMode,
             onScanQrCode = { qrValue ->
-                viewModel.recordAttendanceByQrCode(qrValue, selectedDate)
+                viewModel.recordAttendanceByQrCode(qrValue, selectedDate, gateScannerInitialMode)
             },
             onScanStudentDetailed = { qrValue ->
-                viewModel.recordAttendanceByQrCodeDetailed(qrValue, selectedDate)
+                viewModel.recordAttendanceByQrCodeDetailed(qrValue, selectedDate, gateScannerInitialMode)
+            },
+            onScanStudentGateDetailed = { qrValue, scanMode ->
+                viewModel.recordAttendanceByQrCodeDetailed(qrValue, selectedDate, scanMode)
             },
             onDismiss = { showQrScannerDialog = false }
         )

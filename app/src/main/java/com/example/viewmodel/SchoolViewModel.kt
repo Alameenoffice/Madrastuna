@@ -938,8 +938,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 val preservedStudents = parsedRemoteStudents.map { rStu ->
                                     val localStu = localByStu[rStu.id.trim()]
                                     val localAtt = localStu?.dailyAttendance.orEmpty()
-                                    if (localAtt.isEmpty()) rStu else rStu.copy(
+                                    val localGate = localStu?.dailyGateLog.orEmpty()
+                                    if (localAtt.isEmpty() && localGate.isEmpty()) rStu else rStu.copy(
                                         dailyAttendance = rStu.dailyAttendance + localAtt,
+                                        dailyGateLog = localGate + rStu.dailyGateLog,
                                         todayStatus = localStu?.todayStatus?.ifBlank { rStu.todayStatus } ?: rStu.todayStatus,
                                         todayStatusDate = localStu?.todayStatusDate?.ifBlank { rStu.todayStatusDate } ?: rStu.todayStatusDate
                                     )
@@ -3427,6 +3429,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveAttendance(updated, sid)
 
         // Update the student's persistent dailyAttendance map, todayStatus, todayStatusDate, and counters directly in StudentRecord
+        val timeNowForManual = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
         val updatedStudents = _students.value.map { stu ->
             if (stu.id.trim() == cleanStudentId) {
                 val updatedDaily = linkedMapOf<String, String>()
@@ -3437,6 +3440,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
                 updatedDaily[cleanDate] = status.name
+                val updatedGateLog = stu.dailyGateLog.toMutableMap()
+                if (status == AttendanceStatus.PRESENT || status == AttendanceStatus.LATE) {
+                    val existingGate = updatedGateLog[cleanDate]
+                    if (existingGate == null || existingGate.checkInTime.isBlank()) {
+                        updatedGateLog[cleanDate] = DailyGateLogEntry(
+                            checkInTime = timeNowForManual,
+                            checkOutTime = existingGate?.checkOutTime.orEmpty(),
+                            gateStatus = existingGate?.gateStatus?.ifBlank { "inside" } ?: "inside",
+                            departureNote = existingGate?.departureNote.orEmpty()
+                        )
+                    }
+                }
                 val newAbsenceDays = updatedDaily.count { (dKey, stVal) ->
                     stVal == AttendanceStatus.ABSENT.name && getHolidayLabelForDate(dKey) == null
                 }
@@ -3448,6 +3463,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 stu.copy(
                     dailyAttendance = updatedDaily,
+                    dailyGateLog = updatedGateLog,
                     todayStatus = status.name,
                     todayStatusDate = cleanDate,
                     absenceDays = newAbsenceDays,
@@ -3475,24 +3491,36 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Scans a Student ID QR Code (or username/ID), immediately marks the student PRESENT ("حاضر")
-     * for the given date, and sends an instant notification exclusively to the student's parent:
-     * "وصل ابنكم [اسم الطالب] إلى المدرسة الآن".
+     * Scans a Student ID QR Code (or username/ID) at the Smart Gate:
+     * - CHECK_IN: marks the student PRESENT ("حاضر"), records checkInTime & gateStatus = "inside",
+     *   and sends an instant notification to the parent.
+     * - CHECK_OUT: records checkOutTime & gateStatus = "departed" (preserving checkInTime),
+     *   and sends an instant departure notification to the parent.
      */
-    fun recordAttendanceByQrCode(qrOrUsername: String, date: String): Boolean {
-        return recordAttendanceByQrCodeDetailed(qrOrUsername, date) != null
+    fun recordAttendanceByQrCode(
+        qrOrUsername: String,
+        date: String,
+        scanMode: GateScanMode = GateScanMode.CHECK_IN
+    ): Boolean {
+        return recordAttendanceByQrCodeDetailed(qrOrUsername, date, scanMode) != null
     }
 
     /**
-     * Scans a Student ID QR Code (MADRASATI|schoolId|studentId|studentName|gradeClass or legacy MADRASATI-STU-...),
-     * plays a beep + tactile vibration, marks the student PRESENT ("حاضر") in Firebase,
-     * sends an instant arrival notification to the parent, and returns the matched StudentRecord.
+     * Smart Gate Check-In & Check-Out Barcode System:
+     * Scans a Student ID QR Code (MADRASATI|schoolId|studentId|studentName|gradeClass or WALLET-...),
+     * plays a beep + tactile vibration, updates attendance & dailyGateLog in Firestore,
+     * sends an instant arrival or departure notification to the parent, and returns the updated StudentRecord.
      */
-    fun recordAttendanceByQrCodeDetailed(qrOrUsername: String, date: String): StudentRecord? {
+    fun recordAttendanceByQrCodeDetailed(
+        qrOrUsername: String,
+        date: String,
+        scanMode: GateScanMode = GateScanMode.CHECK_IN,
+        departureNote: String = "انصراف رسمي / مغادرة البوابة"
+    ): StudentRecord? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return null
         val cleanInput = qrOrUsername.trim()
         if (cleanInput.isEmpty()) {
-            showToastAlert("يرجى مسح أو إدخال رمز الـ QR الخاص بالطالب", isSuccess = false)
+            showToastAlert("يرجى مسح أو إدخال رمز الباركود / الـ QR الخاص بالطالب", isSuccess = false)
             return null
         }
 
@@ -3505,6 +3533,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val matchedStudent = schoolStudents.firstOrNull { stu ->
             stu.qrCodeValue.equals(cleanInput, ignoreCase = true) ||
+                stu.walletBarcode.equals(cleanInput, ignoreCase = true) ||
                 (extractedStuIdFromPipe.isNotEmpty() && stu.id.equals(extractedStuIdFromPipe, ignoreCase = true)) ||
                 cleanInput.contains("|${stu.id}|", ignoreCase = true) ||
                 stu.id.equals(cleanInput, ignoreCase = true) ||
@@ -3515,67 +3544,184 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         if (matchedStudent == null) {
-            showToastAlert("لم يتم العثور على طالب مطابق لرمز الـ QR ($cleanInput)", isSuccess = false)
+            showToastAlert("لم يتم العثور على طالب مطابق لرمز الباركود ($cleanInput)", isSuccess = false)
             return null
         }
 
+        return if (scanMode == GateScanMode.CHECK_OUT) {
+            recordStudentGateCheckOut(
+                student = matchedStudent,
+                date = date,
+                departureNote = departureNote
+            )
+        } else {
+            com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
+
+            val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
+            val cleanDate = ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(date).trim()).ifBlank {
+                SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            }
+            val deterministicId = "attendance_${cleanDate}_${matchedStudent.id}"
+            val entry = AttendanceEntry(
+                id = deterministicId,
+                studentId = matchedStudent.id,
+                studentName = matchedStudent.studentName,
+                gradeClass = matchedStudent.gradeClass,
+                sectionName = matchedStudent.sectionName,
+                date = cleanDate,
+                status = AttendanceStatus.PRESENT,
+                note = "دخول البوابة الذكية ($timeNow)",
+                schoolId = sid
+            )
+
+            val filtered = _attendance.value.filterNot {
+                it.studentId.trim() == matchedStudent.id.trim() &&
+                    ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanDate
+            }
+            val updated = listOf(entry) + filtered
+            _attendance.value = updated
+            repo.saveAttendance(updated, sid)
+
+            var updatedStudentRecord: StudentRecord? = null
+            val updatedStudents = _students.value.map { stu ->
+                if (stu.id.trim() == matchedStudent.id.trim()) {
+                    val updatedDaily = linkedMapOf<String, String>()
+                    stu.dailyAttendance.forEach { (k, v) ->
+                        val nk = ArabicTextNormalizer.normalizeDateIso(k)
+                        if (nk.isNotEmpty() && v.isNotBlank()) updatedDaily[nk] = v.trim().uppercase()
+                    }
+                    updatedDaily[cleanDate] = AttendanceStatus.PRESENT.name
+                    val updatedGateMap = stu.dailyGateLog.toMutableMap()
+                    updatedGateMap[cleanDate] = DailyGateLogEntry(
+                        checkInTime = timeNow,
+                        checkOutTime = "",
+                        gateStatus = "inside",
+                        departureNote = ""
+                    )
+                    val newStu = stu.copy(
+                        dailyAttendance = updatedDaily,
+                        dailyGateLog = updatedGateMap,
+                        todayStatus = AttendanceStatus.PRESENT.name,
+                        todayStatusDate = cleanDate,
+                        absenceDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.ABSENT.name && getHolidayLabelForDate(dKey) == null },
+                        excusedDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.EXCUSED.name && getHolidayLabelForDate(dKey) == null },
+                        lateDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.LATE.name && getHolidayLabelForDate(dKey) == null }
+                    )
+                    updatedStudentRecord = newStu
+                    newStu
+                } else stu
+            }
+            _students.value = updatedStudents
+            repo.saveStudents(updatedStudents, sid)
+
+            val arrivalMsg = "تسجيل دخول للمدرسة: وصل الطالب ${matchedStudent.fullNameWithFather} إلى المدرسة بأمان في تمام الساعة $timeNow."
+            showToastAlert("تم تسجيل دخول الطالب (${matchedStudent.fullNameWithFather}) الساعة $timeNow وإبلاغ ولي أمره فوراً", isSuccess = true)
+
+            pushNotification(
+                title = "تسجيل دخول للمدرسة: ${matchedStudent.fullNameWithFather}",
+                body = arrivalMsg,
+                type = NotificationType.ATTENDANCE,
+                targetStudentId = matchedStudent.id,
+                targetRole = UserRole.PARENT.name,
+                targetSection = AppSection.ATTENDANCE.name
+            )
+            updatedStudentRecord ?: matchedStudent
+        }
+    }
+
+    /**
+     * Records a Student Gate Check-Out (مغادرة / انصراف من بوابة المدرسة) either via QR/Barcode scan
+     * or via the quick "تسجيل مغادرة" button on the student's attendance card.
+     */
+    fun recordStudentGateCheckOut(
+        student: StudentRecord,
+        date: String,
+        departureNote: String = "انصراف رسمي / مغادرة البوابة"
+    ): StudentRecord? {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return null
+        val sid = _schoolConfig.value.schoolId
         com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
 
         val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
-        val cleanDate = ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(date).trim())
-        val deterministicId = "attendance_${cleanDate}_${matchedStudent.id}"
-        val entry = AttendanceEntry(
-            id = deterministicId,
-            studentId = matchedStudent.id,
-            studentName = matchedStudent.studentName,
-            gradeClass = matchedStudent.gradeClass,
-            sectionName = matchedStudent.sectionName,
-            date = cleanDate,
-            status = AttendanceStatus.PRESENT,
-            note = "حضور بالـ QR ($timeNow)",
-            schoolId = sid
-        )
-
-        val filtered = _attendance.value.filterNot {
-            it.studentId.trim() == matchedStudent.id.trim() &&
-                ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanDate
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(date).trim()).ifBlank {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         }
-        val updated = listOf(entry) + filtered
-        _attendance.value = updated
-        repo.saveAttendance(updated, sid)
+        val cleanNote = InputSanitizer.sanitize(departureNote).ifBlank { "انصراف رسمي / مغادرة البوابة" }
+
+        var updatedStudentRecord: StudentRecord? = null
+        var effectiveCheckInTime = ""
 
         val updatedStudents = _students.value.map { stu ->
-            if (stu.id.trim() == matchedStudent.id.trim()) {
+            if (stu.id.trim() == student.id.trim()) {
                 val updatedDaily = linkedMapOf<String, String>()
                 stu.dailyAttendance.forEach { (k, v) ->
                     val nk = ArabicTextNormalizer.normalizeDateIso(k)
                     if (nk.isNotEmpty() && v.isNotBlank()) updatedDaily[nk] = v.trim().uppercase()
                 }
-                updatedDaily[cleanDate] = AttendanceStatus.PRESENT.name
-                stu.copy(
+                if (!updatedDaily.containsKey(cleanDate) || updatedDaily[cleanDate] == AttendanceStatus.ABSENT.name) {
+                    updatedDaily[cleanDate] = AttendanceStatus.PRESENT.name
+                }
+                val existingGate = stu.getGateLogForDate(cleanDate)
+                effectiveCheckInTime = existingGate?.checkInTime?.takeIf { it.isNotBlank() } ?: timeNow
+                val updatedGateMap = stu.dailyGateLog.toMutableMap()
+                updatedGateMap[cleanDate] = DailyGateLogEntry(
+                    checkInTime = effectiveCheckInTime,
+                    checkOutTime = timeNow,
+                    gateStatus = "departed",
+                    departureNote = cleanNote
+                )
+                val newStu = stu.copy(
                     dailyAttendance = updatedDaily,
-                    todayStatus = AttendanceStatus.PRESENT.name,
+                    dailyGateLog = updatedGateMap,
+                    todayStatus = updatedDaily[cleanDate] ?: AttendanceStatus.PRESENT.name,
                     todayStatusDate = cleanDate,
                     absenceDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.ABSENT.name && getHolidayLabelForDate(dKey) == null },
                     excusedDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.EXCUSED.name && getHolidayLabelForDate(dKey) == null },
                     lateDays = updatedDaily.count { (dKey, stVal) -> stVal == AttendanceStatus.LATE.name && getHolidayLabelForDate(dKey) == null }
                 )
+                updatedStudentRecord = newStu
+                newStu
             } else stu
         }
         _students.value = updatedStudents
         repo.saveStudents(updatedStudents, sid)
 
-        val arrivalMsg = "وصل ابنكم ${matchedStudent.fullNameWithFather} (${matchedStudent.gradeClass} - شعبة ${matchedStudent.sectionName}) إلى المدرسة الآن الساعة $timeNow"
-        showToastAlert("تم التعرف على الطالب (${matchedStudent.fullNameWithFather}) وتسجيل حضوره بالـ QR وإبلاغ ولي أمره فوراً", isSuccess = true)
+        val deterministicId = "attendance_${cleanDate}_${student.id}"
+        val existingEntry = _attendance.value.firstOrNull {
+            it.studentId.trim() == student.id.trim() &&
+                ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanDate
+        }
+        val entry = AttendanceEntry(
+            id = deterministicId,
+            studentId = student.id,
+            studentName = student.studentName,
+            gradeClass = student.gradeClass,
+            sectionName = student.sectionName,
+            date = cleanDate,
+            status = existingEntry?.status?.takeIf { it != AttendanceStatus.ABSENT } ?: AttendanceStatus.PRESENT,
+            note = "الدخول: $effectiveCheckInTime | غادر المدرسة: $timeNow ($cleanNote)",
+            schoolId = sid
+        )
+        val filtered = _attendance.value.filterNot {
+            it.studentId.trim() == student.id.trim() &&
+                ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanDate
+        }
+        val updatedAtt = listOf(entry) + filtered
+        _attendance.value = updatedAtt
+        repo.saveAttendance(updatedAtt, sid)
+
+        val departureMsg = "اشعار مغادرة المدرسة: غادر الطالب ${student.fullNameWithFather} بوابة المدرسة الآن في تمام الساعة $timeNow."
+        showToastAlert("تم تسجيل مغادرة الطالب (${student.fullNameWithFather}) الساعة $timeNow وإشعار ولي أمره فوراً", isSuccess = true)
 
         pushNotification(
-            title = "بوابة الحضور الذكي QR: ${matchedStudent.fullNameWithFather}",
-            body = arrivalMsg,
+            title = "اشعار مغادرة المدرسة: ${student.fullNameWithFather}",
+            body = departureMsg,
             type = NotificationType.ATTENDANCE,
-            targetStudentId = matchedStudent.id,
-            targetRole = UserRole.PARENT.name
+            targetStudentId = student.id,
+            targetRole = UserRole.PARENT.name,
+            targetSection = AppSection.ATTENDANCE.name
         )
-        return matchedStudent
+        return updatedStudentRecord ?: student
     }
 
     /**

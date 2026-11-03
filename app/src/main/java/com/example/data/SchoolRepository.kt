@@ -796,6 +796,33 @@ class SchoolRepository(context: Context) {
                         )
                     }
                 }
+                val gateLogObj = o.optJSONObject("dailyGateLog")
+                val parsedDailyGateLog = linkedMapOf<String, DailyGateLogEntry>()
+                if (gateLogObj != null) {
+                    val gKeys = gateLogObj.keys()
+                    while (gKeys.hasNext()) {
+                        val rawGKey = gKeys.next()
+                        val cleanGKey = ArabicTextNormalizer.normalizeDateIso(rawGKey.trim())
+                        val entryObj = gateLogObj.optJSONObject(rawGKey)
+                        if (cleanGKey.isNotEmpty() && entryObj != null) {
+                            val cIn = entryObj.optString("checkInTime", "").trim()
+                            val cOut = entryObj.optString("checkOutTime", "").trim()
+                            val gStatus = entryObj.optString(
+                                "gateStatus",
+                                if (cOut.isNotEmpty()) "departed" else "inside"
+                            ).trim().lowercase()
+                            val dNote = entryObj.optString("departureNote", "انصراف رسمي / مغادرة البوابة").trim()
+                            if (cIn.isNotEmpty() || cOut.isNotEmpty()) {
+                                parsedDailyGateLog[cleanGKey] = DailyGateLogEntry(
+                                    checkInTime = cIn,
+                                    checkOutTime = cOut,
+                                    gateStatus = if (gStatus == "departed" || cOut.isNotEmpty()) "departed" else "inside",
+                                    departureNote = dNote
+                                )
+                            }
+                        }
+                    }
+                }
                 list.add(
                     StudentRecord(
                         id = o.optString("id"),
@@ -831,7 +858,8 @@ class SchoolRepository(context: Context) {
                         walletBalance = o.optInt("walletBalance", 0).coerceAtLeast(0),
                         dailySpendLimit = o.optInt("dailySpendLimit", 0).coerceAtLeast(0),
                         dailySpentMap = parsedDailySpentMap,
-                        walletTransactions = parsedWalletTxs
+                        walletTransactions = parsedWalletTxs,
+                        dailyGateLog = parsedDailyGateLog
                     )
                 )
             }
@@ -941,6 +969,22 @@ class SchoolRepository(context: Context) {
                     })
                 }
                 put("walletTransactions", txJsonArr)
+                val dailyGateJson = JSONObject()
+                s.dailyGateLog.forEach { (dKey, gateEntry) ->
+                    val cleanDKey = ArabicTextNormalizer.normalizeDateIso(dKey.trim())
+                    if (cleanDKey.isNotEmpty() && (gateEntry.checkInTime.isNotBlank() || gateEntry.checkOutTime.isNotBlank())) {
+                        dailyGateJson.put(
+                            cleanDKey,
+                            JSONObject().apply {
+                                put("checkInTime", InputSanitizer.sanitize(gateEntry.checkInTime))
+                                put("checkOutTime", InputSanitizer.sanitize(gateEntry.checkOutTime))
+                                put("gateStatus", if (gateEntry.isDeparted) "departed" else "inside")
+                                put("departureNote", InputSanitizer.sanitize(gateEntry.departureNote))
+                            }
+                        )
+                    }
+                }
+                put("dailyGateLog", dailyGateJson)
             })
         }
         val jsonStr = arr.toString()
