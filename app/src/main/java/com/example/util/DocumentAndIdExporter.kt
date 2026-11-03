@@ -26,8 +26,12 @@ import android.print.PrintDocumentInfo
 import android.print.PrintManager
 import android.provider.MediaStore
 import android.util.Base64
+import com.example.model.AnnualPromotionReport
 import com.example.model.AttendanceEntry
 import com.example.model.AttendanceStatus
+import com.example.model.DailyBehaviorLogItem
+import com.example.model.ExamScheduleItem
+import com.example.model.LeaveRequestItem
 import com.example.model.SchoolConfig
 import com.example.model.StudentAutoBadge
 import com.example.model.StudentRecord
@@ -393,7 +397,9 @@ object DocumentAndIdExporter {
         )
 
         // Row 3: Static Student Code & Parent Phone (Wallet Balance/Limit/Spent are NEVER printed on physical/saved cards)
-        val cleanParentPhone = student.parentPhone.trim().takeIf { it.isNotEmpty() && it != "07512362567" } ?: "غير مسجل"
+        val cleanParentPhone = student.parentPhone.trim().takeIf {
+            it.isNotEmpty() && !SecurityShieldHelper.isLegacyPlaceholderPhone(it)
+        } ?: "غير مسجل"
         canvas.drawText("كود الطالب الموحد / هاتف ولي الأمر:", infoRightX, 502f, labelPaint)
         drawFittedRightText(
             canvas,
@@ -536,7 +542,9 @@ object DocumentAndIdExporter {
             typeface = boldTypeface
             textAlign = Paint.Align.CENTER
         }
-        val cleanSchoolPhone = schoolConfig.phone.trim().takeIf { it.isNotEmpty() && it != "07512362567" }
+        val cleanSchoolPhone = schoolConfig.phone.trim().takeIf {
+            it.isNotEmpty() && !SecurityShieldHelper.isLegacyPlaceholderPhone(it)
+        }
         val footerText = if (cleanSchoolPhone != null) {
             "هوية مدرسية معتمدة صادرة عبر منصة مدرستي الذكية  •  هاتف الإدارة: $cleanSchoolPhone"
         } else {
@@ -1375,4 +1383,250 @@ object DocumentAndIdExporter {
             Result.failure(e)
         }
     }
+
+    /**
+     * Exports the Comprehensive Student Archive Report (السجل الشامل للطالب - الأرشيف الشهري والسنوي) as an official PDF.
+     */
+    fun exportComprehensiveStudentArchivePdf(
+        context: Context,
+        schoolConfig: SchoolConfig,
+        student: StudentRecord,
+        monthLabel: String = "الكل (السنة كاملة)",
+        attendanceMap: Map<String, AttendanceStatus> = emptyMap(),
+        leaveRequests: List<LeaveRequestItem> = emptyList(),
+        exams: List<ExamScheduleItem> = emptyList(),
+        grades: List<SubjectGrade> = emptyList(),
+        behaviors: List<DailyBehaviorLogItem> = emptyList(),
+        principalName: String = "مدير المدرسة"
+    ): Result<String> {
+        return try {
+            val pdfDocument = PdfDocument()
+            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+            canvas.drawColor(Color.WHITE)
+
+            val presentCount = attendanceMap.values.count { it == AttendanceStatus.PRESENT }
+            val absentCount = attendanceMap.values.count { it == AttendanceStatus.ABSENT }
+            val lateCount = attendanceMap.values.count { it == AttendanceStatus.LATE }
+            val excusedCount = attendanceMap.values.count { it == AttendanceStatus.EXCUSED }
+
+            drawOfficialPdfHeader(
+                canvas = canvas,
+                schoolConfig = schoolConfig,
+                documentTitle = "السجل الشامل للطالب (الأرشيف الشهري والسنوي)",
+                subtitle = "الطالب: ${student.fullNameWithFather}  |  الصف: ${student.gradeClass} (${student.sectionName})  |  الفترة: $monthLabel"
+            )
+
+            val sectionHeaderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DEEP_EMERALD
+                textSize = 13f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.RIGHT
+            }
+            val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DARK_TEXT
+                textSize = 11f
+                textAlign = Paint.Align.RIGHT
+            }
+            val boxBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_OFF_WHITE
+                style = Paint.Style.FILL
+            }
+            val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFD5E3DC.toInt()
+                strokeWidth = 1f
+            }
+
+            var y = 175f
+            canvas.drawRoundRect(RectF(35f, y, 560f, y + 52f), 8f, 8f, boxBgPaint)
+            canvas.drawText("أولاً: إحصائية المواظبة والحضور للفترة ($monthLabel):", 545f, y + 20f, sectionHeaderPaint)
+            canvas.drawText(
+                "أيام الحضور: $presentCount يوم   |   أيام الغياب: $absentCount يوم   |   أيام التأخر: $lateCount   |   الإجازات: ${excusedCount.coerceAtLeast(leaveRequests.size)}   |   حالة القيد: ${student.enrollmentStatus.arabicLabel}",
+                545f,
+                y + 40f,
+                bodyPaint
+            )
+
+            y += 68f
+            canvas.drawText("ثانياً: سجل الامتحانات والدرجات (${grades.size} مادة / ${exams.size} امتحان):", 545f, y, sectionHeaderPaint)
+            y += 12f
+            if (grades.isEmpty() && exams.isEmpty()) {
+                canvas.drawText("لا توجد درجات أو امتحانات مسجلة في هذه الفترة.", 545f, y + 16f, bodyPaint)
+                y += 28f
+            } else {
+                grades.take(8).forEach { gr ->
+                    canvas.drawText(
+                        "• ${gr.subjectName} — المعدل: ${gr.finalAverage} من ${gr.maxScoreScale}  |  التقدير: ${gr.ratingLabel}",
+                        545f,
+                        y + 16f,
+                        bodyPaint
+                    )
+                    y += 22f
+                    canvas.drawLine(45f, y, 550f, y, linePaint)
+                }
+                if (grades.isEmpty()) {
+                    exams.take(6).forEach { ex ->
+                        canvas.drawText(
+                            "• ${ex.subjectName} (${ex.examType}) — التاريخ: ${ex.examDate}  |  الدرجة القصوى: ${ex.maxScore}",
+                            545f,
+                            y + 16f,
+                            bodyPaint
+                        )
+                        y += 22f
+                        canvas.drawLine(45f, y, 550f, y, linePaint)
+                    }
+                }
+            }
+
+            y += 22f
+            canvas.drawText("ثالثاً: سجل المتابعة اليومية والسلوك (${behaviors.size} متابعة):", 545f, y, sectionHeaderPaint)
+            y += 12f
+            if (behaviors.isEmpty()) {
+                canvas.drawText("لا توجد ملاحظات سلوكية أو متابعات مسجلة في هذه الفترة.", 545f, y + 16f, bodyPaint)
+                y += 28f
+            } else {
+                behaviors.take(6).forEach { beh ->
+                    canvas.drawText(
+                        "• [${beh.date}] ${beh.subjectName}: ${beh.behaviorType.arabicTitle} ${if (beh.note.isNotBlank()) "— ${beh.note}" else ""}",
+                        545f,
+                        y + 16f,
+                        bodyPaint
+                    )
+                    y += 22f
+                    canvas.drawLine(45f, y, 550f, y, linePaint)
+                }
+            }
+
+            y += 22f
+            val fmt = NumberFormat.getNumberInstance(Locale.US)
+            val walletTxList = student.walletTransactions
+            canvas.drawText("رابعاً: حركات محفظة الحانوت المدرسي (الرصيد الحالي: ${fmt.format(student.walletBalance)} د.ع):", 545f, y, sectionHeaderPaint)
+            y += 12f
+            if (walletTxList.isEmpty()) {
+                canvas.drawText("لا توجد حركات مالية مسجلة في هذه الفترة.", 545f, y + 16f, bodyPaint)
+            } else {
+                walletTxList.take(5).forEach { tx ->
+                    canvas.drawText(
+                        "• [${tx.timestamp}] ${tx.type.arabicLabel}: ${fmt.format(tx.amount)} د.ع — ${tx.note}",
+                        545f,
+                        y + 16f,
+                        bodyPaint
+                    )
+                    y += 20f
+                }
+            }
+
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            pdfDocument.finishPage(page)
+
+            val fileName = "Student_Comprehensive_Archive_${student.id}_${System.currentTimeMillis()}.pdf"
+            val savedPath = savePdfAndTriggerPrint(
+                context = context,
+                pdfDocument = pdfDocument,
+                fileName = fileName,
+                jobName = "السجل الشامل للطالب - ${student.fullNameWithFather}"
+            )
+            pdfDocument.close()
+            Result.success(savedPath)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Exports the Official Annual Promotion & End-of-Year Principal Report as a PDF.
+     */
+    fun exportAnnualPromotionReportPdf(
+        context: Context,
+        schoolConfig: SchoolConfig,
+        report: AnnualPromotionReport,
+        principalName: String = "مدير المدرسة"
+    ): Result<String> {
+        return try {
+            val pdfDocument = PdfDocument()
+            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+            canvas.drawColor(Color.WHITE)
+
+            drawOfficialPdfHeader(
+                canvas = canvas,
+                schoolConfig = schoolConfig,
+                documentTitle = "تقرير الترحيل السنوي ونتائج نهاية العام الدراسي",
+                subtitle = "من العام (${report.previousAcademicYear}) إلى العام (${report.newAcademicYear})  |  نسبة النجاح العامة: ${report.overallPassRatePercent}%"
+            )
+
+            val sectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DEEP_EMERALD
+                textSize = 12.5f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.RIGHT
+            }
+            val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DARK_TEXT
+                textSize = 10.5f
+                textAlign = Paint.Align.RIGHT
+            }
+            val linePaint = Paint().apply { color = 0xFFD5E3DC.toInt(); strokeWidth = 1f }
+
+            var y = 175f
+            canvas.drawText(
+                "إجمالي الطلاب المشمولين: ${report.totalStudentsEvaluated} طالب  |  الناجحون المرحّلون: ${report.promotedCount}  |  المعيدون: ${report.repeatingCount}  |  المتخرجون: ${report.graduatedCount}",
+                550f,
+                y,
+                sectionPaint
+            )
+            y += 24f
+            canvas.drawText("أولاً: نسب النجاح وتفاصيل الترحيل حسب الصفوف الدراسية:", 550f, y, sectionPaint)
+            y += 14f
+
+            report.classBreakdowns.take(8).forEach { cb ->
+                canvas.drawText(
+                    "• ${cb.gradeClass}  ←  (${cb.nextGradeClass}): الإجمالي ${cb.totalCount} | الناجحون ${cb.passedCount} | المعيدون ${cb.repeatingCount} | نسبة النجاح: ${cb.passRatePercent}%",
+                    550f,
+                    y + 14f,
+                    bodyPaint
+                )
+                y += 20f
+                canvas.drawLine(40f, y, 555f, y, linePaint)
+            }
+
+            y += 18f
+            canvas.drawText("ثانياً: قائمة الطلاب المرحّلين والباقين للإعادة:", 550f, y, sectionPaint)
+            y += 14f
+            val allItems = (report.promotedStudents + report.repeatingStudents).take(14)
+            allItems.forEach { item ->
+                val stateLabel = when {
+                    item.graduated -> "متخرج بنجاح (${item.toGradeClass})"
+                    item.passed -> "مرحّل بنجاح من (${item.fromGradeClass}) إلى (${item.toGradeClass})"
+                    else -> "معيد في (${item.fromGradeClass})"
+                }
+                canvas.drawText(
+                    "• ${item.studentName} — المعدل: ${item.finalAverage}% — $stateLabel",
+                    550f,
+                    y + 14f,
+                    bodyPaint
+                )
+                y += 19f
+                canvas.drawLine(40f, y, 555f, y, linePaint)
+            }
+
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            pdfDocument.finishPage(page)
+
+            val fileName = "Annual_Promotion_Report_${System.currentTimeMillis()}.pdf"
+            val savedPath = savePdfAndTriggerPrint(
+                context = context,
+                pdfDocument = pdfDocument,
+                fileName = fileName,
+                jobName = "تقرير الترحيل السنوي - ${schoolConfig.schoolName}"
+            )
+            pdfDocument.close()
+            Result.success(savedPath)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+

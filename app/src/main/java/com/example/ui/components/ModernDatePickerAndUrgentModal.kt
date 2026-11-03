@@ -786,6 +786,8 @@ fun SchoolHolidaysManagementModalDialog(
     onToggleWeeklyDay: (String) -> Unit,
     onSaveOfficialHoliday: (holidayId: String?, dateIso: String, title: String) -> Unit,
     onDeleteOfficialHoliday: (String) -> Unit,
+    toastAlert: com.example.model.ToastAlertMessage? = null,
+    onDismissToast: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val allWeekDays = remember {
@@ -804,10 +806,12 @@ fun SchoolHolidaysManagementModalDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                InlineDialogToastBanner(toastAlert = toastAlert, onDismiss = onDismissToast)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                 Surface(
                     shape = CircleShape,
                     color = DeepEmerald.copy(alpha = 0.14f),
@@ -835,6 +839,7 @@ fun SchoolHolidaysManagementModalDialog(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
                 }
             }
         },

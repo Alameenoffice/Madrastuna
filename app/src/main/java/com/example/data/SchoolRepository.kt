@@ -176,11 +176,14 @@ class SchoolRepository(context: Context) {
                 subjectConfigs = subjectConfigs,
                 logoBase64 = obj.optString("logoBase64", ""),
                 academicYear = obj.optString("academicYear", "2026 - 2027"),
-                phone = obj.optString("phone", "").let { if (it == "07512362567") "" else it },
+                phone = obj.optString("phone", "").let {
+                    if (com.example.util.SecurityShieldHelper.isLegacyPlaceholderPhone(it)) "" else it
+                },
                 subscriptionExpiryDate = obj.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                 featureSettings = parsedFeatures,
                 urgentAlert = parsedUrgentAlert,
-                holidaysConfig = parsedHolidaysConfig
+                holidaysConfig = parsedHolidaysConfig,
+                isCanteenWalletEnabled = obj.optBoolean("isCanteenWalletEnabled", parsedFeatures.canteenWalletEnabled)
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -367,6 +370,7 @@ class SchoolRepository(context: Context) {
             put("enabledFeatures", featJson)
             put("urgentAlert", urgentAlertJson)
             put("holidaysConfig", holidaysJson)
+            put("isCanteenWalletEnabled", config.isCanteenWalletEnabled)
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
@@ -415,6 +419,7 @@ class SchoolRepository(context: Context) {
             put("quickQuizzes", f.quickQuizzesEnabled)
             put("lostAndFoundSuggestions", lostAndSug)
             put("studentActivities", f.studentActivitiesEnabled)
+            put("canteenWalletEnabled", f.canteenWalletEnabled)
         }
 
         return JSONObject().apply {
@@ -454,6 +459,7 @@ class SchoolRepository(context: Context) {
             put("qrScannerEnabled", qr)
             put("qrAttendanceEnabled", qr)
             put("studentActivitiesEnabled", f.studentActivitiesEnabled)
+            put("canteenWalletEnabled", f.canteenWalletEnabled)
         }
     }
 
@@ -486,6 +492,7 @@ class SchoolRepository(context: Context) {
         val lostAndSug = boolKey("lostAndFoundSuggestions", "lostAndFoundEnabled", "suggestionsBoxEnabled", "dismissalAndLostFoundEnabled")
         val eventsGallery = boolKey("eventsGalleryEnabled")
         val studentActivities = boolKey("studentActivities", "studentActivitiesEnabled")
+        val canteenWallet = boolKey("canteenWalletEnabled", "isCanteenWalletEnabled")
 
         return SchoolFeatureSettings(
             honorRollEnabled = honor,
@@ -507,7 +514,8 @@ class SchoolRepository(context: Context) {
             homeworkSubmissionEnabled = photoHw,
             dismissalCallEnabled = smartDismissal,
             lostAndFoundEnabled = lostAndSug,
-            studentActivitiesEnabled = studentActivities
+            studentActivitiesEnabled = studentActivities,
+            canteenWalletEnabled = canteenWallet
         )
     }
 
@@ -823,6 +831,28 @@ class SchoolRepository(context: Context) {
                         }
                     }
                 }
+                val enrollmentStatus = StudentEnrollmentStatus.fromKeyOrName(
+                    o.optString("enrollmentStatus", StudentEnrollmentStatus.ACTIVE.name)
+                )
+                val archivedArr = o.optJSONArray("archivedYearlySummaries")
+                val parsedArchivedSummaries = mutableListOf<ArchivedYearlySummary>()
+                if (archivedArr != null) {
+                    for (aIdx in 0 until archivedArr.length()) {
+                        val aObj = archivedArr.optJSONObject(aIdx) ?: continue
+                        parsedArchivedSummaries.add(
+                            ArchivedYearlySummary(
+                                academicYear = aObj.optString("academicYear", ""),
+                                gradeClass = aObj.optString("gradeClass", ""),
+                                sectionName = aObj.optString("sectionName", "أ"),
+                                finalAveragePercentage = aObj.optInt("finalAveragePercentage", 0),
+                                ratingLabel = aObj.optString("ratingLabel", ""),
+                                resultStatus = aObj.optString("resultStatus", ""),
+                                promotedToClass = aObj.optString("promotedToClass", ""),
+                                archivedAt = aObj.optString("archivedAt", "")
+                            )
+                        )
+                    }
+                }
                 list.add(
                     StudentRecord(
                         id = o.optString("id"),
@@ -859,7 +889,14 @@ class SchoolRepository(context: Context) {
                         dailySpendLimit = o.optInt("dailySpendLimit", 0).coerceAtLeast(0),
                         dailySpentMap = parsedDailySpentMap,
                         walletTransactions = parsedWalletTxs,
-                        dailyGateLog = parsedDailyGateLog
+                        dailyGateLog = parsedDailyGateLog,
+                        isWalletSuspended = o.optBoolean("isWalletSuspended", false),
+                        enrollmentStatus = enrollmentStatus,
+                        suspensionStartDate = ArabicTextNormalizer.normalizeDateIso(o.optString("suspensionStartDate", "")),
+                        suspensionEndDate = ArabicTextNormalizer.normalizeDateIso(o.optString("suspensionEndDate", "")),
+                        enrollmentStatusReason = o.optString("enrollmentStatusReason", ""),
+                        transferredToSchoolName = o.optString("transferredToSchoolName", ""),
+                        archivedYearlySummaries = parsedArchivedSummaries
                     )
                 )
             }
@@ -985,6 +1022,26 @@ class SchoolRepository(context: Context) {
                     }
                 }
                 put("dailyGateLog", dailyGateJson)
+                put("isWalletSuspended", s.isWalletSuspended)
+                put("enrollmentStatus", s.enrollmentStatus.name)
+                put("suspensionStartDate", ArabicTextNormalizer.normalizeDateIso(s.suspensionStartDate))
+                put("suspensionEndDate", ArabicTextNormalizer.normalizeDateIso(s.suspensionEndDate))
+                put("enrollmentStatusReason", InputSanitizer.sanitize(s.enrollmentStatusReason))
+                put("transferredToSchoolName", InputSanitizer.sanitize(s.transferredToSchoolName))
+                val archivedJsonArr = JSONArray()
+                s.archivedYearlySummaries.forEach { arch ->
+                    archivedJsonArr.put(JSONObject().apply {
+                        put("academicYear", InputSanitizer.sanitize(arch.academicYear))
+                        put("gradeClass", InputSanitizer.sanitize(arch.gradeClass))
+                        put("sectionName", InputSanitizer.sanitize(arch.sectionName))
+                        put("finalAveragePercentage", arch.finalAveragePercentage)
+                        put("ratingLabel", InputSanitizer.sanitize(arch.ratingLabel))
+                        put("resultStatus", InputSanitizer.sanitize(arch.resultStatus))
+                        put("promotedToClass", InputSanitizer.sanitize(arch.promotedToClass))
+                        put("archivedAt", InputSanitizer.sanitize(arch.archivedAt))
+                    })
+                }
+                put("archivedYearlySummaries", archivedJsonArr)
             })
         }
         val jsonStr = arr.toString()
@@ -3411,5 +3468,255 @@ class SchoolRepository(context: Context) {
     fun defaultChatMessages(): List<ChatMessage> = emptyList()
     fun defaultEvents(): List<SchoolEvent> = emptyList()
     fun defaultNotifications(): List<AppNotification> = emptyList()
+
+    // =========================================================================
+    // 16. ENCRYPTED DEVELOPER CLOUD VAULT & SOVEREIGNTY BACKUP / DEEP DELETE
+    // =========================================================================
+
+    fun loadDeveloperVaultConfig(): DeveloperVaultConfig {
+        val raw = prefs.getString("system_secure_developer_vault_json", null)
+            ?: return DeveloperVaultConfig(
+                usernameHash = com.example.util.SecurityShieldHelper.DEFAULT_DEVELOPER_CODE_HASH,
+                passwordHash = com.example.util.SecurityShieldHelper.DEFAULT_DEVELOPER_PASS_HASH
+            )
+        return parseDeveloperVaultConfigJson(raw)
+    }
+
+    fun parseDeveloperVaultConfigJson(raw: String): DeveloperVaultConfig {
+        return try {
+            val o = JSONObject(raw)
+            DeveloperVaultConfig(
+                usernameHash = o.optString("usernameHash", com.example.util.SecurityShieldHelper.DEFAULT_DEVELOPER_CODE_HASH),
+                passwordHash = o.optString("passwordHash", com.example.util.SecurityShieldHelper.DEFAULT_DEVELOPER_PASS_HASH),
+                encryptedVaultPayload = o.optString("encryptedVaultPayload", ""),
+                maskedDisplayLabel = o.optString("maskedDisplayLabel", "مطور النظام العام (مشفر سحابياً)"),
+                updatedAt = o.optString("updatedAt", "")
+            )
+        } catch (_: Exception) {
+            DeveloperVaultConfig(
+                usernameHash = com.example.util.SecurityShieldHelper.DEFAULT_DEVELOPER_CODE_HASH,
+                passwordHash = com.example.util.SecurityShieldHelper.DEFAULT_DEVELOPER_PASS_HASH
+            )
+        }
+    }
+
+    fun saveDeveloperVaultConfig(config: DeveloperVaultConfig) {
+        val obj = JSONObject().apply {
+            put("usernameHash", config.usernameHash)
+            put("passwordHash", config.passwordHash)
+            put("encryptedVaultPayload", config.encryptedVaultPayload)
+            put("maskedDisplayLabel", InputSanitizer.sanitize(config.maskedDisplayLabel))
+            put("updatedAt", config.updatedAt)
+        }
+        val jsonStr = obj.toString()
+        prefs.edit().putString("system_secure_developer_vault_json", jsonStr).apply()
+        FirebaseCloudSync.pushGlobalCollectionAsync(
+            collectionName = FirebaseConfigConstants.COL_SYSTEM_SECURE_CONFIG,
+            docName = FirebaseConfigConstants.DOC_DEVELOPER_VAULT,
+            jsonPayload = jsonStr
+        )
+    }
+
+    /**
+     * Deeply deletes a school, all its subcollections, and its licenses from both local cache and Firebase Cloud.
+     */
+    fun deleteSchoolCompletely(schoolId: String) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return
+
+        val subCols = listOf(
+            FirebaseConfigConstants.COL_SETTINGS,
+            FirebaseConfigConstants.COL_USERS,
+            FirebaseConfigConstants.COL_SUBJECTS,
+            FirebaseConfigConstants.COL_ATTENDANCE,
+            FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK,
+            FirebaseConfigConstants.COL_GRADES,
+            FirebaseConfigConstants.COL_HONOR_ROLL,
+            FirebaseConfigConstants.COL_TUITION_FEES,
+            FirebaseConfigConstants.COL_REPORTS,
+            FirebaseConfigConstants.COL_MESSAGES,
+            FirebaseConfigConstants.COL_EVENTS_GALLERY,
+            FirebaseConfigConstants.COL_NOTIFICATIONS,
+            FirebaseConfigConstants.COL_SCHEDULES_PERIODS,
+            FirebaseConfigConstants.COL_EXAMS,
+            FirebaseConfigConstants.COL_LEAVE_REQUESTS,
+            FirebaseConfigConstants.COL_BUS_TRACKING,
+            FirebaseConfigConstants.COL_STUDY_MATERIALS,
+            FirebaseConfigConstants.COL_FEATURE_SETTINGS,
+            FirebaseConfigConstants.COL_DAILY_BEHAVIOR,
+            FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS,
+            FirebaseConfigConstants.COL_QUICK_QUIZZES,
+            FirebaseConfigConstants.COL_DISMISSAL_CALLS,
+            FirebaseConfigConstants.COL_LOST_AND_FOUND,
+            FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS,
+            FirebaseConfigConstants.COL_URGENT_ALERT,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITIES,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS,
+            FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
+            FirebaseConfigConstants.COL_USER_PROFILES,
+            FirebaseConfigConstants.COL_HOLIDAYS
+        )
+
+        val editor = prefs.edit()
+        subCols.forEach { sub ->
+            editor.remove(scopedKey(cleanSid, sub))
+        }
+        editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods")
+        editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES)}_exams")
+        editor.remove("last_shown_urgent_alert_$cleanSid")
+        if (getActiveSchoolId() == cleanSid) {
+            editor.remove("active_school_id")
+            editor.remove("active_user_session")
+        }
+        editor.apply()
+
+        val allLicenses = loadSchoolLicenses()
+        val matchedLicenseCodes = allLicenses.filter { it.usedBySchoolId == cleanSid }.map { it.code }
+        val remainingLicenses = allLicenses.filterNot { it.usedBySchoolId == cleanSid }
+        saveSchoolLicenses(remainingLicenses)
+
+        val remainingSchools = loadRegisteredSchools().filterNot { it.schoolId == cleanSid }
+        saveRegisteredSchools(remainingSchools)
+
+        FirebaseCloudSync.deleteSchoolNodesFromCloudAsync(cleanSid, matchedLicenseCodes)
+    }
+
+    /**
+     * Exports a complete JSON backup of all schools, their subcollections, licenses, and global configs.
+     */
+    fun exportFullSystemBackupJson(): String {
+        val subCols = listOf(
+            FirebaseConfigConstants.COL_SETTINGS,
+            FirebaseConfigConstants.COL_USERS,
+            FirebaseConfigConstants.COL_SUBJECTS,
+            FirebaseConfigConstants.COL_ATTENDANCE,
+            FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK,
+            FirebaseConfigConstants.COL_GRADES,
+            FirebaseConfigConstants.COL_HONOR_ROLL,
+            FirebaseConfigConstants.COL_TUITION_FEES,
+            FirebaseConfigConstants.COL_REPORTS,
+            FirebaseConfigConstants.COL_MESSAGES,
+            FirebaseConfigConstants.COL_EVENTS_GALLERY,
+            FirebaseConfigConstants.COL_NOTIFICATIONS,
+            FirebaseConfigConstants.COL_SCHEDULES_PERIODS,
+            FirebaseConfigConstants.COL_EXAMS,
+            FirebaseConfigConstants.COL_LEAVE_REQUESTS,
+            FirebaseConfigConstants.COL_BUS_TRACKING,
+            FirebaseConfigConstants.COL_STUDY_MATERIALS,
+            FirebaseConfigConstants.COL_FEATURE_SETTINGS,
+            FirebaseConfigConstants.COL_DAILY_BEHAVIOR,
+            FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS,
+            FirebaseConfigConstants.COL_QUICK_QUIZZES,
+            FirebaseConfigConstants.COL_DISMISSAL_CALLS,
+            FirebaseConfigConstants.COL_LOST_AND_FOUND,
+            FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS,
+            FirebaseConfigConstants.COL_URGENT_ALERT,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITIES,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS,
+            FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
+            FirebaseConfigConstants.COL_USER_PROFILES,
+            FirebaseConfigConstants.COL_HOLIDAYS
+        )
+
+        val schoolsList = loadRegisteredSchools()
+        val activeSid = getActiveSchoolId()
+        val allSchoolIds = (schoolsList.map { it.schoolId } + listOfNotNull(activeSid.takeIf { it.isNotBlank() })).distinct()
+
+        val schoolsDataObj = JSONObject()
+        allSchoolIds.forEach { sid ->
+            val schoolSubObj = JSONObject()
+            subCols.forEach { sub ->
+                val rawSub = getRawCachedSubCollection(sid, sub)
+                if (!rawSub.isNullOrBlank()) {
+                    schoolSubObj.put(sub, rawSub)
+                }
+            }
+            schoolsDataObj.put(sid, schoolSubObj)
+        }
+
+        val rootBackup = JSONObject().apply {
+            put("backupVersion", "3.0")
+            put("exportedAt", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date()))
+            put("registeredSchoolsRaw", prefs.getString("global_registered_schools", "[]") ?: "[]")
+            put("schoolLicensesRaw", prefs.getString("global_school_licenses", "[]") ?: "[]")
+            put("developerBroadcastsRaw", prefs.getString("global_developer_broadcasts", "[]") ?: "[]")
+            put("appUpdateConfigRaw", prefs.getString("global_app_update_config_json", "{}") ?: "{}")
+            put("occasionThemeRaw", prefs.getString("global_occasion_theme_json", "{}") ?: "{}")
+            put("developerVaultRaw", prefs.getString("system_secure_developer_vault_json", "{}") ?: "{}")
+            put("schoolsData", schoolsDataObj)
+        }
+        return rootBackup.toString(2)
+    }
+
+    /**
+     * Restores a complete JSON backup of all schools, subcollections, licenses, and global settings to local storage & Firebase Cloud.
+     * Returns Result<Int> containing the number of restored schools.
+     */
+    fun restoreFullSystemBackupJson(rawJson: String): Result<Int> {
+        return try {
+            val root = JSONObject(rawJson)
+            val regSchoolsRaw = root.optString("registeredSchoolsRaw", "")
+            if (regSchoolsRaw.isNotBlank()) {
+                val parsedSchools = parseRegisteredSchoolsJson(regSchoolsRaw)
+                if (parsedSchools.isNotEmpty()) {
+                    saveRegisteredSchools(parsedSchools)
+                }
+            }
+            val licensesRaw = root.optString("schoolLicensesRaw", "")
+            if (licensesRaw.isNotBlank()) {
+                val parsedLicenses = parseSchoolLicensesJson(licensesRaw)
+                if (parsedLicenses.isNotEmpty()) {
+                    saveSchoolLicenses(parsedLicenses)
+                }
+            }
+            val broadcastsRaw = root.optString("developerBroadcastsRaw", "")
+            if (broadcastsRaw.isNotBlank()) {
+                val parsedBroadcasts = parseDeveloperBroadcastsJson(broadcastsRaw)
+                if (parsedBroadcasts.isNotEmpty()) {
+                    saveDeveloperBroadcasts(parsedBroadcasts)
+                }
+            }
+            val appUpdateRaw = root.optString("appUpdateConfigRaw", "")
+            if (appUpdateRaw.isNotBlank() && appUpdateRaw != "{}") {
+                saveAppUpdateConfig(parseAppUpdateConfigJson(appUpdateRaw))
+            }
+            val occasionRaw = root.optString("occasionThemeRaw", "")
+            if (occasionRaw.isNotBlank() && occasionRaw != "{}") {
+                saveOccasionThemeConfig(parseOccasionThemeConfigJson(occasionRaw))
+            }
+            val vaultRaw = root.optString("developerVaultRaw", "")
+            if (vaultRaw.isNotBlank() && vaultRaw != "{}") {
+                saveDeveloperVaultConfig(parseDeveloperVaultConfigJson(vaultRaw))
+            }
+
+            val schoolsDataObj = root.optJSONObject("schoolsData")
+            var restoredSchoolsCount = 0
+            if (schoolsDataObj != null) {
+                val schoolKeys = schoolsDataObj.keys()
+                while (schoolKeys.hasNext()) {
+                    val sid = InputSanitizer.sanitizeSchoolId(schoolKeys.next())
+                    if (sid.isBlank()) continue
+                    val subObj = schoolsDataObj.optJSONObject(sid) ?: continue
+                    val subKeys = subObj.keys()
+                    var hasSubData = false
+                    while (subKeys.hasNext()) {
+                        val subName = subKeys.next()
+                        val payloadStr = subObj.optString(subName, "")
+                        if (payloadStr.isNotBlank()) {
+                            saveRawCachedSubCollection(sid, subName, payloadStr)
+                            FirebaseCloudSync.pushSubCollectionAsync(sid, subName, payloadStr)
+                            hasSubData = true
+                        }
+                    }
+                    if (hasSubData) {
+                        restoredSchoolsCount++
+                    }
+                }
+            }
+            Result.success(maxOf(restoredSchoolsCount, loadRegisteredSchools().size))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
 

@@ -52,10 +52,12 @@ object FirebaseConfigConstants {
     const val COL_DEV_BROADCASTS = "developer_broadcasts"
     const val COL_APP_UPDATE_CONFIG = "global_app_update_config"
     const val COL_OCCASION_THEME = "global_occasion_theme"
+    const val COL_SYSTEM_SECURE_CONFIG = "system_secure_config"
+    const val DOC_DEVELOPER_VAULT = "developer_vault"
 
-    // Developer Super-Admin Credentials
-    const val DEV_USERNAME = "ABU-RASLAN"
-    const val DEV_PASSWORD = "07512362567"
+    // Developer Super-Admin Token (resolved dynamically via SecurityShieldHelper — zero plaintext in code)
+    val DEV_USERNAME: String
+        get() = com.example.util.SecurityShieldHelper.defaultDeveloperIdentifierToken()
 
     fun schoolCollectionPath(schoolId: String, subCollection: String): String {
         return "schools/$schoolId/$subCollection"
@@ -240,6 +242,7 @@ enum class AppSection(val arabicTitle: String) {
     ATTENDANCE("الحضور والغياب"),
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     EXAMS_GRADES("الامتحانات والدرجات"),
+    STUDENT_COMPREHENSIVE_ARCHIVE("السجل الشامل للطالب"),
     HONOR_ROLL("لوحة الشرف"),
     STUDENT_ACTIVITIES("نشاطات الطلبة"),
     TUITION_FEES("الأقساط الدراسية"),
@@ -248,6 +251,115 @@ enum class AppSection(val arabicTitle: String) {
     ADMIN_ACCOUNTS("إدارة الحسابات"),
     SETTINGS("الإعدادات")
 }
+
+enum class StudentEnrollmentStatus(val key: String, val arabicLabel: String) {
+    ACTIVE("active", "مستمر بالدوام"),
+    SUSPENDED_TEMP("suspended_temp", "فصل مؤقت"),
+    EXPELLED("expelled", "فصل دائمي"),
+    DEREGISTERED("deregistered", "ترقين قيد"),
+    TRANSFERRED("transferred", "منقول إلى مدرسة أخرى");
+
+    companion object {
+        fun fromKeyOrName(raw: String): StudentEnrollmentStatus {
+            val clean = raw.trim()
+            if (clean.isEmpty()) return ACTIVE
+            return entries.firstOrNull {
+                it.name.equals(clean, ignoreCase = true) ||
+                    it.key.equals(clean, ignoreCase = true) ||
+                    it.arabicLabel == clean
+            } ?: ACTIVE
+        }
+    }
+}
+
+data class ArchivedYearlySummary(
+    val academicYear: String = "",
+    val gradeClass: String = "",
+    val sectionName: String = "",
+    val finalAveragePercentage: Int = 0,
+    val ratingLabel: String = "جيد",
+    val resultStatus: String = "", // "ناجح ومُرحّل" | "راسب ومُعيد"
+    val promotedToClass: String = "",
+    val archivedAt: String = "",
+    val overallAverage: String = if (finalAveragePercentage > 0) "$finalAveragePercentage%" else "",
+    val presentDays: Int = 0,
+    val absentDays: Int = 0,
+    val excusedDays: Int = 0,
+    val subjectsSummary: String = ""
+) {
+    val finalAverage: Int get() = finalAveragePercentage
+    val totalPresentDays: Int get() = presentDays
+    val totalAbsentDays: Int get() = absentDays
+    val totalExcusedDays: Int get() = excusedDays
+    val promotedToGrade: String get() = promotedToClass
+}
+
+data class PromotedStudentItem(
+    val studentId: String = "",
+    val studentName: String = "",
+    val previousClass: String = "",
+    val newClass: String = "",
+    val sectionName: String = "",
+    val finalAveragePercentage: Int = 0,
+    val isPromoted: Boolean = true,
+    val isGraduatedStage: Boolean = false
+) {
+    val fromGradeClass: String get() = previousClass
+    val toGradeClass: String get() = newClass
+    val previousGrade: String get() = previousClass
+    val newGrade: String get() = newClass
+    val finalAverage: Int get() = finalAveragePercentage
+    val averageScore: Double get() = finalAveragePercentage.toDouble()
+    val passed: Boolean get() = isPromoted
+    val graduated: Boolean get() = isGraduatedStage
+}
+
+data class ClassPromotionBreakdown(
+    val gradeClass: String = "",
+    val nextGradeClass: String = "",
+    val totalStudents: Int = 0,
+    val passedCount: Int = 0,
+    val failedCount: Int = 0,
+    val passRatePercentage: Int = 0
+) {
+    val totalCount: Int get() = totalStudents
+    val repeatingCount: Int get() = failedCount
+    val passRatePercent: Int get() = passRatePercentage
+}
+
+data class AnnualPromotionReport(
+    val academicYear: String = "",
+    val academicYearFrom: String = academicYear,
+    val academicYearTo: String = academicYear,
+    val executedAt: String = "",
+    val totalEvaluatedStudents: Int = 0,
+    val totalPromotedCount: Int = 0,
+    val totalRepeatingCount: Int = 0,
+    val graduatedCount: Int = 0,
+    val overallPassRatePercentage: Int = 0,
+    val classBreakdowns: List<ClassPromotionBreakdown> = emptyList(),
+    val studentResults: List<PromotedStudentItem> = emptyList(),
+    val promotedStudents: List<PromotedStudentItem> = studentResults.filter { it.isPromoted },
+    val repeatingStudents: List<PromotedStudentItem> = studentResults.filter { !it.isPromoted }
+) {
+    val previousAcademicYear: String get() = academicYearFrom.ifBlank { academicYear }
+    val newAcademicYear: String get() = academicYearTo.ifBlank { academicYear }
+    val overallPassRatePercent: Int get() = overallPassRatePercentage
+    val promotedCount: Int get() = totalPromotedCount
+    val repeatingCount: Int get() = totalRepeatingCount
+    val totalEvaluated: Int get() = totalEvaluatedStudents
+    val totalStudentsEvaluated: Int get() = totalEvaluatedStudents
+}
+
+data class DeveloperVaultConfig(
+    val usernameHash: String = "",
+    val passwordHash: String = "",
+    val encryptedVaultPayload: String = "",
+    val encryptedUsernameCipher: String = "",
+    val encryptedPasswordCipher: String = "",
+    val maskedDisplayLabel: String = "مطور النظام العام (مشفر سحابياً)",
+    val updatedAt: String = ""
+)
 
 /**
  * Subject configuration item assignable to specific registered classes inside schools/{schoolId}/subjects
@@ -328,7 +440,9 @@ data class SchoolConfig(
     val subscriptionExpiryDate: String = "2027-10-29",
     val featureSettings: SchoolFeatureSettings = SchoolFeatureSettings(),
     val urgentAlert: UrgentSchoolAlert = UrgentSchoolAlert(),
-    val holidaysConfig: SchoolHolidaysConfig = SchoolHolidaysConfig()
+    val holidaysConfig: SchoolHolidaysConfig = SchoolHolidaysConfig(),
+    val isCanteenWalletEnabled: Boolean = true,
+    val principalFullName: String = "مدير المدرسة"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -772,7 +886,10 @@ data class CanteenWalletTransaction(
     val timestamp: String,
     val actorName: String = "كاشير الحانوت",
     val note: String = ""
-)
+) {
+    val amountIqd: Int get() = amount
+    val itemsSummary: String get() = note
+}
 
 data class StudentRecord(
     val id: String,
@@ -806,8 +923,22 @@ data class StudentRecord(
     val dailySpendLimit: Int = 0,
     val dailySpentMap: Map<String, Int> = emptyMap(),
     val walletTransactions: List<CanteenWalletTransaction> = emptyList(),
-    val dailyGateLog: Map<String, DailyGateLogEntry> = emptyMap()
+    val dailyGateLog: Map<String, DailyGateLogEntry> = emptyMap(),
+    val isWalletSuspended: Boolean = false,
+    val enrollmentStatus: StudentEnrollmentStatus = StudentEnrollmentStatus.ACTIVE,
+    val suspensionStartDate: String = "",
+    val suspensionEndDate: String = "",
+    val enrollmentStatusReason: String = "",
+    val transferredToSchoolName: String = "",
+    val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList()
 ) {
+    val enrollmentStatusEnum: StudentEnrollmentStatus get() = enrollmentStatus
+    val suspensionFromDate: String get() = suspensionStartDate
+    val suspensionToDate: String get() = suspensionEndDate
+    val dailyGateLogs: Map<String, DailyGateLogEntry> get() = dailyGateLog
+    val walletBalanceIqd: Int get() = walletBalance
+    val overallAverage: String get() = "$excellencePoints%"
+
     val qrCodeValue: String
         get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
 
@@ -831,6 +962,65 @@ data class StudentRecord(
             ?: dailyGateLog.entries.firstOrNull { (k, _) ->
                 ArabicTextNormalizer.normalizeDateIso(k.trim()) == cleanDate
             }?.value
+    }
+
+    /**
+     * Returns true when the student has completed both Check-In and Check-Out on `dateIso`.
+     * Once true, attendance and gate buttons for that date are locked until the next day.
+     */
+    fun isDayAttendanceLocked(dateIso: String): Boolean {
+        val gateLog = getGateLogForDate(dateIso) ?: return false
+        return gateLog.checkInTime.isNotBlank() && gateLog.checkOutTime.isNotBlank() && gateLog.isDeparted
+    }
+
+    /**
+     * Checks if the student is under an active temporary suspension (`SUSPENDED_TEMP`) on `dateIso`.
+     */
+    fun isTemporarilySuspendedOnDate(dateIso: String): Boolean {
+        if (enrollmentStatus != StudentEnrollmentStatus.SUSPENDED_TEMP) return false
+        val targetDate = ArabicTextNormalizer.normalizeDateIso(dateIso.trim())
+        if (targetDate.isEmpty()) return true
+        val startIso = ArabicTextNormalizer.normalizeDateIso(suspensionStartDate.trim())
+        val endIso = ArabicTextNormalizer.normalizeDateIso(suspensionEndDate.trim())
+        if (startIso.isNotEmpty() && targetDate < startIso) return false
+        if (endIso.isNotEmpty() && targetDate > endIso) return false
+        return true
+    }
+
+    /**
+     * Checks if attendance recording is blocked for this student on `dateIso` due to official enrollment status
+     * (Temporary Suspension within date range, Expelled, Deregistered, or Transferred).
+     */
+    fun isAttendanceBlockedByEnrollmentStatus(dateIso: String): Boolean {
+        return when (enrollmentStatus) {
+            StudentEnrollmentStatus.ACTIVE -> false
+            StudentEnrollmentStatus.SUSPENDED_TEMP -> isTemporarilySuspendedOnDate(dateIso)
+            StudentEnrollmentStatus.EXPELLED,
+            StudentEnrollmentStatus.DEREGISTERED,
+            StudentEnrollmentStatus.TRANSFERRED -> true
+        }
+    }
+
+    fun getEnrollmentBlockBannerText(dateIso: String): String {
+        if (!isAttendanceBlockedByEnrollmentStatus(dateIso)) return ""
+        val reasonSuffix = enrollmentStatusReason.takeIf { it.isNotBlank() }?.let { " — السبب: $it" }.orEmpty()
+        return when (enrollmentStatus) {
+            StudentEnrollmentStatus.ACTIVE -> ""
+            StudentEnrollmentStatus.SUSPENDED_TEMP -> {
+                val rangeText = if (suspensionStartDate.isNotBlank() || suspensionEndDate.isNotBlank()) {
+                    " (من ${suspensionStartDate.ifBlank { "اليوم" }} إلى ${suspensionEndDate.ifBlank { "إشعار آخر" }})"
+                } else ""
+                "الطالب في حالة فصل مؤقت$rangeText — رصد الحضور موقوف حتى انتهاء المدة$reasonSuffix"
+            }
+            StudentEnrollmentStatus.EXPELLED ->
+                "قيد الطالب: فصل دائمي — رصد الحضور موقوف رسمياً$reasonSuffix"
+            StudentEnrollmentStatus.DEREGISTERED ->
+                "قيد الطالب: ترقين قيد — رصد الحضور موقوف رسمياً$reasonSuffix"
+            StudentEnrollmentStatus.TRANSFERRED -> {
+                val schoolTarget = transferredToSchoolName.takeIf { it.isNotBlank() }?.let { " إلى ($it)" }.orEmpty()
+                "قيد الطالب: منقول$schoolTarget — رصد الحضور موقوف رسمياً$reasonSuffix"
+            }
+        }
     }
 
     /**
@@ -920,7 +1110,9 @@ data class ExamScheduleItem(
     val timeSlot: String = "",
     val topicsIncluded: String = "",
     val hallNumber: String = "",
-    val schoolId: String = ""
+    val schoolId: String = "",
+    val sectionName: String = "",
+    val maxScore: Int = GradingRules.defaultMaxScoreForClass(gradeClass)
 ) {
     fun daysRemainingUntilExam(): Long? = DateCountdownHelper.daysUntilDate(examDate)
 }
@@ -1009,6 +1201,14 @@ data class SubjectGrade(
             normalizedPercentage >= 50 -> "مقبول"
             else -> "راسب"
         }
+
+    val evaluationText: String get() = ratingLabel
+    val month1: Int get() = month1Score
+    val month2: Int get() = month2Score
+    val midYear: Int get() = midYearScore
+    val month3: Int get() = extraMonthlyScores.getOrNull(0) ?: month1Score
+    val month4: Int get() = extraMonthlyScores.getOrNull(1) ?: month2Score
+    val finalExam: Int get() = finalExamScore
 }
 
 data class TuitionInstallment(
@@ -1222,7 +1422,9 @@ data class LeaveRequestItem(
     val adminResponseNote: String = "",
     val createdAt: String,
     val schoolId: String = ""
-)
+) {
+    val requestedAt: String get() = createdAt
+}
 
 data class StudyMaterialItem(
     val id: String,
@@ -1358,7 +1560,8 @@ data class SchoolFeatureSettings(
     val homeworkSubmissionEnabled: Boolean = true,
     val dismissalCallEnabled: Boolean = true,
     val lostAndFoundEnabled: Boolean = true,
-    val studentActivitiesEnabled: Boolean = true
+    val studentActivitiesEnabled: Boolean = true,
+    val canteenWalletEnabled: Boolean = true
 ) {
     fun normalized(): SchoolFeatureSettings {
         val bus = busAlertsEnabled && busTrackingEnabled || (busAlertsEnabled != busTrackingEnabled && busAlertsEnabled)
@@ -1375,7 +1578,8 @@ data class SchoolFeatureSettings(
             qrAttendanceEnabled = qr,
             lostAndFoundEnabled = lostAndSug,
             suggestionsBoxEnabled = lostAndSug,
-            dismissalAndLostFoundEnabled = dismissalCallEnabled || lostAndSug
+            dismissalAndLostFoundEnabled = dismissalCallEnabled || lostAndSug,
+            canteenWalletEnabled = canteenWalletEnabled
         )
     }
 }

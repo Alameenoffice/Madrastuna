@@ -36,6 +36,9 @@ fun AdminAccountsScreen(
     val featureSettings by viewModel.featureSettings.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val students by viewModel.students.collectAsState()
+    val toastAlert by viewModel.toastAlert.collectAsState()
+    val latestAnnualPromotionReport by viewModel.latestAnnualPromotionReport.collectAsState()
+    val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
 
     val staffSingular = schoolConfig.schoolStage.staffTitleSingular
     val staffPlural = schoolConfig.schoolStage.staffTitlePlural
@@ -70,6 +73,8 @@ fun AdminAccountsScreen(
     var showStudentDialog by remember { mutableStateOf(false) }
     var editingStudent by remember { mutableStateOf<StudentRecord?>(null) }
     var studentForDigitalIdCard by remember { mutableStateOf<StudentRecord?>(null) }
+    var studentForEnrollmentStatus by remember { mutableStateOf<StudentRecord?>(null) }
+    var showAnnualPromotionConfirmDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(featureSettings.qrAttendanceEnabled) {
         if (!featureSettings.qrAttendanceEnabled && studentForDigitalIdCard != null) {
@@ -182,6 +187,32 @@ fun AdminAccountsScreen(
                             },
                             modifier = Modifier.weight(1f),
                             testTag = "add_student_parent_button"
+                        )
+                    }
+
+                    // Deliverable 6b: Automatic Annual Promotion & End-of-Year Principal Report Tool
+                    Button(
+                        onClick = { showAnnualPromotionConfirmDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("open_annual_promotion_engine_btn"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeepEmerald,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.WorkspacePremium,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "الترحيل السنوي التلقائي واعتماد نتائج نهاية العام (تقرير المدير)",
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -438,6 +469,7 @@ fun AdminAccountsScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -448,18 +480,35 @@ fun AdminAccountsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Base64AvatarImage(
-                                    base64Data = stu.photoBase64,
-                                    fallbackIcon = Icons.Filled.School,
-                                    contentDescription = stu.studentName,
-                                    size = 50.dp
-                                )
-                                Column {
-                                    Text(
-                                        text = stu.studentName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Base64AvatarImage(
+                                        base64Data = stu.photoBase64,
+                                        fallbackIcon = Icons.Filled.School,
+                                        contentDescription = stu.studentName,
+                                        size = 50.dp
                                     )
+                                    CompactStudentBadgeCapsule(badge = stuAutoBadges.firstOrNull())
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = stu.studentName,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        NoWrapBadge(
+                                            text = stu.enrollmentStatusEnum.arabicLabel,
+                                            icon = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) Icons.Filled.VerifiedUser else Icons.Filled.Gavel,
+                                            containerColor = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) DeepEmerald.copy(alpha = 0.14f) else DangerRed.copy(alpha = 0.15f),
+                                            contentColor = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) DeepEmerald else DangerRed
+                                        )
+                                    }
                                     Text(
                                         text = "الصف المسجل: ${stu.gradeClass} (شعبة ${stu.sectionName})",
                                         style = MaterialTheme.typography.bodySmall,
@@ -544,53 +593,95 @@ fun AdminAccountsScreen(
                             }
                         }
 
-                        val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
-                        if (stuAutoBadges.isNotEmpty()) {
-                            StudentAutoBadgesRow(badges = stuAutoBadges)
+                        if (stu.enrollmentStatusEnum != StudentEnrollmentStatus.ACTIVE) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                color = DangerRed.copy(alpha = 0.09f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Filled.Gavel, contentDescription = null, tint = DangerRed, modifier = Modifier.size(16.dp))
+                                    Text(
+                                        text = stu.getEnrollmentBlockBannerText(todayIso).ifBlank {
+                                            "حالة القيد: ${stu.enrollmentStatusEnum.arabicLabel}${if (stu.enrollmentStatusReason.isNotBlank()) " — ${stu.enrollmentStatusReason}" else ""}"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = DangerRed,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
                         }
 
-                        if (featureSettings.qrAttendanceEnabled ||
-                            (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            OutlinedButton(
+                                onClick = { studentForEnrollmentStatus = stu },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("admin_student_enrollment_status_btn_${stu.id}"),
+                                shape = RoundedCornerShape(12.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald)
+                            ) {
+                                Icon(Icons.Filled.Gavel, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "تحديث حالة قيد الطالب",
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            if (featureSettings.qrAttendanceEnabled) {
+                                OutlinedButton(
+                                    onClick = { studentForDigitalIdCard = stu },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("admin_open_student_id_${stu.id}"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("بطاقة الهوية والـ QR", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+
+                        if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (featureSettings.qrAttendanceEnabled) {
-                                    OutlinedButton(
-                                        onClick = { studentForDigitalIdCard = stu },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("admin_open_student_id_${stu.id}"),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("بطاقة الهوية والـ QR", maxLines = 1, softWrap = false)
+                                FilterChip(
+                                    selected = stu.isBusSubscribed,
+                                    onClick = { viewModel.toggleStudentBusSubscription(stu.id) },
+                                    label = {
+                                        Text(
+                                            text = if (stu.isBusSubscribed) "مشترك بالخط المدرسي" else "غير مشترك بالخط المدرسي",
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Filled.DirectionsBus,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
                                     }
-                                }
-
-                                if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled) {
-                                    FilterChip(
-                                        selected = stu.isBusSubscribed,
-                                        onClick = { viewModel.toggleStudentBusSubscription(stu.id) },
-                                        label = {
-                                            Text(
-                                                text = if (stu.isBusSubscribed) "مشترك بالخط" else "غير مشترك بالخط",
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Filled.DirectionsBus,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    )
-                                }
+                                )
                             }
                         }
 
@@ -622,6 +713,7 @@ fun AdminAccountsScreen(
             student = stu,
             schoolConfig = schoolConfig,
             badges = viewModel.getStudentAutoBadges(stu.id),
+            toastAlert = toastAlert,
             onSavePng = {
                 val res = com.example.util.DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
                     context = context,
@@ -641,6 +733,125 @@ fun AdminAccountsScreen(
                 viewModel.showBannerMessage(msg)
             },
             onDismiss = { studentForDigitalIdCard = null }
+        )
+    }
+
+    studentForEnrollmentStatus?.let { stu ->
+        StudentEnrollmentStatusModalDialog(
+            student = stu,
+            todayIso = todayIso,
+            toastAlert = toastAlert,
+            onSaveStatus = { status, reason, suspFrom, suspTo ->
+                viewModel.requireOnlineAndExecute {
+                    viewModel.updateStudentEnrollmentStatus(
+                        studentId = stu.id,
+                        newStatus = status,
+                        reason = reason,
+                        suspensionFromDate = suspFrom,
+                        suspensionToDate = suspTo
+                    )
+                    studentForEnrollmentStatus = null
+                }
+            },
+            onDismiss = { studentForEnrollmentStatus = null }
+        )
+    }
+
+    if (showAnnualPromotionConfirmDialog) {
+        var newYearInput by remember { mutableStateOf("2026 - 2027") }
+        AlertDialog(
+            onDismissRequest = { showAnnualPromotionConfirmDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = DeepEmerald)
+                    Text(
+                        text = "الترحيل السنوي واعتماد نتائج نهاية العام",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "سيقوم النظام بحساب المعدل السنوي النهائي لجميع الطلاب المستمرين بالدوام، وترحيل الطلاب الناجحين (معدل 50% فأعلى) تلقائياً إلى الصف الأعلى مع أرشفة سجل عامهم الدراسي الحالي، وإبقاء الطلاب المعيدين في صفوفهم، وإصدار التقرير السنوي الشامل لمدير المدرسة.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMutedGreen,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    OutlinedTextField(
+                        value = newYearInput,
+                        onValueChange = { newYearInput = it },
+                        label = { Text("العام الدراسي الجديد بعد الترحيل") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showAnnualPromotionConfirmDialog = false
+                        viewModel.executeAnnualPromotionAndGenerateReport(
+                            newAcademicYear = newYearInput.ifBlank { "2026 - 2027" }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DeepEmerald,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.testTag("confirm_execute_annual_promotion_btn")
+                ) {
+                    Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("اعتماد الترحيل وإصدار التقرير السنوي", fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAnnualPromotionConfirmDialog = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    latestAnnualPromotionReport?.let { report ->
+        AnnualPromotionReportModalDialog(
+            report = report,
+            schoolConfig = schoolConfig,
+            toastAlert = toastAlert,
+            onEditStudent = { stuId ->
+                val found = students.firstOrNull { it.id == stuId }
+                if (found != null) {
+                    viewModel.dismissAnnualPromotionReportModal()
+                    editingStudent = found
+                    showStudentDialog = true
+                }
+            },
+            onExportPdf = {
+                val res = com.example.util.DocumentAndIdExporter.exportAnnualPromotionReportPdf(
+                    context = context,
+                    schoolConfig = schoolConfig,
+                    report = report,
+                    principalName = schoolConfig.principalFullName.ifBlank { "مدير المدرسة" }
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert(
+                        "تم تصدير وفتح التقرير السنوي الشامل للترحيل والنتائج بصيغة PDF بنجاح",
+                        isSuccess = true
+                    )
+                } else {
+                    viewModel.showToastAlert(
+                        "تعذر تصدير التقرير السنوي PDF: ${res.exceptionOrNull()?.message}",
+                        isSuccess = false
+                    )
+                }
+            },
+            onDismiss = { viewModel.dismissAnnualPromotionReportModal() }
         )
     }
 
@@ -1531,3 +1742,457 @@ fun AdminAccountsScreen(
         )
     }
 }
+
+/**
+ * Deliverable 6a: Official Student Enrollment Status Modal Dialog
+ * Allows the Principal to set:
+ * - ACTIVE ("مستمر بالدوام")
+ * - SUSPENDED_TEMP ("فصل مؤقت من - إلى")
+ * - EXPELLED ("فصل دائمي")
+ * - DEREGISTERED ("ترقين قيد")
+ * - TRANSFERRED ("منقول إلى مدرسة أخرى")
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun StudentEnrollmentStatusModalDialog(
+    student: StudentRecord,
+    todayIso: String,
+    toastAlert: ToastAlertMessage? = null,
+    onSaveStatus: (StudentEnrollmentStatus, String, String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedStatus by remember(student.id) { mutableStateOf(student.enrollmentStatusEnum) }
+    var reason by remember(student.id) { mutableStateOf(student.enrollmentStatusReason) }
+    var suspensionFrom by remember(student.id) {
+        mutableStateOf(student.suspensionFromDate.ifBlank { todayIso })
+    }
+    var suspensionTo by remember(student.id) {
+        mutableStateOf(student.suspensionToDate.ifBlank { todayIso })
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                InlineDialogToastBanner(toastAlert = toastAlert)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Filled.Gavel, contentDescription = null, tint = DeepEmerald)
+                    Text(
+                        text = "تحديث حالة قيد الطالب الرسمية",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                }
+                Text(
+                    text = "الطالب: ${student.fullNameWithFather} • ${student.gradeClass} (${student.sectionName})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMutedGreen
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "اختر حالة القيد الرسمية للطالب:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepForestGreen
+                )
+
+                StudentEnrollmentStatus.entries.forEach { st ->
+                    val isSel = selectedStatus == st
+                    val statusCol = if (st == StudentEnrollmentStatus.ACTIVE) DeepEmerald else DangerRed
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { selectedStatus = st }
+                            .testTag("select_enrollment_status_${st.name}"),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSel) statusCol.copy(alpha = 0.14f) else Color(0xFFF8FAFC),
+                        border = androidx.compose.foundation.BorderStroke(
+                            if (isSel) 1.5.dp else 1.dp,
+                            if (isSel) statusCol else DeepEmerald.copy(alpha = 0.2f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = st.arabicLabel,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isSel) statusCol else DeepForestGreen
+                            )
+                            Icon(
+                                imageVector = if (isSel) Icons.Filled.RadioButtonChecked else Icons.Filled.RadioButtonUnchecked,
+                                contentDescription = null,
+                                tint = if (isSel) statusCol else TextMutedGreen,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (selectedStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) {
+                    Text(
+                        text = "فترة الفصل المؤقت (يُمنع تسجيل الحضور خلالها):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = DangerRed
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ModernCalendarDatePickerField(
+                            selectedDateIso = suspensionFrom,
+                            label = "من تاريخ",
+                            onDateSelected = { iso, _ -> suspensionFrom = iso },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ModernCalendarDatePickerField(
+                            selectedDateIso = suspensionTo,
+                            label = "إلى تاريخ",
+                            onDateSelected = { iso, _ -> suspensionTo = iso },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                if (selectedStatus != StudentEnrollmentStatus.ACTIVE) {
+                    OutlinedTextField(
+                        value = reason,
+                        onValueChange = { reason = it },
+                        label = { Text("سبب الإجراء الإداري / رقم الأمر الإداري أو المدرسة المنقول إليها") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSaveStatus(
+                        selectedStatus,
+                        reason.trim(),
+                        if (selectedStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) suspensionFrom else "",
+                        if (selectedStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) suspensionTo else ""
+                    )
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selectedStatus == StudentEnrollmentStatus.ACTIVE) DeepEmerald else DangerRed,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.testTag("confirm_save_enrollment_status_btn")
+            ) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("اعتماد وتوثيق سحابياً", fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
+}
+
+/**
+ * Deliverable 6b: Interactive Annual Promotion & End-of-Year Principal Report Modal
+ * Shows:
+ * - Overall school pass rate, total promoted, graduated, and repeating students
+ * - Per-class pass rate breakdown
+ * - Tabs for Promoted / Graduated vs Repeating students with direct "تعديل بيانات الطالب" trigger
+ * - Button to export the official PDF report
+ */
+@Composable
+fun AnnualPromotionReportModalDialog(
+    report: AnnualPromotionReport,
+    schoolConfig: SchoolConfig,
+    toastAlert: ToastAlertMessage? = null,
+    onEditStudent: (String) -> Unit,
+    onExportPdf: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Class Breakdown, 1 = Promoted, 2 = Repeating
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 780.dp)
+                .testTag("annual_promotion_report_modal"),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, DeepEmerald.copy(alpha = 0.5f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                InlineDialogToastBanner(toastAlert = toastAlert)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFECFDF5),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.WorkspacePremium,
+                                contentDescription = null,
+                                tint = DeepEmerald,
+                                modifier = Modifier
+                                    .padding(9.dp)
+                                    .size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "تقرير المدير للترحيل السنوي ونتائج نهاية العام",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            Text(
+                                text = "${schoolConfig.schoolName} • من (${report.previousAcademicYear}) إلى (${report.newAcademicYear})",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMutedGreen
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "إغلاق", tint = DeepForestGreen)
+                    }
+                }
+
+                // Summary Metrics Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        Triple("نسبة النجاح", "${report.overallPassRatePercent}%", DeepEmerald),
+                        Triple("الناجحون المرحّلون", "${report.promotedCount + report.graduatedCount}", SuccessGreen),
+                        Triple("المعيدون", "${report.repeatingCount}", DangerRed),
+                        Triple("الإجمالي", "${report.totalEvaluated}", InfoBlue)
+                    ).forEach { (lbl, valTxt, col) ->
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = col.copy(alpha = 0.10f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, col.copy(alpha = 0.35f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = valTxt,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = col
+                                )
+                                Text(
+                                    text = lbl,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = DeepForestGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Export Official PDF Button
+                Button(
+                    onClick = onExportPdf,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("export_annual_promotion_pdf_btn"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DeepEmerald,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("طباعة / تصدير التقرير السنوي الشامل للمدير (PDF)", fontWeight = FontWeight.ExtraBold)
+                }
+
+                // Tabs
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val tabs = listOf(
+                        0 to "نسب النجاح حسب الصف (${report.classBreakdowns.size})",
+                        1 to "الناجحون والمرحّلون (${report.promotedStudents.size})",
+                        2 to "المعيدون (${report.repeatingStudents.size})"
+                    )
+                    items(tabs) { (idx, title) ->
+                        FilterChip(
+                            selected = selectedTab == idx,
+                            onClick = { selectedTab = idx },
+                            label = { Text(title, fontWeight = FontWeight.Bold) }
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = DeepEmerald.copy(alpha = 0.16f))
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    when (selectedTab) {
+                        0 -> {
+                            items(report.classBreakdowns, key = { it.gradeClass }) { cb ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF0FDF4),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.3f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "الصف: ${cb.gradeClass}",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "الإجمالي: ${cb.totalStudents} • ناجح: ${cb.passedCount} • معيد: ${cb.repeatingCount}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                        NoWrapBadge(
+                                            text = "نسبة النجاح: ${cb.passRatePercent}%",
+                                            icon = Icons.Filled.TrendingUp,
+                                            containerColor = DeepEmerald,
+                                            contentColor = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        1 -> {
+                            items(report.promotedStudents, key = { it.studentId }) { item ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = item.studentName,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "من (${item.previousGrade}) إلى (${item.newGrade}) • المعدل: ${item.finalAverage}%",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = DeepEmerald,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { onEditStudent(item.studentId) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("تعديل", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        2 -> {
+                            items(report.repeatingStudents, key = { it.studentId }) { item ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = DangerRed.copy(alpha = 0.06f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = item.studentName,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "باقٍ في (${item.previousGrade} - شعبة ${item.sectionName}) • المعدل: ${item.finalAverage}%",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = DangerRed,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { onEditStudent(item.studentId) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("تعديل", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

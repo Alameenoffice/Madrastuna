@@ -416,10 +416,10 @@ fun DigitalStudentIdCardView(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // على اليمين: صورة الطالب الدائرية بإطار ذهبي ناعم وتحتها شارة الكود الصغير
+                        // على اليمين: صورة الطالب الدائرية وتحتها وسام الطالب الكبسولي الأنيق مباشرة
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             AvatarOrPhotoView(
                                 base64Image = student.photoBase64,
@@ -427,23 +427,15 @@ fun DigitalStudentIdCardView(
                                 size = 64.dp,
                                 borderColor = GoldFoil
                             )
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = DeepEmerald.copy(alpha = 0.12f),
-                                border = BorderStroke(0.8.dp, DeepEmerald.copy(alpha = 0.25f))
-                            ) {
-                                Text(
-                                    text = student.studentUsername,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = DeepEmerald,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    maxLines = 1
-                                )
-                            }
+                            CompactStudentBadgeCapsule(
+                                badges = badges,
+                                fallbackHonorTitle = student.honorTitle,
+                                isOnHonorRoll = student.isOnHonorRoll,
+                                onLightBackground = true
+                            )
                         }
 
-                        // على اليسار: عمود واسع (weight(1f)) لاسم الطالب الثلاثي في سطر واحد كامل وتحته الصف والشعبة والوسام
+                        // على اليسار: عمود واسع (weight(1f)) لاسم الطالب الثلاثي في سطر واحد كامل وتحته الصف والشعبة والكود
                         Column(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -462,7 +454,7 @@ fun DigitalStudentIdCardView(
                                 overflow = TextOverflow.Ellipsis
                             )
 
-                            // سطر واحد أنيق: شارة الصف والشعبة + شارة وسام الالتزام الذهبي
+                            // سطر واحد أنيق: شارة الصف والشعبة + شارة كود الطالب
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -486,29 +478,17 @@ fun DigitalStudentIdCardView(
 
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFFFFBEB),
-                                    border = BorderStroke(1.dp, GoldFoil.copy(alpha = 0.75f))
+                                    color = DeepEmerald.copy(alpha = 0.10f),
+                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f))
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.WorkspacePremium,
-                                            contentDescription = null,
-                                            tint = Color(0xFFD97706),
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Text(
-                                            text = primaryBadgeTitle,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF92400E),
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                                    Text(
+                                        text = student.studentUsername,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = DeepEmerald,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1
+                                    )
                                 }
                             }
                         }
@@ -899,6 +879,8 @@ fun DigitalStudentIdDialog(
     todayAttendanceLabel: String = "",
     todayIso: String = "",
     initialWalletMode: Boolean = false,
+    toastAlert: com.example.model.ToastAlertMessage? = null,
+    onDismissToast: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -919,6 +901,8 @@ fun DigitalStudentIdDialog(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                InlineDialogToastBanner(toastAlert = toastAlert, onDismiss = onDismissToast)
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -989,6 +973,7 @@ fun QrAttendanceScannerDialog(
     onScanStudentGateDetailed: (code: String, mode: GateScanMode) -> StudentRecord? = { code, _ ->
         onScanStudentDetailed(code)
     },
+    toastAlert: com.example.model.ToastAlertMessage? = null,
     onDismiss: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -1040,6 +1025,9 @@ fun QrAttendanceScannerDialog(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                item {
+                    InlineDialogToastBanner(toastAlert = toastAlert)
+                }
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1867,6 +1855,12 @@ fun SmartCanteenPosAndWalletDialog(
     onTopUpWallet: (studentId: String, amountIqd: Int, note: String, onComplete: (Boolean, String) -> Unit) -> Unit,
     onProcessPurchase: (studentId: String, amountIqd: Int, itemSummary: String, onComplete: (Boolean, String) -> Unit) -> Unit,
     onFindStudentByQr: (String) -> StudentRecord?,
+    isCanteenWalletEnabled: Boolean = true,
+    isAdminRole: Boolean = false,
+    onToggleSchoolCanteenWallet: (Boolean) -> Unit = {},
+    onToggleStudentWalletSuspended: (studentId: String, suspended: Boolean) -> Unit = { _, _ -> },
+    toastAlert: com.example.model.ToastAlertMessage? = null,
+    onDismissToast: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -1918,7 +1912,7 @@ fun SmartCanteenPosAndWalletDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .heightIn(max = 700.dp)
+                .heightIn(max = 720.dp)
                 .padding(vertical = 8.dp),
             shape = RoundedCornerShape(24.dp),
             color = Color.White,
@@ -1930,6 +1924,11 @@ fun SmartCanteenPosAndWalletDialog(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Dual-Guarantee Inline Toast Banner inside Modal
+                item {
+                    InlineDialogToastBanner(toastAlert = toastAlert, onDismiss = onDismissToast)
+                }
+
                 // Header
                 item {
                     Row(
@@ -1972,6 +1971,85 @@ fun SmartCanteenPosAndWalletDialog(
                         }
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = DeepForestGreen)
+                        }
+                    }
+                }
+
+                // School-Wide Canteen Enable/Disable Control Strip (for Principal) or Status Alert
+                if (isAdminRole || !isCanteenWalletEnabled) {
+                    item {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("canteen_school_wide_toggle_card"),
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isCanteenWalletEnabled) Color(0xFFECFDF5) else DangerRed.copy(alpha = 0.10f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isCanteenWalletEnabled) DeepEmerald.copy(alpha = 0.35f) else DangerRed
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isCanteenWalletEnabled) Icons.Default.CheckCircle else Icons.Default.Block,
+                                        contentDescription = null,
+                                        tint = if (isCanteenWalletEnabled) DeepEmerald else DangerRed,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = if (isCanteenWalletEnabled) {
+                                                "حالة الحانوت للمدرسة: مفعل ويعمل لجميع الطلبة"
+                                            } else {
+                                                "حالة الحانوت للمدرسة: متوقف ومعطل مؤقتاً"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isCanteenWalletEnabled) DeepForestGreen else DangerRed,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                        Text(
+                                            text = if (isCanteenWalletEnabled) {
+                                                "يمكن للمدير إيقاف عمليات الشراء للمدرسة بالكامل بضغطة واحدة"
+                                            } else {
+                                                "تم تعليق عمليات الشراء من الحانوت بقرار من إدارة المدرسة"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMutedGreen,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                                if (isAdminRole) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .clickable {
+                                                onToggleSchoolCanteenWallet(!isCanteenWalletEnabled)
+                                            }
+                                            .testTag("toggle_school_canteen_wallet_btn"),
+                                        shape = RoundedCornerShape(50),
+                                        color = if (isCanteenWalletEnabled) DangerRed else DeepEmerald
+                                    ) {
+                                        Text(
+                                            text = if (isCanteenWalletEnabled) "إيقاف الحانوت" else "تفعيل الحانوت",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2397,6 +2475,70 @@ fun SmartCanteenPosAndWalletDialog(
                                         }
                                     }
                                 }
+
+                                // Per-Student Wallet Freeze / Activate Row inside Selected Student Card
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (selectedStudent.isWalletSuspended) DangerRed else Color.White.copy(alpha = 0.18f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (selectedStudent.isWalletSuspended) Icons.Default.Block else Icons.Default.Verified,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = if (selectedStudent.isWalletSuspended) "محفظة الطالب مجمدة مؤقتاً" else "محفظة الطالب نشطة وفعالة",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .clickable {
+                                                onToggleStudentWalletSuspended(
+                                                    selectedStudent.id,
+                                                    !selectedStudent.isWalletSuspended
+                                                )
+                                            }
+                                            .testTag("toggle_student_wallet_freeze_${selectedStudent.id}"),
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (selectedStudent.isWalletSuspended) Icons.Default.CheckCircle else Icons.Default.Block,
+                                                contentDescription = null,
+                                                tint = if (selectedStudent.isWalletSuspended) DeepEmerald else DangerRed,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = if (selectedStudent.isWalletSuspended) "إلغاء التجميد وتفعيل المحفظة" else "تجميد محفظة الطالب",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (selectedStudent.isWalletSuspended) DeepEmerald else DangerRed,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2406,7 +2548,11 @@ fun SmartCanteenPosAndWalletDialog(
                         val parsedPurchaseAmount = purchaseAmountText.filter { it.isDigit() }.toIntOrNull() ?: 0
                         val isInsufficientBalance = parsedPurchaseAmount > selectedStudent.walletBalance
                         val isExceedingDailyLimit = dailyLimit > 0 && (spentToday + parsedPurchaseAmount) > dailyLimit
-                        val canApprovePurchase = parsedPurchaseAmount > 0 && !isInsufficientBalance && !isExceedingDailyLimit
+                        val isBlockedByFreezeOrSchool = !isCanteenWalletEnabled || selectedStudent.isWalletSuspended
+                        val canApprovePurchase = parsedPurchaseAmount > 0 &&
+                            !isInsufficientBalance &&
+                            !isExceedingDailyLimit &&
+                            !isBlockedByFreezeOrSchool
 
                         item {
                             Surface(
@@ -2513,10 +2659,11 @@ fun SmartCanteenPosAndWalletDialog(
                                                 )
                                             }
                                         } else {
-                                            val rejectReasonText = if (isInsufficientBalance) {
-                                                "رفض العملية: الرصيد غير كافٍ (المطلوب ${"%,d".format(java.util.Locale.US, parsedPurchaseAmount)} د.ع والمتوفر ${"%,d".format(java.util.Locale.US, selectedStudent.walletBalance)} د.ع)"
-                                            } else {
-                                                "رفض العملية: تجاوز السقف اليومي المسموح من ولي الأمر (${"%,d".format(java.util.Locale.US, dailyLimit)} د.ع — المصروف اليوم ${"%,d".format(java.util.Locale.US, spentToday)} د.ع)"
+                                            val rejectReasonText = when {
+                                                !isCanteenWalletEnabled -> "العملية موقوفة: نظام المحفظة والحانوت المدرسي معطل مؤقتاً بقرار من إدارة المدرسة"
+                                                selectedStudent.isWalletSuspended -> "العملية موقوفة: محفظة الطالب (${selectedStudent.fullNameWithFather}) مجمدة مؤقتاً"
+                                                isInsufficientBalance -> "رفض العملية: الرصيد غير كافٍ (المطلوب ${"%,d".format(java.util.Locale.US, parsedPurchaseAmount)} د.ع والمتوفر ${"%,d".format(java.util.Locale.US, selectedStudent.walletBalance)} د.ع)"
+                                                else -> "رفض العملية: تجاوز السقف اليومي المسموح من ولي الأمر (${"%,d".format(java.util.Locale.US, dailyLimit)} د.ع — المصروف اليوم ${"%,d".format(java.util.Locale.US, spentToday)} د.ع)"
                                             }
                                             Surface(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -2962,6 +3109,34 @@ fun ParentStudentCanteenWalletCard(
                 }
             }
 
+            if (student.isWalletSuspended) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = DangerRed.copy(alpha = 0.85f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Block,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "تنبيه: محفظة الطالب مجمدة مؤقتاً من قِبل الإدارة المدرسية ولا يمكن الشراء بها حالياً.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+
             // Parent Daily Spend Limit Controls
             if (isParentRole) {
                 Surface(
@@ -3160,8 +3335,11 @@ fun ParentStudentCanteenWalletDialog(
     student: StudentRecord,
     isParentRole: Boolean,
     todayIso: String = ArabicCalendarDateHelper.todayIsoDate(),
+    isSchoolWalletEnabled: Boolean = true,
     onUpdateDailyLimit: (newLimit: Int, onResult: (Boolean, String) -> Unit) -> Unit,
     onOpenStudentIdCard: () -> Unit,
+    toastAlert: com.example.model.ToastAlertMessage? = null,
+    onDismissToast: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -3185,6 +3363,8 @@ fun ParentStudentCanteenWalletDialog(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                InlineDialogToastBanner(toastAlert = toastAlert, onDismiss = onDismissToast)
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

@@ -283,7 +283,7 @@ fun MadrasatiRootApp(
         // Global Smooth Interactive Image Lightbox Dialog
         GlobalImageLightboxDialog()
 
-        // Global Remote App Update Notification Modal / Banner (Managed by Developer ABU-RASLAN)
+        // Global Remote App Update Notification Modal / Banner (Managed by System Developer)
         val shouldShowUpdateModal = appUpdateConfig.isUpdateActive &&
             appUpdateConfig.apkDownloadUrl.isNotBlank() &&
             !isDeveloperAuthenticated &&
@@ -428,6 +428,7 @@ fun MadrasatiRootApp(
         if (activeToastForPopup != null) {
             androidx.compose.ui.window.Popup(
                 alignment = Alignment.TopCenter,
+                offset = androidx.compose.ui.unit.IntOffset(0, 24),
                 properties = androidx.compose.ui.window.PopupProperties(
                     focusable = false,
                     dismissOnBackPress = false,
@@ -891,6 +892,16 @@ fun AuthenticatedMainPlatform(
     val showUrgentAlertModal by viewModel.showUrgentAlertModal.collectAsState()
     val showHolidaysModal by viewModel.showHolidaysModal.collectAsState()
     val holidaysConfig by viewModel.holidaysConfig.collectAsState()
+    val showIndexedLeaveRequestsModal by viewModel.showIndexedLeaveRequestsModal.collectAsState()
+    val leaveRequests by viewModel.leaveRequests.collectAsState()
+    val toastAlert by viewModel.toastAlert.collectAsState()
+
+    val pendingLeaveRequestsCount = remember(leaveRequests, schoolConfig.schoolId) {
+        leaveRequests.count {
+            (it.schoolId.isEmpty() || it.schoolId == schoolConfig.schoolId) &&
+                it.status == LeaveRequestStatus.PENDING
+        }
+    }
 
     var idCardDialogStudent by remember { mutableStateOf<StudentRecord?>(null) }
     var showNotificationsSheet by remember { mutableStateOf(false) }
@@ -928,6 +939,7 @@ fun AuthenticatedMainPlatform(
         buildList {
             add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
+            add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
             if (featureSettings.studentActivitiesEnabled) {
@@ -978,6 +990,7 @@ fun AuthenticatedMainPlatform(
                     listOf(
                         AppSection.DASHBOARD to Icons.Filled.Dashboard,
                         AppSection.ATTENDANCE to Icons.Filled.HowToReg,
+                        AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared,
                         AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth,
                         AppSection.EXAMS_GRADES to Icons.Filled.Assessment
                     )
@@ -1138,6 +1151,9 @@ fun AuthenticatedMainPlatform(
                                         academicGroupSections.forEach { (section, icon) ->
                                             LuxuryDrawerMenuItem(
                                                 title = section.arabicTitle,
+                                                subtitle = if (section == AppSection.STUDENT_COMPREHENSIVE_ARCHIVE) {
+                                                    "الأرشيف الشهري والسنوي الموثق وتصدير PDF"
+                                                } else null,
                                                 icon = icon,
                                                 selected = activeSection == section,
                                                 isDarkMode = isDarkMode,
@@ -1148,6 +1164,23 @@ fun AuthenticatedMainPlatform(
                                                 }
                                             )
                                         }
+                                        LuxuryDrawerMenuItem(
+                                            title = "طلبات الإجازة الإلكترونية",
+                                            subtitle = if (pendingLeaveRequestsCount > 0) {
+                                                "طلبات قيد المراجعة: $pendingLeaveRequestsCount (مفهرسة بالصفوف)"
+                                            } else {
+                                                "سجل الإجازات المفهرس حسب الصفوف والحالة"
+                                            },
+                                            icon = Icons.Filled.EventNote,
+                                            selected = showIndexedLeaveRequestsModal,
+                                            isDarkMode = isDarkMode,
+                                            statusDotColor = if (pendingLeaveRequestsCount > 0) DangerRed else null,
+                                            testTag = "drawer_leave_requests_modal_button",
+                                            onClick = {
+                                                coroutineScope.launch { drawerState.close() }
+                                                viewModel.openIndexedLeaveRequestsModal()
+                                            }
+                                        )
                                     }
                                 }
 
@@ -1721,6 +1754,7 @@ fun AuthenticatedMainPlatform(
                             }
                         )
                         AppSection.ATTENDANCE -> DailyAttendanceScreen(viewModel = viewModel)
+                        AppSection.STUDENT_COMPREHENSIVE_ARCHIVE -> StudentComprehensiveArchiveScreen(viewModel = viewModel)
                         AppSection.SCHEDULE_HOMEWORK -> ScheduleAndHomeworkScreen(viewModel = viewModel)
                         AppSection.EXAMS_GRADES -> ExamsAndGradesScreen(viewModel = viewModel)
                         AppSection.STUDENT_ACTIVITIES -> StudentActivitiesScreen(viewModel = viewModel)
@@ -1734,6 +1768,14 @@ fun AuthenticatedMainPlatform(
                 }
             }
         }
+    }
+
+    // Indexed Electronic Leave Requests Modal Dialog (launched from Side Drawer or Dashboard)
+    if (showIndexedLeaveRequestsModal) {
+        IndexedLeaveRequestsModalDialog(
+            viewModel = viewModel,
+            onDismiss = { viewModel.dismissIndexedLeaveRequestsModal() }
+        )
     }
 
     // Principal's Urgent School Alert Modal Dialog (launched from Side Drawer)
@@ -1755,7 +1797,9 @@ fun AuthenticatedMainPlatform(
                 viewModel.addOrUpdateOfficialHoliday(id, dateIso, title)
             },
             onDeleteOfficialHoliday = { id -> viewModel.deleteOfficialHoliday(id) },
-            onDismiss = { viewModel.closeHolidaysManagementModal() }
+            onDismiss = { viewModel.closeHolidaysManagementModal() },
+            toastAlert = toastAlert,
+            onDismissToast = { viewModel.dismissToastAlert() }
         )
     }
 
@@ -1905,6 +1949,8 @@ fun AuthenticatedMainPlatform(
             badges = stuBadges,
             todayAttendanceLabel = todayStatusLabel,
             todayIso = todayIsoStr,
+            toastAlert = toastAlert,
+            onDismissToast = { viewModel.dismissToastAlert() },
             onSavePng = {
                 val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
                     context = context,
@@ -1949,6 +1995,16 @@ fun AuthenticatedMainPlatform(
         SmartCanteenPosAndWalletDialog(
             students = activeSchoolStudents,
             todayIso = todayIsoStr,
+            isCanteenWalletEnabled = schoolConfig.isCanteenWalletEnabled,
+            isAdminRole = currentUser?.role == UserRole.ADMIN,
+            onToggleSchoolCanteenWallet = { enabled ->
+                viewModel.setSchoolCanteenWalletEnabled(enabled)
+            },
+            onToggleStudentWalletSuspended = { stuId, suspended ->
+                viewModel.setStudentWalletSuspended(stuId, suspended)
+            },
+            toastAlert = toastAlert,
+            onDismissToast = { viewModel.dismissToastAlert() },
             onTopUpWallet = { stuId, amountIqd, note, onComplete ->
                 viewModel.topUpStudentWallet(stuId, amountIqd, note, onComplete)
             },
@@ -1976,6 +2032,9 @@ fun AuthenticatedMainPlatform(
                 student = walletTargetStudent,
                 isParentRole = currentUser?.role == UserRole.PARENT,
                 todayIso = todayIsoStr,
+                isSchoolWalletEnabled = schoolConfig.isCanteenWalletEnabled,
+                toastAlert = toastAlert,
+                onDismissToast = { viewModel.dismissToastAlert() },
                 onUpdateDailyLimit = { newLimit, onComplete ->
                     viewModel.updateStudentDailySpendLimit(walletTargetStudent.id, newLimit)
                     onComplete(true, "تم حفظ السقف اليومي بنجاح")

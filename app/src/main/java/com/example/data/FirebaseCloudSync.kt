@@ -547,6 +547,111 @@ object FirebaseCloudSync {
         null
     }
 
+    /**
+     * Deeply deletes a school's entire node and all sub-collections from Firebase RTDB & Firestore,
+     * plus any associated license documents.
+     */
+    fun deleteSchoolNodesFromCloudAsync(schoolId: String, licenseCodes: List<String> = emptyList()) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return
+
+        val subCols = listOf(
+            FirebaseConfigConstants.COL_SETTINGS,
+            FirebaseConfigConstants.COL_USERS,
+            FirebaseConfigConstants.COL_SUBJECTS,
+            FirebaseConfigConstants.COL_ATTENDANCE,
+            FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK,
+            FirebaseConfigConstants.COL_GRADES,
+            FirebaseConfigConstants.COL_HONOR_ROLL,
+            FirebaseConfigConstants.COL_TUITION_FEES,
+            FirebaseConfigConstants.COL_REPORTS,
+            FirebaseConfigConstants.COL_MESSAGES,
+            FirebaseConfigConstants.COL_EVENTS_GALLERY,
+            FirebaseConfigConstants.COL_NOTIFICATIONS,
+            FirebaseConfigConstants.COL_SCHEDULES_PERIODS,
+            FirebaseConfigConstants.COL_EXAMS,
+            FirebaseConfigConstants.COL_LEAVE_REQUESTS,
+            FirebaseConfigConstants.COL_BUS_TRACKING,
+            FirebaseConfigConstants.COL_STUDY_MATERIALS,
+            FirebaseConfigConstants.COL_FEATURE_SETTINGS,
+            FirebaseConfigConstants.COL_DAILY_BEHAVIOR,
+            FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS,
+            FirebaseConfigConstants.COL_QUICK_QUIZZES,
+            FirebaseConfigConstants.COL_DISMISSAL_CALLS,
+            FirebaseConfigConstants.COL_LOST_AND_FOUND,
+            FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS,
+            FirebaseConfigConstants.COL_URGENT_ALERT,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITIES,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS,
+            FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
+            FirebaseConfigConstants.COL_USER_PROFILES,
+            FirebaseConfigConstants.COL_HOLIDAYS
+        )
+
+        subCols.forEach { sub ->
+            localWriteTimestamps.remove("$cleanSid/$sub")
+            localWrittenPayloads.remove("$cleanSid/$sub")
+        }
+
+        syncScope.launch {
+            beginInFlightWrite()
+            try {
+                // 1. Delete entire school tree in RTDB
+                val rtdbSchoolUrl = "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSid.json"
+                executeHttpDelete(rtdbSchoolUrl)
+
+                // 2. Delete all subcollection state documents & settings documents in Firestore
+                subCols.forEach { sub ->
+                    val fsStateUrl =
+                        "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSid/$sub/state?key=${FirebaseConfigConstants.API_KEY}"
+                    executeHttpDelete(fsStateUrl)
+                }
+                val fsConfigUrl =
+                    "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSid/settings/config?key=${FirebaseConfigConstants.API_KEY}"
+                executeHttpDelete(fsConfigUrl)
+                val fsHolidaysUrl =
+                    "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSid/settings/holidays?key=${FirebaseConfigConstants.API_KEY}"
+                executeHttpDelete(fsHolidaysUrl)
+                val fsSchoolRootUrl =
+                    "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSid?key=${FirebaseConfigConstants.API_KEY}"
+                executeHttpDelete(fsSchoolRootUrl)
+
+                // 3. Delete associated license documents
+                licenseCodes.forEach { rawCode ->
+                    val cleanCode = InputSanitizer.sanitizeSchoolId(rawCode)
+                    if (cleanCode.isNotBlank()) {
+                        val fsLicUrl =
+                            "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/${FirebaseConfigConstants.COL_SCHOOL_LICENSES}/$cleanCode?key=${FirebaseConfigConstants.API_KEY}"
+                        executeHttpDelete(fsLicUrl)
+                        val rtdbLicUrl =
+                            "${FirebaseConfigConstants.DATABASE_URL}/${FirebaseConfigConstants.COL_SCHOOL_LICENSES}/$cleanCode.json"
+                        executeHttpDelete(rtdbLicUrl)
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                endInFlightWrite()
+            }
+        }
+    }
+
+    private fun executeHttpDelete(urlStr: String): Boolean {
+        var conn: HttpURLConnection? = null
+        return try {
+            val url = URL(urlStr)
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "DELETE"
+                connectTimeout = 6000
+                readTimeout = 6000
+            }
+            conn.responseCode in 200..299
+        } catch (_: Exception) {
+            false
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
     private fun executeHttpWrite(urlStr: String, method: String, jsonBody: String) {
         executeHttpWriteWithStatus(urlStr, method, jsonBody)
     }

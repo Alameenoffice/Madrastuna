@@ -58,6 +58,7 @@ fun DashboardScreen(
     val featureSettings by viewModel.featureSettings.collectAsState()
     val dismissedUrgentAlertSig by viewModel.dismissedUrgentAlertSignature.collectAsState()
     val holidaysConfig by viewModel.holidaysConfig.collectAsState()
+    val toastAlert by viewModel.toastAlert.collectAsState()
 
     val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
     val todayHolidayLabel = remember(holidaysConfig, todayIso) {
@@ -186,13 +187,31 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            Base64AvatarImage(
-                                base64Data = schoolConfig.logoBase64,
-                                fallbackIcon = Icons.Filled.School,
-                                contentDescription = schoolConfig.schoolName,
-                                size = 60.dp,
-                                tint = Color.White
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Base64AvatarImage(
+                                    base64Data = if (isParentOrStudent && myStudent != null && myStudent.photoBase64.isNotBlank()) {
+                                        myStudent.photoBase64
+                                    } else {
+                                        schoolConfig.logoBase64
+                                    },
+                                    fallbackIcon = if (isParentOrStudent) Icons.Filled.Person else Icons.Filled.School,
+                                    contentDescription = schoolConfig.schoolName,
+                                    size = 58.dp,
+                                    tint = Color.White
+                                )
+                                if (isParentOrStudent && myStudent != null) {
+                                    val myHeaderBadges = remember(attendance, grades, myStudent.id) {
+                                        viewModel.getStudentAutoBadges(myStudent.id)
+                                    }
+                                    CompactStudentBadgeCapsule(
+                                        badge = myHeaderBadges.firstOrNull(),
+                                        onDarkBackground = true
+                                    )
+                                }
+                            }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "مرحباً بك، ${currentUser?.fullName ?: ""}",
@@ -273,14 +292,6 @@ fun DashboardScreen(
                 }
                 val myBehaviors = remember(allMyBehaviors, dashboardBehaviorVisibleCount) {
                     allMyBehaviors.take(dashboardBehaviorVisibleCount)
-                }
-
-                // Automatic Motivational Badges (وسام الالتزام الذهبي + وسام نجم المادة)
-                if (myBadges.isNotEmpty()) {
-                    StudentAutoBadgesRow(
-                        badges = myBadges,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
                 }
 
                 // Live Smart Gate Status Card for Parent & Student (Check-In / Check-Out timestamp)
@@ -486,18 +497,20 @@ fun DashboardScreen(
                     }
 
                     // Smart Canteen E-Wallet Card for Parent & Student
-                    ParentStudentCanteenWalletCard(
-                        student = myStudent,
-                        todayIso = todayIso,
-                        isParentRole = currentUser?.role == UserRole.PARENT,
-                        onUpdateDailyLimit = { newLimit, onComplete ->
-                            viewModel.updateStudentDailySpendLimit(myStudent.id, newLimit)
-                            onComplete(true, "تم حفظ السقف اليومي بنجاح")
-                        },
-                        onOpenWalletBarcodePass = {
-                            walletPassStudent = myStudent
-                        }
-                    )
+                    if (schoolConfig.isCanteenWalletEnabled && featureSettings.canteenWalletEnabled) {
+                        ParentStudentCanteenWalletCard(
+                            student = myStudent,
+                            todayIso = todayIso,
+                            isParentRole = currentUser?.role == UserRole.PARENT,
+                            onUpdateDailyLimit = { newLimit, onComplete ->
+                                viewModel.updateStudentDailySpendLimit(myStudent.id, newLimit)
+                                onComplete(true, "تم حفظ السقف اليومي بنجاح")
+                            },
+                            onOpenWalletBarcodePass = {
+                                walletPassStudent = myStudent
+                            }
+                        )
+                    }
                 }
             } else {
                 // ADMIN OR SCOPED TEACHER DASHBOARD STATS
@@ -736,6 +749,7 @@ fun DashboardScreen(
                     if (featureSettings.eventsGalleryEnabled) {
                         add(Triple(AppSection.EVENTS_NEWS, Icons.Filled.Newspaper, "معرض الفعاليات والأخبار (عام)"))
                     }
+                    add(Triple(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE, Icons.Filled.FolderSpecial, "السجل الشامل للطالب (الأرشيف الشهري والسنوي)"))
                     if (isAdmin) {
                         add(Triple(AppSection.ADMIN_ACCOUNTS, Icons.Filled.ManageAccounts, "إدارة وتفعيل حسابات المستخدمين"))
                     }
@@ -957,6 +971,15 @@ fun DashboardScreen(
             onFindStudentByQr = { rawQr ->
                 viewModel.findStudentByWalletOrQrCode(rawQr)
             },
+            isCanteenWalletEnabled = schoolConfig.isCanteenWalletEnabled && featureSettings.canteenWalletEnabled,
+            isAdminRole = isAdmin,
+            onToggleSchoolCanteenWallet = { enabled ->
+                viewModel.toggleSchoolCanteenWalletEnabled(enabled)
+            },
+            onToggleStudentWalletSuspended = { stuId, suspended ->
+                viewModel.toggleStudentWalletSuspended(stuId, suspended)
+            },
+            toastAlert = toastAlert,
             onDismiss = { showCanteenPosDialog = false }
         )
     }
@@ -971,6 +994,7 @@ fun DashboardScreen(
             todayAttendanceLabel = stuTodayLabel,
             todayIso = todayIso,
             initialWalletMode = true,
+            toastAlert = toastAlert,
             onSavePng = {
                 val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
                     context = context,
@@ -1102,6 +1126,7 @@ fun DailyAttendanceScreen(
     val lostAndFoundItems by viewModel.lostAndFoundItems.collectAsState()
     val featureSettings by viewModel.featureSettings.collectAsState()
     val holidaysConfig by viewModel.holidaysConfig.collectAsState()
+    val toastAlert by viewModel.toastAlert.collectAsState()
 
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isAdmin = currentUser?.role == UserRole.ADMIN
@@ -1275,22 +1300,42 @@ fun DailyAttendanceScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "سجل الحضور الخاص: ${myStu.fullNameWithFather}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Base64AvatarImage(
+                                            base64Data = myStu.photoBase64,
+                                            fallbackIcon = Icons.Filled.Person,
+                                            contentDescription = myStu.fullNameWithFather,
+                                            size = 46.dp
+                                        )
+                                        CompactStudentBadgeCapsule(badge = myBadges.firstOrNull())
+                                    }
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = "سجل الحضور الخاص: ${myStu.fullNameWithFather}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "الصف: ${myStu.gradeClass} (شعبة ${myStu.sectionName}) • حالة اليوم ($selectedDate): ${todayStatus.arabicLabel}",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                }
                                 NoWrapBadge(
-                                    text = "إجمالي أيام الغياب: $myTotalAbsences يوم",
+                                    text = "الغياب: $myTotalAbsences يوم",
                                     icon = Icons.Filled.EventBusy,
                                     containerColor = if (myTotalAbsences > 0) DangerRed else SuccessGreen,
                                     contentColor = Color.White
                                 )
                             }
-                            Text(
-                                text = "الصف: ${myStu.gradeClass} (شعبة ${myStu.sectionName}) • حالة اليوم ($selectedDate): ${todayStatus.arabicLabel}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
 
                             val mySelectedDateGateLog = myStu.getGateLogForDate(selectedDate)
                             if (mySelectedDateGateLog != null && (mySelectedDateGateLog.checkInTime.isNotBlank() || mySelectedDateGateLog.checkOutTime.isNotBlank())) {
@@ -1327,10 +1372,6 @@ fun DailyAttendanceScreen(
                                         )
                                     }
                                 }
-                            }
-
-                            if (myBadges.isNotEmpty()) {
-                                StudentAutoBadgesRow(badges = myBadges)
                             }
 
                             Row(
@@ -2136,12 +2177,20 @@ fun DailyAttendanceScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Base64AvatarImage(
-                                    base64Data = stu.photoBase64,
-                                    fallbackIcon = Icons.Filled.Person,
-                                    contentDescription = stu.fullNameWithFather,
-                                    size = 46.dp
-                                )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Base64AvatarImage(
+                                        base64Data = stu.photoBase64,
+                                        fallbackIcon = Icons.Filled.Person,
+                                        contentDescription = stu.fullNameWithFather,
+                                        size = 46.dp
+                                    )
+                                    CompactStudentBadgeCapsule(
+                                        badge = stuBadges.firstOrNull()
+                                    )
+                                }
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
                                         text = stu.fullNameWithFather,
@@ -2162,8 +2211,13 @@ fun DailyAttendanceScreen(
                                             maxLines = 1,
                                             softWrap = false
                                         )
-                                        if (stuBadges.isNotEmpty()) {
-                                            StudentAutoBadgesRow(badges = stuBadges.take(1))
+                                        if (stu.enrollmentStatusEnum != StudentEnrollmentStatus.ACTIVE) {
+                                            NoWrapBadge(
+                                                text = stu.enrollmentStatusEnum.arabicLabel,
+                                                icon = Icons.Filled.Gavel,
+                                                containerColor = DangerRed.copy(alpha = 0.14f),
+                                                contentColor = DangerRed
+                                            )
                                         }
                                     }
                                 }
@@ -2378,8 +2432,39 @@ fun DailyAttendanceScreen(
                             }
                         }
 
-                        // 2. أزرار تسجيل الحضور (حاضر، غائب، متأخر، مجاز) أو شارة "يوم عطلة رسمية (موثق في السجل)" عند العطل
-                        if (selectedDateHolidayLabel != null || currentStatus == AttendanceStatus.HOLIDAY) {
+                        // 2. أزرار تسجيل الحضور (حاضر، غائب، متأخر، مجاز) أو قفل اكتمال الدوام أو قيد الطالب أو شارة يوم عطلة رسمية
+                        if (stu.isAttendanceBlockedByEnrollmentStatus(cleanSelDate)) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("att_enrollment_locked_badge_${stu.id}"),
+                                shape = RoundedCornerShape(12.dp),
+                                color = DangerRed.copy(alpha = 0.10f),
+                                border = androidx.compose.foundation.BorderStroke(1.2.dp, DangerRed.copy(alpha = 0.65f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Block,
+                                        contentDescription = null,
+                                        tint = DangerRed,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = stu.getEnrollmentBlockBannerText(cleanSelDate),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DangerRed
+                                    )
+                                }
+                            }
+                        } else if (selectedDateHolidayLabel != null || currentStatus == AttendanceStatus.HOLIDAY) {
                             val holidayNoteText = selectedDateHolidayLabel
                                 ?: currentEntry?.note?.takeIf { it.isNotBlank() }
                                 ?: "عطلة رسمية"
@@ -2407,6 +2492,39 @@ fun DailyAttendanceScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = "يوم عطلة رسمية (موثق في السجل) • $holidayNoteText",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        } else if (stu.isDayAttendanceLocked(cleanSelDate)) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("att_day_completed_locked_badge_${stu.id}"),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFECFDF5),
+                                border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.55f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.VerifiedUser,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "اكتمل دوام الطالب لهذا اليوم (دخول ومغادرة موثقة — مقفل حتى يوم غد)",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen,
@@ -2790,6 +2908,7 @@ fun DailyAttendanceScreen(
             onScanStudentGateDetailed = { qrValue, scanMode ->
                 viewModel.recordAttendanceByQrCodeDetailed(qrValue, selectedDate, scanMode)
             },
+            toastAlert = toastAlert,
             onDismiss = { showQrScannerDialog = false }
         )
     }
@@ -2844,6 +2963,7 @@ fun DailyAttendanceScreen(
             badges = badges,
             todayAttendanceLabel = todayAttLabel,
             todayIso = selectedDate,
+            toastAlert = toastAlert,
             onSavePng = {
                 val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
                     context = context,
@@ -3813,6 +3933,1397 @@ fun DailyBehaviorFullLogModal(
         }
     )
 }
+
+/**
+ * Deliverable 4b: Indexed Leave Requests Modal Dialog (نافذة طلبات الإجازة الإلكترونية المفهرسة)
+ * - Accessible directly from the Side Navigation Drawer for Principal, Teacher, Parent, and Student.
+ * - Includes InlineDialogToastBanner so action feedback is visible above the modal.
+ * - Tabs: المعلقة قيد المراجعة | المقبولة | المرفوضة | الكل
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun IndexedLeaveRequestsModalDialog(
+    viewModel: SchoolViewModel,
+    onDismiss: () -> Unit
+) {
+    val currentUser by viewModel.currentUser.collectAsState()
+    val students by viewModel.students.collectAsState()
+    val leaveRequests by viewModel.leaveRequests.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val toastAlert by viewModel.toastAlert.collectAsState()
+    val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
+
+    val isAdmin = currentUser?.role == UserRole.ADMIN
+    val isTeacher = currentUser?.role == UserRole.TEACHER
+    val canManage = isAdmin || isTeacher
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
+
+    val scopedStudents = remember(students, currentUser, selectedParentChildId) {
+        viewModel.getScopedStudentsForUser(currentUser)
+    }
+    val scopedLeaveRequests = remember(leaveRequests, isAdmin, scopedStudents) {
+        if (isAdmin) {
+            leaveRequests
+        } else {
+            val allowedIds = scopedStudents.map { it.id.trim() }.toSet()
+            leaveRequests.filter { it.studentId.trim() in allowedIds }
+        }
+    }
+
+    var selectedStatusTab by remember { mutableStateOf(0) } // 0 = Pending, 1 = Approved, 2 = Rejected, 3 = All
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedClassFilter by remember { mutableStateOf("الكل") }
+    var showNewRequestSheet by remember { mutableStateOf(false) }
+
+    val availableClasses = remember(scopedLeaveRequests, scopedStudents) {
+        (listOf("الكل") + (scopedLeaveRequests.map { it.gradeClass } + scopedStudents.map { it.gradeClass })
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct())
+    }
+
+    val pendingCount = remember(scopedLeaveRequests) {
+        scopedLeaveRequests.count { it.status == LeaveRequestStatus.PENDING }
+    }
+    val approvedCount = remember(scopedLeaveRequests) {
+        scopedLeaveRequests.count { it.status == LeaveRequestStatus.APPROVED }
+    }
+    val rejectedCount = remember(scopedLeaveRequests) {
+        scopedLeaveRequests.count { it.status == LeaveRequestStatus.REJECTED }
+    }
+
+    val filteredRequests = remember(scopedLeaveRequests, selectedStatusTab, searchQuery, selectedClassFilter) {
+        val q = searchQuery.trim()
+        scopedLeaveRequests.filter { req ->
+            val matchesStatus = when (selectedStatusTab) {
+                0 -> req.status == LeaveRequestStatus.PENDING
+                1 -> req.status == LeaveRequestStatus.APPROVED
+                2 -> req.status == LeaveRequestStatus.REJECTED
+                else -> true
+            }
+            val matchesClass = selectedClassFilter == "الكل" ||
+                ArabicTextNormalizer.matchesClass(req.gradeClass, selectedClassFilter)
+            val matchesQuery = q.isEmpty() ||
+                req.studentName.contains(q, ignoreCase = true) ||
+                req.reason.contains(q, ignoreCase = true) ||
+                req.leaveDate.contains(q, ignoreCase = true)
+            matchesStatus && matchesClass && matchesQuery
+        }.sortedByDescending { it.requestedAt.ifBlank { it.leaveDate } }
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 780.dp)
+                .testTag("indexed_leave_requests_modal"),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, DeepEmerald.copy(alpha = 0.45f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                InlineDialogToastBanner(
+                    toastAlert = toastAlert,
+                    onDismiss = { viewModel.dismissToastAlert() }
+                )
+
+                // Header Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFECFDF5),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.3f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.EventNote,
+                                contentDescription = null,
+                                tint = DeepEmerald,
+                                modifier = Modifier
+                                    .padding(9.dp)
+                                    .size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "مركز طلبات الإجازة الإلكترونية المفهرس",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            Text(
+                                text = if (canManage) {
+                                    "مراجعة واعتماد طلبات الإجازة المدرسية سحابياً (${scopedLeaveRequests.size} طلب)"
+                                } else {
+                                    "متابعة حالة طلبات الإجازة وإرسال طلب جديد للإدارة"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMutedGreen
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("close_indexed_leave_modal_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "إغلاق",
+                            tint = DeepForestGreen
+                        )
+                    }
+                }
+
+                // Parent / Student Submit New Leave Request Button
+                if (isParentOrStudent && scopedStudents.isNotEmpty()) {
+                    Button(
+                        onClick = { showNewRequestSheet = !showNewRequestSheet },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("toggle_new_leave_request_form_btn"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeepEmerald,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = if (showNewRequestSheet) Icons.Filled.ExpandLess else Icons.Filled.AddCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (showNewRequestSheet) "إخفاء نموذج طلب الإجازة" else "إرسال طلب إجازة إلكتروني جديد",
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+
+                    if (showNewRequestSheet) {
+                        val targetStu = scopedStudents.first()
+                        var selectedType by remember { mutableStateOf(LeaveType.SICK) }
+                        var leaveDate by remember { mutableStateOf(todayIso) }
+                        var durationStr by remember { mutableStateOf("1") }
+                        var reason by remember { mutableStateOf("") }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFF0FDF4),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "تقديم طلب إجازة للطالب: ${targetStu.fullNameWithFather}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    LeaveType.entries.forEach { lt ->
+                                        FilterChip(
+                                            selected = selectedType == lt,
+                                            onClick = { selectedType = lt },
+                                            label = { Text(lt.arabicLabel, maxLines = 1) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    ModernCalendarDatePickerField(
+                                        selectedDateIso = leaveDate,
+                                        label = "تاريخ بدء الإجازة",
+                                        onDateSelected = { iso, _ -> leaveDate = iso },
+                                        modifier = Modifier.weight(1.3f)
+                                    )
+                                    OutlinedTextField(
+                                        value = durationStr,
+                                        onValueChange = { durationStr = it.filter { ch -> ch.isDigit() } },
+                                        label = { Text("المدة (أيام)") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(0.7f)
+                                    )
+                                }
+                                OutlinedTextField(
+                                    value = reason,
+                                    onValueChange = { reason = it },
+                                    label = { Text("سبب الإجازة والتفاصيل") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 2
+                                )
+                                Button(
+                                    onClick = {
+                                        val days = durationStr.toIntOrNull()?.coerceIn(1, 30) ?: 1
+                                        viewModel.submitLeaveRequest(
+                                            student = targetStu,
+                                            leaveType = selectedType,
+                                            leaveDate = leaveDate,
+                                            durationDays = days,
+                                            reason = reason
+                                        )
+                                        reason = ""
+                                        showNewRequestSheet = false
+                                    },
+                                    enabled = reason.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = DeepEmerald,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("اعتماد وإرسال الطلب سحابياً", fontWeight = FontWeight.ExtraBold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Status Index Tabs
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val tabItems = listOf(
+                        Triple(0, "المعلقة قيد المراجعة ($pendingCount)", WarningAmber),
+                        Triple(1, "المقبولة ($approvedCount)", SuccessGreen),
+                        Triple(2, "المرفوضة ($rejectedCount)", DangerRed),
+                        Triple(3, "الكل (${scopedLeaveRequests.size})", DeepEmerald)
+                    )
+                    items(tabItems) { (idx, label, _) ->
+                        val isSel = selectedStatusTab == idx
+                        FilterChip(
+                            selected = isSel,
+                            onClick = { selectedStatusTab = idx },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        )
+                    }
+                }
+
+                // Search & Class Filter
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("بحث باسم الطالب أو سبب الإجازة أو التاريخ...") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = DeepEmerald) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (canManage && availableClasses.size > 2) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(availableClasses) { cls ->
+                            FilterChip(
+                                selected = selectedClassFilter == cls,
+                                onClick = { selectedClassFilter = cls },
+                                label = { Text(cls, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = DeepEmerald.copy(alpha = 0.16f))
+
+                if (filteredRequests.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.EventAvailable,
+                                contentDescription = null,
+                                tint = DeepEmerald.copy(alpha = 0.5f),
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Text(
+                                text = "لا توجد طلبات إجازة مطابقة للتبويب المحدد حالياً.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMutedGreen,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filteredRequests, key = { it.id }) { req ->
+                            LeaveRequestCardItem(
+                                req = req,
+                                isAdmin = canManage,
+                                onApprove = {
+                                    viewModel.requireOnlineAndExecute {
+                                        viewModel.respondToLeaveRequest(req.id, approve = true)
+                                    }
+                                },
+                                onReject = {
+                                    viewModel.requireOnlineAndExecute {
+                                        viewModel.respondToLeaveRequest(req.id, approve = false)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Deliverable 5: Comprehensive Student Archive Screen (السجل الشامل للطالب — الأرشيف الشهري والسنوي)
+ * - Monthly indexing (الشهر بشهره من أيلول إلى تموز + الكل)
+ * - 1. Attendance & Gate check-in/out times, Absence dates, Excused Leaves & reasons, Late days
+ * - 2. Monthly & Semester Exams & Grades + Evaluations
+ * - 3. Daily Behavior & Classroom Follow-Up Log + Notes
+ * - 4. Canteen Wallet Transactions + Archived Yearly Promotion Summaries
+ * - 5. Export Comprehensive Student Archive Report as PDF
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun StudentComprehensiveArchiveScreen(
+    viewModel: SchoolViewModel
+) {
+    val context = LocalContext.current
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
+    val students by viewModel.students.collectAsState()
+    val attendance by viewModel.attendance.collectAsState()
+    val leaveRequests by viewModel.leaveRequests.collectAsState()
+    val exams by viewModel.examSchedules.collectAsState()
+    val grades by viewModel.grades.collectAsState()
+    val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val holidaysConfig by viewModel.holidaysConfig.collectAsState()
+
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
+    val scopedStudents = remember(students, currentUser, selectedParentChildId) {
+        viewModel.getScopedStudentsForUser(currentUser)
+    }
+
+    val allowedClasses = remember(schoolConfig, currentUser, students) {
+        viewModel.getAllowedClassesForUser(currentUser)
+    }
+    var selectedClass by remember(allowedClasses) {
+        mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
+    }
+    val allowedSections = remember(schoolConfig, currentUser, students, selectedClass) {
+        viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
+    }
+    var selectedSection by remember(allowedSections) {
+        mutableStateOf(allowedSections.firstOrNull() ?: "أ")
+    }
+    var studentSearchQuery by remember { mutableStateOf("") }
+
+    val filteredStudentsList = remember(scopedStudents, isParentOrStudent, selectedClass, selectedSection, studentSearchQuery) {
+        if (isParentOrStudent) {
+            scopedStudents
+        } else {
+            val q = studentSearchQuery.trim()
+            scopedStudents.filter { stu ->
+                ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
+                    ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection) &&
+                    (q.isEmpty() || stu.fullNameWithFather.contains(q, ignoreCase = true) || stu.studentName.contains(q, ignoreCase = true))
+            }
+        }
+    }
+
+    var selectedStudentId by remember(filteredStudentsList, selectedParentChildId) {
+        mutableStateOf(
+            if (isParentOrStudent && selectedParentChildId.isNotBlank()) {
+                selectedParentChildId
+            } else {
+                filteredStudentsList.firstOrNull()?.id ?: ""
+            }
+        )
+    }
+    val selectedStudent = remember(filteredStudentsList, scopedStudents, selectedStudentId) {
+        filteredStudentsList.firstOrNull { it.id == selectedStudentId }
+            ?: filteredStudentsList.firstOrNull()
+            ?: scopedStudents.firstOrNull()
+    }
+
+    // Monthly Indexing: "ALL" or month number "09".."08"
+    val academicMonths = remember {
+        listOf(
+            "ALL" to "الكل (السنة كاملة)",
+            "09" to "أيلول (9)",
+            "10" to "تشرين الأول (10)",
+            "11" to "تشرين الثاني (11)",
+            "12" to "كانون الأول (12)",
+            "01" to "كانون الثاني (1)",
+            "02" to "شباط (2)",
+            "03" to "آذار (3)",
+            "04" to "نيسان (4)",
+            "05" to "أيار (5)",
+            "06" to "حزيران (6)",
+            "07" to "تموز (7)",
+            "08" to "آب (8)"
+        )
+    }
+    var selectedMonthCode by remember { mutableStateOf("ALL") }
+    val selectedMonthLabel = remember(selectedMonthCode) {
+        academicMonths.firstOrNull { it.first == selectedMonthCode }?.second ?: "الكل (السنة كاملة)"
+    }
+
+    fun matchesSelectedMonth(dateIso: String): Boolean {
+        if (selectedMonthCode == "ALL") return true
+        val clean = ArabicTextNormalizer.normalizeDateIso(dateIso.trim())
+        val parts = clean.split("-")
+        return parts.size >= 2 && parts[1].padStart(2, '0') == selectedMonthCode
+    }
+
+    val stuBadges = remember(attendance, grades, selectedStudent?.id, holidaysConfig) {
+        selectedStudent?.let { viewModel.getStudentAutoBadges(it.id) } ?: emptyList()
+    }
+    val stuAttendanceMap = remember(attendance, selectedStudent, holidaysConfig) {
+        selectedStudent?.let { viewModel.getStudentAttendanceMap(it.id) } ?: emptyMap()
+    }
+    val monthFilteredAttendance = remember(stuAttendanceMap, selectedMonthCode) {
+        stuAttendanceMap.entries
+            .filter { matchesSelectedMonth(it.key) }
+            .sortedByDescending { it.key }
+    }
+    val presentDays = remember(monthFilteredAttendance) {
+        monthFilteredAttendance.filter { it.value == AttendanceStatus.PRESENT }
+    }
+    val absentDays = remember(monthFilteredAttendance) {
+        monthFilteredAttendance.filter { it.value == AttendanceStatus.ABSENT }
+    }
+    val excusedDays = remember(monthFilteredAttendance) {
+        monthFilteredAttendance.filter { it.value == AttendanceStatus.EXCUSED }
+    }
+    val lateDays = remember(monthFilteredAttendance) {
+        monthFilteredAttendance.filter { it.value == AttendanceStatus.LATE }
+    }
+    val stuLeaveRequests = remember(leaveRequests, selectedStudent?.id, selectedMonthCode) {
+        val targetId = selectedStudent?.id ?: ""
+        if (targetId.isEmpty()) emptyList()
+        else leaveRequests.filter { it.studentId == targetId && matchesSelectedMonth(it.leaveDate) }
+    }
+    val stuGateLogs = remember(selectedStudent?.dailyGateLogs, selectedMonthCode) {
+        (selectedStudent?.dailyGateLogs ?: emptyMap()).entries
+            .filter { matchesSelectedMonth(it.key) }
+            .sortedByDescending { it.key }
+    }
+    val stuExams = remember(exams, selectedStudent?.gradeClass, selectedStudent?.sectionName, selectedMonthCode) {
+        val stu = selectedStudent
+        if (stu == null) emptyList()
+        else exams.filter {
+            ArabicTextNormalizer.matchesClass(it.gradeClass, stu.gradeClass) &&
+                (it.sectionName.isBlank() || ArabicTextNormalizer.matchesSection(it.sectionName, stu.sectionName)) &&
+                matchesSelectedMonth(it.examDate)
+        }
+    }
+    val stuGrades = remember(grades, selectedStudent?.id) {
+        val targetId = selectedStudent?.id ?: ""
+        if (targetId.isEmpty()) emptyList() else grades.filter { it.studentId == targetId }
+    }
+    val stuAverage = remember(stuGrades) {
+        if (stuGrades.isEmpty()) 0 else stuGrades.map { it.finalAverage }.average().toInt()
+    }
+    val stuBehaviors = remember(dailyBehaviors, selectedStudent?.id, selectedMonthCode) {
+        val targetId = selectedStudent?.id ?: ""
+        if (targetId.isEmpty()) emptyList()
+        else dailyBehaviors.filter { it.studentId == targetId && matchesSelectedMonth(it.date) }
+            .sortedByDescending { it.date }
+    }
+    val stuWalletTxs = remember(selectedStudent?.walletTransactions, selectedMonthCode) {
+        (selectedStudent?.walletTransactions ?: emptyList()).filter { tx ->
+            if (selectedMonthCode == "ALL") true
+            else {
+                val datePart = tx.timestamp.take(10)
+                matchesSelectedMonth(datePart)
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
+    ) {
+        // Top Header Card & Class/Student Selector for Admin/Teacher
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.25f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFECFDF5),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.FolderSpecial,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier
+                                        .padding(9.dp)
+                                        .size(22.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "السجل الشامل للطالب (الأرشيف الشهري والسنوي)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = "فهرسة الشهر بشهره: الدوام والبوابة، الغيابات، الإجازات، الامتحانات والدرجات، السلوك، والمحفظة",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen
+                                )
+                            }
+                        }
+                    }
+
+                    if (!isParentOrStudent) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(allowedClasses) { cls ->
+                                FilterChip(
+                                    selected = selectedClass == cls,
+                                    onClick = {
+                                        selectedClass = cls
+                                        val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                        if (selectedSection !in nextSecs) {
+                                            selectedSection = nextSecs.firstOrNull() ?: "أ"
+                                        }
+                                    },
+                                    label = { Text(cls, maxLines = 1, softWrap = false) }
+                                )
+                            }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("الشعبة:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            allowedSections.forEach { sec ->
+                                FilterChip(
+                                    selected = selectedSection == sec,
+                                    onClick = { selectedSection = sec },
+                                    label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                                )
+                            }
+                        }
+                        OutlinedTextField(
+                            value = studentSearchQuery,
+                            onValueChange = { studentSearchQuery = it },
+                            placeholder = { Text("بحث سريع باسم الطالب في هذا الصف...") },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = DeepEmerald) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        if (filteredStudentsList.isNotEmpty()) {
+                            Text(
+                                text = "اختر الطالب لعرض سجله الشامل (${filteredStudentsList.size} طالب):",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(filteredStudentsList, key = { it.id }) { stu ->
+                                    val isSel = selectedStudent?.id == stu.id
+                                    FilterChip(
+                                        selected = isSel,
+                                        onClick = { selectedStudentId = stu.id },
+                                        label = {
+                                            Text(
+                                                text = stu.fullNameWithFather,
+                                                fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (isSel) Icons.Filled.CheckCircle else Icons.Filled.Person,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (selectedStudent == null) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "لا يوجد طالب محدد ضمن هذا الصف حالياً.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextMutedGreen,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        } else {
+            val stu = selectedStudent
+
+            // Student Identity & Export PDF Banner Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = DeepEmerald),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Base64AvatarImage(
+                                    base64Data = stu.photoBase64,
+                                    fallbackIcon = Icons.Filled.Person,
+                                    contentDescription = stu.fullNameWithFather,
+                                    size = 56.dp,
+                                    tint = Color.White
+                                )
+                                CompactStudentBadgeCapsule(
+                                    badge = stuBadges.firstOrNull(),
+                                    onDarkBackground = true
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = stu.fullNameWithFather,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "الصف: ${stu.gradeClass} • شعبة (${stu.sectionName}) • العام: ${schoolConfig.academicYear}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.92f)
+                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) {
+                                            Color.White.copy(alpha = 0.2f)
+                                        } else {
+                                            DangerRed
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "حالة القيد: ${stu.enrollmentStatusEnum.arabicLabel}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White.copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = "المعدل العام: ${if (stuGrades.isEmpty()) "قيد الرصد" else "$stuAverage%"}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                val res = DocumentAndIdExporter.exportComprehensiveStudentArchivePdf(
+                                    context = context,
+                                    schoolConfig = schoolConfig,
+                                    student = stu,
+                                    monthLabel = selectedMonthLabel,
+                                    attendanceMap = monthFilteredAttendance.associate { it.key to it.value },
+                                    leaveRequests = stuLeaveRequests,
+                                    exams = stuExams,
+                                    grades = stuGrades,
+                                    behaviors = stuBehaviors,
+                                    principalName = schoolConfig.principalFullName.ifBlank { "مدير المدرسة" }
+                                )
+                                if (res.isSuccess) {
+                                    viewModel.showToastAlert(
+                                        "تم تصدير وفتح السجل الشامل للطالب (${stu.studentName}) بصيغة PDF بنجاح",
+                                        isSuccess = true
+                                    )
+                                } else {
+                                    viewModel.showToastAlert(
+                                        "تعذر تصدير السجل الشامل PDF: ${res.exceptionOrNull()?.message}",
+                                        isSuccess = false
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("export_comprehensive_student_archive_pdf_btn"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White,
+                                contentColor = DeepForestGreen
+                            )
+                        ) {
+                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "طباعة / تصدير السجل الشامل للطالب (PDF) — $selectedMonthLabel",
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Monthly Indexing Selector Row (الشهر بشهره)
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "الفهرسة الشهرية للأرشيف (اختر الشهر لعرض تفاصيله الدقيقة أو السنة كاملة):",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(academicMonths) { (code, label) ->
+                                val isSel = selectedMonthCode == code
+                                FilterChip(
+                                    selected = isSel,
+                                    onClick = { selectedMonthCode = code },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Section 1: Attendance, Gate Timestamps, Absences & Leaves for Selected Month
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Filled.HowToReg, contentDescription = null, tint = DeepEmerald)
+                            Text(
+                                text = "1. سجل الحضور والغياب والإجازات وحركة البوابة ($selectedMonthLabel)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                Triple("الحضور", "${presentDays.size} يوم", SuccessGreen),
+                                Triple("الغياب", "${absentDays.size} يوم", DangerRed),
+                                Triple("الإجازات", "${excusedDays.size} يوم", InfoBlue),
+                                Triple("التأخر", "${lateDays.size} يوم", WarningAmber)
+                            ).forEach { (lbl, valTxt, col) ->
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = col.copy(alpha = 0.10f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, col.copy(alpha = 0.35f))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = valTxt,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = col
+                                        )
+                                        Text(
+                                            text = lbl,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = DeepForestGreen,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (absentDays.isNotEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = DangerRed.copy(alpha = 0.07f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "تواريخ أيام الغياب المسجلة (${absentDays.size}):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DangerRed
+                                    )
+                                    Text(
+                                        text = absentDays.joinToString(" • ") { it.key },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1E293B)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (stuLeaveRequests.isNotEmpty()) {
+                            Text(
+                                text = "تفاصيل الإجازات وأسبابها (${stuLeaveRequests.size}):",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            stuLeaveRequests.forEach { req ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF0FDF4),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "${req.leaveType.arabicLabel} • ${req.leaveDate} (${req.durationDays} يوم)",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "السبب: ${req.reason}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                        NoWrapBadge(
+                                            text = req.status.arabicLabel,
+                                            icon = Icons.Filled.EventNote,
+                                            containerColor = DeepEmerald.copy(alpha = 0.14f),
+                                            contentColor = DeepEmerald
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (stuGateLogs.isNotEmpty()) {
+                            Text(
+                                text = "توقيتات الدخول والمغادرة عبر البوابة الذكية (${stuGateLogs.size}):",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            stuGateLogs.take(15).forEach { (dateKey, log) ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.2f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = dateKey,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                        Text(
+                                            text = "دخول: ${log.checkInTime.ifBlank { "—" }} | مغادرة: ${log.checkOutTime.ifBlank { "—" }}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepEmerald
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Section 2: Exams & Grades Log
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Filled.Assessment, contentDescription = null, tint = DeepEmerald)
+                            Text(
+                                text = "2. سجل الامتحانات والدرجات والتقييمات (${stuGrades.size} مادة)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                        }
+
+                        if (stuExams.isNotEmpty()) {
+                            Text(
+                                text = "الامتحانات المجدولة خلال الفترة (${stuExams.size}):",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepEmerald
+                            )
+                            stuExams.forEach { ex ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF0FDF4),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "${ex.subjectName} (${ex.examType})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            if (ex.topicsIncluded.isNotBlank()) {
+                                                Text(
+                                                    text = "المادة الداخلة: ${ex.topicsIncluded}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = TextMutedGreen
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "${ex.examDate} • من ${ex.maxScore}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepEmerald
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (stuGrades.isEmpty()) {
+                            Text(
+                                text = "لم يتم رصد درجات للمواد الدراسية لهذا الطالب بعد.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMutedGreen
+                            )
+                        } else {
+                            stuGrades.forEach { gr ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = gr.subjectName,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            NoWrapBadge(
+                                                text = "المعدل: ${gr.finalAverage} / 100 (${gr.evaluationText})",
+                                                icon = Icons.Filled.Grade,
+                                                containerColor = if (gr.finalAverage >= 50) SuccessGreen.copy(alpha = 0.14f) else DangerRed.copy(alpha = 0.14f),
+                                                contentColor = if (gr.finalAverage >= 50) SuccessGreen else DangerRed
+                                            )
+                                        }
+                                        Text(
+                                            text = "ش1: ${gr.month1} | ش2: ${gr.month2} | نصف السنة: ${gr.midYear} | ش3: ${gr.month3} | ش4: ${gr.month4} | النهائي: ${gr.finalExam}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMutedGreen,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Section 3: Daily Behavior & Classroom Follow-Up Log
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(ClipboardCheckVectorIcon, contentDescription = null, tint = DeepEmerald)
+                            Text(
+                                text = "3. دفتر المتابعة اليومي والسلوك الصفي والملاحظات (${stuBehaviors.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                        }
+
+                        if (stuBehaviors.isEmpty()) {
+                            Text(
+                                text = "لا توجد ملاحظات سلوكية أو تربوية مسجلة في هذه الفترة.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMutedGreen
+                            )
+                        } else {
+                            stuBehaviors.forEach { beh ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF0FDF4),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${beh.behaviorType.arabicTitle} • ${beh.subjectName}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = beh.date,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        if (beh.note.isNotBlank()) {
+                                            Text(
+                                                text = beh.note,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFF1E293B),
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        if (beh.teacherName.isNotBlank()) {
+                                            Text(
+                                                text = "بواسطة: ${beh.teacherName}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Section 4: Canteen Wallet Transactions & Archived Yearly Promotion Summaries
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = DeepEmerald)
+                            Text(
+                                text = "4. حركات محفظة الحانوت والأرشيف السنوي للسنوات السابقة",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                        }
+
+                        Text(
+                            text = "الرصيد الحالي للمحفظة: ${"%,d".format(java.util.Locale.US, stu.walletBalance)} د.ع • عدد الحركات في الفترة: ${stuWalletTxs.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = DeepEmerald
+                        )
+
+                        stuWalletTxs.take(10).forEach { tx ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${tx.type.arabicLabel}: ${"%,d".format(java.util.Locale.US, tx.amount)} د.ع",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                        Text(
+                                            text = "${tx.note} • ${tx.timestamp}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMutedGreen
+                                        )
+                                    }
+                                    Text(
+                                        text = "الرصيد: ${"%,d".format(java.util.Locale.US, tx.balanceAfter)} د.ع",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepEmerald
+                                    )
+                                }
+                            }
+                        }
+
+                        if (stu.archivedYearlySummaries.isNotEmpty()) {
+                            HorizontalDivider(color = DeepEmerald.copy(alpha = 0.18f))
+                            Text(
+                                text = "الأرشيف السنوي للأعوام الدراسية السابقة (${stu.archivedYearlySummaries.size}):",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            stu.archivedYearlySummaries.forEach { arch ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFECFDF5),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "العام الدراسي: ${arch.academicYear} • ${arch.gradeClass} (${arch.sectionName})",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            NoWrapBadge(
+                                                text = arch.resultStatus,
+                                                icon = Icons.Filled.Verified,
+                                                containerColor = DeepEmerald,
+                                                contentColor = Color.White
+                                            )
+                                        }
+                                        Text(
+                                            text = "المعدل النهائي: ${arch.finalAverage}% • الحضور: ${arch.totalPresentDays} يوم • الغياب: ${arch.totalAbsentDays} يوم • الإجازات: ${arch.totalExcusedDays} يوم",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepEmerald
+                                        )
+                                        if (arch.promotedToGrade.isNotBlank()) {
+                                            Text(
+                                                text = "تم الترحيل إلى: ${arch.promotedToGrade} بتاريخ ${arch.archivedAt}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 
 

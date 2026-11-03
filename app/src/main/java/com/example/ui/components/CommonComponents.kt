@@ -310,7 +310,9 @@ fun DeveloperCreditFooter(
  */
 object IraqiPhoneCarrierValidator {
     fun sanitizeDigits(raw: String): String {
-        val cleaned = raw.trim().let { if (it == "07512362567") "" else it }
+        val cleaned = raw.trim().let {
+            if (com.example.util.SecurityShieldHelper.isLegacyPlaceholderPhone(it)) "" else it
+        }
         return cleaned.filter { it.isDigit() }.take(11)
     }
 
@@ -1781,3 +1783,111 @@ fun HonorHeartReactionButton(
         }
     }
 }
+
+/**
+ * Dual-Guarantee Inline Notification Banner rendered directly inside open Dialogs/Modals
+ * alongside the root system Popup window so the user immediately sees feedback on any action.
+ */
+@Composable
+fun InlineDialogToastBanner(
+    toastAlert: com.example.model.ToastAlertMessage?,
+    onDismiss: () -> Unit = {}
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = toastAlert != null,
+        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
+    ) {
+        val alert = toastAlert ?: return@AnimatedVisibility
+        val bgColor = if (alert.isSuccess) Color(0xFF059669) else Color(0xFFDC2626)
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+                .clickable { onDismiss() },
+            shape = RoundedCornerShape(12.dp),
+            color = bgColor,
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                    contentDescription = "إشعار الإجراء",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = alert.message,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Refined, compact capsule badge placed directly underneath the student's avatar/photo
+ * without crowding or overflowing surrounding text.
+ */
+@Composable
+fun CompactStudentBadgeCapsule(
+    badges: List<com.example.model.StudentAutoBadge> = emptyList(),
+    badge: com.example.model.StudentAutoBadge? = null,
+    fallbackHonorTitle: String = "",
+    isOnHonorRoll: Boolean = false,
+    onLightBackground: Boolean = true,
+    onDarkBackground: Boolean = false
+) {
+    val effectiveOnLight = if (onDarkBackground) false else onLightBackground
+    val primaryBadge = badge ?: badges.firstOrNull()
+    val badgeTitle = when {
+        isOnHonorRoll && fallbackHonorTitle.isNotBlank() -> fallbackHonorTitle
+        primaryBadge != null -> primaryBadge.title
+        else -> "وسام الالتزام"
+    }
+    val badgeBg = if (effectiveOnLight) Color(0xFFECFDF5) else Color.White.copy(alpha = 0.22f)
+    val badgeBorder = if (effectiveOnLight) Color(0xFF059669).copy(alpha = 0.45f) else Color.White.copy(alpha = 0.55f)
+    val badgeTextColor = if (effectiveOnLight) Color(0xFF047857) else Color.White
+
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = badgeBg,
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .border(1.dp, badgeBorder, RoundedCornerShape(50))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.WorkspacePremium,
+                contentDescription = "وسام الطالب",
+                tint = if (onLightBackground) Color(0xFF059669) else Color.White,
+                modifier = Modifier.size(11.dp)
+            )
+            Text(
+                text = badgeTitle,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = badgeTextColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+

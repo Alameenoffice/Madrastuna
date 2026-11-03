@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,6 +42,7 @@ import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.util.ExternalIntents
+import com.example.util.SecurityShieldHelper
 import com.example.viewmodel.SchoolViewModel
 
 data class OnboardingSlideData(
@@ -1275,8 +1278,9 @@ fun UnifiedLoginScreen(
 /**
  * Internal Developer Super-Admin Control Panel:
  * "لوحة تحكم النظام العام"
- * Opened exclusively when logging in with ABU-RASLAN / 07512362567.
+ * Opened exclusively via encrypted cloud vault authentication.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DeveloperControlPanelScreen(
     viewModel: SchoolViewModel,
@@ -1293,6 +1297,51 @@ fun DeveloperControlPanelScreen(
     var directorPhoneForWhatsApp by remember { mutableStateOf("") }
     var showBroadcastToPrincipalsDialog by remember { mutableStateOf(false) }
     var editingExpirySchool by remember { mutableStateOf<RegisteredSchoolSummary?>(null) }
+    var schoolPendingFullDelete by remember { mutableStateOf<RegisteredSchoolSummary?>(null) }
+    var deleteSchoolConfirmInput by remember { mutableStateOf("") }
+
+    var devNewUsername by remember { mutableStateOf("") }
+    var devNewPassword by remember { mutableStateOf("") }
+    var showDevPasswordPlain by remember { mutableStateOf(false) }
+    var pendingBackupJsonToWrite by remember { mutableStateOf("") }
+    var isBackupBusy by remember { mutableStateOf(false) }
+
+    val saveBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null && pendingBackupJsonToWrite.isNotBlank()) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(pendingBackupJsonToWrite.toByteArray(Charsets.UTF_8))
+                }
+                viewModel.showToastAlert("تم حفظ ملف النسخة الاحتياطية الشاملة (JSON) على جهازك بنجاح", isSuccess = true)
+            }.onFailure { err ->
+                viewModel.showToastAlert("تعذر كتابة ملف النسخة الاحتياطية: ${err.message}", isSuccess = false)
+            }
+        }
+    }
+
+    val restoreBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val rawJson = context.contentResolver.openInputStream(uri)?.use { input ->
+                    input.bufferedReader(Charsets.UTF_8).readText()
+                }.orEmpty()
+                if (rawJson.isNotBlank()) {
+                    isBackupBusy = true
+                    viewModel.restoreFullSystemCloudBackupJson(rawJson)
+                    isBackupBusy = false
+                } else {
+                    viewModel.showToastAlert("ملف النسخة الاحتياطية المختار فارغ", isSuccess = false)
+                }
+            }.onFailure { err ->
+                isBackupBusy = false
+                viewModel.showToastAlert("تعذر قراءة ملف النسخة الاحتياطية: ${err.message}", isSuccess = false)
+            }
+        }
+    }
 
     var updateVersionCodeStr by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.latestVersionCode.toString()) }
     var updateVersionName by remember(appUpdateConfig) { mutableStateOf(appUpdateConfig.latestVersionName) }
@@ -1331,15 +1380,18 @@ fun DeveloperControlPanelScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Top Header Card
+            // Redesigned Top Header Card (Pure Emerald + White, Zero Overlap)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = DeepEmerald),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1351,28 +1403,45 @@ fun DeveloperControlPanelScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Terminal,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(30.dp)
-                            )
-                            Column {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.White.copy(alpha = 0.18f),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Terminal,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "لوحة تحكم النظام العام",
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "إدارة التراخيص، تأسيس المدارس، واشتراكات السحابة (Firestore)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.88f)
+                                    text = "إدارة السحابة السيادية والتراخيص والمدارس",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.90f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             IconButton(
                                 onClick = {
                                     viewModel.refreshDeveloperCloudData()
@@ -1386,7 +1455,8 @@ fun DeveloperControlPanelScreen(
                                 Icon(
                                     imageVector = Icons.Filled.Sync,
                                     contentDescription = "مزامنة السحابة",
-                                    tint = Color.White
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                             IconButton(
@@ -1399,7 +1469,8 @@ fun DeveloperControlPanelScreen(
                                 Icon(
                                     imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
                                     contentDescription = "تبديل المظهر",
-                                    tint = Color.White
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                             IconButton(
@@ -1407,21 +1478,25 @@ fun DeveloperControlPanelScreen(
                                 modifier = Modifier
                                     .size(38.dp)
                                     .clip(CircleShape)
-                                    .background(DangerRed.copy(alpha = 0.85f))
+                                    .background(DangerRed)
                                     .testTag("exit_developer_panel_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Logout,
                                     contentDescription = "خروج",
-                                    tint = Color.White
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                     }
 
-                    Row(
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.18f))
+
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         NoWrapBadge(
                             text = "الأكواد المتاحة: ${licenses.count { !it.used }}",
@@ -1447,7 +1522,7 @@ fun DeveloperControlPanelScreen(
 
             // Biometric Fingerprint Quick Login Toggle for Developer Account
             BiometricSettingsSectionCard(
-                currentAccountUsername = "ABU-RASLAN",
+                currentAccountUsername = SecurityShieldHelper.defaultDeveloperIdentifierToken(),
                 currentAccountFullName = "إدارة النظام العام",
                 currentAccountRoleLabel = "مطور النظام العام",
                 savedBiometricCredentials = biometricCredentials,
@@ -1461,6 +1536,187 @@ fun DeveloperControlPanelScreen(
                     viewModel.showToastAlert(err, isSuccess = false)
                 }
             )
+
+            // 7.1: Encrypted Cloud Developer Credentials Vault Card (تشفير وأرشفة بيانات المطور سحابياً)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.EnhancedEncryption,
+                            contentDescription = null,
+                            tint = DeepEmerald
+                        )
+                        Column {
+                            Text(
+                                text = "خزنة تشفير وأرشفة بيانات دخول المطور سحابياً",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "محفوظة بتشفير SHA-256 + AES داخل (system_secure_config/developer_vault) دون أي نص صريح في الكود",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = devNewUsername,
+                            onValueChange = { devNewUsername = it },
+                            label = { Text("معرّف المطور الجديد") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("dev_vault_new_username_input")
+                        )
+                        OutlinedTextField(
+                            value = devNewPassword,
+                            onValueChange = { devNewPassword = it },
+                            label = { Text("كلمة المرور السحابية الجديدة") },
+                            singleLine = true,
+                            visualTransformation = if (showDevPasswordPlain) {
+                                VisualTransformation.None
+                            } else {
+                                PasswordVisualTransformation()
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { showDevPasswordPlain = !showDevPasswordPlain }) {
+                                    Icon(
+                                        imageVector = if (showDevPasswordPlain) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                        contentDescription = null
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("dev_vault_new_password_input")
+                        )
+                    }
+
+                    VectorActionButton(
+                        text = "تشفير وحفظ بيانات دخول المطور في السحابة",
+                        icon = Icons.Filled.LockReset,
+                        containerColor = DeepEmerald,
+                        onClick = {
+                            viewModel.updateDeveloperCredentialsInCloud(
+                                newUsername = devNewUsername,
+                                newPassword = devNewPassword
+                            )
+                            if (devNewUsername.trim().length >= 3 && devNewPassword.trim().length >= 4) {
+                                devNewUsername = ""
+                                devNewPassword = ""
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "dev_vault_save_button"
+                    )
+                }
+            }
+
+            // 7.2: Full System Cloud Backup & Restore Card (النسخ الاحتياطي الشامل واستعادة النظام سحابياً)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CloudSync,
+                            contentDescription = null,
+                            tint = DeepEmerald
+                        )
+                        Column {
+                            Text(
+                                text = "النسخ الاحتياطي الشامل واستعادة النظام سحابياً (Backup & Restore)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "تصدير أو استعادة كافة المدارس والحسابات والطلبة والحضور والدرجات والمحافظ والتراخيص بملف JSON موحّد",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        VectorActionButton(
+                            text = if (isBackupBusy) "جاري المعالجة..." else "تنزيل نسخة احتياطية شاملة (JSON)",
+                            icon = Icons.Filled.CloudDownload,
+                            containerColor = DeepEmerald,
+                            onClick = {
+                                if (!isBackupBusy) {
+                                    isBackupBusy = true
+                                    val jsonOut = viewModel.exportFullSystemCloudBackupJson()
+                                    isBackupBusy = false
+                                    if (jsonOut.isNotBlank()) {
+                                        pendingBackupJsonToWrite = jsonOut
+                                        val dateStamp = com.example.ui.components.ArabicCalendarDateHelper.todayIsoDate()
+                                        saveBackupLauncher.launch("madrasati_cloud_backup_$dateStamp.json")
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            testTag = "dev_export_full_backup_button"
+                        )
+
+                        OutlinedButton(
+                            onClick = {
+                                if (!isBackupBusy) {
+                                    restoreBackupLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .testTag("dev_restore_full_backup_button"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = DeepEmerald)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CloudUpload,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "رفع واستعادة نسخة احتياطية",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
 
             // 1 & 3: Generate License Code, Direct School Setup & Broadcast to School Principals Card
             Card(
@@ -1507,7 +1763,7 @@ fun DeveloperControlPanelScreen(
                     VectorActionButton(
                         text = "إرسال تعميم لمدراء المدارس (إشعار خاص للمدراء فقط)",
                         icon = Icons.Filled.Campaign,
-                        containerColor = GoldDeep,
+                        containerColor = DeepEmerald,
                         onClick = { showBroadcastToPrincipalsDialog = true },
                         modifier = Modifier.fillMaxWidth(),
                         testTag = "dev_broadcast_to_principals_button"
@@ -2599,14 +2855,41 @@ fun DeveloperControlPanelScreen(
                                             contentColor = if (school.isActive) SuccessGreen else DangerRed
                                         )
 
-                                        TextButton(
-                                            onClick = { viewModel.toggleSchoolSubscriptionActive(school.schoolId) }
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = if (school.isActive) "إيقاف اشتراك المدرسة" else "تفعيل اشتراك المدرسة",
-                                                color = if (school.isActive) DangerRed else SuccessGreen,
-                                                fontWeight = FontWeight.Bold
-                                            )
+                                            TextButton(
+                                                onClick = { viewModel.toggleSchoolSubscriptionActive(school.schoolId) }
+                                            ) {
+                                                Text(
+                                                    text = if (school.isActive) "إيقاف الاشتراك" else "تفعيل الاشتراك",
+                                                    color = if (school.isActive) DangerRed else SuccessGreen,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    deleteSchoolConfirmInput = ""
+                                                    schoolPendingFullDelete = school
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                modifier = Modifier.testTag("delete_school_cloud_btn_${school.schoolId}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.DeleteForever,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "حذف المدرسة نهائياً",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -2790,6 +3073,80 @@ fun DeveloperControlPanelScreen(
             },
             dismissButton = {
                 TextButton(onClick = { editingExpirySchool = null }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    schoolPendingFullDelete?.let { targetSchool ->
+        val isConfirmed = deleteSchoolConfirmInput.trim() == "حذف" ||
+            deleteSchoolConfirmInput.trim().equals(targetSchool.schoolId, ignoreCase = true)
+        AlertDialog(
+            onDismissRequest = { schoolPendingFullDelete = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.WarningAmber,
+                    contentDescription = null,
+                    tint = DangerRed,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "تأكيد الحذف الجذري والنهائي للمدرسة من السحابة",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DangerRed
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "أنت على وشك حذف مدرسة (${targetSchool.schoolName}) ذات الكود (${targetSchool.schoolId}) جذرياً من قاعدة البيانات السحابية، بما يشمل جميع حساباتها وطلبتها وسجلات الحضور والدرجات والمحافظ.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "لتأكيد الحذف النهائي غير القابل للتراجع، اكتب كلمة (حذف) أو كود المدرسة (${targetSchool.schoolId}) في الحقل أدناه:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = DangerRed,
+                        fontWeight = FontWeight.Bold
+                    )
+                    OutlinedTextField(
+                        value = deleteSchoolConfirmInput,
+                        onValueChange = { deleteSchoolConfirmInput = it },
+                        label = { Text("اكتب (حذف) أو (${targetSchool.schoolId}) للتأكيد") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("confirm_delete_school_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isConfirmed) {
+                            val schoolIdToDelete = targetSchool.schoolId
+                            schoolPendingFullDelete = null
+                            deleteSchoolConfirmInput = ""
+                            viewModel.deleteSchoolCompletelyFromCloud(schoolIdToDelete)
+                        }
+                    },
+                    enabled = isConfirmed,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DangerRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.testTag("confirm_delete_school_submit_btn")
+                ) {
+                    Icon(Icons.Filled.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("حذف المدرسة وبياناتها نهائياً", fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { schoolPendingFullDelete = null }) {
+                    Text("إلغاء")
+                }
             }
         )
     }

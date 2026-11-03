@@ -204,6 +204,35 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _registeredSchools = MutableStateFlow(repo.loadRegisteredSchools())
     val registeredSchools: StateFlow<List<RegisteredSchoolSummary>> = _registeredSchools.asStateFlow()
 
+    private val _developerVaultConfig = MutableStateFlow(repo.loadDeveloperVaultConfig())
+    val developerVaultConfig: StateFlow<DeveloperVaultConfig> = _developerVaultConfig.asStateFlow()
+
+    private val _showIndexedLeaveRequestsModal = MutableStateFlow(false)
+    val showIndexedLeaveRequestsModal: StateFlow<Boolean> = _showIndexedLeaveRequestsModal.asStateFlow()
+
+    fun setShowIndexedLeaveRequestsModal(show: Boolean) {
+        _showIndexedLeaveRequestsModal.value = show
+    }
+
+    fun openIndexedLeaveRequestsModal() {
+        _showIndexedLeaveRequestsModal.value = true
+    }
+
+    fun dismissIndexedLeaveRequestsModal() {
+        _showIndexedLeaveRequestsModal.value = false
+    }
+
+    private val _latestAnnualPromotionReport = MutableStateFlow<AnnualPromotionReport?>(null)
+    val latestAnnualPromotionReport: StateFlow<AnnualPromotionReport?> = _latestAnnualPromotionReport.asStateFlow()
+
+    fun clearAnnualPromotionReportModal() {
+        _latestAnnualPromotionReport.value = null
+    }
+
+    fun dismissAnnualPromotionReportModal() {
+        _latestAnnualPromotionReport.value = null
+    }
+
     private val _discoveredSchoolName = MutableStateFlow<String?>(null)
     val discoveredSchoolName: StateFlow<String?> = _discoveredSchoolName.asStateFlow()
 
@@ -610,6 +639,17 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 )?.let { remoteThemeJson ->
                     val parsed = repo.parseOccasionThemeConfigJson(remoteThemeJson)
                     _occasionThemeConfig.value = parsed
+                }
+
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SYSTEM_SECURE_CONFIG,
+                    docName = FirebaseConfigConstants.DOC_DEVELOPER_VAULT
+                )?.let { remoteVaultJson ->
+                    if (remoteVaultJson.isNotBlank()) {
+                        val parsedVault = repo.parseDeveloperVaultConfigJson(remoteVaultJson)
+                        _developerVaultConfig.value = parsedVault
+                        repo.saveDeveloperVaultConfig(parsedVault)
+                    }
                 }
             } catch (_: Exception) {
             }
@@ -1998,12 +2038,63 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val todayDayName = resolveCanonicalArabicDayOfWeek(todayIso)
         if (!exists && ArabicTextNormalizer.normalizeText(todayDayName) == normTarget) {
             documentHolidayInStudentRecords(todayIso, "عطلة أسبوعية - $dayName")
+        } else if (exists) {
+            scrubCancelledHolidayStatuses()
         }
         showToastAlert(
             if (!exists) "تم اعتماد يوم ($dayName) كعطلة أسبوعية للمدرسة"
-            else "تم إلغاء يوم ($dayName) من أيام العطلة الأسبوعية",
+            else "تم إلغاء يوم ($dayName) من أيام العطلة الأسبوعية وفتح سجل الحضور فوراً",
             isSuccess = true
         )
+    }
+
+    /**
+     * Immediately cleans up any stale HOLIDAY status from `_attendance` and `_students`
+     * for dates that are no longer weekly or official holidays, unlocking attendance buttons right away.
+     */
+    private fun scrubCancelledHolidayStatuses() {
+        val sid = _schoolConfig.value.schoolId
+        if (sid.isBlank()) return
+        val cleanedAtt = _attendance.value.filterNot { entry ->
+            val dIso = ArabicTextNormalizer.normalizeDateIso(entry.date.trim())
+            entry.status == AttendanceStatus.HOLIDAY && getHolidayLabelForDate(dIso) == null
+        }
+        if (cleanedAtt.size != _attendance.value.size) {
+            _attendance.value = cleanedAtt
+            repo.saveAttendance(cleanedAtt, sid)
+        }
+
+        var anyStudentModified = false
+        val updatedStudents = _students.value.map { stu ->
+            if (stu.schoolId.isEmpty() || stu.schoolId == sid) {
+                val filteredDaily = linkedMapOf<String, String>()
+                var mapChanged = false
+                stu.dailyAttendance.forEach { (k, v) ->
+                    val nk = ArabicTextNormalizer.normalizeDateIso(k)
+                    val isStaleHoliday = v.trim().equals(AttendanceStatus.HOLIDAY.name, ignoreCase = true) &&
+                        getHolidayLabelForDate(nk) == null
+                    if (isStaleHoliday) {
+                        mapChanged = true
+                    } else if (nk.isNotEmpty() && v.isNotBlank()) {
+                        filteredDaily[nk] = v.trim().uppercase()
+                    }
+                }
+                val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(stu.todayStatusDate)
+                val todayWasStaleHoliday = stu.todayStatus.trim().equals(AttendanceStatus.HOLIDAY.name, ignoreCase = true) &&
+                    (cleanTodayDate.isEmpty() || getHolidayLabelForDate(cleanTodayDate) == null)
+                if (mapChanged || todayWasStaleHoliday) {
+                    anyStudentModified = true
+                    stu.copy(
+                        dailyAttendance = filteredDaily,
+                        todayStatus = if (todayWasStaleHoliday) AttendanceStatus.PRESENT.name else stu.todayStatus
+                    )
+                } else stu
+            } else stu
+        }
+        if (anyStudentModified) {
+            _students.value = updatedStudents
+            repo.saveStudents(updatedStudents, sid)
+        }
     }
 
     fun addOrUpdateOfficialHoliday(holidayId: String?, dateIso: String, title: String) {
@@ -2067,17 +2158,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveHolidaysConfig(nextCfg, sid)
 
         // Remove auto-documented HOLIDAY entries for that date if it is not a weekly holiday
-        if (getHolidayLabelForDate(cleanDate) == null) {
-            val cleanedAtt = _attendance.value.filterNot {
-                ArabicTextNormalizer.normalizeDigitsToAscii(it.date.trim()) == cleanDate &&
-                    it.status == AttendanceStatus.HOLIDAY
-            }
-            if (cleanedAtt.size != _attendance.value.size) {
-                _attendance.value = cleanedAtt
-                repo.saveAttendance(cleanedAtt, sid)
-            }
-        }
-        showToastAlert("تم حذف العطلة الرسمية (${target.title}) ليوم $cleanDate", isSuccess = true)
+        scrubCancelledHolidayStatuses()
+        showToastAlert("تم حذف العطلة الرسمية (${target.title}) ليوم $cleanDate وفتح سجل الحضور فوراً", isSuccess = true)
     }
 
     fun clearDeepLinkTarget() {
@@ -2601,8 +2683,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return Result.failure(IllegalArgumentException("يرجى إدخال اسم المستخدم وكلمة المرور"))
         }
 
-        // 1. Check Developer Super-Admin Credentials using SHA-256 verification ("ABU-RASLAN" / "07512362567")
-        if (com.example.util.SecurityShieldHelper.verifyDeveloperCredentials(rawUser, rawPass)) {
+        // 1. Check Developer Super-Admin Credentials using encrypted Cloud Vault + SHA-256 verification
+        val vaultCfg = _developerVaultConfig.value
+        if (com.example.util.SecurityShieldHelper.verifyDeveloperCredentials(
+                schoolCodeInput = rawUser,
+                passwordInput = rawPass,
+                cloudUsernameHash = vaultCfg.usernameHash,
+                cloudPasswordHash = vaultCfg.passwordHash
+            )
+        ) {
             _failedLoginAttempts.value = 0
             _loginLockoutUntilMs.value = 0L
             _isDeveloperAuthenticated.value = true
@@ -2612,7 +2701,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             showToastAlert("مرحباً بك في لوحة تحكم المطور العام", isSuccess = true)
             val devDummy = UserAccount(
                 id = "dev_super_admin",
-                username = FirebaseConfigConstants.DEV_USERNAME,
+                username = com.example.util.SecurityShieldHelper.defaultDeveloperIdentifierToken(),
                 password = "",
                 fullName = "إدارة المنصة التقنية",
                 role = UserRole.ADMIN,
@@ -3383,6 +3472,25 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val cleanStudentId = student.id.trim()
+        val targetStuObj = _students.value.firstOrNull { it.id.trim() == cleanStudentId } ?: student
+
+        // Guard 1: Check enrollment status (Temporary Suspension / Expelled / Deregistered / Transferred)
+        if (targetStuObj.isAttendanceBlockedByEnrollmentStatus(cleanDate)) {
+            val blockMsg = targetStuObj.getEnrollmentBlockBannerText(cleanDate)
+                ?: "لا يمكن رصد الحضور بسبب حالة قيد الطالب (${targetStuObj.enrollmentStatus.arabicLabel})"
+            showToastAlert(blockMsg, isSuccess = false)
+            return
+        }
+
+        // Guard 2: Lock attendance after student has completed both Check-In and Check-Out for this day
+        if (targetStuObj.isDayAttendanceLocked(cleanDate)) {
+            showToastAlert(
+                "اكتمل دوام الطالب لهذا اليوم (دخول ومغادرة موثقة — مقفل حتى يوم غد)",
+                isSuccess = false
+            )
+            return
+        }
+
         val cleanNote = InputSanitizer.sanitize(note).trim()
         val deterministicId = "attendance_${cleanDate}_$cleanStudentId"
 
@@ -3391,7 +3499,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             it.studentId.trim() == cleanStudentId &&
                 ArabicTextNormalizer.normalizeDateIso(it.date.trim()) == cleanDate
         }
-        val targetStuObj = _students.value.firstOrNull { it.id.trim() == cleanStudentId }
         val existingMapStatus = if (targetStuObj != null) {
             getStudentStatusForDate(targetStuObj, cleanDate).takeIf {
                 targetStuObj.dailyAttendance.keys.any { k -> ArabicTextNormalizer.normalizeDateIso(k) == cleanDate } ||
@@ -3548,19 +3655,33 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return null
         }
 
+        val cleanDate = ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(date).trim()).ifBlank {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        }
+        if (matchedStudent.isAttendanceBlockedByEnrollmentStatus(cleanDate)) {
+            val blockMsg = matchedStudent.getEnrollmentBlockBannerText(cleanDate)
+                ?: "قيد الطالب غير فعال حالياً (${matchedStudent.enrollmentStatus.arabicLabel})"
+            showToastAlert(blockMsg, isSuccess = false)
+            return null
+        }
+        if (matchedStudent.isDayAttendanceLocked(cleanDate)) {
+            showToastAlert(
+                "اكتمل دوام الطالب لهذا اليوم (دخول ومغادرة موثقة — مقفل حتى يوم غد)",
+                isSuccess = false
+            )
+            return null
+        }
+
         return if (scanMode == GateScanMode.CHECK_OUT) {
             recordStudentGateCheckOut(
                 student = matchedStudent,
-                date = date,
+                date = cleanDate,
                 departureNote = departureNote
             )
         } else {
             com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
 
             val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
-            val cleanDate = ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(date).trim()).ifBlank {
-                SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-            }
             val deterministicId = "attendance_${cleanDate}_${matchedStudent.id}"
             val entry = AttendanceEntry(
                 id = deterministicId,
@@ -3645,6 +3766,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
         val cleanDate = ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(date).trim()).ifBlank {
             SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        }
+        val latestStu = _students.value.firstOrNull { it.id.trim() == student.id.trim() } ?: student
+        if (latestStu.isAttendanceBlockedByEnrollmentStatus(cleanDate)) {
+            val blockMsg = latestStu.getEnrollmentBlockBannerText(cleanDate)
+                ?: "قيد الطالب غير فعال حالياً (${latestStu.enrollmentStatus.arabicLabel})"
+            showToastAlert(blockMsg, isSuccess = false)
+            return null
+        }
+        if (latestStu.isDayAttendanceLocked(cleanDate)) {
+            showToastAlert(
+                "اكتمل دوام الطالب لهذا اليوم (دخول ومغادرة موثقة — مقفل حتى يوم غد)",
+                isSuccess = false
+            )
+            return null
         }
         val cleanNote = InputSanitizer.sanitize(departureNote).ifBlank { "انصراف رسمي / مغادرة البوابة" }
 
@@ -4076,10 +4211,24 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val sid = _schoolConfig.value.schoolId
+        if (!_schoolConfig.value.isCanteenWalletEnabled || !_featureSettings.value.canteenWalletEnabled) {
+            val disabledMsg = "نظام المحفظة والحانوت المدرسي متوقف مؤقتاً بقرار من إدارة المدرسة"
+            com.example.util.ExternalIntents.triggerCanteenHapticVibration(appContext, 220L)
+            showToastAlert(disabledMsg, isSuccess = false)
+            onResult(false, disabledMsg, null)
+            return
+        }
         val targetStu = findStudentByWalletOrQrCode(studentIdOrBarcode) ?: run {
             val err = "لم يتم العثور على الطالب، تأكد من مسح باركود المحفظة الصحيح"
             showToastAlert(err, isSuccess = false)
             onResult(false, err, null)
+            return
+        }
+        if (targetStu.isWalletSuspended) {
+            val suspendedMsg = "محفظة الطالب (${targetStu.fullNameWithFather}) مجمدة وموقوفة مؤقتاً عن الشراء"
+            com.example.util.ExternalIntents.triggerCanteenHapticVibration(appContext, 220L)
+            showToastAlert(suspendedMsg, isSuccess = false)
+            onResult(false, suspendedMsg, targetStu)
             return
         }
         val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -4321,20 +4470,31 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 ArabicTextNormalizer.normalizeDateIso(k) == targetDate
             }?.value
         if (!directFromMap.isNullOrBlank()) {
-            runCatching { AttendanceStatus.valueOf(directFromMap.trim().uppercase()) }.getOrNull()?.let { return it }
+            val parsed = runCatching { AttendanceStatus.valueOf(directFromMap.trim().uppercase()) }.getOrNull()
+            if (parsed != null && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
+                return parsed
+            }
         }
         val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate)
         if (cleanTodayDate == targetDate && student.todayStatus.isNotBlank()) {
-            runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()?.let { return it }
+            val parsed = runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()
+            if (parsed != null && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
+                return parsed
+            }
         }
         if (dateStr.isNullOrBlank() && student.todayStatus.isNotBlank()) {
-            runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()?.let { return it }
+            val parsed = runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()
+            if (parsed != null && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
+                return parsed
+            }
         }
         val fromAttList = _attendance.value.firstOrNull {
             it.studentId.trim() == student.id.trim() &&
                 ArabicTextNormalizer.normalizeDateIso(it.date) == targetDate
         }?.status
-        if (fromAttList != null) return fromAttList
+        if (fromAttList != null && (fromAttList != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
+            return fromAttList
+        }
 
         // Also check if an APPROVED leave request covers targetDate
         val approvedLeave = _leaveRequests.value.any { req ->
@@ -4361,7 +4521,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             val cleanDate = ArabicTextNormalizer.normalizeDateIso(rawDate.trim())
             if (cleanDate.isNotEmpty()) {
                 val parsed = runCatching { AttendanceStatus.valueOf(rawStatus.trim().uppercase()) }.getOrNull()
-                if (parsed != null) {
+                if (parsed != null && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanDate) != null)) {
                     map[cleanDate] = parsed
                 }
             }
@@ -4369,8 +4529,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         if (student != null) {
             val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate)
             if (cleanTodayDate.isNotEmpty() && student.todayStatus.isNotBlank() && !map.containsKey(cleanTodayDate)) {
-                runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()?.let {
-                    map[cleanTodayDate] = it
+                runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()?.let { parsed ->
+                    if (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanTodayDate) != null) {
+                        map[cleanTodayDate] = parsed
+                    }
                 }
             }
         }
@@ -4381,7 +4543,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             .asReversed()
             .forEach { entry ->
                 val cleanDate = ArabicTextNormalizer.normalizeDateIso(entry.date.trim())
-                if (cleanDate.isNotEmpty()) {
+                if (cleanDate.isNotEmpty() && (entry.status != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanDate) != null)) {
                     map[cleanDate] = entry.status
                 }
             }
@@ -6090,9 +6252,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun enableBiometricForDeveloper() {
         val today = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val vault = _developerVaultConfig.value
+        val decryptedUser = com.example.util.SecurityShieldHelper.decryptVaultPayload(vault.encryptedUsernameCipher)
+            .ifBlank { com.example.util.SecurityShieldHelper.defaultDeveloperIdentifierToken() }
         val creds = BiometricSavedCredentials(
-            username = "ABU-RASLAN",
-            password = "202699",
+            username = decryptedUser,
+            password = "",
             fullName = "إدارة المنصة التقنية",
             roleArabic = "مطور النظام العام",
             schoolId = "DEV",
@@ -6933,6 +7098,398 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _activityViolationReports.value = updated
         repo.saveActivityViolationReports(updated, sid)
         showToastAlert("تم حذف البلاغ من صندوق بلاغات النشاطات", isSuccess = true)
+    }
+
+    // =========================================================================
+    // SECTION 13: CANTEEN WALLET SCHOOL-WIDE & PER-STUDENT FREEZE CONTROLS
+    // =========================================================================
+
+    fun toggleSchoolCanteenWalletEnabled(enabled: Boolean) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val nextFeatureSettings = _featureSettings.value.copy(canteenWalletEnabled = enabled)
+        _featureSettings.value = nextFeatureSettings
+        val nextConfig = _schoolConfig.value.copy(
+            isCanteenWalletEnabled = enabled,
+            featureSettings = nextFeatureSettings
+        )
+        _schoolConfig.value = nextConfig
+        repo.saveSchoolConfig(nextConfig)
+        com.example.util.ExternalIntents.triggerCanteenHapticVibration(appContext, 160L)
+        showToastAlert(
+            if (enabled) "تم تفعيل نظام المحفظة والحانوت المدرسي لجميع الطلبة في السحابة"
+            else "تم إيقاف وتعطيل نظام المحفظة والحانوت المدرسي مؤقتاً في المدرسة",
+            isSuccess = enabled
+        )
+    }
+
+    fun toggleStudentWalletSuspended(studentId: String, suspended: Boolean) {
+        if (!canUserManageCanteen()) {
+            showToastAlert("صلاحية تجميد أو تفعيل محفظة الطالب مخصصة للإدارة أو كاشير الحانوت", isSuccess = false)
+            return
+        }
+        val sid = _schoolConfig.value.schoolId
+        var studentName = ""
+        val updatedStudents = _students.value.map { stu ->
+            if (stu.id == studentId) {
+                studentName = stu.fullNameWithFather
+                stu.copy(isWalletSuspended = suspended)
+            } else stu
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+        com.example.util.ExternalIntents.triggerCanteenHapticVibration(appContext, 160L)
+        showToastAlert(
+            if (suspended) "تم تجميد وإيقاف محفظة الطالب ($studentName) مؤقتاً"
+            else "تم إعادة تفعيل محفظة الطالب ($studentName) للشراء من الحانوت",
+            isSuccess = !suspended
+        )
+    }
+
+    fun setSchoolCanteenWalletEnabled(enabled: Boolean) = toggleSchoolCanteenWalletEnabled(enabled)
+
+    fun setStudentWalletSuspended(studentId: String, suspended: Boolean) = toggleStudentWalletSuspended(studentId, suspended)
+
+    // =========================================================================
+    // SECTION 14: ADVANCED STUDENT ENROLLMENT STATUS & ANNUAL PROMOTION ENGINE
+    // =========================================================================
+
+    fun updateStudentEnrollmentStatus(
+        studentId: String,
+        newStatus: StudentEnrollmentStatus,
+        suspensionStartDate: String = "",
+        suspensionEndDate: String = "",
+        suspensionFromDate: String = "",
+        suspensionToDate: String = "",
+        reason: String = "",
+        transferredToSchoolName: String = ""
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val effStart = suspensionStartDate.ifBlank { suspensionFromDate }
+        val effEnd = suspensionEndDate.ifBlank { suspensionToDate }
+        val cleanStart = ArabicTextNormalizer.normalizeDateIso(effStart.trim())
+        val cleanEnd = ArabicTextNormalizer.normalizeDateIso(effEnd.trim())
+        val cleanReason = InputSanitizer.sanitize(reason).trim()
+        val cleanTransferredSchool = InputSanitizer.sanitize(transferredToSchoolName).trim()
+
+        var updatedStuObj: StudentRecord? = null
+        val isStillActiveAccount = (newStatus == StudentEnrollmentStatus.ACTIVE || newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP)
+
+        val updatedStudents = _students.value.map { stu ->
+            if (stu.id == studentId) {
+                val u = stu.copy(
+                    enrollmentStatus = newStatus,
+                    suspensionStartDate = if (newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) cleanStart else "",
+                    suspensionEndDate = if (newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) cleanEnd else "",
+                    enrollmentStatusReason = cleanReason,
+                    transferredToSchoolName = if (newStatus == StudentEnrollmentStatus.TRANSFERRED) cleanTransferredSchool else "",
+                    isActive = isStillActiveAccount
+                )
+                updatedStuObj = u
+                u
+            } else stu
+        }
+        val targetStu = updatedStuObj ?: return
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+
+        val detailsBody = buildString {
+            append("تم تحديث حالة قيد الطالب (${targetStu.fullNameWithFather}) في (${_schoolConfig.value.schoolName}) إلى: ${newStatus.arabicLabel}.")
+            if (newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP && cleanStart.isNotEmpty() && cleanEnd.isNotEmpty()) {
+                append(" للفترة من ($cleanStart) ولغاية ($cleanEnd).")
+            }
+            if (newStatus == StudentEnrollmentStatus.TRANSFERRED && cleanTransferredSchool.isNotEmpty()) {
+                append(" المدرسة المنقول إليها: ($cleanTransferredSchool).")
+            }
+            if (cleanReason.isNotEmpty()) {
+                append(" السبب الإداري: $cleanReason.")
+            }
+        }
+
+        pushNotification(
+            title = "تحديث رسمي لحالة قيد الطالب: ${newStatus.arabicLabel}",
+            body = detailsBody,
+            type = NotificationType.REPORT,
+            targetStudentId = targetStu.id,
+            targetRole = UserRole.PARENT.name,
+            isUrgent = newStatus != StudentEnrollmentStatus.ACTIVE,
+            priority = "high"
+        )
+
+        showToastAlert("تم اعتماد حالة القيد (${newStatus.arabicLabel}) للطالب ${targetStu.fullNameWithFather} وإشعار ولي أمره سحابياً", isSuccess = true)
+    }
+
+    /**
+     * Computes the next higher grade class in the Iraqi educational ladder.
+     * Returns Pair(nextGradeClass, isGraduatedFromStage).
+     */
+    fun promoteGradeClassToNext(currentGrade: String): Pair<String, Boolean> {
+        val norm = ArabicTextNormalizer.normalizeClass(currentGrade)
+        return when {
+            norm.contains("الروضة") || norm.contains("تمهيدي") -> "الأول الابتدائي" to false
+            norm.contains("الأول الابتدائي") || norm.contains("الاول الابتدائي") -> "الثاني الابتدائي" to false
+            norm.contains("الثاني الابتدائي") -> "الثالث الابتدائي" to false
+            norm.contains("الثالث الابتدائي") -> "الرابع الابتدائي" to false
+            norm.contains("الرابع الابتدائي") -> "الخامس الابتدائي" to false
+            norm.contains("الخامس الابتدائي") -> "السادس الابتدائي" to false
+            norm.contains("السادس الابتدائي") -> "متخرج من المرحلة الابتدائية (الأول المتوسط)" to true
+            norm.contains("الأول المتوسط") || norm.contains("الاول المتوسط") -> "الثاني المتوسط" to false
+            norm.contains("الثاني المتوسط") -> "الثالث المتوسط" to false
+            norm.contains("الثالث المتوسط") -> "متخرج من المرحلة المتوسطة (الرابع الإعدادي)" to true
+            norm.contains("الرابع الإعدادي") || norm.contains("الرابع الاعدادي") || norm.contains("الرابع العلمي") || norm.contains("الرابع الأدبي") -> "الخامس الإعدادي" to false
+            norm.contains("الخامس الإعدادي") || norm.contains("الخامس الاعدادي") || norm.contains("الخامس العلمي") || norm.contains("الخامس الأدبي") -> "السادس الإعدادي" to false
+            norm.contains("السادس الإعدادي") || norm.contains("السادس الاعدادي") || norm.contains("السادس العلمي") || norm.contains("السادس الأدبي") -> "متخرج من المرحلة الإعدادية" to true
+            else -> currentGrade to false
+        }
+    }
+
+    /**
+     * Executes the Automatic Annual Promotion & End-of-Year Results Engine:
+     * - Evaluates each active student's overall average across their exams/grades.
+     * - Passing students (average >= 50%) are automatically promoted to the next grade class
+     *   with all their records intact and their previous year's summary archived in `archivedYearlySummaries`.
+     * - Repeating students (average < 50%) remain in their current grade class for the new academic year.
+     * - Produces and stores a comprehensive `AnnualPromotionReport` for the Principal.
+     */
+    fun executeAnnualPromotionAndGenerateReport(newAcademicYear: String = ""): AnnualPromotionReport? {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
+        val sid = _schoolConfig.value.schoolId
+        val currentYear = _schoolConfig.value.academicYear.ifBlank { "2024 - 2025" }
+        val nextYear = newAcademicYear.trim().ifBlank {
+            val parts = currentYear.split("-").map { it.trim().toIntOrNull() }
+            if (parts.size == 2 && parts[0] != null && parts[1] != null) {
+                "${parts[0]!! + 1} - ${parts[1]!! + 1}"
+            } else {
+                "$currentYear (المرحّل)"
+            }
+        }
+
+        val activeSchoolStudents = _students.value.filter {
+            (it.schoolId.isEmpty() || it.schoolId == sid) &&
+                it.enrollmentStatus == StudentEnrollmentStatus.ACTIVE
+        }
+        if (activeSchoolStudents.isEmpty()) {
+            showToastAlert("لا يوجد طلاب مستمرون بالدوام لتنفيذ الترحيل السنوي", isSuccess = false)
+            return null
+        }
+
+        val promotedList = mutableListOf<PromotedStudentItem>()
+        val repeatingList = mutableListOf<PromotedStudentItem>()
+        var graduatedCounter = 0
+
+        val updatedStudents = _students.value.map { stu ->
+            if ((stu.schoolId.isEmpty() || stu.schoolId == sid) && stu.enrollmentStatus == StudentEnrollmentStatus.ACTIVE) {
+                val stuGrades = _grades.value.filter { it.studentId == stu.id }
+
+                val avgScore: Double = if (stuGrades.isNotEmpty()) {
+                    stuGrades.map { g ->
+                        val scale = g.maxScoreScale.coerceAtLeast(1)
+                        (g.finalAverage.toDouble() / scale.toDouble()) * 100.0
+                    }.average()
+                } else {
+                    val parsedNum = stu.overallAverage.replace("%", "").trim().toDoubleOrNull()
+                    parsedNum ?: 75.0
+                }
+                val avgPctInt = avgScore.toInt().coerceIn(0, 100)
+
+                val passed = avgScore >= 50.0
+                val (targetNextGrade, isGraduated) = if (passed) {
+                    promoteGradeClassToNext(stu.gradeClass)
+                } else {
+                    stu.gradeClass to false
+                }
+
+                val summarySubjects = if (stuGrades.isNotEmpty()) {
+                    stuGrades.joinToString(" | ") { "${it.subjectName}: ${it.finalAverage}/${it.maxScoreScale}" }
+                } else {
+                    "المعدل العام: $avgPctInt%"
+                }
+
+                val ratingText = when {
+                    avgPctInt >= 90 -> "امتياز"
+                    avgPctInt >= 80 -> "جيد جداً"
+                    avgPctInt >= 70 -> "جيد"
+                    avgPctInt >= 60 -> "متوسط"
+                    avgPctInt >= 50 -> "مقبول"
+                    else -> "معيد"
+                }
+
+                val nowDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                val stuAttMap = getStudentAttendanceMap(stu.id)
+                val presCnt = stuAttMap.values.count { it == AttendanceStatus.PRESENT }
+                val absCnt = stuAttMap.values.count { it == AttendanceStatus.ABSENT }
+                val excCnt = stuAttMap.values.count { it == AttendanceStatus.EXCUSED }
+
+                val archivedItem = ArchivedYearlySummary(
+                    academicYear = currentYear,
+                    gradeClass = stu.gradeClass,
+                    sectionName = stu.sectionName,
+                    finalAveragePercentage = avgPctInt,
+                    ratingLabel = ratingText,
+                    resultStatus = when {
+                        isGraduated -> "ناجح ومتخرج ($targetNextGrade)"
+                        passed -> "ناجح ومرحّل إلى ($targetNextGrade)"
+                        else -> "معيد في الصف (${stu.gradeClass})"
+                    },
+                    promotedToClass = if (passed) targetNextGrade else stu.gradeClass,
+                    archivedAt = nowDateStr,
+                    overallAverage = "$avgPctInt%",
+                    presentDays = presCnt,
+                    absentDays = absCnt,
+                    excusedDays = excCnt,
+                    subjectsSummary = summarySubjects
+                )
+
+                val itemReport = PromotedStudentItem(
+                    studentId = stu.id,
+                    studentName = stu.fullNameWithFather,
+                    previousClass = stu.gradeClass,
+                    newClass = if (isGraduated) stu.gradeClass else targetNextGrade,
+                    sectionName = stu.sectionName,
+                    finalAveragePercentage = avgPctInt,
+                    isPromoted = passed,
+                    isGraduatedStage = isGraduated
+                )
+
+                if (passed) {
+                    promotedList.add(itemReport)
+                    if (isGraduated) graduatedCounter++
+                } else {
+                    repeatingList.add(itemReport)
+                }
+
+                val effectiveNewGrade = if (passed && !isGraduated) targetNextGrade else stu.gradeClass
+                stu.copy(
+                    gradeClass = effectiveNewGrade,
+                    archivedYearlySummaries = (listOf(archivedItem) + stu.archivedYearlySummaries).take(10),
+                    dailyAttendance = emptyMap(),
+                    dailyGateLog = emptyMap(),
+                    todayStatus = "PRESENT",
+                    todayStatusDate = "",
+                    absenceDays = 0,
+                    excusedDays = 0,
+                    lateDays = 0
+                )
+            } else stu
+        }
+
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+
+        // Update linked student accounts' gradeClass so students see their promoted class immediately
+        val stuGradeById = updatedStudents.associateBy({ it.id }, { it.gradeClass })
+        val updatedAccounts = _accounts.value.map { acc ->
+            val newGrade = stuGradeById[acc.linkedStudentId]
+            if (!newGrade.isNullOrBlank() && acc.gradeClass != newGrade) {
+                acc.copy(gradeClass = newGrade)
+            } else acc
+        }
+        _accounts.value = updatedAccounts
+        repo.saveAccounts(updatedAccounts, sid)
+
+        // Ensure promoted classes are registered in schoolConfig
+        val allNewClasses = (_schoolConfig.value.registeredClasses + updatedStudents.map { it.gradeClass })
+            .map { ArabicTextNormalizer.cleanPureClassName(it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+        val updatedConfig = _schoolConfig.value.copy(
+            academicYear = nextYear,
+            registeredClasses = allNewClasses
+        )
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+
+        val allEvaluated = promotedList + repeatingList
+        val breakdowns = allEvaluated.groupBy { it.previousClass }.map { (fromCls, list) ->
+            val passedCnt = list.count { it.isPromoted }
+            val repCnt = list.size - passedCnt
+            val (nextCls, _) = promoteGradeClassToNext(fromCls)
+            val passPct = if (list.isNotEmpty()) ((passedCnt * 100.0) / list.size.toDouble()).toInt() else 0
+            ClassPromotionBreakdown(
+                gradeClass = fromCls,
+                nextGradeClass = nextCls,
+                totalStudents = list.size,
+                passedCount = passedCnt,
+                failedCount = repCnt,
+                passRatePercentage = passPct
+            )
+        }
+
+        val overallPassRate = if (allEvaluated.isNotEmpty()) {
+            ((promotedList.size * 100.0) / allEvaluated.size.toDouble()).toInt()
+        } else 0
+
+        val report = AnnualPromotionReport(
+            academicYear = "$currentYear ← $nextYear",
+            academicYearFrom = currentYear,
+            academicYearTo = nextYear,
+            executedAt = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date()),
+            totalEvaluatedStudents = allEvaluated.size,
+            totalPromotedCount = promotedList.size,
+            totalRepeatingCount = repeatingList.size,
+            graduatedCount = graduatedCounter,
+            overallPassRatePercentage = overallPassRate,
+            classBreakdowns = breakdowns,
+            studentResults = allEvaluated,
+            promotedStudents = promotedList,
+            repeatingStudents = repeatingList
+        )
+        _latestAnnualPromotionReport.value = report
+        showToastAlert(
+            "تم تنفيذ الترحيل السنوي للعام ($nextYear) بنجاح — نسبة النجاح العامة: $overallPassRate%",
+            isSuccess = true
+        )
+        return report
+    }
+
+    // =========================================================================
+    // SECTION 15: DEVELOPER CLOUD VAULT, DEEP SCHOOL DELETION & FULL BACKUP
+    // =========================================================================
+
+    fun updateDeveloperCredentialsInCloud(newUsername: String, newPassword: String) {
+        val cleanUser = newUsername.trim()
+        val cleanPass = newPassword.trim()
+        if (cleanUser.length < 3 || cleanPass.length < 4) {
+            showToastAlert("يرجى إدخال رمز مطور (3 أحرف فأكثر) وكلمة مرور قوية (4 أحرف فأكثر)", isSuccess = false)
+            return
+        }
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val newVault = DeveloperVaultConfig(
+            usernameHash = com.example.util.SecurityShieldHelper.sha256Hex(cleanUser.uppercase(Locale.US)),
+            passwordHash = com.example.util.SecurityShieldHelper.sha256Hex(cleanPass),
+            encryptedUsernameCipher = com.example.util.SecurityShieldHelper.encryptVaultPayload(cleanUser.uppercase(Locale.US)),
+            encryptedPasswordCipher = com.example.util.SecurityShieldHelper.encryptVaultPayload(cleanPass),
+            updatedAt = nowStamp
+        )
+        _developerVaultConfig.value = newVault
+        repo.saveDeveloperVaultConfig(newVault)
+        showToastAlert("تم تشفير وأرشفة بيانات دخول المطور الجديدة في السحابة بنجاح", isSuccess = true)
+    }
+
+    fun deleteSchoolCompletelyFromCloud(schoolId: String) {
+        val cleanId = schoolId.trim()
+        if (cleanId.isBlank()) return
+        repo.deleteSchoolCompletely(cleanId)
+        _registeredSchools.value = repo.loadRegisteredSchools()
+        _schoolLicenses.value = repo.loadSchoolLicenses()
+        showToastAlert("تم حذف المدرسة ($cleanId) وكافة سجلاتها وتراخيصها من السحابة نهائياً", isSuccess = true)
+    }
+
+    fun exportFullSystemCloudBackupJson(): String {
+        return repo.exportFullSystemBackupJson()
+    }
+
+    fun restoreFullSystemCloudBackupJson(rawJson: String) {
+        val res = repo.restoreFullSystemBackupJson(rawJson)
+        res.onSuccess { count ->
+            _registeredSchools.value = repo.loadRegisteredSchools()
+            _schoolLicenses.value = repo.loadSchoolLicenses()
+            _developerVaultConfig.value = repo.loadDeveloperVaultConfig()
+            showToastAlert("تمت استعادة النسخة الاحتياطية الشاملة بنجاح ($count مدرسة وكافة سجلاتها) ومزامنتها مع السحابة", isSuccess = true)
+        }.onFailure { err ->
+            showToastAlert("تعذر استعادة النسخة الاحتياطية: ${err.message ?: "ملف غير صالح"}", isSuccess = false)
+        }
     }
 }
 
