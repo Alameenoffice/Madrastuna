@@ -1871,26 +1871,26 @@ fun CompactStudentBadgeCapsule(
     Surface(
         shape = RoundedCornerShape(50),
         color = badgeBg,
-        shadowElevation = 2.dp,
+        shadowElevation = 1.5.dp,
         modifier = modifier
-            .border(1.dp, badgeBorder, RoundedCornerShape(50))
+            .border(0.8.dp, badgeBorder, RoundedCornerShape(50))
     ) {
         Text(
             text = cleanBadgeText,
-            fontSize = 8.5.sp,
+            fontSize = 7.sp,
+            lineHeight = 9.sp,
             fontWeight = FontWeight.Bold,
             color = badgeTextColor,
             maxLines = 1,
             softWrap = false,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
         )
     }
 }
 
 /**
- * Unified 58.dp-wide Avatar + Bottom-Edge Overlay Badge Box.
- * Keeps the avatar column strictly 58.dp wide so the student's full name and details never get squeezed.
+ * Unified Avatar (54.dp) + Outer Bottom-Edge Micro Badge Box.
+ * Keeps the circular avatar completely uncovered while displaying the full micro badge below its bottom rim.
  */
 @Composable
 fun StudentAvatarWithOverlayBadge(
@@ -1901,16 +1901,16 @@ fun StudentAvatarWithOverlayBadge(
     fallbackHonorTitle: String = "",
     isOnHonorRoll: Boolean = false,
     fallbackIcon: ImageVector = Icons.Filled.Person,
-    avatarSize: Dp = 52.dp,
-    boxWidth: Dp = 58.dp,
+    avatarSize: Dp = 54.dp,
+    boxWidth: Dp = 62.dp,
     tint: Color? = null,
     onDarkBackground: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .width(boxWidth)
-            .padding(bottom = 4.dp),
+            .widthIn(min = boxWidth)
+            .padding(bottom = 8.dp),
         contentAlignment = Alignment.TopCenter
     ) {
         Base64AvatarImage(
@@ -1928,7 +1928,7 @@ fun StudentAvatarWithOverlayBadge(
             onDarkBackground = onDarkBackground,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = 4.dp)
+                .offset(y = 6.dp)
         )
     }
 }

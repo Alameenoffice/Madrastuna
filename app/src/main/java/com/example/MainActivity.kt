@@ -938,6 +938,9 @@ fun AuthenticatedMainPlatform(
     val allSections = remember(schoolConfig.schoolType, featureSettings, currentUser) {
         buildList {
             add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
+            if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
+                add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.Radar)
+            }
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
             add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
@@ -986,14 +989,17 @@ fun AuthenticatedMainPlatform(
         gesturesEnabled = isSideDrawerEnabled,
         drawerContent = {
             if (isSideDrawerEnabled) {
-                val academicGroupSections = remember {
-                    listOf(
-                        AppSection.DASHBOARD to Icons.Filled.Dashboard,
-                        AppSection.ATTENDANCE to Icons.Filled.HowToReg,
-                        AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared,
-                        AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth,
-                        AppSection.EXAMS_GRADES to Icons.Filled.Assessment
-                    )
+                val academicGroupSections = remember(currentUser) {
+                    buildList {
+                        add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
+                        if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
+                            add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.Radar)
+                        }
+                        add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
+                        add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
+                        add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
+                        add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
+                    }
                 }
                 val communityGroupSections = remember(schoolConfig.schoolType, featureSettings, currentUser) {
                     buildList {
@@ -1151,12 +1157,17 @@ fun AuthenticatedMainPlatform(
                                         academicGroupSections.forEach { (section, icon) ->
                                             LuxuryDrawerMenuItem(
                                                 title = section.arabicTitle,
-                                                subtitle = if (section == AppSection.STUDENT_COMPREHENSIVE_ARCHIVE) {
-                                                    "الأرشيف الشهري والسنوي الموثق وتصدير PDF"
-                                                } else null,
+                                                subtitle = when (section) {
+                                                    AppSection.LIVE_OPERATIONS_RADAR ->
+                                                        "رادار البث المباشر للصفوف وحركة البوابة الآن"
+                                                    AppSection.STUDENT_COMPREHENSIVE_ARCHIVE ->
+                                                        "تقارير الأداء، المواظبة، والنتائج الشهرية والسنوية"
+                                                    else -> null
+                                                },
                                                 icon = icon,
                                                 selected = activeSection == section,
                                                 isDarkMode = isDarkMode,
+                                                statusDotColor = if (section == AppSection.LIVE_OPERATIONS_RADAR) Color(0xFF10B981) else null,
                                                 testTag = "drawer_nav_${section.name}",
                                                 onClick = {
                                                     viewModel.navigateToSection(section)
@@ -1411,35 +1422,42 @@ fun AuthenticatedMainPlatform(
                         .background(MaterialTheme.colorScheme.surface)
                         .statusBarsPadding()
                 ) {
-                    // Main Header Bar
+                    // Main Header Bar (Compact Action Icons on Left + Wide User Name & Role Section on Right)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.weight(1f)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 6.dp)
                         ) {
                             if (isSideDrawerEnabled) {
-                                IconButton(
+                                Surface(
                                     onClick = {
                                         coroutineScope.launch {
                                             if (drawerState.isClosed) drawerState.open() else drawerState.close()
                                         }
                                     },
+                                    shape = CircleShape,
+                                    color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFECFDF5),
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(32.dp)
                                         .testTag("top_hamburger_menu_button")
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Menu,
-                                        contentDescription = "القائمة الجانبية السريعة",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Menu,
+                                            contentDescription = "القائمة الجانبية السريعة",
+                                            tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
 
@@ -1448,116 +1466,151 @@ fun AuthenticatedMainPlatform(
                                     ?: schoolConfig.logoBase64,
                                 fallbackIcon = Icons.Filled.Person,
                                 contentDescription = currentUser?.fullName ?: schoolConfig.schoolName,
-                                size = 42.dp
+                                size = 38.dp
                             )
                             Column(
                                 modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                verticalArrangement = Arrangement.spacedBy(1.dp)
                             ) {
                                 Text(
                                     text = currentUser?.fullName?.ifBlank { schoolConfig.schoolName }
                                         ?: schoolConfig.schoolName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    softWrap = false
                                 )
                                 Text(
                                     text = "${currentUser?.role?.arabicTitle ?: ""} • ${schoolConfig.schoolName}",
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
                                     maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis
+                                    softWrap = false
                                 )
                             }
                         }
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            // Notification Bell with Numeric Badge
-                            IconButton(
+                            // Notification Bell with Numeric Badge (32.dp compact circular button, 18.dp icon)
+                            Surface(
                                 onClick = {
                                     showNotificationsSheet = true
                                     viewModel.markAllNotificationsRead()
                                 },
-                                modifier = Modifier.testTag("top_notifications_bell")
+                                shape = CircleShape,
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    0.8.dp,
+                                    if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                ),
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .testTag("top_notifications_bell")
                             ) {
-                                BadgedBox(
-                                    badge = {
-                                        if (unreadCount > 0) {
-                                            Badge(
-                                                containerColor = DangerRed,
-                                                contentColor = Color.White
-                                            ) {
-                                                Text(
-                                                    text = "$unreadCount",
-                                                    maxLines = 1,
-                                                    softWrap = false
-                                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    BadgedBox(
+                                        badge = {
+                                            if (unreadCount > 0) {
+                                                Badge(
+                                                    containerColor = DangerRed,
+                                                    contentColor = Color.White
+                                                ) {
+                                                    Text(
+                                                        text = "$unreadCount",
+                                                        fontSize = 8.sp,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
                                             }
                                         }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Notifications,
+                                            contentDescription = "مركز الإشعارات الفورية",
+                                            tint = if (isDarkMode) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
-                                ) {
+                                }
+                            }
+
+                            // Dark / Light Mode Toggle (32.dp compact circular button, 18.dp icon)
+                            Surface(
+                                onClick = { viewModel.toggleDarkMode() },
+                                shape = CircleShape,
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    0.8.dp,
+                                    if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                ),
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .testTag("top_theme_toggle")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = Icons.Filled.Notifications,
-                                        contentDescription = "مركز الإشعارات الفورية",
-                                        tint = MaterialTheme.colorScheme.onSurface
+                                        imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                        contentDescription = "الوضع الليلي والنهاري",
+                                        tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
 
-                            // Dark / Light Mode Toggle
-                            IconButton(
-                                onClick = { viewModel.toggleDarkMode() },
-                                modifier = Modifier.testTag("top_theme_toggle")
-                            ) {
-                                Icon(
-                                    imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                                    contentDescription = "الوضع الليلي والنهاري",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            // Settings Shortcut
-                            IconButton(
+                            // Settings Shortcut (32.dp compact circular button, 18.dp icon)
+                            Surface(
                                 onClick = { viewModel.navigateToSection(AppSection.SETTINGS) },
-                                modifier = Modifier.testTag("top_settings_button")
+                                shape = CircleShape,
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    0.8.dp,
+                                    if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                ),
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .testTag("top_settings_button")
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Settings,
-                                    contentDescription = "الإعدادات",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Settings,
+                                        contentDescription = "الإعدادات",
+                                        tint = if (isDarkMode) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
 
-                            // Top Bar Logout Button
+                            // Compact Top Bar Logout Button (horizontal = 8.dp, vertical = 4.dp, fontSize = 11.sp)
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = DangerRed.copy(alpha = 0.14f),
+                                color = DangerRed.copy(alpha = if (isDarkMode) 0.22f else 0.14f),
                                 modifier = Modifier
                                     .clickable { viewModel.logout() }
                                     .testTag("top_logout_button")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.Logout,
                                         contentDescription = "تسجيل الخروج",
-                                        tint = DangerRed,
-                                        modifier = Modifier.size(16.dp)
+                                        tint = if (isDarkMode) Color(0xFFFCA5A5) else DangerRed,
+                                        modifier = Modifier.size(14.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         text = "خروج",
-                                        color = DangerRed,
-                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (isDarkMode) Color(0xFFFCA5A5) else DangerRed,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         softWrap = false
@@ -1567,7 +1620,17 @@ fun AuthenticatedMainPlatform(
                         }
                     }
 
-                    // Scrollable Section Pills Strip for instant access to all active sections
+                    // Scrollable Section Pills Strip for instant access to all active sections (with Dark Mode Contrast & Live Radar Dot)
+                    val pulseTransition = rememberInfiniteTransition(label = "live_radar_pill_pulse")
+                    val liveDotAlpha by pulseTransition.animateFloat(
+                        initialValue = 0.35f,
+                        targetValue = 1.0f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(750, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "live_dot_alpha"
+                    )
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1576,10 +1639,25 @@ fun AuthenticatedMainPlatform(
                     ) {
                         items(allSections, key = { it.first.name }) { (section, icon) ->
                             val selected = activeSection == section
+                            val pillBg = when {
+                                selected -> Color(0xFF059669)
+                                isDarkMode -> Color(0xFF1E293B)
+                                else -> Color(0xFFF1F5F9)
+                            }
+                            val pillBorder = when {
+                                selected -> Color(0xFF059669)
+                                isDarkMode -> Color(0xFF334155)
+                                else -> Color(0xFFE2E8F0)
+                            }
+                            val pillContentColor = when {
+                                selected -> Color.White
+                                isDarkMode -> Color(0xFFE2E8F0)
+                                else -> Color(0xFF1E293B)
+                            }
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = if (selected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                color = pillBg,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, pillBorder),
                                 modifier = Modifier
                                     .clickable { viewModel.navigateToSection(section) }
                                     .testTag("nav_pill_${section.name}")
@@ -1588,17 +1666,30 @@ fun AuthenticatedMainPlatform(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    if (section == AppSection.LIVE_OPERATIONS_RADAR) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    if (selected) Color.White.copy(alpha = liveDotAlpha)
+                                                    else Color(0xFF10B981).copy(alpha = liveDotAlpha)
+                                                )
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
                                     Icon(
                                         imageVector = icon,
                                         contentDescription = section.arabicTitle,
-                                        tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = pillContentColor,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = section.arabicTitle,
-                                        color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = pillContentColor,
                                         style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
                                         maxLines = 1,
                                         softWrap = false
                                     )
@@ -1753,6 +1844,7 @@ fun AuthenticatedMainPlatform(
                                 viewModel.markAllNotificationsRead()
                             }
                         )
+                        AppSection.LIVE_OPERATIONS_RADAR -> LiveOperationsRadarScreen(viewModel = viewModel)
                         AppSection.ATTENDANCE -> DailyAttendanceScreen(viewModel = viewModel)
                         AppSection.STUDENT_COMPREHENSIVE_ARCHIVE -> StudentComprehensiveArchiveScreen(viewModel = viewModel)
                         AppSection.SCHEDULE_HOMEWORK -> ScheduleAndHomeworkScreen(viewModel = viewModel)

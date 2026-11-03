@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -417,17 +418,17 @@ fun DigitalStudentIdCardView(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // على اليمين: صورة الطالب الدائرية مدمج في حافتها السفلية وسام الطالب الكبسولي داخل Box بحجم 58.dp
+                        // على اليمين: صورة الطالب الدائرية (54.dp) مكشوفة بالكامل وأسفل حافتها الخارجية شارة الميكرو الأنيقة
                         Box(
                             modifier = Modifier
-                                .width(58.dp)
-                                .padding(bottom = 4.dp),
+                                .widthIn(min = 62.dp)
+                                .padding(bottom = 8.dp),
                             contentAlignment = Alignment.TopCenter
                         ) {
                             AvatarOrPhotoView(
                                 base64Image = student.photoBase64,
                                 fallbackName = student.fullNameWithFather,
-                                size = 52.dp,
+                                size = 54.dp,
                                 borderColor = GoldFoil
                             )
                             CompactStudentBadgeCapsule(
@@ -437,7 +438,7 @@ fun DigitalStudentIdCardView(
                                 onLightBackground = true,
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .offset(y = 4.dp)
+                                    .offset(y = 6.dp)
                             )
                         }
 

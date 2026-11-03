@@ -2101,9 +2101,16 @@ fun AnnualPromotionReportModalDialog(
     onExportPdf: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Class Breakdown, 1 = Promoted, 2 = Repeating
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Class Breakdown, 1 = Promoted, 2 = Repeating, 3 = Pending Grades
+    fun formatYearLtr(raw: String): String {
+        val nums = Regex("\\d{4}").findAll(raw).mapNotNull { it.value.toIntOrNull() }.toList().sorted()
+        return if (nums.size >= 2) "\u200E${nums[0]} - ${nums[1]}\u200E" else "\u200E${raw.trim()}\u200E"
+    }
+    val displayPrevYear = remember(report.previousAcademicYear) {
+        formatYearLtr(report.previousAcademicYear.ifBlank { "2026 - 2027" })
+    }
     var targetNewAcademicYear by remember(report.newAcademicYear) {
-        mutableStateOf(report.newAcademicYear.ifBlank { "2026 - 2027" })
+        mutableStateOf(formatYearLtr(report.newAcademicYear.ifBlank { "2027 - 2028" }))
     }
     var studentForQuickManualOverride by remember { mutableStateOf<PromotedStudentItem?>(null) }
 
@@ -2113,8 +2120,8 @@ fun AnnualPromotionReportModalDialog(
     ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .heightIn(max = 820.dp)
+                .fillMaxWidth(0.96f)
+                .heightIn(max = 840.dp)
                 .testTag("annual_promotion_report_modal"),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -2124,7 +2131,7 @@ fun AnnualPromotionReportModalDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 InlineDialogToastBanner(toastAlert = toastAlert)
@@ -2161,9 +2168,10 @@ fun AnnualPromotionReportModalDialog(
                                 color = DeepForestGreen
                             )
                             Text(
-                                text = "${schoolConfig.schoolName} • من (${report.previousAcademicYear}) إلى ($targetNewAcademicYear)",
+                                text = "${schoolConfig.schoolName} • من العام ($displayPrevYear) إلى العام (${formatYearLtr(targetNewAcademicYear)})",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = TextMutedGreen
+                                color = TextMutedGreen,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -2172,16 +2180,16 @@ fun AnnualPromotionReportModalDialog(
                     }
                 }
 
-                // Summary Metrics Row
+                // Summary Metrics Row (including Pending Grades count)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     listOf(
                         Triple("نسبة النجاح", "${report.overallPassRatePercent}%", DeepEmerald),
-                        Triple("الناجحون المرحّلون", "${report.promotedCount}", SuccessGreen),
+                        Triple("الناجحون", "${report.promotedCount}", SuccessGreen),
                         Triple("المعيدون", "${report.repeatingCount}", DangerRed),
-                        Triple("الإجمالي", "${report.totalEvaluated}", InfoBlue)
+                        Triple("قيد الرصد", "${report.pendingGradesCount}", InfoBlue)
                     ).forEach { (lbl, valTxt, col) ->
                         Surface(
                             modifier = Modifier.weight(1f),
@@ -2190,7 +2198,7 @@ fun AnnualPromotionReportModalDialog(
                             border = androidx.compose.foundation.BorderStroke(1.dp, col.copy(alpha = 0.35f))
                         ) {
                             Column(
-                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                modifier = Modifier.padding(vertical = 7.dp, horizontal = 3.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
@@ -2231,32 +2239,32 @@ fun AnnualPromotionReportModalDialog(
                                 OutlinedTextField(
                                     value = targetNewAcademicYear,
                                     onValueChange = { targetNewAcademicYear = it },
-                                    label = { Text("العام الدراسي الجديد بعد الترحيل") },
+                                    label = { Text("العام الدراسي الجديد بعد الترحيل (مثال: 2027 - 2028)") },
                                     singleLine = true,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp)
                                 )
                             }
                             Button(
                                 onClick = {
-                                    onExecutePromotion(targetNewAcademicYear.ifBlank { "2026 - 2027" })
+                                    onExecutePromotion(formatYearLtr(targetNewAcademicYear.ifBlank { "2027 - 2028" }))
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("execute_auto_annual_promotion_now_btn"),
                                 shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = DeepEmerald,
                                     contentColor = Color.White
                                 )
                             ) {
-                                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(17.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "اعتماد وترحيل كافة الطلاب الناجحين تلقائياً إلى صفوفهم الجديدة",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    text = "اعتماد وترحيل الطلاب الناجحين المكتملة درجاتهم إلى صفوفهم الأعلى",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold
                                 )
                             }
                         }
@@ -2270,32 +2278,50 @@ fun AnnualPromotionReportModalDialog(
                         .fillMaxWidth()
                         .testTag("export_annual_promotion_pdf_btn"),
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp),
                     border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald)
                 ) {
                     Icon(Icons.Filled.PictureAsPdf, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "طباعة / تصدير التقرير السنوي الشامل للمدير (PDF)",
+                        style = MaterialTheme.typography.labelMedium,
                         color = DeepForestGreen,
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        fontWeight = FontWeight.ExtraBold
                     )
                 }
 
-                // Tabs
+                // Tabs (4 clear full-text tabs)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val tabs = listOf(
                         0 to "نسب النجاح حسب الصف (${report.classBreakdowns.size})",
-                        1 to "الناجحون والمرحّلون (${report.promotedStudents.size})",
-                        2 to "المعيدون (${report.repeatingStudents.size})"
+                        1 to "الناجحون المرحّلون (${report.promotedStudents.size})",
+                        2 to "المعيدون (${report.repeatingStudents.size})",
+                        3 to "بانتظار استكمال الدرجات (${report.pendingGradesStudents.size})"
                     )
                     items(tabs) { (idx, title) ->
-                        FilterChip(
-                            selected = selectedTab == idx,
-                            onClick = { selectedTab = idx },
-                            label = { Text(title, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
-                        )
+                        val isSel = selectedTab == idx
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (isSel) DeepEmerald else Color(0xFFF0FDF4),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSel) DeepEmerald else DeepEmerald.copy(alpha = 0.35f)
+                            ),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { selectedTab = idx }
+                        ) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isSel) Color.White else DeepForestGreen,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                            )
+                        }
                     }
                 }
 
@@ -2323,13 +2349,13 @@ fun AnnualPromotionReportModalDialog(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "الصف: ${cb.gradeClass}  ←  ${cb.nextGradeClass}",
+                                                text = "من (${cb.gradeClass})  ←  إلى (${cb.nextGradeClass})",
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = DeepForestGreen
                                             )
                                             Text(
-                                                text = "الإجمالي: ${cb.totalStudents} طالب • ناجح ومرحّل: ${cb.passedCount} • باقٍ للإعادة: ${cb.repeatingCount}",
+                                                text = "الإجمالي: ${cb.totalStudents} • ناجح ومرحّل: ${cb.passedCount} • معيد: ${cb.repeatingCount} • بانتظار رصد الدرجات: ${cb.pendingGradesCount}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = TextMutedGreen,
                                                 fontWeight = FontWeight.SemiBold
@@ -2346,92 +2372,195 @@ fun AnnualPromotionReportModalDialog(
                             }
                         }
                         1 -> {
-                            items(report.promotedStudents, key = { it.studentId }) { item ->
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFFF8FAFC),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.35f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                            if (report.promotedStudents.isEmpty()) {
+                                item {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f)),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = item.studentName,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = DeepForestGreen
-                                            )
-                                            Text(
-                                                text = "ينتقل من (${item.previousGrade}) إلى (${item.newGrade}) • المعدل: ${item.finalAverage}%",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = DeepEmerald,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                        OutlinedButton(
-                                            onClick = {
-                                                if (onManualOverrideStudent != null) {
-                                                    studentForQuickManualOverride = item
-                                                } else {
-                                                    onEditStudent(item.studentId)
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        Text(
+                                            text = "لا يوجد طلاب مكتملو الدرجات النهائية وناجحون للترحيل حالياً. يرجى استكمال رصد الدرجات أولاً.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepForestGreen,
+                                            modifier = Modifier.padding(14.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                items(report.promotedStudents, key = { it.studentId }) { item ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.35f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("تعديل الصف/الحالة", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = item.studentName,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen
+                                                )
+                                                Text(
+                                                    text = "يرحّل من (${item.previousGrade}) إلى (${item.newGrade}) • المعدل: ${item.finalAverage}%",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = DeepEmerald,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    if (onManualOverrideStudent != null) {
+                                                        studentForQuickManualOverride = item
+                                                    } else {
+                                                        onEditStudent(item.studentId)
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("تعديل الصف/الحالة", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                         2 -> {
-                            items(report.repeatingStudents, key = { it.studentId }) { item ->
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = DangerRed.copy(alpha = 0.06f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.35f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                            if (report.repeatingStudents.isEmpty()) {
+                                item {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f)),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = item.studentName,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = DeepForestGreen
-                                            )
-                                            Text(
-                                                text = "باقٍ للإعادة في (${item.previousGrade} - شعبة ${item.sectionName}) • المعدل: ${item.finalAverage}%",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = DangerRed,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                        OutlinedButton(
-                                            onClick = {
-                                                if (onManualOverrideStudent != null) {
-                                                    studentForQuickManualOverride = item
-                                                } else {
-                                                    onEditStudent(item.studentId)
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        Text(
+                                            text = "لا يوجد طلاب معيدون مكتملو الدرجات حالياً.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepForestGreen,
+                                            modifier = Modifier.padding(14.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                items(report.repeatingStudents, key = { it.studentId }) { item ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = DangerRed.copy(alpha = 0.06f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.35f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("تعديل الصف/الحالة", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = item.studentName,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen
+                                                )
+                                                Text(
+                                                    text = "باقٍ للإعادة في (${item.previousGrade} - شعبة ${item.sectionName}) • المعدل: ${item.finalAverage}%",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = DangerRed,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    if (onManualOverrideStudent != null) {
+                                                        studentForQuickManualOverride = item
+                                                    } else {
+                                                        onEditStudent(item.studentId)
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("تعديل الصف/الحالة", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        3 -> {
+                            if (report.pendingGradesStudents.isEmpty()) {
+                                item {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "ممتاز! جميع طلاب المدرسة مكتملو الدرجات النهائية وجاهزون للترحيل.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepForestGreen,
+                                            modifier = Modifier.padding(14.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                items(report.pendingGradesStudents, key = { it.studentId }) { item ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, InfoBlue.copy(alpha = 0.38f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = item.studentName,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen
+                                                )
+                                                Text(
+                                                    text = "الصف الحالي: (${item.previousGrade} - شعبة ${item.sectionName}) • بانتظار استكمال الدرجات (${item.completedSubjectsCount}/${item.requiredSubjectsCount} مادة مرصودة)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = InfoBlue,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    if (onManualOverrideStudent != null) {
+                                                        studentForQuickManualOverride = item
+                                                    } else {
+                                                        onEditStudent(item.studentId)
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("ترحيل يدوي", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                                            }
                                         }
                                     }
                                 }

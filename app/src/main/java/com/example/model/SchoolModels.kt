@@ -239,10 +239,11 @@ enum class NotificationType(val arabicLabel: String) {
 
 enum class AppSection(val arabicTitle: String) {
     DASHBOARD("الرئيسية"),
+    LIVE_OPERATIONS_RADAR("المتابعة الحية المباشرة (Live)"),
     ATTENDANCE("الحضور والغياب"),
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     EXAMS_GRADES("الامتحانات والدرجات"),
-    STUDENT_COMPREHENSIVE_ARCHIVE("السجل الشامل للطالب"),
+    STUDENT_COMPREHENSIVE_ARCHIVE("السجل الأكاديمي والإحصائي الشامل"),
     HONOR_ROLL("لوحة الشرف"),
     STUDENT_ACTIVITIES("نشاطات الطلبة"),
     TUITION_FEES("الأقساط الدراسية"),
@@ -302,7 +303,10 @@ data class PromotedStudentItem(
     val sectionName: String = "",
     val finalAveragePercentage: Int = 0,
     val isPromoted: Boolean = true,
-    val isGraduatedStage: Boolean = false
+    val isGraduatedStage: Boolean = false,
+    val isPendingGrades: Boolean = false,
+    val completedSubjectsCount: Int = 0,
+    val requiredSubjectsCount: Int = 0
 ) {
     val fromGradeClass: String get() = previousClass
     val toGradeClass: String get() = newClass
@@ -310,8 +314,8 @@ data class PromotedStudentItem(
     val newGrade: String get() = newClass
     val finalAverage: Int get() = finalAveragePercentage
     val averageScore: Double get() = finalAveragePercentage.toDouble()
-    val passed: Boolean get() = isPromoted
-    val graduated: Boolean get() = isGraduatedStage
+    val passed: Boolean get() = isPromoted && !isPendingGrades
+    val graduated: Boolean get() = isGraduatedStage && !isPendingGrades
 }
 
 data class ClassPromotionBreakdown(
@@ -320,6 +324,7 @@ data class ClassPromotionBreakdown(
     val totalStudents: Int = 0,
     val passedCount: Int = 0,
     val failedCount: Int = 0,
+    val pendingGradesCount: Int = 0,
     val passRatePercentage: Int = 0
 ) {
     val totalCount: Int get() = totalStudents
@@ -335,21 +340,45 @@ data class AnnualPromotionReport(
     val totalEvaluatedStudents: Int = 0,
     val totalPromotedCount: Int = 0,
     val totalRepeatingCount: Int = 0,
+    val totalPendingGradesCount: Int = 0,
     val graduatedCount: Int = 0,
     val overallPassRatePercentage: Int = 0,
     val classBreakdowns: List<ClassPromotionBreakdown> = emptyList(),
     val studentResults: List<PromotedStudentItem> = emptyList(),
-    val promotedStudents: List<PromotedStudentItem> = studentResults.filter { it.isPromoted },
-    val repeatingStudents: List<PromotedStudentItem> = studentResults.filter { !it.isPromoted }
+    val promotedStudents: List<PromotedStudentItem> = studentResults.filter { it.isPromoted && !it.isPendingGrades },
+    val repeatingStudents: List<PromotedStudentItem> = studentResults.filter { !it.isPromoted && !it.isPendingGrades },
+    val pendingGradesStudents: List<PromotedStudentItem> = studentResults.filter { it.isPendingGrades }
 ) {
     val previousAcademicYear: String get() = academicYearFrom.ifBlank { academicYear }
     val newAcademicYear: String get() = academicYearTo.ifBlank { academicYear }
     val overallPassRatePercent: Int get() = overallPassRatePercentage
     val promotedCount: Int get() = totalPromotedCount
     val repeatingCount: Int get() = totalRepeatingCount
+    val pendingGradesCount: Int get() = totalPendingGradesCount
     val totalEvaluated: Int get() = totalEvaluatedStudents
     val totalStudentsEvaluated: Int get() = totalEvaluatedStudents
 }
+
+data class ClassComprehensiveStatisticalReport(
+    val gradeClass: String = "",
+    val sectionName: String = "",
+    val periodLabel: String = "",
+    val totalStudents: Int = 0,
+    val activeStudentsCount: Int = 0,
+    val suspendedStudentsCount: Int = 0,
+    val expelledStudentsCount: Int = 0,
+    val transferredStudentsCount: Int = 0,
+    val presentDaysTotal: Int = 0,
+    val absentDaysTotal: Int = 0,
+    val excusedDaysTotal: Int = 0,
+    val lateDaysTotal: Int = 0,
+    val attendanceRatePercent: Int = 100,
+    val averageGradePercent: Int = 0,
+    val passRatePercent: Int = 0,
+    val passedStudentsCount: Int = 0,
+    val repeatingStudentsCount: Int = 0,
+    val pendingGradesCount: Int = 0
+)
 
 data class DeveloperVaultConfig(
     val usernameHash: String = "",

@@ -597,6 +597,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        val isDarkMode by viewModel.isDarkMode.collectAsState()
                         val sortTabs = listOf(
                             "الأكثر تفاعلاً وتميزاً",
                             "الأحدث",
@@ -609,13 +610,25 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                             items(sortTabs.size) { idx ->
                                 val label = sortTabs[idx]
                                 val isSelected = selectedFeedFilter == idx
+                                val chipBg = when {
+                                    isSelected -> Color(0xFF059669)
+                                    isDarkMode -> Color(0xFF1E293B)
+                                    else -> Color.White
+                                }
+                                val chipBorder = when {
+                                    isSelected -> Color(0xFF059669)
+                                    isDarkMode -> Color(0xFF334155)
+                                    else -> DeepEmerald.copy(alpha = 0.30f)
+                                }
+                                val chipText = when {
+                                    isSelected -> Color.White
+                                    isDarkMode -> Color(0xFFE2E8F0)
+                                    else -> DeepEmerald
+                                }
                                 Surface(
                                     shape = CircleShape,
-                                    color = if (isSelected) DeepEmerald else SoftMintBg.copy(alpha = 0.45f),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isSelected) DeepEmerald else EmeraldAccent.copy(alpha = 0.30f)
-                                    ),
+                                    color = chipBg,
+                                    border = BorderStroke(1.dp, chipBorder),
                                     modifier = Modifier
                                         .clip(CircleShape)
                                         .clickable { selectedFeedFilter = idx }
@@ -624,27 +637,41 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                         text = label,
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                        color = if (isSelected) Color.White else DeepEmerald,
+                                        color = chipText,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                                     )
                                 }
                             }
                         }
 
-                        // Category Filter Row (Smooth Pill / CircleShape without gray outlines)
+                        // Category Filter Row (Pure Emerald when selected, high-contrast Slate in Dark Mode)
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             items(categories) { cat ->
                                 val isSelected = selectedCategoryFilter == cat
+                                val catBg = when {
+                                    isSelected -> Color(0xFF059669)
+                                    isDarkMode -> Color(0xFF1E293B)
+                                    else -> Color.White
+                                }
+                                val catBorder = when {
+                                    isSelected -> Color(0xFF059669)
+                                    isDarkMode -> Color(0xFF334155)
+                                    else -> DeepEmerald.copy(alpha = 0.28f)
+                                }
+                                val catText = when {
+                                    isSelected -> Color.White
+                                    isDarkMode -> Color(0xFFE2E8F0)
+                                    else -> DeepForestGreen
+                                }
                                 Surface(
                                     shape = CircleShape,
-                                    color = if (isSelected) GoldAccent.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface,
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isSelected) DeepEmerald else EmeraldAccent.copy(alpha = 0.25f)
-                                    ),
+                                    color = catBg,
+                                    border = BorderStroke(1.dp, catBorder),
                                     modifier = Modifier
                                         .clip(CircleShape)
                                         .clickable { selectedCategoryFilter = cat }
@@ -652,8 +679,10 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                     Text(
                                         text = cat,
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                        color = if (isSelected) DeepEmerald else TextSecondaryColor,
+                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                        color = catText,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                                     )
                                 }

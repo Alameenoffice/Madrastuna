@@ -7245,97 +7245,178 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Formats an academic year string so the earlier year is always first and later year second
+     * (e.g., "\u200E2026 - 2027\u200E") preventing RTL reversal into "2028 - 2027".
+     */
+    fun formatAcademicYearAscending(rawYear: String, fallbackStartYear: Int = 2026): Pair<Int, String> {
+        val ascii = ArabicTextNormalizer.normalizeDigitsToAscii(rawYear)
+        val years = Regex("\\d{4}").findAll(ascii).mapNotNull { it.value.toIntOrNull() }.toList()
+        val startY = when {
+            years.size >= 2 -> minOf(years[0], years[1])
+            years.size == 1 -> years[0]
+            else -> fallbackStartYear
+        }
+        val endY = when {
+            years.size >= 2 -> maxOf(years[0], years[1]).let { if (it == startY) startY + 1 else it }
+            else -> startY + 1
+        }
+        return startY to "\u200E$startY - $endY\u200E"
+    }
+
+    fun getRequiredSubjectsForClass(gradeClass: String): List<String> {
+        val cfg = _schoolConfig.value
+        val classSpecific = cfg.subjectConfigs
+            .filter { item ->
+                item.assignedClasses.isEmpty() ||
+                    item.assignedClasses.any { ArabicTextNormalizer.matchesClass(it, gradeClass) }
+            }
+            .map { it.name.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { ArabicTextNormalizer.normalizeText(it) }
+        if (classSpecific.isNotEmpty()) return classSpecific
+
+        val reg = cfg.registeredSubjects
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { ArabicTextNormalizer.normalizeText(it) }
+        if (reg.isNotEmpty()) return reg
+
+        return cfg.schoolStage.defaultSubjects
+    }
+
+    /**
      * Computes a live preview of the Annual Promotion & End-of-Year Principal Report
      * without mutating student classes yet, so the Principal can review pass rates and students first.
+     * Strictly separates students whose grades are incomplete into `pendingGradesStudents`.
      */
     fun buildAnnualPromotionPreviewReport(newAcademicYear: String = ""): AnnualPromotionReport {
         val sid = _schoolConfig.value.schoolId
-        val currentYear = _schoolConfig.value.academicYear.ifBlank { "2024 - 2025" }
-        val nextYear = newAcademicYear.trim().ifBlank {
-            val parts = currentYear.split("-").map { it.trim().toIntOrNull() }
-            if (parts.size == 2 && parts[0] != null && parts[1] != null) {
-                "${parts[0]!! + 1} - ${parts[1]!! + 1}"
-            } else {
-                "$currentYear (المرحّل)"
-            }
+        val (currStartYear, currentYearFormatted) = formatAcademicYearAscending(
+            _schoolConfig.value.academicYear.ifBlank { "2026 - 2027" },
+            fallbackStartYear = 2026
+        )
+        val nextYearFormatted = if (newAcademicYear.isNotBlank()) {
+            formatAcademicYearAscending(newAcademicYear, fallbackStartYear = currStartYear + 1).second
+        } else {
+            "\u200E${currStartYear + 1} - ${currStartYear + 2}\u200E"
         }
+
         val activeSchoolStudents = _students.value.filter {
             (it.schoolId.isEmpty() || it.schoolId == sid) &&
                 it.enrollmentStatus == StudentEnrollmentStatus.ACTIVE
         }
         val promotedList = mutableListOf<PromotedStudentItem>()
         val repeatingList = mutableListOf<PromotedStudentItem>()
+        val pendingGradesList = mutableListOf<PromotedStudentItem>()
         var graduatedCounter = 0
 
         activeSchoolStudents.forEach { stu ->
-            val stuGrades = _grades.value.filter { it.studentId == stu.id }
-            val avgScore: Double = if (stuGrades.isNotEmpty()) {
-                stuGrades.map { g ->
+            val requiredSubjects = getRequiredSubjectsForClass(stu.gradeClass)
+            val requiredCount = requiredSubjects.size.coerceAtLeast(1)
+            val stuGrades = _grades.value
+                .filter { it.studentId == stu.id && it.finalAverage > 0 }
+                .distinctBy { ArabicTextNormalizer.normalizeText(it.subjectName) }
+
+            val completedRequiredCount = requiredSubjects.count { reqSub ->
+                stuGrades.any { ArabicTextNormalizer.normalizeText(it.subjectName) == ArabicTextNormalizer.normalizeText(reqSub) }
+            }.coerceAtLeast(stuGrades.size.coerceAtMost(requiredCount))
+
+            val isComplete = stuGrades.isNotEmpty() && completedRequiredCount >= requiredCount
+
+            if (!isComplete) {
+                val partialAvg = if (stuGrades.isNotEmpty()) {
+                    stuGrades.map { g ->
+                        val scale = g.maxScoreScale.coerceAtLeast(1)
+                        (g.finalAverage.toDouble() / scale.toDouble()) * 100.0
+                    }.average().toInt().coerceIn(0, 100)
+                } else 0
+                pendingGradesList.add(
+                    PromotedStudentItem(
+                        studentId = stu.id,
+                        studentName = stu.fullNameWithFather,
+                        previousClass = stu.gradeClass,
+                        newClass = stu.gradeClass,
+                        sectionName = stu.sectionName,
+                        finalAveragePercentage = partialAvg,
+                        isPromoted = false,
+                        isGraduatedStage = false,
+                        isPendingGrades = true,
+                        completedSubjectsCount = completedRequiredCount,
+                        requiredSubjectsCount = requiredCount
+                    )
+                )
+            } else {
+                val subjectPercentages = stuGrades.map { g ->
                     val scale = g.maxScoreScale.coerceAtLeast(1)
                     (g.finalAverage.toDouble() / scale.toDouble()) * 100.0
-                }.average()
-            } else {
-                val parsedNum = stu.overallAverage.replace("%", "").trim().toDoubleOrNull()
-                parsedNum ?: 75.0
-            }
-            val avgPctInt = avgScore.toInt().coerceIn(0, 100)
-            val passed = avgScore >= 50.0
-            val (targetNextGrade, isGraduated) = if (passed) {
-                promoteGradeClassToNext(stu.gradeClass)
-            } else {
-                stu.gradeClass to false
-            }
-            val itemReport = PromotedStudentItem(
-                studentId = stu.id,
-                studentName = stu.fullNameWithFather,
-                previousClass = stu.gradeClass,
-                newClass = if (isGraduated) stu.gradeClass else targetNextGrade,
-                sectionName = stu.sectionName,
-                finalAveragePercentage = avgPctInt,
-                isPromoted = passed,
-                isGraduatedStage = isGraduated
-            )
-            if (passed) {
-                promotedList.add(itemReport)
-                if (isGraduated) graduatedCounter++
-            } else {
-                repeatingList.add(itemReport)
+                }
+                val avgScore = subjectPercentages.average()
+                val avgPctInt = avgScore.toInt().coerceIn(0, 100)
+                val passedAllSubjects = subjectPercentages.all { it >= 50.0 } && avgScore >= 50.0
+                val (targetNextGrade, isGraduated) = getNextAcademicGrade(stu.gradeClass)
+                val effectiveNewClass = if (passedAllSubjects) targetNextGrade else stu.gradeClass
+
+                val itemReport = PromotedStudentItem(
+                    studentId = stu.id,
+                    studentName = stu.fullNameWithFather,
+                    previousClass = stu.gradeClass,
+                    newClass = effectiveNewClass,
+                    sectionName = stu.sectionName,
+                    finalAveragePercentage = avgPctInt,
+                    isPromoted = passedAllSubjects,
+                    isGraduatedStage = passedAllSubjects && isGraduated,
+                    isPendingGrades = false,
+                    completedSubjectsCount = completedRequiredCount,
+                    requiredSubjectsCount = requiredCount
+                )
+                if (passedAllSubjects) {
+                    promotedList.add(itemReport)
+                    if (isGraduated) graduatedCounter++
+                } else {
+                    repeatingList.add(itemReport)
+                }
             }
         }
 
-        val allEvaluated = promotedList + repeatingList
+        val allEvaluated = promotedList + repeatingList + pendingGradesList
         val breakdowns = allEvaluated.groupBy { it.previousClass }.map { (fromCls, list) ->
-            val passedCnt = list.count { it.isPromoted }
-            val repCnt = list.size - passedCnt
-            val (nextCls, _) = promoteGradeClassToNext(fromCls)
-            val passPct = if (list.isNotEmpty()) ((passedCnt * 100.0) / list.size.toDouble()).toInt() else 0
+            val passedCnt = list.count { it.isPromoted && !it.isPendingGrades }
+            val repCnt = list.count { !it.isPromoted && !it.isPendingGrades }
+            val pendCnt = list.count { it.isPendingGrades }
+            val gradedCount = passedCnt + repCnt
+            val (nextCls, _) = getNextAcademicGrade(fromCls)
+            val passPct = if (gradedCount > 0) ((passedCnt * 100.0) / gradedCount.toDouble()).toInt() else 0
             ClassPromotionBreakdown(
                 gradeClass = fromCls,
                 nextGradeClass = nextCls,
                 totalStudents = list.size,
                 passedCount = passedCnt,
                 failedCount = repCnt,
+                pendingGradesCount = pendCnt,
                 passRatePercentage = passPct
             )
         }
-        val overallPassRate = if (allEvaluated.isNotEmpty()) {
-            ((promotedList.size * 100.0) / allEvaluated.size.toDouble()).toInt()
+        val totalGradedStudents = promotedList.size + repeatingList.size
+        val overallPassRate = if (totalGradedStudents > 0) {
+            ((promotedList.size * 100.0) / totalGradedStudents.toDouble()).toInt()
         } else 0
 
         val preview = AnnualPromotionReport(
-            academicYear = "$currentYear ← $nextYear",
-            academicYearFrom = currentYear,
-            academicYearTo = nextYear,
+            academicYear = "$currentYearFormatted ← $nextYearFormatted",
+            academicYearFrom = currentYearFormatted,
+            academicYearTo = nextYearFormatted,
             executedAt = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date()),
             totalEvaluatedStudents = allEvaluated.size,
             totalPromotedCount = promotedList.size,
             totalRepeatingCount = repeatingList.size,
+            totalPendingGradesCount = pendingGradesList.size,
             graduatedCount = graduatedCounter,
             overallPassRatePercentage = overallPassRate,
             classBreakdowns = breakdowns,
             studentResults = allEvaluated,
             promotedStudents = promotedList,
-            repeatingStudents = repeatingList
+            repeatingStudents = repeatingList,
+            pendingGradesStudents = pendingGradesList
         )
         _latestAnnualPromotionReport.value = preview
         return preview
@@ -7382,49 +7463,68 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Computes the next higher grade class in the Iraqi educational ladder.
+     * Strict Academic Progression Ladder (`getNextAcademicGrade`):
+     * Normalizes all Arabic hamza/yaa variations so every grade deterministically maps to the exact next higher grade!
      * Returns Pair(nextGradeClass, isGraduatedFromStage).
      */
-    fun promoteGradeClassToNext(currentGrade: String): Pair<String, Boolean> {
-        val norm = ArabicTextNormalizer.normalizeClass(currentGrade)
+    fun getNextAcademicGrade(currentGrade: String): Pair<String, Boolean> {
+        val norm = ArabicTextNormalizer.normalizeText(ArabicTextNormalizer.cleanPureClassName(currentGrade))
+        val isPrimary = norm.contains("ابتداي") || norm.contains("ابتدائ")
+        val isMiddle = norm.contains("متوسط")
+        val isPrep = norm.contains("اعداد") || norm.contains("علمي") || norm.contains("ادبي") || norm.contains("ثانوي")
+
         return when {
-            norm.contains("الروضة") || norm.contains("تمهيدي") -> "الأول الابتدائي" to false
-            norm.contains("الأول الابتدائي") || norm.contains("الاول الابتدائي") -> "الثاني الابتدائي" to false
-            norm.contains("الثاني الابتدائي") -> "الثالث الابتدائي" to false
-            norm.contains("الثالث الابتدائي") -> "الرابع الابتدائي" to false
-            norm.contains("الثالث الابتدائي") -> "الرابع الابتدائي" to false
-            norm.contains("الرابع الابتدائي") -> "الخامس الابتدائي" to false
-            norm.contains("الخامس الابتدائي") -> "السادس الابتدائي" to false
-            norm.contains("السادس الابتدائي") -> "متخرج من المرحلة الابتدائية (الأول المتوسط)" to true
-            norm.contains("الأول المتوسط") || norm.contains("الاول المتوسط") -> "الثاني المتوسط" to false
-            norm.contains("الثاني المتوسط") -> "الثالث المتوسط" to false
-            norm.contains("الثالث المتوسط") -> "متخرج من المرحلة المتوسطة (الرابع الإعدادي)" to true
-            norm.contains("الرابع الإعدادي") || norm.contains("الرابع الاعدادي") || norm.contains("الرابع العلمي") || norm.contains("الرابع الأدبي") -> "الخامس الإعدادي" to false
-            norm.contains("الخامس الإعدادي") || norm.contains("الخامس الاعدادي") || norm.contains("الخامس العلمي") || norm.contains("الخامس الأدبي") -> "السادس الإعدادي" to false
-            norm.contains("السادس الإعدادي") || norm.contains("السادس الاعدادي") || norm.contains("السادس العلمي") || norm.contains("السادس الأدبي") -> "متخرج من المرحلة الإعدادية" to true
+            norm.contains("روض") || norm.contains("تمهيد") -> "الأول الابتدائي" to false
+
+            // Primary Stage (المرحلة الابتدائية)
+            isPrimary && (norm.contains("اول") || norm.contains("1")) -> "الثاني الابتدائي" to false
+            isPrimary && (norm.contains("ثاني") || norm.contains("2")) -> "الثالث الابتدائي" to false
+            isPrimary && (norm.contains("ثالث") || norm.contains("3")) -> "الرابع الابتدائي" to false
+            isPrimary && (norm.contains("رابع") || norm.contains("4")) -> "الخامس الابتدائي" to false
+            isPrimary && (norm.contains("خامس") || norm.contains("5")) -> "السادس الابتدائي" to false
+            isPrimary && (norm.contains("سادس") || norm.contains("6")) -> "متخرج من المرحلة الابتدائية (الأول المتوسط)" to true
+
+            // Middle Stage (المرحلة المتوسطة)
+            isMiddle && (norm.contains("اول") || norm.contains("1")) -> "الثاني المتوسط" to false
+            isMiddle && (norm.contains("ثاني") || norm.contains("2")) -> "الثالث المتوسط" to false
+            isMiddle && (norm.contains("ثالث") || norm.contains("3")) -> "الرابع الإعدادي" to false
+
+            // Preparatory Stage (المرحلة الإعدادية)
+            isPrep && (norm.contains("رابع") || norm.contains("4")) -> "الخامس الإعدادي" to false
+            isPrep && (norm.contains("خامس") || norm.contains("5")) -> "السادس الإعدادي" to false
+            isPrep && (norm.contains("سادس") || norm.contains("6")) -> "متخرج" to true
+
+            // Fallbacks if stage word was omitted
+            norm.contains("اول") -> "الثاني المتوسط" to false
+            norm.contains("ثاني") -> "الثالث المتوسط" to false
+            norm.contains("ثالث") -> "الرابع الإعدادي" to false
+            norm.contains("رابع") -> "الخامس الإعدادي" to false
+            norm.contains("خامس") -> "السادس الإعدادي" to false
+            norm.contains("سادس") -> "متخرج" to true
             else -> currentGrade to false
         }
     }
 
+    fun promoteGradeClassToNext(currentGrade: String): Pair<String, Boolean> = getNextAcademicGrade(currentGrade)
+
     /**
      * Executes the Automatic Annual Promotion & End-of-Year Results Engine:
-     * - Evaluates each active student's overall average across their exams/grades.
-     * - Passing students (average >= 50%) are automatically promoted to the next grade class
-     *   with all their records intact and their previous year's summary archived in `archivedYearlySummaries`.
-     * - Repeating students (average < 50%) remain in their current grade class for the new academic year.
-     * - Produces and stores a comprehensive `AnnualPromotionReport` for the Principal.
+     * - Strictly requires complete grades across all required subjects before classifying or promoting a student.
+     * - Passing students (average >= 50% and all subjects >= 50%) are automatically promoted to the next grade class.
+     * - Repeating students (complete grades with average < 50% or failed subject) remain in their current grade class.
+     * - Students with incomplete grades remain in their current class under `pendingGradesStudents` ("بانتظار استكمال الدرجات").
      */
     fun executeAnnualPromotionAndGenerateReport(newAcademicYear: String = ""): AnnualPromotionReport? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val sid = _schoolConfig.value.schoolId
-        val currentYear = _schoolConfig.value.academicYear.ifBlank { "2024 - 2025" }
-        val nextYear = newAcademicYear.trim().ifBlank {
-            val parts = currentYear.split("-").map { it.trim().toIntOrNull() }
-            if (parts.size == 2 && parts[0] != null && parts[1] != null) {
-                "${parts[0]!! + 1} - ${parts[1]!! + 1}"
-            } else {
-                "$currentYear (المرحّل)"
-            }
+        val (currStartYear, currentYearFormatted) = formatAcademicYearAscending(
+            _schoolConfig.value.academicYear.ifBlank { "2026 - 2027" },
+            fallbackStartYear = 2026
+        )
+        val nextYearFormatted = if (newAcademicYear.isNotBlank()) {
+            formatAcademicYearAscending(newAcademicYear, fallbackStartYear = currStartYear + 1).second
+        } else {
+            "\u200E${currStartYear + 1} - ${currStartYear + 2}\u200E"
         }
 
         val activeSchoolStudents = _students.value.filter {
@@ -7438,102 +7538,139 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val promotedList = mutableListOf<PromotedStudentItem>()
         val repeatingList = mutableListOf<PromotedStudentItem>()
+        val pendingGradesList = mutableListOf<PromotedStudentItem>()
         var graduatedCounter = 0
 
         val updatedStudents = _students.value.map { stu ->
             if ((stu.schoolId.isEmpty() || stu.schoolId == sid) && stu.enrollmentStatus == StudentEnrollmentStatus.ACTIVE) {
-                val stuGrades = _grades.value.filter { it.studentId == stu.id }
+                val requiredSubjects = getRequiredSubjectsForClass(stu.gradeClass)
+                val requiredCount = requiredSubjects.size.coerceAtLeast(1)
+                val stuGrades = _grades.value
+                    .filter { it.studentId == stu.id && it.finalAverage > 0 }
+                    .distinctBy { ArabicTextNormalizer.normalizeText(it.subjectName) }
 
-                val avgScore: Double = if (stuGrades.isNotEmpty()) {
-                    stuGrades.map { g ->
+                val completedRequiredCount = requiredSubjects.count { reqSub ->
+                    stuGrades.any { ArabicTextNormalizer.normalizeText(it.subjectName) == ArabicTextNormalizer.normalizeText(reqSub) }
+                }.coerceAtLeast(stuGrades.size.coerceAtMost(requiredCount))
+
+                val isComplete = stuGrades.isNotEmpty() && completedRequiredCount >= requiredCount
+
+                if (!isComplete) {
+                    val partialAvg = if (stuGrades.isNotEmpty()) {
+                        stuGrades.map { g ->
+                            val scale = g.maxScoreScale.coerceAtLeast(1)
+                            (g.finalAverage.toDouble() / scale.toDouble()) * 100.0
+                        }.average().toInt().coerceIn(0, 100)
+                    } else 0
+                    pendingGradesList.add(
+                        PromotedStudentItem(
+                            studentId = stu.id,
+                            studentName = stu.fullNameWithFather,
+                            previousClass = stu.gradeClass,
+                            newClass = stu.gradeClass,
+                            sectionName = stu.sectionName,
+                            finalAveragePercentage = partialAvg,
+                            isPromoted = false,
+                            isGraduatedStage = false,
+                            isPendingGrades = true,
+                            completedSubjectsCount = completedRequiredCount,
+                            requiredSubjectsCount = requiredCount
+                        )
+                    )
+                    // Do NOT promote or archive students whose grades are not yet complete
+                    stu
+                } else {
+                    val subjectPercentages = stuGrades.map { g ->
                         val scale = g.maxScoreScale.coerceAtLeast(1)
                         (g.finalAverage.toDouble() / scale.toDouble()) * 100.0
-                    }.average()
-                } else {
-                    val parsedNum = stu.overallAverage.replace("%", "").trim().toDoubleOrNull()
-                    parsedNum ?: 75.0
+                    }
+                    val avgScore = subjectPercentages.average()
+                    val avgPctInt = avgScore.toInt().coerceIn(0, 100)
+                    val passed = subjectPercentages.all { it >= 50.0 } && avgScore >= 50.0
+                    val (targetNextGrade, isGraduated) = getNextAcademicGrade(stu.gradeClass)
+                    val effectiveNextClass = if (passed) targetNextGrade else stu.gradeClass
+
+                    val summarySubjects = stuGrades.joinToString(" | ") { "${it.subjectName}: ${it.finalAverage}/${it.maxScoreScale}" }
+
+                    val ratingText = when {
+                        avgPctInt >= 90 -> "امتياز"
+                        avgPctInt >= 80 -> "جيد جداً"
+                        avgPctInt >= 70 -> "جيد"
+                        avgPctInt >= 60 -> "متوسط"
+                        avgPctInt >= 50 -> "مقبول"
+                        else -> "معيد"
+                    }
+
+                    val nowDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                    val stuAttMap = getStudentAttendanceMap(stu.id)
+                    val presCnt = stuAttMap.values.count { it == AttendanceStatus.PRESENT }
+                    val absCnt = stuAttMap.values.count { it == AttendanceStatus.ABSENT }
+                    val excCnt = stuAttMap.values.count { it == AttendanceStatus.EXCUSED }
+
+                    val archivedItem = ArchivedYearlySummary(
+                        academicYear = currentYearFormatted,
+                        gradeClass = stu.gradeClass,
+                        sectionName = stu.sectionName,
+                        finalAveragePercentage = avgPctInt,
+                        ratingLabel = ratingText,
+                        resultStatus = when {
+                            passed && isGraduated -> "ناجح ومتخرج ($targetNextGrade)"
+                            passed -> "ناجح ومرحّل إلى ($targetNextGrade)"
+                            else -> "معيد في الصف (${stu.gradeClass})"
+                        },
+                        promotedToClass = effectiveNextClass,
+                        archivedAt = nowDateStr,
+                        overallAverage = "$avgPctInt%",
+                        presentDays = presCnt,
+                        absentDays = absCnt,
+                        excusedDays = excCnt,
+                        subjectsSummary = summarySubjects
+                    )
+
+                    val itemReport = PromotedStudentItem(
+                        studentId = stu.id,
+                        studentName = stu.fullNameWithFather,
+                        previousClass = stu.gradeClass,
+                        newClass = effectiveNextClass,
+                        sectionName = stu.sectionName,
+                        finalAveragePercentage = avgPctInt,
+                        isPromoted = passed,
+                        isGraduatedStage = passed && isGraduated,
+                        isPendingGrades = false,
+                        completedSubjectsCount = completedRequiredCount,
+                        requiredSubjectsCount = requiredCount
+                    )
+
+                    if (passed) {
+                        promotedList.add(itemReport)
+                        if (isGraduated) graduatedCounter++
+                    } else {
+                        repeatingList.add(itemReport)
+                    }
+
+                    val promotedClassForRecord = if (passed && !isGraduated) targetNextGrade else stu.gradeClass
+                    stu.copy(
+                        gradeClass = promotedClassForRecord,
+                        archivedYearlySummaries = (listOf(archivedItem) + stu.archivedYearlySummaries).take(10),
+                        dailyAttendance = emptyMap(),
+                        dailyGateLog = emptyMap(),
+                        todayStatus = "PRESENT",
+                        todayStatusDate = "",
+                        absenceDays = 0,
+                        excusedDays = 0,
+                        lateDays = 0
+                    )
                 }
-                val avgPctInt = avgScore.toInt().coerceIn(0, 100)
-
-                val passed = avgScore >= 50.0
-                val (targetNextGrade, isGraduated) = if (passed) {
-                    promoteGradeClassToNext(stu.gradeClass)
-                } else {
-                    stu.gradeClass to false
-                }
-
-                val summarySubjects = if (stuGrades.isNotEmpty()) {
-                    stuGrades.joinToString(" | ") { "${it.subjectName}: ${it.finalAverage}/${it.maxScoreScale}" }
-                } else {
-                    "المعدل العام: $avgPctInt%"
-                }
-
-                val ratingText = when {
-                    avgPctInt >= 90 -> "امتياز"
-                    avgPctInt >= 80 -> "جيد جداً"
-                    avgPctInt >= 70 -> "جيد"
-                    avgPctInt >= 60 -> "متوسط"
-                    avgPctInt >= 50 -> "مقبول"
-                    else -> "معيد"
-                }
-
-                val nowDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                val stuAttMap = getStudentAttendanceMap(stu.id)
-                val presCnt = stuAttMap.values.count { it == AttendanceStatus.PRESENT }
-                val absCnt = stuAttMap.values.count { it == AttendanceStatus.ABSENT }
-                val excCnt = stuAttMap.values.count { it == AttendanceStatus.EXCUSED }
-
-                val archivedItem = ArchivedYearlySummary(
-                    academicYear = currentYear,
-                    gradeClass = stu.gradeClass,
-                    sectionName = stu.sectionName,
-                    finalAveragePercentage = avgPctInt,
-                    ratingLabel = ratingText,
-                    resultStatus = when {
-                        isGraduated -> "ناجح ومتخرج ($targetNextGrade)"
-                        passed -> "ناجح ومرحّل إلى ($targetNextGrade)"
-                        else -> "معيد في الصف (${stu.gradeClass})"
-                    },
-                    promotedToClass = if (passed) targetNextGrade else stu.gradeClass,
-                    archivedAt = nowDateStr,
-                    overallAverage = "$avgPctInt%",
-                    presentDays = presCnt,
-                    absentDays = absCnt,
-                    excusedDays = excCnt,
-                    subjectsSummary = summarySubjects
-                )
-
-                val itemReport = PromotedStudentItem(
-                    studentId = stu.id,
-                    studentName = stu.fullNameWithFather,
-                    previousClass = stu.gradeClass,
-                    newClass = if (isGraduated) stu.gradeClass else targetNextGrade,
-                    sectionName = stu.sectionName,
-                    finalAveragePercentage = avgPctInt,
-                    isPromoted = passed,
-                    isGraduatedStage = isGraduated
-                )
-
-                if (passed) {
-                    promotedList.add(itemReport)
-                    if (isGraduated) graduatedCounter++
-                } else {
-                    repeatingList.add(itemReport)
-                }
-
-                val effectiveNewGrade = if (passed && !isGraduated) targetNextGrade else stu.gradeClass
-                stu.copy(
-                    gradeClass = effectiveNewGrade,
-                    archivedYearlySummaries = (listOf(archivedItem) + stu.archivedYearlySummaries).take(10),
-                    dailyAttendance = emptyMap(),
-                    dailyGateLog = emptyMap(),
-                    todayStatus = "PRESENT",
-                    todayStatusDate = "",
-                    absenceDays = 0,
-                    excusedDays = 0,
-                    lateDays = 0
-                )
             } else stu
+        }
+
+        if (promotedList.isEmpty() && repeatingList.isEmpty() && pendingGradesList.isNotEmpty()) {
+            showToastAlert(
+                "لا يمكن تنفيذ الترحيل الآن: جميع الطلاب (${pendingGradesList.size}) بانتظار استكمال رصد الدرجات النهائية أولاً",
+                isSuccess = false
+            )
+            buildAnnualPromotionPreviewReport(nextYearFormatted)
+            return _latestAnnualPromotionReport.value
         }
 
         _students.value = updatedStudents
@@ -7553,53 +7690,62 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         // Ensure promoted classes are registered in schoolConfig
         val allNewClasses = (_schoolConfig.value.registeredClasses + updatedStudents.map { it.gradeClass })
             .map { ArabicTextNormalizer.cleanPureClassName(it) }
-            .filter { it.isNotBlank() }
+            .filter { it.isNotBlank() && !it.contains("متخرج") }
             .distinct()
         val updatedConfig = _schoolConfig.value.copy(
-            academicYear = nextYear,
+            academicYear = nextYearFormatted,
             registeredClasses = allNewClasses
         )
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
 
-        val allEvaluated = promotedList + repeatingList
+        val allEvaluated = promotedList + repeatingList + pendingGradesList
         val breakdowns = allEvaluated.groupBy { it.previousClass }.map { (fromCls, list) ->
-            val passedCnt = list.count { it.isPromoted }
-            val repCnt = list.size - passedCnt
-            val (nextCls, _) = promoteGradeClassToNext(fromCls)
-            val passPct = if (list.isNotEmpty()) ((passedCnt * 100.0) / list.size.toDouble()).toInt() else 0
+            val passedCnt = list.count { it.isPromoted && !it.isPendingGrades }
+            val repCnt = list.count { !it.isPromoted && !it.isPendingGrades }
+            val pendCnt = list.count { it.isPendingGrades }
+            val gradedCount = passedCnt + repCnt
+            val (nextCls, _) = getNextAcademicGrade(fromCls)
+            val passPct = if (gradedCount > 0) ((passedCnt * 100.0) / gradedCount.toDouble()).toInt() else 0
             ClassPromotionBreakdown(
                 gradeClass = fromCls,
                 nextGradeClass = nextCls,
                 totalStudents = list.size,
                 passedCount = passedCnt,
                 failedCount = repCnt,
+                pendingGradesCount = pendCnt,
                 passRatePercentage = passPct
             )
         }
 
-        val overallPassRate = if (allEvaluated.isNotEmpty()) {
-            ((promotedList.size * 100.0) / allEvaluated.size.toDouble()).toInt()
+        val totalGraded = promotedList.size + repeatingList.size
+        val overallPassRate = if (totalGraded > 0) {
+            ((promotedList.size * 100.0) / totalGraded.toDouble()).toInt()
         } else 0
 
         val report = AnnualPromotionReport(
-            academicYear = "$currentYear ← $nextYear",
-            academicYearFrom = currentYear,
-            academicYearTo = nextYear,
+            academicYear = "$currentYearFormatted ← $nextYearFormatted",
+            academicYearFrom = currentYearFormatted,
+            academicYearTo = nextYearFormatted,
             executedAt = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date()),
             totalEvaluatedStudents = allEvaluated.size,
             totalPromotedCount = promotedList.size,
             totalRepeatingCount = repeatingList.size,
+            totalPendingGradesCount = pendingGradesList.size,
             graduatedCount = graduatedCounter,
             overallPassRatePercentage = overallPassRate,
             classBreakdowns = breakdowns,
             studentResults = allEvaluated,
             promotedStudents = promotedList,
-            repeatingStudents = repeatingList
+            repeatingStudents = repeatingList,
+            pendingGradesStudents = pendingGradesList
         )
         _latestAnnualPromotionReport.value = report
+        val pendingNotice = if (pendingGradesList.isNotEmpty()) {
+            " (${pendingGradesList.size} طالب بانتظار استكمال الدرجات لم يُرحّلوا)"
+        } else ""
         showToastAlert(
-            "تم تنفيذ الترحيل السنوي للعام ($nextYear) بنجاح — نسبة النجاح العامة: $overallPassRate%",
+            "تم ترحيل (${promotedList.size}) طالب ناجح للعام ($nextYearFormatted) بنجاح$pendingNotice",
             isSuccess = true
         )
         return report

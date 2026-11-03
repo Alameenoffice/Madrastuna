@@ -29,6 +29,7 @@ import android.util.Base64
 import com.example.model.AnnualPromotionReport
 import com.example.model.AttendanceEntry
 import com.example.model.AttendanceStatus
+import com.example.model.ClassComprehensiveStatisticalReport
 import com.example.model.DailyBehaviorLogItem
 import com.example.model.ExamScheduleItem
 import com.example.model.LeaveRequestItem
@@ -1572,7 +1573,7 @@ object DocumentAndIdExporter {
 
             var y = 175f
             canvas.drawText(
-                "إجمالي الطلاب المشمولين: ${report.totalStudentsEvaluated} طالب  |  الناجحون المرحّلون: ${report.promotedCount}  |  المعيدون: ${report.repeatingCount}  |  المتخرجون: ${report.graduatedCount}",
+                "إجمالي الطلاب: ${report.totalStudentsEvaluated}  |  الناجحون المرحّلون: ${report.promotedCount}  |  المعيدون: ${report.repeatingCount}  |  بانتظار الدرجات: ${report.pendingGradesCount}",
                 550f,
                 y,
                 sectionPaint
@@ -1583,7 +1584,7 @@ object DocumentAndIdExporter {
 
             report.classBreakdowns.take(8).forEach { cb ->
                 canvas.drawText(
-                    "• ${cb.gradeClass}  ←  (${cb.nextGradeClass}): الإجمالي ${cb.totalCount} | الناجحون ${cb.passedCount} | المعيدون ${cb.repeatingCount} | نسبة النجاح: ${cb.passRatePercent}%",
+                    "• من (${cb.gradeClass}) ← إلى (${cb.nextGradeClass}): الإجمالي ${cb.totalCount} | الناجحون ${cb.passedCount} | المعيدون ${cb.repeatingCount} | قيد الرصد ${cb.pendingGradesCount} | النجاح: ${cb.passRatePercent}%",
                     550f,
                     y + 14f,
                     bodyPaint
@@ -1593,17 +1594,18 @@ object DocumentAndIdExporter {
             }
 
             y += 18f
-            canvas.drawText("ثانياً: قائمة الطلاب المرحّلين والباقين للإعادة:", 550f, y, sectionPaint)
+            canvas.drawText("ثانياً: قائمة الطلاب المرحّلين والباقين للإعادة وبانتظار الدرجات:", 550f, y, sectionPaint)
             y += 14f
-            val allItems = (report.promotedStudents + report.repeatingStudents).take(14)
+            val allItems = (report.promotedStudents + report.repeatingStudents + report.pendingGradesStudents).take(14)
             allItems.forEach { item ->
                 val stateLabel = when {
+                    item.isPendingGrades -> "بانتظار استكمال الدرجات (${item.completedSubjectsCount}/${item.requiredSubjectsCount} مادة)"
                     item.graduated -> "متخرج بنجاح (${item.toGradeClass})"
                     item.passed -> "مرحّل بنجاح من (${item.fromGradeClass}) إلى (${item.toGradeClass})"
                     else -> "معيد في (${item.fromGradeClass})"
                 }
                 canvas.drawText(
-                    "• ${item.studentName} — المعدل: ${item.finalAverage}% — $stateLabel",
+                    "• ${item.studentName} — المعدل: ${if (item.isPendingGrades) "بانتظار الرصد" else "${item.finalAverage}%"} — $stateLabel",
                     550f,
                     y + 14f,
                     bodyPaint
@@ -1621,6 +1623,103 @@ object DocumentAndIdExporter {
                 pdfDocument = pdfDocument,
                 fileName = fileName,
                 jobName = "تقرير الترحيل السنوي - ${schoolConfig.schoolName}"
+            )
+            pdfDocument.close()
+            Result.success(savedPath)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Exports the Official General Class & Section Comprehensive Statistical Report as a PDF.
+     */
+    fun exportClassComprehensiveStatisticalReportPdf(
+        context: Context,
+        schoolConfig: SchoolConfig,
+        reports: List<ClassComprehensiveStatisticalReport>,
+        periodLabel: String,
+        principalName: String = "مدير المدرسة"
+    ): Result<String> {
+        return try {
+            val pdfDocument = PdfDocument()
+            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+            canvas.drawColor(Color.WHITE)
+
+            drawOfficialPdfHeader(
+                canvas = canvas,
+                schoolConfig = schoolConfig,
+                documentTitle = "السجل الإحصائي العام للصفوف والشعب الدراسية",
+                subtitle = "الفترة: $periodLabel  |  العام الدراسي: ${schoolConfig.academicYear}"
+            )
+
+            val sectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DEEP_EMERALD
+                textSize = 12.5f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.RIGHT
+            }
+            val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DARK_TEXT
+                textSize = 10.5f
+                textAlign = Paint.Align.RIGHT
+            }
+            val linePaint = Paint().apply { color = 0xFFD5E3DC.toInt(); strokeWidth = 1f }
+
+            val totalStudentsAll = reports.sumOf { it.totalStudents }
+            val avgAttendanceAll = if (reports.isEmpty()) 100 else reports.map { it.attendanceRatePercent }.average().toInt()
+            val avgPassRateAll = if (reports.isEmpty()) 0 else reports.map { it.passRatePercent }.average().toInt()
+
+            var y = 175f
+            canvas.drawText(
+                "عدد الصفوف/الشعب: ${reports.size}  |  إجمالي الطلبة: $totalStudentsAll طالب  |  معدل المواظبة العام: $avgAttendanceAll%  |  معدل النجاح: $avgPassRateAll%",
+                550f,
+                y,
+                sectionPaint
+            )
+            y += 24f
+            canvas.drawText("تفاصيل الأداء الأكاديمي والمواظبة وحالة القيد لكل صف وشعبة:", 550f, y, sectionPaint)
+            y += 14f
+
+            reports.take(14).forEach { rep ->
+                canvas.drawText(
+                    "• الصف: ${rep.gradeClass} (شعبة ${rep.sectionName}) — العدد الكلي: ${rep.totalStudents} طالب (مستمر: ${rep.activeStudentsCount})",
+                    550f,
+                    y + 14f,
+                    sectionPaint
+                )
+                y += 18f
+                canvas.drawText(
+                    "  نسبة الحضور: ${rep.attendanceRatePercent}% (حضور: ${rep.presentDaysTotal} | غياب: ${rep.absentDaysTotal} | إجازات: ${rep.excusedDaysTotal})  |  معدل الدرجات: ${rep.averageGradePercent}%  |  نسبة النجاح: ${rep.passRatePercent}%",
+                    550f,
+                    y + 12f,
+                    bodyPaint
+                )
+                y += 16f
+                if (rep.suspendedStudentsCount > 0 || rep.expelledStudentsCount > 0 || rep.transferredStudentsCount > 0 || rep.pendingGradesCount > 0) {
+                    canvas.drawText(
+                        "  بانتظار رصد الدرجات: ${rep.pendingGradesCount}  |  مفصول مؤقتاً: ${rep.suspendedStudentsCount}  |  مرقن قيده/مفصول: ${rep.expelledStudentsCount}  |  منقول: ${rep.transferredStudentsCount}",
+                        550f,
+                        y + 12f,
+                        bodyPaint
+                    )
+                    y += 16f
+                }
+                canvas.drawLine(40f, y + 4f, 555f, y + 4f, linePaint)
+                y += 10f
+            }
+
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            pdfDocument.finishPage(page)
+
+            val fileName = "Class_Statistical_Report_${System.currentTimeMillis()}.pdf"
+            val savedPath = savePdfAndTriggerPrint(
+                context = context,
+                pdfDocument = pdfDocument,
+                fileName = fileName,
+                jobName = "السجل الإحصائي العام للصفوف والشعب - ${schoolConfig.schoolName}"
             )
             pdfDocument.close()
             Result.success(savedPath)

@@ -195,8 +195,8 @@ fun DashboardScreen(
                                     base64Data = myStudent.photoBase64.ifBlank { schoolConfig.logoBase64 },
                                     contentDescription = myStudent.fullNameWithFather,
                                     badge = myHeaderBadges.firstOrNull(),
-                                    avatarSize = 52.dp,
-                                    boxWidth = 58.dp,
+                                    avatarSize = 54.dp,
+                                    boxWidth = 62.dp,
                                     fallbackIcon = Icons.Filled.Person,
                                     tint = Color.White,
                                     onDarkBackground = true
@@ -542,6 +542,17 @@ fun DashboardScreen(
                 val teachersCount = accounts.count { it.role == UserRole.TEACHER }
                 val staffPluralLabel = schoolConfig.schoolStage.staffTitlePlural
 
+                val checkedInToday = scopedStudents.count { stu ->
+                    stu.getGateLogForDate(todayIso)?.checkInTime?.isNotBlank() == true
+                }
+                val checkedOutToday = scopedStudents.count { stu ->
+                    stu.getGateLogForDate(todayIso)?.isDeparted == true
+                }
+                val insideSchoolNow = scopedStudents.count { stu ->
+                    val log = stu.getGateLogForDate(todayIso)
+                    log != null && log.checkInTime.isNotBlank() && log.checkOutTime.isBlank()
+                }
+
                 Text(
                     text = if (isTeacher) "إحصائيات صفوفك وطلابك المسندين فقط" else "لوحة الإحصائيات العامة للمدرسة",
                     style = MaterialTheme.typography.titleMedium,
@@ -550,6 +561,128 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Prominent Live Operations Radar Banner Card (المتابعة الحية المباشرة للصفوف والبوابة)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.navigateToSection(AppSection.LIVE_OPERATIONS_RADAR) }
+                            .testTag("dashboard_open_live_operations_radar_card"),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF059669)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFF047857), Color(0xFF059669))
+                                    )
+                                )
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color.White.copy(alpha = 0.18f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Radar,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier
+                                                .padding(8.dp)
+                                                .size(22.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(9.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF4ADE80))
+                                            )
+                                            Text(
+                                                text = "المتابعة الحية المباشرة للصفوف والبوابة (Live)",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White
+                                            )
+                                        }
+                                        Text(
+                                            text = "مراقبة لحظية لحضور وغياب وإجازات كل صف • من دخل صباحاً • من غادر • ومن بقي داخل المدرسة الآن",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White.copy(alpha = 0.92f)
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White,
+                                    contentColor = Color(0xFF047857)
+                                ) {
+                                    Text(
+                                        text = "فتح الرادار",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    "حاضرون: $presentCount" to Color.White.copy(alpha = 0.20f),
+                                    "غائبون: $absentCount" to Color.White.copy(alpha = 0.20f),
+                                    "دخلوا: $checkedInToday" to Color.White.copy(alpha = 0.20f),
+                                    "غادروا: $checkedOutToday" to Color.White.copy(alpha = 0.20f),
+                                    "داخل المدرسة: $insideSchoolNow" to Color.White.copy(alpha = 0.30f)
+                                ).forEach { (txt, bg) ->
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = bg,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.padding(vertical = 5.dp, horizontal = 2.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = txt,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -4482,6 +4615,122 @@ fun StudentComprehensiveArchiveScreen(
         }
     }
 
+    // Mode Switcher for Admin & Teacher:
+    // 0 = السجل الإحصائي العام للصفوف والشعب
+    // 1 = السجل التفصيلي الفردي للطالب
+    var archiveViewMode by remember(isParentOrStudent) {
+        mutableStateOf(if (isParentOrStudent) 1 else 0)
+    }
+    var selectedGeneralClassFilter by remember { mutableStateOf("ALL") }
+
+    val classStatisticalReports = remember(
+        scopedStudents,
+        allowedClasses,
+        attendance,
+        grades,
+        leaveRequests,
+        selectedMonthCode,
+        selectedGeneralClassFilter,
+        schoolConfig
+    ) {
+        val targetClasses = if (selectedGeneralClassFilter == "ALL") {
+            allowedClasses
+        } else {
+            allowedClasses.filter { ArabicTextNormalizer.matchesClass(it, selectedGeneralClassFilter) }
+        }
+        val reportsList = mutableListOf<ClassComprehensiveStatisticalReport>()
+        val requiredSubjectsCache = targetClasses.associateWith { cls ->
+            viewModel.getRequiredSubjectsForClass(cls)
+        }
+        targetClasses.forEach { cls ->
+            val secs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+            secs.forEach { sec ->
+                val classStudents = scopedStudents.filter { stu ->
+                    ArabicTextNormalizer.matchesClass(stu.gradeClass, cls) &&
+                        ArabicTextNormalizer.matchesSection(stu.sectionName, sec)
+                }
+                if (classStudents.isNotEmpty() || secs.size == 1) {
+                    val activeCount = classStudents.count { it.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE }
+                    val suspendedCount = classStudents.count { it.enrollmentStatusEnum == StudentEnrollmentStatus.SUSPENDED_TEMP }
+                    val expelledCount = classStudents.count {
+                        it.enrollmentStatusEnum == StudentEnrollmentStatus.EXPELLED ||
+                            it.enrollmentStatusEnum == StudentEnrollmentStatus.DEREGISTERED
+                    }
+                    val transferredCount = classStudents.count { it.enrollmentStatusEnum == StudentEnrollmentStatus.TRANSFERRED }
+
+                    var totalPresent = 0
+                    var totalAbsent = 0
+                    var totalExcused = 0
+                    var totalLate = 0
+                    var passedCount = 0
+                    var repeatingCount = 0
+                    var pendingGradesCount = 0
+                    val studentAvgs = mutableListOf<Int>()
+                    val reqSubjects: List<String> = requiredSubjectsCache[cls] ?: emptyList()
+
+                    classStudents.forEach { stu ->
+                        val attMap = viewModel.getStudentAttendanceMap(stu.id)
+                            .filter { matchesSelectedMonth(it.key) }
+                        totalPresent += attMap.count { it.value == AttendanceStatus.PRESENT }
+                        totalAbsent += attMap.count { it.value == AttendanceStatus.ABSENT }
+                        totalExcused += attMap.count { it.value == AttendanceStatus.EXCUSED }
+                        totalLate += attMap.count { it.value == AttendanceStatus.LATE }
+
+                        val sGrades = grades.filter { it.studentId == stu.id }
+                        if (sGrades.isNotEmpty()) {
+                            studentAvgs.add(sGrades.map { it.finalAverage }.average().toInt())
+                        }
+                        val completedReqCount = reqSubjects.count { reqSub ->
+                            sGrades.any { g ->
+                                ArabicTextNormalizer.normalizeText(g.subjectName) == ArabicTextNormalizer.normalizeText(reqSub) &&
+                                    g.isAllExamsCompleted
+                            }
+                        }
+                        val isGradesComplete = reqSubjects.isNotEmpty() &&
+                            completedReqCount >= reqSubjects.size &&
+                            sGrades.all { it.isAllExamsCompleted }
+                        if (!isGradesComplete) {
+                            pendingGradesCount++
+                        } else {
+                            val avg = sGrades.map { it.finalAverage }.average().toInt()
+                            val failedSubs = sGrades.count { g -> g.finalAverage < (g.maxScoreScale / 2) }
+                            if (avg >= 50 && failedSubs <= 2) passedCount++ else repeatingCount++
+                        }
+                    }
+
+                    val totalTrackedDays = totalPresent + totalAbsent + totalExcused + totalLate
+                    val attRate = if (totalTrackedDays == 0) 100 else (((totalPresent + totalExcused) * 100.0) / totalTrackedDays).toInt().coerceIn(0, 100)
+                    val avgGrade = if (studentAvgs.isEmpty()) 0 else studentAvgs.average().toInt()
+                    val evaluatedCount = passedCount + repeatingCount
+                    val passRate = if (evaluatedCount == 0) 0 else ((passedCount * 100.0) / evaluatedCount).toInt().coerceIn(0, 100)
+
+                    reportsList.add(
+                        ClassComprehensiveStatisticalReport(
+                            gradeClass = cls,
+                            sectionName = sec,
+                            totalStudents = classStudents.size,
+                            activeStudentsCount = activeCount,
+                            suspendedStudentsCount = suspendedCount,
+                            expelledStudentsCount = expelledCount,
+                            transferredStudentsCount = transferredCount,
+                            presentDaysTotal = totalPresent,
+                            absentDaysTotal = totalAbsent,
+                            excusedDaysTotal = totalExcused,
+                            lateDaysTotal = totalLate,
+                            attendanceRatePercent = attRate,
+                            averageGradePercent = avgGrade,
+                            passRatePercent = passRate,
+                            passedStudentsCount = passedCount,
+                            repeatingStudentsCount = repeatingCount,
+                            pendingGradesCount = pendingGradesCount
+                        )
+                    )
+                }
+            }
+        }
+        reportsList
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -4489,7 +4738,7 @@ fun StudentComprehensiveArchiveScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // Top Header Card & Class/Student Selector for Admin/Teacher
+        // Top Header Card & Dual Mode Switcher for Admin/Teacher
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -4528,16 +4777,60 @@ fun StudentComprehensiveArchiveScreen(
                             }
                             Column {
                                 Text(
-                                    text = "السجل الشامل للطالب (الأرشيف الشهري والسنوي)",
+                                    text = "السجل الأكاديمي والإحصائي الشامل",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = DeepForestGreen
                                 )
                                 Text(
-                                    text = "فهرسة الشهر بشهره: الدوام والبوابة، الغيابات، الإجازات، الامتحانات والدرجات، السلوك، والمحفظة",
+                                    text = "تقارير الأداء، المواظبة، والنتائج الشهرية والسنوية للصفوف والطلبة",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = TextMutedGreen
+                                    color = TextMutedGreen,
+                                    fontWeight = FontWeight.SemiBold
                                 )
+                            }
+                        }
+                    }
+
+                    // Dual Mode Switcher for Principal & Teachers:
+                    // [السجل الإحصائي العام للصفوف والشعب] vs [السجل التفصيلي الفردي للطالب]
+                    if (!isParentOrStudent) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFFF0FDF4))
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                0 to "السجل الإحصائي العام للصفوف والشعب",
+                                1 to "السجل التفصيلي الفردي للطالب"
+                            ).forEach { (modeIdx, modeTitle) ->
+                                val isSel = archiveViewMode == modeIdx
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { archiveViewMode = modeIdx }
+                                        .testTag("archive_mode_tab_$modeIdx"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSel) DeepEmerald else Color.Transparent
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(vertical = 9.dp, horizontal = 6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = modeTitle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isSel) Color.White else DeepForestGreen,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -4569,7 +4862,7 @@ fun StudentComprehensiveArchiveScreen(
                         }
                     }
 
-                    if (!isParentOrStudent) {
+                    if (!isParentOrStudent && archiveViewMode == 1) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(allowedClasses) { cls ->
                                 FilterChip(
@@ -4609,7 +4902,7 @@ fun StudentComprehensiveArchiveScreen(
                         )
                         if (filteredStudentsList.isNotEmpty()) {
                             Text(
-                                text = "اختر الطالب لعرض سجله الشامل (${filteredStudentsList.size} طالب):",
+                                text = "اختر الطالب لعرض سجله الأكاديمي الشامل (${filteredStudentsList.size} طالب):",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = DeepForestGreen
@@ -4644,7 +4937,300 @@ fun StudentComprehensiveArchiveScreen(
             }
         }
 
-        if (selectedStudent == null) {
+        if (!isParentOrStudent && archiveViewMode == 0) {
+            // =========================================================================
+            // MODE 0: السجل الإحصائي العام للصفوف والشعب (General Class & Section Archive)
+            // =========================================================================
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "تصفية التقارير الإحصائية حسب الفترة الزمنية والصف الدراسي:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(academicMonths) { (code, label) ->
+                                val isSel = selectedMonthCode == code
+                                FilterChip(
+                                    selected = isSel,
+                                    onClick = { selectedMonthCode = code },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                )
+                            }
+                        }
+
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item {
+                                FilterChip(
+                                    selected = selectedGeneralClassFilter == "ALL",
+                                    onClick = { selectedGeneralClassFilter = "ALL" },
+                                    label = { Text("جميع الصفوف المسجلة (${allowedClasses.size})", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
+                                )
+                            }
+                            items(allowedClasses) { cls ->
+                                FilterChip(
+                                    selected = selectedGeneralClassFilter == cls,
+                                    onClick = { selectedGeneralClassFilter = cls },
+                                    label = { Text(cls, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
+                                )
+                            }
+                        }
+
+                        val totalAllStudents = classStatisticalReports.sumOf { it.totalStudents }
+                        val avgAttRate = if (classStatisticalReports.isEmpty()) 100 else classStatisticalReports.map { it.attendanceRatePercent }.average().toInt()
+                        val avgGradeAll = if (classStatisticalReports.isEmpty()) 0 else classStatisticalReports.map { it.averageGradePercent }.average().toInt()
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                Triple("الشعب المشمولة", "${classStatisticalReports.size} شعبة", DeepEmerald),
+                                Triple("إجمالي الطلبة", "$totalAllStudents طالب", InfoBlue),
+                                Triple("معدل المواظبة", "$avgAttRate%", SuccessGreen),
+                                Triple("متوسط الدرجات", "$avgGradeAll%", DeepForestGreen)
+                            ).forEach { (lbl, valTxt, col) ->
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = col.copy(alpha = 0.10f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, col.copy(alpha = 0.32f))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = valTxt,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = col,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = lbl,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepForestGreen,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                val res = DocumentAndIdExporter.exportClassComprehensiveStatisticalReportPdf(
+                                    context = context,
+                                    schoolConfig = schoolConfig,
+                                    reports = classStatisticalReports,
+                                    periodLabel = selectedMonthLabel,
+                                    principalName = schoolConfig.principalFullName.ifBlank { currentUser?.fullName ?: "مدير المدرسة" }
+                                )
+                                if (res.isSuccess) {
+                                    viewModel.showToastAlert(
+                                        "تم تصدير وفتح السجل الإحصائي العام للصفوف والشعب بصيغة PDF بنجاح",
+                                        isSuccess = true
+                                    )
+                                } else {
+                                    viewModel.showToastAlert(
+                                        "تعذر تصدير التقرير الإحصائي: ${res.exceptionOrNull()?.message}",
+                                        isSuccess = false
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("export_general_class_statistical_pdf_btn"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = DeepEmerald,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "طباعة / تصدير السجل الإحصائي العام للصفوف والشعب (PDF)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                }
+            }
+
+            items(classStatisticalReports, key = { "${it.gradeClass}_${it.sectionName}" }) { rep ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.28f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "الصف: ${rep.gradeClass} — شعبة (${rep.sectionName})",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = "إجمالي الطلبة: ${rep.totalStudents} • مستمر بالدوام: ${rep.activeStudentsCount} • الفترة: $selectedMonthLabel",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            NoWrapBadge(
+                                text = "المواظبة: ${rep.attendanceRatePercent}%",
+                                icon = Icons.Filled.FactCheck,
+                                containerColor = DeepEmerald,
+                                contentColor = Color.White
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                Triple("أيام الحضور", "${rep.presentDaysTotal}", SuccessGreen),
+                                Triple("أيام الغياب", "${rep.absentDaysTotal}", DangerRed),
+                                Triple("الإجازات", "${rep.excusedDaysTotal}", InfoBlue),
+                                Triple("معدل الصف", if (rep.averageGradePercent > 0) "${rep.averageGradePercent}%" else "بانتظار الرصد", DeepEmerald)
+                            ).forEach { (lbl, valTxt, col) ->
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = col.copy(alpha = 0.09f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, col.copy(alpha = 0.30f))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 3.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = valTxt,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = col,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = lbl,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = DeepForestGreen,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF0FDF4),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "نتائج الصف والقرارات الإدارية: ناجح مكتمل (${rep.passedStudentsCount}) • معيد (${rep.repeatingStudentsCount}) • بانتظار استكمال الدرجات (${rep.pendingGradesCount})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                if (rep.suspendedStudentsCount > 0 || rep.expelledStudentsCount > 0 || rep.transferredStudentsCount > 0) {
+                                    Text(
+                                        text = "حالات القيد الإدارية: مفصول مؤقتاً (${rep.suspendedStudentsCount}) • مرقن قيده/مفصول (${rep.expelledStudentsCount}) • منقول (${rep.transferredStudentsCount})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DangerRed
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    selectedClass = rep.gradeClass
+                                    selectedSection = rep.sectionName
+                                    archiveViewMode = 1
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald)
+                            ) {
+                                Icon(Icons.Filled.Groups, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "استعراض سجلات طلاب الصف",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    val res = DocumentAndIdExporter.exportClassComprehensiveStatisticalReportPdf(
+                                        context = context,
+                                        schoolConfig = schoolConfig,
+                                        reports = listOf(rep),
+                                        periodLabel = "${rep.gradeClass} (${rep.sectionName}) - $selectedMonthLabel",
+                                        principalName = schoolConfig.principalFullName.ifBlank { currentUser?.fullName ?: "مدير المدرسة" }
+                                    )
+                                    if (res.isSuccess) {
+                                        viewModel.showToastAlert("تم تصدير تقرير الصف (${rep.gradeClass} - ${rep.sectionName}) بصيغة PDF", isSuccess = true)
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+                            ) {
+                                Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("تقرير PDF", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (selectedStudent == null) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -4669,7 +5255,7 @@ fun StudentComprehensiveArchiveScreen(
         } else {
             val stu = selectedStudent
 
-            // Student Identity & Export PDF Banner Card (Emerald Compact Card without Vertical Distortion)
+            // Student Identity & Export PDF Banner Card (Emerald Compact Card without Vertical Distortion or Truncation)
             item {
                 Card(
                     modifier = Modifier
@@ -4691,8 +5277,8 @@ fun StudentComprehensiveArchiveScreen(
                                 base64Data = stu.photoBase64,
                                 contentDescription = stu.fullNameWithFather,
                                 badge = stuBadges.firstOrNull(),
-                                avatarSize = 52.dp,
-                                boxWidth = 58.dp,
+                                avatarSize = 54.dp,
+                                boxWidth = 62.dp,
                                 fallbackIcon = Icons.Filled.Person,
                                 tint = Color.White,
                                 onDarkBackground = true
@@ -4701,26 +5287,23 @@ fun StudentComprehensiveArchiveScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .padding(horizontal = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                verticalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
                                 Text(
                                     text = stu.fullNameWithFather,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    color = Color.White
                                 )
                                 Text(
-                                    text = "الصف: ${stu.gradeClass} • شعبة (${stu.sectionName}) • العام: ${schoolConfig.academicYear}",
+                                    text = "الصف: ${stu.gradeClass} • شعبة (${stu.sectionName}) • العام الدراسي: ${viewModel.formatAcademicYearAscending(schoolConfig.academicYear).second}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.92f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    color = Color.White.copy(alpha = 0.94f),
+                                    fontWeight = FontWeight.SemiBold
                                 )
-                                Row(
+                                FlowRow(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Surface(
                                         onClick = {
@@ -4762,7 +5345,7 @@ fun StudentComprehensiveArchiveScreen(
                                         color = Color.White.copy(alpha = 0.22f)
                                     ) {
                                         Text(
-                                            text = "المعدل العام: ${if (stuGrades.isEmpty()) "قيد الرصد" else "$stuAverage%"}",
+                                            text = "المعدل العام: ${if (stuGrades.isEmpty()) "بانتظار رصد الدرجات" else "$stuAverage%"}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = Color.White,
                                             fontWeight = FontWeight.ExtraBold,
@@ -4805,6 +5388,7 @@ fun StudentComprehensiveArchiveScreen(
                                 .fillMaxWidth()
                                 .testTag("export_comprehensive_student_archive_pdf_btn"),
                             shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White,
                                 contentColor = DeepForestGreen
@@ -4814,9 +5398,8 @@ fun StudentComprehensiveArchiveScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "طباعة / تصدير السجل الشامل للطالب (PDF) — $selectedMonthLabel",
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold
                             )
                         }
                     }
@@ -5635,6 +6218,1011 @@ fun StudentComprehensiveArchiveScreen(
         )
     }
 }
+
+private enum class LiveRadarDrillFilter(val arabicTitle: String) {
+    ALL("الكل"),
+    INSIDE_NOW("متبقون داخل المدرسة الآن"),
+    CHECKED_IN("دخلوا صباحاً (Check-In)"),
+    CHECKED_OUT("غادروا المدرسة (Check-Out)"),
+    PRESENT("الحاضرون اليوم"),
+    ABSENT("الغائبون اليوم"),
+    EXCUSED("المجازون اليوم"),
+    LATE("المتأخرون اليوم")
+}
+
+private data class LiveClassroomCardSummary(
+    val gradeClass: String,
+    val sectionName: String,
+    val students: List<StudentRecord>,
+    val presentCount: Int,
+    val absentCount: Int,
+    val excusedCount: Int,
+    val lateCount: Int,
+    val checkedInCount: Int,
+    val checkedOutCount: Int,
+    val insideNowCount: Int
+)
+
+private data class LiveRadarDrillTarget(
+    val title: String,
+    val gradeClassFilter: String? = null,
+    val sectionFilter: String? = null,
+    val initialFilter: LiveRadarDrillFilter = LiveRadarDrillFilter.ALL
+)
+
+/**
+ * Deliverable 1: غرفة المتابعة الحية المباشرة للصفوف والبوابة (Live Operations Radar)
+ * - 1) شريط المؤشرات الحية الشامل للمدرسة (Top Live School Radar + Smart Gate Live Radar)
+ * - 2) شبكة بطاقات الصفوف والشعب الحية (Live Classrooms Cards)
+ * - 3) كشف الأسماء التفصيلي الفوري عند الضغط (Drill-Down Student List Modal)
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun LiveOperationsRadarScreen(
+    viewModel: SchoolViewModel
+) {
+    val context = LocalContext.current
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
+    val students by viewModel.students.collectAsState()
+    val attendance by viewModel.attendance.collectAsState()
+    val leaveRequests by viewModel.leaveRequests.collectAsState()
+    val grades by viewModel.grades.collectAsState()
+    val holidaysConfig by viewModel.holidaysConfig.collectAsState()
+    val toastAlert by viewModel.toastAlert.collectAsState()
+
+    val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
+    var selectedDateIso by remember { mutableStateOf(todayIso) }
+    var selectedClassFilter by remember { mutableStateOf("ALL") }
+    var drillTarget by remember { mutableStateOf<LiveRadarDrillTarget?>(null) }
+
+    val isTeacher = currentUser?.role == UserRole.TEACHER
+    val allowedClasses = remember(schoolConfig, currentUser, students) {
+        viewModel.getAllowedClassesForUser(currentUser)
+    }
+    val activeScopedStudents = remember(students, currentUser) {
+        viewModel.getScopedStudentsForUser(currentUser).filter { it.isActive }
+    }
+
+    fun isStudentPresentOnDate(stu: StudentRecord, dateIso: String): AttendanceStatus {
+        return viewModel.getStudentStatusForDate(stu, dateIso)
+    }
+
+    fun isStudentCheckedIn(stu: StudentRecord, dateIso: String): Boolean {
+        val log = stu.getGateLogForDate(dateIso)
+        return log != null && log.checkInTime.isNotBlank()
+    }
+
+    fun isStudentCheckedOut(stu: StudentRecord, dateIso: String): Boolean {
+        val log = stu.getGateLogForDate(dateIso)
+        return log != null && log.isDeparted
+    }
+
+    fun isStudentInsideNow(stu: StudentRecord, dateIso: String): Boolean {
+        val log = stu.getGateLogForDate(dateIso)
+        return log != null && log.checkInTime.isNotBlank() && log.checkOutTime.isBlank()
+    }
+
+    val totalStudentsCount = activeScopedStudents.size
+    val presentTodayCount = remember(activeScopedStudents, attendance, selectedDateIso, holidaysConfig) {
+        activeScopedStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.PRESENT }
+    }
+    val absentTodayCount = remember(activeScopedStudents, attendance, selectedDateIso, holidaysConfig) {
+        activeScopedStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.ABSENT }
+    }
+    val excusedTodayCount = remember(activeScopedStudents, attendance, selectedDateIso, holidaysConfig) {
+        activeScopedStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.EXCUSED }
+    }
+    val lateTodayCount = remember(activeScopedStudents, attendance, selectedDateIso, holidaysConfig) {
+        activeScopedStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.LATE }
+    }
+    val checkedInTodayCount = remember(activeScopedStudents, selectedDateIso) {
+        activeScopedStudents.count { isStudentCheckedIn(it, selectedDateIso) }
+    }
+    val checkedOutTodayCount = remember(activeScopedStudents, selectedDateIso) {
+        activeScopedStudents.count { isStudentCheckedOut(it, selectedDateIso) }
+    }
+    val insideNowTodayCount = remember(activeScopedStudents, selectedDateIso) {
+        activeScopedStudents.count { isStudentInsideNow(it, selectedDateIso) }
+    }
+
+    val classroomCards = remember(
+        activeScopedStudents,
+        allowedClasses,
+        selectedClassFilter,
+        attendance,
+        selectedDateIso,
+        holidaysConfig
+    ) {
+        val targetClasses = if (selectedClassFilter == "ALL") {
+            allowedClasses
+        } else {
+            allowedClasses.filter { ArabicTextNormalizer.matchesClass(it, selectedClassFilter) }
+        }
+        val list = mutableListOf<LiveClassroomCardSummary>()
+        targetClasses.forEach { cls ->
+            val secs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+            secs.forEach { sec ->
+                val classStudents = activeScopedStudents.filter { stu ->
+                    ArabicTextNormalizer.matchesClass(stu.gradeClass, cls) &&
+                        ArabicTextNormalizer.matchesSection(stu.sectionName, sec)
+                }
+                if (classStudents.isNotEmpty() || secs.size == 1) {
+                    list.add(
+                        LiveClassroomCardSummary(
+                            gradeClass = cls,
+                            sectionName = sec,
+                            students = classStudents,
+                            presentCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.PRESENT },
+                            absentCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.ABSENT },
+                            excusedCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.EXCUSED },
+                            lateCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.LATE },
+                            checkedInCount = classStudents.count { isStudentCheckedIn(it, selectedDateIso) },
+                            checkedOutCount = classStudents.count { isStudentCheckedOut(it, selectedDateIso) },
+                            insideNowCount = classStudents.count { isStudentInsideNow(it, selectedDateIso) }
+                        )
+                    )
+                }
+            }
+        }
+        list
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
+    ) {
+        // 1) شريط المؤشرات الحية الشامل للمدرسة (Top Live School Radar + Smart Gate Live Radar)
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, DeepEmerald.copy(alpha = 0.35f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFECFDF5),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.4f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Radar,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier
+                                        .padding(9.dp)
+                                        .size(22.dp)
+                                )
+                            }
+                            Column {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(9.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF10B981))
+                                    )
+                                    Text(
+                                        text = "غرفة المتابعة الحية المباشرة للصفوف والبوابة",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                }
+                                Text(
+                                    text = if (isTeacher) {
+                                        "مراقبة حية فورية لصفوفك المسندة • اضغط على أي مؤشر أو صف لعرض كشف الأسماء والتوقيتات"
+                                    } else {
+                                        "رادار مركزي شامل للمدرسة ($selectedDateIso) • اضغط على أي مؤشر أو صف لعرض كشف الأسماء والتوقيتات"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    // Live Attendance Radar Row (إجمالي الطلبة | الحاضرون اليوم | الغائبون | المجازون)
+                    Text(
+                        text = "أولاً: المؤشرات الحية للحضور والغياب والإجازات اليوم (اضغط لعرض الأسماء):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            Triple("إجمالي الطلبة", "$totalStudentsCount", DeepEmerald to LiveRadarDrillFilter.ALL),
+                            Triple("الحاضرون اليوم", "$presentTodayCount", SuccessGreen to LiveRadarDrillFilter.PRESENT),
+                            Triple("الغائبون", "$absentTodayCount", DangerRed to LiveRadarDrillFilter.ABSENT),
+                            Triple("المجازون", "$excusedTodayCount", InfoBlue to LiveRadarDrillFilter.EXCUSED)
+                        ).forEach { (lbl, valTxt, pair) ->
+                            val (col, filterType) = pair
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable {
+                                        drillTarget = LiveRadarDrillTarget(
+                                            title = "كشف $lbl في المدرسة ($selectedDateIso)",
+                                            initialFilter = filterType
+                                        )
+                                    }
+                                    .testTag("live_radar_counter_${filterType.name}"),
+                                shape = RoundedCornerShape(14.dp),
+                                color = col.copy(alpha = 0.10f),
+                                border = androidx.compose.foundation.BorderStroke(1.2.dp, col.copy(alpha = 0.38f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = valTxt,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = col
+                                    )
+                                    Text(
+                                        text = lbl,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Smart Gate Live Radar Row (دخلوا صباحاً | غادروا المدرسة | متبقون داخل المدرسة الآن)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF059669),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.QrCodeScanner,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "رادار البوابة الذكية الحي (Smart Gate Live Radar)",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.20f)
+                                ) {
+                                    Text(
+                                        text = "اضغط لكشف الأسماء",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    Triple("دخلوا صباحاً", "$checkedInTodayCount طالب", LiveRadarDrillFilter.CHECKED_IN),
+                                    Triple("غادروا المدرسة", "$checkedOutTodayCount طالب", LiveRadarDrillFilter.CHECKED_OUT),
+                                    Triple("متبقون بالمدرسة الآن", "$insideNowTodayCount طالب", LiveRadarDrillFilter.INSIDE_NOW)
+                                ).forEach { (lbl, valTxt, filterType) ->
+                                    val isInsideCard = filterType == LiveRadarDrillFilter.INSIDE_NOW
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                drillTarget = LiveRadarDrillTarget(
+                                                    title = "كشف الطلاب: ${filterType.arabicTitle} ($selectedDateIso)",
+                                                    initialFilter = filterType
+                                                )
+                                            }
+                                            .testTag("live_gate_counter_${filterType.name}"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isInsideCard) Color.White else Color.White.copy(alpha = 0.18f),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            Color.White.copy(alpha = if (isInsideCard) 0.9f else 0.38f)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = valTxt,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isInsideCard) Color(0xFF047857) else Color.White,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                text = lbl,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isInsideCard) DeepForestGreen else Color.White.copy(alpha = 0.95f),
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Filter by Class
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        item {
+                            FilterChip(
+                                selected = selectedClassFilter == "ALL",
+                                onClick = { selectedClassFilter = "ALL" },
+                                label = {
+                                    Text(
+                                        text = "جميع الصفوف والشعب (${classroomCards.size})",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            )
+                        }
+                        items(allowedClasses) { cls ->
+                            FilterChip(
+                                selected = selectedClassFilter == cls,
+                                onClick = { selectedClassFilter = cls },
+                                label = {
+                                    Text(
+                                        text = cls,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2) شبكة بطاقات الصفوف والشعب الحية (Live Classrooms Cards)
+        items(classroomCards, key = { "${it.gradeClass}_${it.sectionName}" }) { card ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        drillTarget = LiveRadarDrillTarget(
+                            title = "الصف: ${card.gradeClass} — شعبة (${card.sectionName})",
+                            gradeClassFilter = card.gradeClass,
+                            sectionFilter = card.sectionName,
+                            initialFilter = LiveRadarDrillFilter.ALL
+                        )
+                    }
+                    .testTag("live_classroom_card_${card.gradeClass}_${card.sectionName}"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.28f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFECFDF5),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Class,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .size(18.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "الصف: ${card.gradeClass} — شعبة (${card.sectionName})",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = "اضغط على أي مؤشر أدناه لفتح كشف أسماء الطلاب فوراً",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen
+                                )
+                            }
+                        }
+                        NoWrapBadge(
+                            text = "العدد الكلي: ${card.students.size} طالب",
+                            icon = Icons.Filled.Groups,
+                            containerColor = DeepEmerald,
+                            contentColor = Color.White
+                        )
+                    }
+
+                    // Attendance Breakdown Row (حاضر • غائب • مجاز • متأخر)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            Triple("حاضر", "${card.presentCount}", SuccessGreen to LiveRadarDrillFilter.PRESENT),
+                            Triple("غائب", "${card.absentCount}", DangerRed to LiveRadarDrillFilter.ABSENT),
+                            Triple("مجاز", "${card.excusedCount}", InfoBlue to LiveRadarDrillFilter.EXCUSED),
+                            Triple("متأخر", "${card.lateCount}", WarningAmber to LiveRadarDrillFilter.LATE)
+                        ).forEach { (lbl, valTxt, pair) ->
+                            val (col, filterType) = pair
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        drillTarget = LiveRadarDrillTarget(
+                                            title = "الصف: ${card.gradeClass} (${card.sectionName}) — $lbl",
+                                            gradeClassFilter = card.gradeClass,
+                                            sectionFilter = card.sectionName,
+                                            initialFilter = filterType
+                                        )
+                                    },
+                                shape = RoundedCornerShape(10.dp),
+                                color = col.copy(alpha = 0.10f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, col.copy(alpha = 0.35f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 6.dp, horizontal = 3.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = valTxt,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = col
+                                    )
+                                    Text(
+                                        text = lbl,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Smart Gate Live Breakdown for this Classroom (دخلوا بداية الدوام • غادروا • متبقون داخل المدرسة الآن)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF0FDF4),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "حركة البوابة الذكية لهذا الصف اليوم:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    Triple("دخلوا بداية الدوام", "${card.checkedInCount}", LiveRadarDrillFilter.CHECKED_IN),
+                                    Triple("غادروا المدرسة", "${card.checkedOutCount}", LiveRadarDrillFilter.CHECKED_OUT),
+                                    Triple("متبقون بالمدرسة الآن", "${card.insideNowCount}", LiveRadarDrillFilter.INSIDE_NOW)
+                                ).forEach { (lbl, valTxt, filterType) ->
+                                    val isStay = filterType == LiveRadarDrillFilter.INSIDE_NOW
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                drillTarget = LiveRadarDrillTarget(
+                                                    title = "الصف: ${card.gradeClass} (${card.sectionName}) — $lbl",
+                                                    gradeClassFilter = card.gradeClass,
+                                                    sectionFilter = card.sectionName,
+                                                    initialFilter = filterType
+                                                )
+                                            },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isStay) DeepEmerald else Color.White,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.40f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = valTxt,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isStay) Color.White else DeepEmerald
+                                            )
+                                            Text(
+                                                text = lbl,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isStay) Color.White else DeepForestGreen,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            drillTarget = LiveRadarDrillTarget(
+                                title = "كشف طلاب الصف: ${card.gradeClass} — شعبة (${card.sectionName})",
+                                gradeClassFilter = card.gradeClass,
+                                sectionFilter = card.sectionName,
+                                initialFilter = LiveRadarDrillFilter.ALL
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald)
+                    ) {
+                        Icon(Icons.Filled.Visibility, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "عرض كشف الأسماء التفصيلي وتوقيتات الدخول والمغادرة وأرقام أولياء الأمور",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // 3) كشف الأسماء التفصيلي الفوري عند الضغط (Drill-Down Student List Modal)
+    drillTarget?.let { target ->
+        var activeModalFilter by remember(target) { mutableStateOf(target.initialFilter) }
+        var modalSearchQuery by remember(target) { mutableStateOf("") }
+
+        val baseStudentsForModal = remember(activeScopedStudents, target) {
+            activeScopedStudents.filter { stu ->
+                (target.gradeClassFilter == null || ArabicTextNormalizer.matchesClass(stu.gradeClass, target.gradeClassFilter)) &&
+                    (target.sectionFilter == null || ArabicTextNormalizer.matchesSection(stu.sectionName, target.sectionFilter))
+            }
+        }
+
+        val matchingStudents = remember(
+            baseStudentsForModal,
+            activeModalFilter,
+            modalSearchQuery,
+            attendance,
+            selectedDateIso,
+            holidaysConfig
+        ) {
+            val q = modalSearchQuery.trim()
+            baseStudentsForModal.filter { stu ->
+                val matchesCategory = when (activeModalFilter) {
+                    LiveRadarDrillFilter.ALL -> true
+                    LiveRadarDrillFilter.INSIDE_NOW -> isStudentInsideNow(stu, selectedDateIso)
+                    LiveRadarDrillFilter.CHECKED_IN -> isStudentCheckedIn(stu, selectedDateIso)
+                    LiveRadarDrillFilter.CHECKED_OUT -> isStudentCheckedOut(stu, selectedDateIso)
+                    LiveRadarDrillFilter.PRESENT -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.PRESENT
+                    LiveRadarDrillFilter.ABSENT -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.ABSENT
+                    LiveRadarDrillFilter.EXCUSED -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.EXCUSED
+                    LiveRadarDrillFilter.LATE -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.LATE
+                }
+                val matchesQuery = q.isEmpty() ||
+                    stu.fullNameWithFather.contains(q, ignoreCase = true) ||
+                    stu.studentName.contains(q, ignoreCase = true) ||
+                    stu.gradeClass.contains(q, ignoreCase = true)
+                matchesCategory && matchesQuery
+            }
+        }
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { drillTarget = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.96f)
+                    .heightIn(max = 840.dp)
+                    .testTag("live_radar_drill_down_modal"),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, DeepEmerald.copy(alpha = 0.5f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    InlineDialogToastBanner(toastAlert = toastAlert)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFECFDF5),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Radar,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .size(20.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = target.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = "العدد المطابق: ${matchingStudents.size} طالب • التاريخ: $selectedDateIso",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = DeepEmerald,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        IconButton(onClick = { drillTarget = null }) {
+                            Icon(Icons.Filled.Close, contentDescription = "إغلاق", tint = DeepForestGreen)
+                        }
+                    }
+
+                    // Filter Tabs inside Modal
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(LiveRadarDrillFilter.entries) { fItem ->
+                            val isSel = activeModalFilter == fItem
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (isSel) DeepEmerald else Color(0xFFF0FDF4),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSel) DeepEmerald else DeepEmerald.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { activeModalFilter = fItem }
+                            ) {
+                                Text(
+                                    text = fItem.arabicTitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isSel) Color.White else DeepForestGreen,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = modalSearchQuery,
+                        onValueChange = { modalSearchQuery = it },
+                        placeholder = { Text("ابحث باسم الطالب...") },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = DeepEmerald) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    HorizontalDivider(color = DeepEmerald.copy(alpha = 0.16f))
+
+                    if (matchingStudents.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(28.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "لا يوجد طلاب ضمن هذا التصنيف (${activeModalFilter.arabicTitle}) حالياً.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMutedGreen
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(matchingStudents, key = { it.id }) { stu ->
+                                val attStatus = isStudentPresentOnDate(stu, selectedDateIso)
+                                val gateLog = stu.getGateLogForDate(selectedDateIso)
+                                val isInside = isStudentInsideNow(stu, selectedDateIso)
+                                val isDeparted = isStudentCheckedOut(stu, selectedDateIso)
+                                val stuLeave = leaveRequests.firstOrNull {
+                                    it.studentId == stu.id && it.leaveDate == selectedDateIso
+                                } ?: leaveRequests.firstOrNull { it.studentId == stu.id }
+                                val stuBadges = remember(attendance, grades, stu.id) {
+                                    viewModel.getStudentAutoBadges(stu.id)
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                StudentAvatarWithOverlayBadge(
+                                                    base64Data = stu.photoBase64,
+                                                    contentDescription = stu.fullNameWithFather,
+                                                    badge = stuBadges.firstOrNull(),
+                                                    avatarSize = 54.dp,
+                                                    boxWidth = 62.dp,
+                                                    fallbackIcon = Icons.Filled.Person,
+                                                    tint = DeepEmerald,
+                                                    onDarkBackground = false
+                                                )
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = stu.fullNameWithFather,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen
+                                                    )
+                                                    Text(
+                                                        text = "الصف: ${stu.gradeClass} • شعبة (${stu.sectionName})",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = TextMutedGreen,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                            NoWrapBadge(
+                                                text = attStatus.arabicLabel,
+                                                icon = Icons.Filled.FactCheck,
+                                                containerColor = when (attStatus) {
+                                                    AttendanceStatus.PRESENT -> SuccessGreen
+                                                    AttendanceStatus.ABSENT -> DangerRed
+                                                    AttendanceStatus.EXCUSED -> InfoBlue
+                                                    else -> WarningAmber
+                                                },
+                                                contentColor = Color.White
+                                            )
+                                        }
+
+                                        // Smart Gate Timestamps Box
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFECFDF5),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "وقت الدخول: ${gateLog?.checkInTime?.ifBlank { "لم يسجل" } ?: "لم يسجل"}  |  وقت المغادرة: ${gateLog?.checkOutTime?.ifBlank { "لم يغادر بعد" } ?: "لم يغادر بعد"}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen
+                                                    )
+                                                    Surface(
+                                                        shape = RoundedCornerShape(50),
+                                                        color = when {
+                                                            isInside -> DeepEmerald
+                                                            isDeparted -> InfoBlue
+                                                            else -> Color(0xFF64748B)
+                                                        }
+                                                    ) {
+                                                        Text(
+                                                            text = when {
+                                                                isInside -> "متواجد بالمدرسة الآن"
+                                                                isDeparted -> "غادر المدرسة"
+                                                                else -> "خارج البوابة"
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color.White,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                if (attStatus == AttendanceStatus.EXCUSED || stuLeave != null) {
+                                                    Text(
+                                                        text = "سبب الإجازة: ${stuLeave?.reason?.ifBlank { "إجازة رسمية معتمدة" } ?: "إجازة رسمية معتمدة"}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = InfoBlue
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Parent Contact & Quick Gate Action Row
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (stu.parentPhone.isNotBlank()) {
+                                                OutlinedButton(
+                                                    onClick = { ExternalIntents.dialPhoneNumber(context, stu.parentPhone) },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Icon(Icons.Filled.Call, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "اتصال (${stu.parentPhone})",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        ExternalIntents.sendWhatsAppMessage(
+                                                            context = context,
+                                                            rawPhone = stu.parentPhone,
+                                                            message = "تحية طيبة من إدارة ${schoolConfig.schoolName} بخصوص الطالب (${stu.fullNameWithFather})..."
+                                                        )
+                                                    },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald)
+                                                ) {
+                                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("واتساب", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold, color = DeepForestGreen)
+                                                }
+                                            }
+
+                                            Button(
+                                                onClick = {
+                                                    viewModel.requireOnlineAndExecute {
+                                                        val mode = if (isInside) GateScanMode.CHECK_OUT else GateScanMode.CHECK_IN
+                                                        viewModel.recordAttendanceByQrCodeDetailed(
+                                                            qrOrUsername = stu.id,
+                                                            date = selectedDateIso,
+                                                            scanMode = mode
+                                                        )
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (isInside) InfoBlue else DeepEmerald,
+                                                    contentColor = Color.White
+                                                )
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isInside) Icons.AutoMirrored.Filled.Logout else Icons.AutoMirrored.Filled.Login,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = if (isInside) "تسجيل مغادرة" else "تسجيل دخول",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 
 
