@@ -1227,13 +1227,14 @@ fun StudentActivityPostCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Interaction & Moderation Bar
-            Row(
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Heart Button identical to Honor Roll & Events Gallery (HonorHeartReactionButton)
@@ -1276,15 +1277,17 @@ fun StudentActivityPostCard(
                                 text = "التعليقات (${post.totalCommentsAndRepliesCount})",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = DeepEmerald
+                                color = DeepEmerald,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
                 }
 
-                // Right Side: Edit (Owner ONLY) / Delete (Owner or Admin) / Report / Admin Sanction
+                // Right Side: Edit (Owner ONLY) / Delete (Owner or Admin) / Report / Admin Sanction Capsule
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (canEditPost) {
@@ -1337,34 +1340,46 @@ fun StudentActivityPostCard(
                     }
 
                     if (isAdmin && !isOwner) {
-                        // Admin Direct Sanction Button
+                        // Admin Direct Sanction Horizontal Capsule Button
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = DangerRed.copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.35f)),
-                            modifier = Modifier.clickable {
-                                onOpenAdminSanction(
-                                    SanctionModalTarget(
-                                        userId = post.authorUserId,
-                                        studentId = post.authorStudentId,
-                                        userName = post.authorName,
-                                        userRole = post.authorRole
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                            modifier = Modifier
+                                .wrapContentWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    onOpenAdminSanction(
+                                        SanctionModalTarget(
+                                            userId = post.authorUserId,
+                                            studentId = post.authorStudentId,
+                                            userName = post.authorName,
+                                            userRole = post.authorRole
+                                        )
                                     )
-                                )
-                            }
+                                }
+                                .testTag("admin_sanction_post_btn_${post.id}")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .wrapContentWidth()
+                                    .padding(PaddingValues(horizontal = 12.dp, vertical = 6.dp)),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                VectorShieldModerationIcon(tint = DangerRed, size = 14.dp)
+                                Icon(
+                                    imageVector = Icons.Default.Shield,
+                                    contentDescription = "إجراءات رقابية",
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(16.dp)
+                                )
                                 Text(
-                                    text = "إجراء رقابي",
+                                    text = "إجراءات رقابية",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = DangerRed,
+                                    color = Color(0xFF065F46),
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -2600,13 +2615,28 @@ private fun UserCreativeProfileModalDialog(
                                             )
                                         )
                                     },
-                                    border = BorderStroke(1.dp, Color(0xFFFFB4AB)),
+                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFFFDAD6)
+                                        containerColor = Color(0xFFECFDF5),
+                                        contentColor = Color(0xFF065F46)
                                     ),
-                                    shape = RoundedCornerShape(50)
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
-                                    Text("إجراء رقابي / العقوبات", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Icon(
+                                        imageVector = Icons.Default.Shield,
+                                        contentDescription = null,
+                                        tint = Color(0xFF059669),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "إجراءات رقابية",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                             }
                         }

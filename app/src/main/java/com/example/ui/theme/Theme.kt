@@ -1,14 +1,23 @@
 package com.example.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.sp
 
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryDark,
@@ -59,33 +68,35 @@ fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    androidx.compose.runtime.remember(context) {
-        CairoFontManager.initSynchronouslyIfCached(context)
-        true
+    val context = LocalContext.current
+    var activeFontFamily by remember {
+        mutableStateOf<FontFamily>(ArabicFontLoader.getInitialFontFamily(context))
     }
-    androidx.compose.runtime.LaunchedEffect(context) {
-        CairoFontManager.ensureCairoFontsLoaded(context)
+
+    LaunchedEffect(Unit) {
+        val loadedFontFamily = ArabicFontLoader.loadArabicFontFamily(context)
+        activeFontFamily = loadedFontFamily
+    }
+
+    val dynamicTypography = remember(activeFontFamily) {
+        buildAppTypography(activeFontFamily)
     }
 
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-    val activeTypography = CairoFontManager.currentTypography
-    val activeFontFamily = CairoFontManager.currentFontFamily
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = activeTypography
+            typography = dynamicTypography
         ) {
-            androidx.compose.material3.ProvideTextStyle(
-                value = androidx.compose.ui.text.TextStyle(
-                    fontFamily = activeFontFamily,
-                    letterSpacing = 0.sp
-                )
+            CompositionLocalProvider(
+                LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(fontFamily = activeFontFamily))
             ) {
-                content()
+                ProvideTextStyle(
+                    value = TextStyle(fontFamily = activeFontFamily),
+                    content = content
+                )
             }
         }
     }
 }
-

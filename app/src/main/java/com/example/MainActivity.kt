@@ -63,6 +63,8 @@ import com.example.ui.components.Base64AvatarImage
 import com.example.ui.components.DigitalStudentIdDialog
 import com.example.ui.components.GlobalImageLightboxDialog
 import com.example.ui.components.ParentMultiChildSwitcherBar
+import com.example.ui.components.ParentStudentCanteenWalletDialog
+import com.example.ui.components.SmartCanteenPosAndWalletDialog
 import com.example.ui.components.ProgressiveInfiniteScrollFooter
 import com.example.ui.components.SchoolHolidaysManagementModalDialog
 import com.example.ui.components.StudentActivitiesLinearVector
@@ -892,6 +894,11 @@ fun AuthenticatedMainPlatform(
 
     var idCardDialogStudent by remember { mutableStateOf<StudentRecord?>(null) }
     var showNotificationsSheet by remember { mutableStateOf(false) }
+    var showCanteenPosDialogFromDrawer by remember { mutableStateOf(false) }
+    var showStudentWalletDialogFromDrawer by remember { mutableStateOf(false) }
+    val canManageCanteen = remember(currentUser) {
+        viewModel.canUserManageCanteen(currentUser)
+    }
 
     LaunchedEffect(featureSettings, activeSection, schoolConfig.schoolType) {
         if (!featureSettings.qrAttendanceEnabled && idCardDialogStudent != null) {
@@ -1162,6 +1169,44 @@ fun AuthenticatedMainPlatform(
                                                     coroutineScope.launch { drawerState.close() }
                                                 }
                                             )
+                                        }
+                                    }
+                                }
+
+                                // قسم محفظة وحانوت المدرسة الذكي (للمدير، المعلم المخول، ولي الأمر، والطالب)
+                                if (canManageCanteen || currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT) {
+                                    item(key = "drawer_group_canteen_wallet") {
+                                        LuxuryDrawerGroupCard(
+                                            groupTitle = "محفظة وحانوت المدرسة",
+                                            isDarkMode = isDarkMode
+                                        ) {
+                                            if (canManageCanteen) {
+                                                LuxuryDrawerMenuItem(
+                                                    title = "محفظة وحانوت المدرسة",
+                                                    subtitle = "نظام كاشير الحانوت الذكية وشحن الرصيد",
+                                                    icon = Icons.Filled.Storefront,
+                                                    selected = showCanteenPosDialogFromDrawer,
+                                                    isDarkMode = isDarkMode,
+                                                    testTag = "drawer_canteen_pos_wallet_button",
+                                                    onClick = {
+                                                        coroutineScope.launch { drawerState.close() }
+                                                        showCanteenPosDialogFromDrawer = true
+                                                    }
+                                                )
+                                            } else {
+                                                LuxuryDrawerMenuItem(
+                                                    title = "محفظتي والحانوت",
+                                                    subtitle = "محفظة الطالب الذكية وسجل الحركات والحد اليومي",
+                                                    icon = Icons.Filled.AccountBalanceWallet,
+                                                    selected = showStudentWalletDialogFromDrawer,
+                                                    isDarkMode = isDarkMode,
+                                                    testTag = "drawer_student_canteen_wallet_button",
+                                                    onClick = {
+                                                        coroutineScope.launch { drawerState.close() }
+                                                        showStudentWalletDialogFromDrawer = true
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1894,6 +1939,58 @@ fun AuthenticatedMainPlatform(
             },
             onDismiss = { idCardDialogStudent = null }
         )
+    }
+
+    if (showCanteenPosDialogFromDrawer && canManageCanteen) {
+        val todayIsoStr = remember { com.example.ui.components.ArabicCalendarDateHelper.todayIsoDate() }
+        val activeSchoolStudents = remember(allStudents, schoolConfig.schoolId) {
+            allStudents.filter { it.schoolId.isEmpty() || it.schoolId == schoolConfig.schoolId }
+        }
+        SmartCanteenPosAndWalletDialog(
+            students = activeSchoolStudents,
+            todayIso = todayIsoStr,
+            onTopUpWallet = { stuId, amountIqd, note, onComplete ->
+                viewModel.topUpStudentWallet(stuId, amountIqd, note, onComplete)
+            },
+            onProcessPurchase = { stuId, amountIqd, itemSummary, onComplete ->
+                viewModel.processCanteenPurchase(stuId, amountIqd, itemSummary) { ok, msg, _ ->
+                    onComplete(ok, msg)
+                }
+            },
+            onFindStudentByQr = { rawQr ->
+                viewModel.findStudentByWalletOrQrCode(rawQr)
+            },
+            onDismiss = { showCanteenPosDialogFromDrawer = false }
+        )
+    }
+
+    if (showStudentWalletDialogFromDrawer) {
+        val walletTargetStudent = if (currentUser?.role == UserRole.PARENT) {
+            selectedParentChild
+        } else {
+            loggedInStudentRecord
+        }
+        if (walletTargetStudent != null) {
+            val todayIsoStr = remember { com.example.ui.components.ArabicCalendarDateHelper.todayIsoDate() }
+            ParentStudentCanteenWalletDialog(
+                student = walletTargetStudent,
+                isParentRole = currentUser?.role == UserRole.PARENT,
+                todayIso = todayIsoStr,
+                onUpdateDailyLimit = { newLimit, onComplete ->
+                    viewModel.updateStudentDailySpendLimit(walletTargetStudent.id, newLimit)
+                    onComplete(true, "تم حفظ السقف اليومي بنجاح")
+                },
+                onOpenStudentIdCard = {
+                    idCardDialogStudent = walletTargetStudent
+                },
+                onDismiss = { showStudentWalletDialogFromDrawer = false }
+            )
+        } else {
+            LaunchedEffect(Unit) {
+                showStudentWalletDialogFromDrawer = false
+                viewModel.showToastAlert("يرجى اختيار أو ربط ملف الطالب لعرض محفظة الحانوت", isSuccess = false)
+            }
+        }
     }
 }
 

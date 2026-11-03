@@ -1242,7 +1242,10 @@ data class DeveloperBroadcastItem(
     val message: String,
     val senderName: String = "إدارة المنصة التقنية",
     val createdAt: String,
-    val targetSchoolId: String = "ALL"
+    val targetSchoolId: String = "ALL",
+    val iconKey: String = OccasionIconKey.BELL.name,
+    val imageBase64: String = "",
+    val imageUrl: String = ""
 )
 
 data class StudentAutoBadge(

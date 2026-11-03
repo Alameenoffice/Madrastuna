@@ -89,6 +89,7 @@ import com.example.model.AttendanceStatus
 import com.example.model.CanteenTransactionType
 import com.example.model.CanteenWalletTransaction
 import com.example.model.DeveloperBroadcastItem
+import com.example.model.OccasionIconKey
 import com.example.model.SchoolConfig
 import com.example.model.StudentAutoBadge
 import com.example.model.StudentRecord
@@ -1600,76 +1601,78 @@ fun AdminSubscriptionAndBroadcastBanner(
                     .testTag("admin_developer_broadcast_banner"),
                 shape = RoundedCornerShape(16.dp),
                 color = Color(0xFFF0FDF4),
-                border = BorderStroke(1.dp, Color(0xFFBBF7D0))
+                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFD1FAE5)),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Campaign,
-                            contentDescription = null,
-                            tint = Color(0xFF059669),
-                            modifier = Modifier.size(18.dp)
+                        DeveloperSelectedIconBox(
+                            iconKey = OccasionIconKey.fromKey(latestBroadcast.iconKey),
+                            size = 36.dp
                         )
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFFD1FAE5),
-                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFD1FAE5),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                            ) {
+                                Text(
+                                    text = "تعميم مدراء المدارس: ${latestBroadcast.title}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF065F46),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                )
+                            }
                             Text(
-                                text = "تعميم مدراء المدارس: ${latestBroadcast.title}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFF065F46),
-                                fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                text = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF1E293B)
                             )
                         }
-                        Text(
-                            text = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF1E293B)
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFD1FAE5).copy(alpha = 0.65f))
-                            .clickable {
-                                isBroadcastBannerDismissed = true
-                                developerBroadcasts.forEach { bc ->
-                                    val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                                    onDismissBroadcast(key)
-                                    if (bc.id.isNotBlank()) {
-                                        onDismissBroadcast(bc.id)
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFD1FAE5).copy(alpha = 0.65f))
+                                .clickable {
+                                    isBroadcastBannerDismissed = true
+                                    developerBroadcasts.forEach { bc ->
+                                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                                        onDismissBroadcast(key)
+                                        if (bc.id.isNotBlank()) {
+                                            onDismissBroadcast(bc.id)
+                                        }
                                     }
                                 }
-                            }
-                            .testTag("dismiss_developer_broadcast_btn"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "تجاهل وإغلاق التعميم",
-                            tint = Color(0xFF065F46),
-                            modifier = Modifier.size(15.dp)
+                                .testTag("dismiss_developer_broadcast_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "تجاهل وإغلاق التعميم",
+                                tint = Color(0xFF065F46),
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+
+                    if (latestBroadcast.imageBase64.isNotBlank() || latestBroadcast.imageUrl.isNotBlank()) {
+                        DeveloperAttachedImageBannerSection(
+                            imageBase64 = latestBroadcast.imageBase64,
+                            imageUrl = latestBroadcast.imageUrl
                         )
                     }
                 }
@@ -2632,13 +2635,14 @@ fun ParentStudentCanteenWalletCard(
     isParentRole: Boolean,
     onUpdateDailyLimit: (Int, (Boolean, String) -> Unit) -> Unit,
     onOpenWalletBarcodePass: () -> Unit,
+    defaultShowTransactions: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var limitInput by remember(student.id, student.dailySpendLimit) {
         mutableStateOf(student.dailySpendLimit.toString())
     }
     var statusMessage by remember { mutableStateOf<String?>(null) }
-    var showTransactions by remember { mutableStateOf(false) }
+    var showTransactions by remember(defaultShowTransactions) { mutableStateOf(defaultShowTransactions) }
     val spentToday = student.getSpentToday(todayIso)
 
     Card(
@@ -3000,4 +3004,99 @@ fun ParentStudentCanteenWalletCard(
     }
 }
 
+@Composable
+fun ParentStudentCanteenWalletDialog(
+    student: StudentRecord,
+    isParentRole: Boolean,
+    todayIso: String = ArabicCalendarDateHelper.todayIsoDate(),
+    onUpdateDailyLimit: (newLimit: Int, onResult: (Boolean, String) -> Unit) -> Unit,
+    onOpenStudentIdCard: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 760.dp)
+                .testTag("parent_student_canteen_wallet_dialog"),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.5.dp, Color(0xFFA7F3D0)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFECFDF5))
+                                .border(1.dp, Color(0xFFA7F3D0), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountBalanceWallet,
+                                contentDescription = null,
+                                tint = Color(0xFF059669),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "محفظة الطالب الذكية وسجل الحركات والحد اليومي",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color(0xFF065F46),
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "متابعة الرصيد والمشتريات وتحديد السقف اليومي للحانوت",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF475569)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("close_parent_student_wallet_dialog_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "إغلاق",
+                            tint = Color(0xFF065F46)
+                        )
+                    }
+                }
 
+                ParentStudentCanteenWalletCard(
+                    student = student,
+                    isParentRole = isParentRole,
+                    todayIso = todayIso,
+                    onUpdateDailyLimit = onUpdateDailyLimit,
+                    onOpenWalletBarcodePass = {
+                        onDismiss()
+                        onOpenStudentIdCard()
+                    },
+                    defaultShowTransactions = true
+                )
+            }
+        }
+    }
+}

@@ -721,7 +721,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
-    fun sendDeveloperBroadcastToPrincipals(title: String, message: String) {
+    fun sendDeveloperBroadcastToPrincipals(
+        title: String,
+        message: String,
+        iconKey: String = OccasionIconKey.BELL.name,
+        imageBase64: String = "",
+        imageUrl: String = ""
+    ) {
         val cleanTitle = InputSanitizer.sanitize(title)
         val cleanMsg = InputSanitizer.sanitize(message)
         if (cleanTitle.isBlank() || cleanMsg.isBlank()) {
@@ -735,7 +741,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             message = cleanMsg,
             senderName = "إدارة المنصة التقنية",
             createdAt = today,
-            targetSchoolId = "ALL"
+            targetSchoolId = "ALL",
+            iconKey = iconKey.ifBlank { OccasionIconKey.BELL.name },
+            imageBase64 = imageBase64.trim(),
+            imageUrl = InputSanitizer.sanitize(imageUrl)
         )
         val updated = listOf(item) + _developerBroadcasts.value
         _developerBroadcasts.value = updated
@@ -767,7 +776,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert("تم إرسال التعميم الفوري لجميع مدراء المدارس المشتركة بنجاح", isSuccess = true)
     }
 
-    fun updateDeveloperBroadcast(broadcastId: String, newTitle: String, newMessage: String) {
+    fun updateDeveloperBroadcast(
+        broadcastId: String,
+        newTitle: String,
+        newMessage: String,
+        newIconKey: String? = null,
+        newImageBase64: String? = null,
+        newImageUrl: String? = null
+    ) {
         val cleanTitle = InputSanitizer.sanitize(newTitle)
         val cleanMsg = InputSanitizer.sanitize(newMessage)
         if (cleanTitle.isBlank() || cleanMsg.isBlank()) {
@@ -776,12 +792,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         val updated = _developerBroadcasts.value.map { item ->
             if (item.id == broadcastId) {
-                item.copy(title = cleanTitle, message = cleanMsg)
+                item.copy(
+                    title = cleanTitle,
+                    message = cleanMsg,
+                    iconKey = newIconKey?.ifBlank { item.iconKey } ?: item.iconKey,
+                    imageBase64 = newImageBase64 ?: item.imageBase64,
+                    imageUrl = if (newImageUrl != null) InputSanitizer.sanitize(newImageUrl) else item.imageUrl
+                )
             } else item
         }
         _developerBroadcasts.value = updated
         repo.saveDeveloperBroadcasts(updated)
-        showToastAlert("تم تعديل وتحديث نص التعميم لدى جميع مدراء المدارس فوراً", isSuccess = true)
+        showToastAlert("تم تعديل وتحديث التعميم لدى جميع مدراء المدارس فوراً", isSuccess = true)
     }
 
     fun deleteDeveloperBroadcast(broadcastId: String) {

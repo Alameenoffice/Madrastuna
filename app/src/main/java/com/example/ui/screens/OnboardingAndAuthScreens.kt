@@ -1547,31 +1547,41 @@ fun DeveloperControlPanelScreen(
                         developerBroadcasts.forEach { bc ->
                             Surface(
                                 color = Color(0xFFECFDF5),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.45f)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA7F3D0)),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(
                                     modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "${bc.title} (${bc.createdAt})",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = DeepForestGreen,
-                                                fontWeight = FontWeight.ExtraBold
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            DeveloperSelectedIconBox(
+                                                iconKey = OccasionIconKey.fromKey(bc.iconKey),
+                                                size = 36.dp
                                             )
-                                            Text(
-                                                text = bc.message,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = DeepEmerald
-                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "${bc.title} (${bc.createdAt})",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = DeepForestGreen,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                                Text(
+                                                    text = bc.message,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = DeepEmerald
+                                                )
+                                            }
                                         }
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             TextButton(
@@ -1604,6 +1614,12 @@ fun DeveloperControlPanelScreen(
                                             }
                                         }
                                     }
+                                    if (bc.imageBase64.isNotBlank() || bc.imageUrl.isNotBlank()) {
+                                        DeveloperAttachedImageBannerSection(
+                                            imageBase64 = bc.imageBase64,
+                                            imageUrl = bc.imageUrl
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1612,13 +1628,21 @@ fun DeveloperControlPanelScreen(
                     editingBroadcast?.let { targetBc ->
                         var editedTitle by remember(targetBc.id) { mutableStateOf(targetBc.title) }
                         var editedMsg by remember(targetBc.id) { mutableStateOf(targetBc.message) }
+                        var editedIconKey by remember(targetBc.id) {
+                            mutableStateOf(OccasionIconKey.fromKey(targetBc.iconKey))
+                        }
+                        var editedImageBase64 by remember(targetBc.id) { mutableStateOf(targetBc.imageBase64) }
+                        var editedImageUrl by remember(targetBc.id) { mutableStateOf(targetBc.imageUrl) }
                         AlertDialog(
                             onDismissRequest = { editingBroadcast = null },
                             title = {
                                 Text("تعديل تعميم مدراء المدارس", fontWeight = FontWeight.ExtraBold)
                             },
                             text = {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Column(
+                                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
                                     OutlinedTextField(
                                         value = editedTitle,
                                         onValueChange = { editedTitle = it },
@@ -1633,12 +1657,75 @@ fun DeveloperControlPanelScreen(
                                         minLines = 3,
                                         modifier = Modifier.fillMaxWidth()
                                     )
+                                    Text(
+                                        text = "اختيار أيقونة مخصصة للتعميم:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepEmerald
+                                    )
+                                    OccasionVectorIconSelectorGrid(
+                                        selectedIconKey = editedIconKey,
+                                        hasCustomImage = false,
+                                        onSelectIcon = { editedIconKey = it }
+                                    )
+                                    Text(
+                                        text = "إرفاق صورة مدمجة مع التعميم (اختياري):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepEmerald
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CompressedPhotoPickerButton(
+                                            label = if (editedImageBase64.isBlank()) {
+                                                "رفع صورة مرفقة من الجهاز"
+                                            } else {
+                                                "تغيير الصورة المرفقة"
+                                            },
+                                            currentBase64 = editedImageBase64,
+                                            isAvatar = false,
+                                            onImageCompressed = { editedImageBase64 = it },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (editedImageBase64.isNotBlank()) {
+                                            OutlinedButton(
+                                                onClick = { editedImageBase64 = "" },
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed)
+                                            ) {
+                                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                    OutlinedTextField(
+                                        value = editedImageUrl,
+                                        onValueChange = { editedImageUrl = it },
+                                        label = { Text("أو رابط صورة مرفقة (Image URL)") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    if (editedImageBase64.isNotBlank() || editedImageUrl.isNotBlank()) {
+                                        DeveloperAttachedImageBannerSection(
+                                            imageBase64 = editedImageBase64,
+                                            imageUrl = editedImageUrl
+                                        )
+                                    }
                                 }
                             },
                             confirmButton = {
                                 Button(
                                     onClick = {
-                                        viewModel.updateDeveloperBroadcast(targetBc.id, editedTitle, editedMsg)
+                                        viewModel.updateDeveloperBroadcast(
+                                            broadcastId = targetBc.id,
+                                            newTitle = editedTitle,
+                                            newMessage = editedMsg,
+                                            newIconKey = editedIconKey.name,
+                                            newImageBase64 = editedImageBase64,
+                                            newImageUrl = editedImageUrl
+                                        )
                                         editingBroadcast = null
                                     },
                                     enabled = editedTitle.isNotBlank() && editedMsg.isNotBlank(),
@@ -2002,7 +2089,7 @@ fun DeveloperControlPanelScreen(
                                 color = Color.Transparent,
                                 border = androidx.compose.foundation.BorderStroke(
                                     if (isPresetSelected) 2.dp else 1.dp,
-                                    if (isPresetSelected) Color(0xFFFBBF24) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                    if (isPresetSelected) Color(0xFF059669) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                                 ),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
@@ -2027,9 +2114,9 @@ fun DeveloperControlPanelScreen(
                         }
                     }
 
-                    // 4) قائمة/شبكة أيقونات Vector SVG فخمة (11 أيقونة) أو رفع صورة مخصصة من الجهاز
+                    // 4) قائمة/شبكة أيقونات Vector SVG فخمة (11 أيقونة) + إرفاق صورة مدمجة مع التنبيه
                     Text(
-                        text = "4. مكتبة أيقونات المناسبة الفخمة (Vector SVG) بضغطة زر:",
+                        text = "4. اختيار أيقونة مخصصة للتنبيه / المناسبة (Vector SVG) بضغطة زر:",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2037,14 +2124,19 @@ fun DeveloperControlPanelScreen(
 
                     OccasionVectorIconSelectorGrid(
                         selectedIconKey = selectedOccasionIconKey,
-                        hasCustomImage = customOccasionIconBase64.isNotBlank(),
+                        hasCustomImage = false,
                         onSelectIcon = { iconKey ->
                             selectedOccasionIconKey = iconKey
-                            customOccasionIconBase64 = ""
                         }
                     )
 
-                    // أو زر "رفع صورة/أيقونة مخصصة من الجهاز"
+                    Text(
+                        text = "5. إرفاق/رفع صورة مدمجة تظهر داخل بطاقة التنبيه (من الجهاز أو عبر رابط):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2052,12 +2144,12 @@ fun DeveloperControlPanelScreen(
                     ) {
                         CompressedPhotoPickerButton(
                             label = if (customOccasionIconBase64.isBlank()) {
-                                "أو رفع صورة/أيقونة مخصصة من الجهاز"
+                                "إرفاق/رفع صورة مدمجة مع التنبيه من الجهاز"
                             } else {
-                                "تغيير الأيقونة المخصصة المرفوعة"
+                                "تغيير الصورة المرفقة مع التنبيه"
                             },
                             currentBase64 = customOccasionIconBase64,
-                            isAvatar = true,
+                            isAvatar = false,
                             onImageCompressed = { b64: String ->
                                 customOccasionIconBase64 = b64
                             },
@@ -2071,10 +2163,21 @@ fun DeveloperControlPanelScreen(
                             ) {
                                 Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("العودة لأيقونة Vector")
+                                Text("إزالة الصورة")
                             }
                         }
                     }
+
+                    OutlinedTextField(
+                        value = customOccasionIconUrl,
+                        onValueChange = { customOccasionIconUrl = it },
+                        label = { Text("أو وضع رابط صورة مرفقة مع التنبيه (Image URL)") },
+                        placeholder = { Text("https://...") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dev_occasion_image_url_input")
+                    )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2520,12 +2623,18 @@ fun DeveloperControlPanelScreen(
     if (showBroadcastToPrincipalsDialog) {
         var broadcastTitle by remember { mutableStateOf("تعميم وتحديث إداري هام لمدراء المدارس") }
         var broadcastMessage by remember { mutableStateOf("") }
+        var broadcastIconKey by remember { mutableStateOf(OccasionIconKey.BELL) }
+        var broadcastImageBase64 by remember { mutableStateOf("") }
+        var broadcastImageUrl by remember { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showBroadcastToPrincipalsDialog = false },
-            title = { Text("إرسال تعميم لمدراء المدارس المشتركة") },
+            title = { Text("إرسال تعميم لمدراء المدارس المشتركة", fontWeight = FontWeight.ExtraBold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Text(
                         text = "سيصل هذا التعميم كإشعار فوري يظهر لحسابات (المدير ADMIN) فقط في جميع المدارس المشتركة.",
                         style = MaterialTheme.typography.bodySmall,
@@ -2543,8 +2652,66 @@ fun DeveloperControlPanelScreen(
                         onValueChange = { broadcastMessage = it },
                         label = { Text("نص التعميم الموجه لمدراء المدارس") },
                         placeholder = { Text("اكتب تفاصيل التحديث أو التنبيه الإداري هنا...") },
+                        minLines = 2,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Text(
+                        text = "اختيار أيقونة مخصصة للتعميم:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald
+                    )
+                    OccasionVectorIconSelectorGrid(
+                        selectedIconKey = broadcastIconKey,
+                        hasCustomImage = false,
+                        onSelectIcon = { broadcastIconKey = it }
+                    )
+                    Text(
+                        text = "إرفاق/رفع صورة مدمجة مع التعميم (اختياري):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CompressedPhotoPickerButton(
+                            label = if (broadcastImageBase64.isBlank()) {
+                                "رفع صورة مرفقة من الجهاز"
+                            } else {
+                                "تغيير الصورة المرفقة"
+                            },
+                            currentBase64 = broadcastImageBase64,
+                            isAvatar = false,
+                            onImageCompressed = { broadcastImageBase64 = it },
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (broadcastImageBase64.isNotBlank()) {
+                            OutlinedButton(
+                                onClick = { broadcastImageBase64 = "" },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed)
+                            ) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = broadcastImageUrl,
+                        onValueChange = { broadcastImageUrl = it },
+                        label = { Text("أو رابط صورة مرفقة (Image URL)") },
+                        placeholder = { Text("https://...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (broadcastImageBase64.isNotBlank() || broadcastImageUrl.isNotBlank()) {
+                        DeveloperAttachedImageBannerSection(
+                            imageBase64 = broadcastImageBase64,
+                            imageUrl = broadcastImageUrl
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -2555,7 +2722,10 @@ fun DeveloperControlPanelScreen(
                         if (broadcastMessage.isNotBlank()) {
                             viewModel.sendDeveloperBroadcastToPrincipals(
                                 title = broadcastTitle,
-                                message = broadcastMessage
+                                message = broadcastMessage,
+                                iconKey = broadcastIconKey.name,
+                                imageBase64 = broadcastImageBase64,
+                                imageUrl = broadcastImageUrl
                             )
                             showBroadcastToPrincipalsDialog = false
                         }

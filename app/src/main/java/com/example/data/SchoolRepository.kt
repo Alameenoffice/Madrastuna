@@ -2106,7 +2106,10 @@ class SchoolRepository(context: Context) {
                         message = o.optString("message"),
                         senderName = o.optString("senderName", "إدارة المنصة التقنية").replace("المطور أحمد أبو رسلان", "إدارة المنصة التقنية").replace("أبو رسلان", "").trim().ifBlank { "إدارة المنصة التقنية" },
                         createdAt = o.optString("createdAt"),
-                        targetSchoolId = o.optString("targetSchoolId", "ALL")
+                        targetSchoolId = o.optString("targetSchoolId", "ALL"),
+                        iconKey = o.optString("iconKey", "BELL").ifBlank { "BELL" },
+                        imageBase64 = o.optString("imageBase64", ""),
+                        imageUrl = o.optString("imageUrl", "")
                     )
                 )
             }
@@ -2141,6 +2144,9 @@ class SchoolRepository(context: Context) {
                 put("senderName", InputSanitizer.sanitize(b.senderName))
                 put("createdAt", InputSanitizer.sanitize(b.createdAt))
                 put("targetSchoolId", b.targetSchoolId)
+                put("iconKey", b.iconKey.ifBlank { "BELL" })
+                put("imageBase64", b.imageBase64)
+                put("imageUrl", InputSanitizer.sanitize(b.imageUrl))
             })
         }
         return arr.toString()

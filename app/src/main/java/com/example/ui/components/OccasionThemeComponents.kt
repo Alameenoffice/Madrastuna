@@ -656,7 +656,7 @@ fun OccasionVectorIconSelectorGrid(
         maxItemsInEachRow = 4
     ) {
         OccasionIconKey.entries.forEach { iconKey ->
-            val isSelected = !hasCustomImage && selectedIconKey == iconKey
+            val isSelected = selectedIconKey == iconKey
             Surface(
                 modifier = Modifier
                     .weight(1f)
@@ -664,12 +664,12 @@ fun OccasionVectorIconSelectorGrid(
                     .clickable { onSelectIcon(iconKey) }
                     .testTag("select_occasion_vector_icon_${iconKey.name}"),
                 shape = RoundedCornerShape(14.dp),
-                color = if (isSelected) Color(0xFF064E3B) else Color.White,
+                color = if (isSelected) Color(0xFFECFDF5) else Color.White,
                 border = BorderStroke(
-                    width = if (isSelected) 2.dp else 1.dp,
-                    color = if (isSelected) Color(0xFFF59E0B) else Color(0xFFD1FAE5)
+                    width = if (isSelected) 1.5.dp else 1.dp,
+                    color = if (isSelected) Color(0xFF059669) else Color(0xFFD1FAE5)
                 ),
-                shadowElevation = if (isSelected) 4.dp else 1.dp
+                shadowElevation = if (isSelected) 2.dp else 0.dp
             ) {
                 Column(
                     modifier = Modifier
@@ -677,23 +677,10 @@ fun OccasionVectorIconSelectorGrid(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isSelected) Color.White.copy(alpha = 0.14f)
-                                else Color(0xFF042F2E)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        OccasionVectorEmblem(
-                            themeType = OccasionThemeType.OFFICIAL,
-                            iconKey = iconKey,
-                            customIconBase64 = "",
-                            size = 34.dp
-                        )
-                    }
+                    DeveloperSelectedIconBox(
+                        iconKey = iconKey,
+                        size = 36.dp
+                    )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(3.dp)
@@ -702,7 +689,7 @@ fun OccasionVectorIconSelectorGrid(
                             Icon(
                                 imageVector = Icons.Filled.Check,
                                 contentDescription = null,
-                                tint = Color(0xFFFBBF24),
+                                tint = Color(0xFF059669),
                                 modifier = Modifier.size(12.dp)
                             )
                         }
@@ -710,10 +697,405 @@ fun OccasionVectorIconSelectorGrid(
                             text = iconKey.arabicLabel,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                            color = if (isSelected) Color(0xFFFDE68A) else Color(0xFF064E3B),
+                            color = if (isSelected) Color(0xFF065F46) else Color(0xFF334155),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Renders any of the 11 Developer Alert Icons in pure Emerald (0xFF059669) inside a soft Emerald box (0xFFD1FAE5).
+ */
+@Composable
+fun DeveloperSelectedIconBox(
+    iconKey: OccasionIconKey,
+    size: Dp = 36.dp,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFFD1FAE5)),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(size * 0.78f)) {
+            val w = this.size.width
+            val h = this.size.height
+            val emeraldColor = Color(0xFF059669)
+            val deepEmeraldColor = Color(0xFF047857)
+            val emeraldBrush = Brush.linearGradient(
+                colors = listOf(emeraldColor, deepEmeraldColor)
+            )
+            when (iconKey) {
+                OccasionIconKey.CROWN -> {
+                    val crownPath = Path().apply {
+                        moveTo(w * 0.18f, h * 0.72f)
+                        lineTo(w * 0.14f, h * 0.36f)
+                        lineTo(w * 0.36f, h * 0.52f)
+                        lineTo(w * 0.50f, h * 0.24f)
+                        lineTo(w * 0.64f, h * 0.52f)
+                        lineTo(w * 0.86f, h * 0.36f)
+                        lineTo(w * 0.82f, h * 0.72f)
+                        close()
+                    }
+                    drawPath(path = crownPath, brush = emeraldBrush)
+                    drawRoundRect(
+                        brush = emeraldBrush,
+                        topLeft = Offset(w * 0.18f, h * 0.76f),
+                        size = Size(w * 0.64f, h * 0.09f),
+                        cornerRadius = CornerRadius(w * 0.04f, w * 0.04f)
+                    )
+                }
+                OccasionIconKey.CRESCENT -> {
+                    val crescentPath = Path().apply {
+                        val cx = w * 0.48f
+                        val cy = h * 0.50f
+                        val rOuter = w * 0.32f
+                        val rInner = w * 0.25f
+                        addOval(
+                            androidx.compose.ui.geometry.Rect(
+                                cx - rOuter,
+                                cy - rOuter,
+                                cx + rOuter,
+                                cy + rOuter
+                            )
+                        )
+                        val cutout = Path().apply {
+                            addOval(
+                                androidx.compose.ui.geometry.Rect(
+                                    cx - rInner + w * 0.12f,
+                                    cy - rInner - h * 0.04f,
+                                    cx + rInner + w * 0.12f,
+                                    cy + rInner - h * 0.04f
+                                )
+                            )
+                        }
+                        op(this, cutout, androidx.compose.ui.graphics.PathOperation.Difference)
+                    }
+                    drawPath(path = crescentPath, brush = emeraldBrush)
+                    drawStar(
+                        center = Offset(w * 0.68f, h * 0.34f),
+                        outerRadius = w * 0.11f,
+                        innerRadius = w * 0.048f,
+                        color = emeraldColor
+                    )
+                }
+                OccasionIconKey.GRADUATION_CAP -> {
+                    val capTop = Path().apply {
+                        moveTo(w * 0.50f, h * 0.22f)
+                        lineTo(w * 0.88f, h * 0.42f)
+                        lineTo(w * 0.50f, h * 0.62f)
+                        lineTo(w * 0.12f, h * 0.42f)
+                        close()
+                    }
+                    drawPath(capTop, brush = emeraldBrush)
+                    val skullCap = Path().apply {
+                        moveTo(w * 0.28f, h * 0.54f)
+                        lineTo(w * 0.28f, h * 0.72f)
+                        quadraticTo(w * 0.50f, h * 0.84f, w * 0.72f, h * 0.72f)
+                        lineTo(w * 0.72f, h * 0.54f)
+                        lineTo(w * 0.50f, h * 0.65f)
+                        close()
+                    }
+                    drawPath(skullCap, color = deepEmeraldColor)
+                }
+                OccasionIconKey.TROPHY -> {
+                    val cupPath = Path().apply {
+                        moveTo(w * 0.26f, h * 0.22f)
+                        lineTo(w * 0.74f, h * 0.22f)
+                        lineTo(w * 0.66f, h * 0.54f)
+                        quadraticTo(w * 0.50f, h * 0.68f, w * 0.34f, h * 0.54f)
+                        close()
+                    }
+                    drawPath(cupPath, brush = emeraldBrush)
+                    drawLine(
+                        color = emeraldColor,
+                        start = Offset(w * 0.50f, h * 0.58f),
+                        end = Offset(w * 0.50f, h * 0.76f),
+                        strokeWidth = w * 0.08f
+                    )
+                    drawRoundRect(
+                        brush = emeraldBrush,
+                        topLeft = Offset(w * 0.30f, h * 0.74f),
+                        size = Size(w * 0.40f, h * 0.09f),
+                        cornerRadius = CornerRadius(w * 0.03f, w * 0.03f)
+                    )
+                }
+                OccasionIconKey.SHIELD -> {
+                    val shield = Path().apply {
+                        moveTo(w * 0.50f, h * 0.16f)
+                        lineTo(w * 0.80f, h * 0.28f)
+                        lineTo(w * 0.80f, h * 0.52f)
+                        quadraticTo(w * 0.76f, h * 0.76f, w * 0.50f, h * 0.86f)
+                        quadraticTo(w * 0.24f, h * 0.76f, w * 0.20f, h * 0.52f)
+                        lineTo(w * 0.20f, h * 0.28f)
+                        close()
+                    }
+                    drawPath(shield, brush = emeraldBrush)
+                    drawStar(
+                        center = Offset(w * 0.50f, h * 0.50f),
+                        outerRadius = w * 0.15f,
+                        innerRadius = w * 0.06f,
+                        color = Color.White
+                    )
+                }
+                OccasionIconKey.FLAG -> {
+                    drawLine(
+                        brush = emeraldBrush,
+                        start = Offset(w * 0.24f, h * 0.18f),
+                        end = Offset(w * 0.24f, h * 0.84f),
+                        strokeWidth = w * 0.065f,
+                        cap = StrokeCap.Round
+                    )
+                    val flagPath = Path().apply {
+                        moveTo(w * 0.27f, h * 0.22f)
+                        cubicTo(w * 0.44f, h * 0.16f, w * 0.60f, h * 0.30f, w * 0.80f, h * 0.24f)
+                        lineTo(w * 0.80f, h * 0.54f)
+                        cubicTo(w * 0.60f, h * 0.60f, w * 0.44f, h * 0.46f, w * 0.27f, h * 0.54f)
+                        close()
+                    }
+                    drawPath(flagPath, brush = emeraldBrush)
+                }
+                OccasionIconKey.BOOK -> {
+                    val leftPage = Path().apply {
+                        moveTo(w * 0.50f, h * 0.28f)
+                        quadraticTo(w * 0.33f, h * 0.22f, w * 0.16f, h * 0.28f)
+                        lineTo(w * 0.16f, h * 0.74f)
+                        quadraticTo(w * 0.33f, h * 0.68f, w * 0.50f, h * 0.74f)
+                        close()
+                    }
+                    val rightPage = Path().apply {
+                        moveTo(w * 0.50f, h * 0.28f)
+                        quadraticTo(w * 0.67f, h * 0.22f, w * 0.84f, h * 0.28f)
+                        lineTo(w * 0.84f, h * 0.74f)
+                        quadraticTo(w * 0.67f, h * 0.68f, w * 0.50f, h * 0.74f)
+                        close()
+                    }
+                    drawPath(leftPage, brush = emeraldBrush)
+                    drawPath(rightPage, brush = emeraldBrush)
+                    drawLine(
+                        color = Color.White,
+                        start = Offset(w * 0.50f, h * 0.26f),
+                        end = Offset(w * 0.50f, h * 0.75f),
+                        strokeWidth = w * 0.045f
+                    )
+                }
+                OccasionIconKey.STAR -> {
+                    drawStar(
+                        center = Offset(w * 0.50f, h * 0.50f),
+                        outerRadius = w * 0.36f,
+                        innerRadius = w * 0.16f,
+                        color = emeraldColor
+                    )
+                }
+                OccasionIconKey.CALENDAR -> {
+                    drawRoundRect(
+                        brush = emeraldBrush,
+                        topLeft = Offset(w * 0.20f, h * 0.24f),
+                        size = Size(w * 0.60f, h * 0.56f),
+                        cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
+                    )
+                    drawLine(
+                        color = Color.White,
+                        start = Offset(w * 0.20f, h * 0.40f),
+                        end = Offset(w * 0.80f, h * 0.40f),
+                        strokeWidth = w * 0.045f
+                    )
+                }
+                OccasionIconKey.ROSE -> {
+                    val center = Offset(w * 0.50f, h * 0.44f)
+                    val petalRadius = w * 0.13f
+                    val ringDist = w * 0.13f
+                    for (i in 0 until 6) {
+                        val angle = (i * 60.0) * PI / 180.0
+                        val px = center.x + (ringDist * cos(angle)).toFloat()
+                        val py = center.y + (ringDist * sin(angle)).toFloat()
+                        drawCircle(
+                            color = emeraldColor,
+                            radius = petalRadius,
+                            center = Offset(px, py)
+                        )
+                    }
+                    drawCircle(
+                        color = Color.White,
+                        radius = w * 0.09f,
+                        center = center
+                    )
+                }
+                OccasionIconKey.BELL -> {
+                    val bellPath = Path().apply {
+                        moveTo(w * 0.50f, h * 0.18f)
+                        cubicTo(w * 0.30f, h * 0.18f, w * 0.26f, h * 0.38f, w * 0.26f, h * 0.58f)
+                        lineTo(w * 0.18f, h * 0.68f)
+                        lineTo(w * 0.82f, h * 0.68f)
+                        lineTo(w * 0.74f, h * 0.58f)
+                        cubicTo(w * 0.74f, h * 0.38f, w * 0.70f, h * 0.18f, w * 0.50f, h * 0.18f)
+                        close()
+                    }
+                    drawPath(bellPath, brush = emeraldBrush)
+                    drawCircle(
+                        color = deepEmeraldColor,
+                        radius = w * 0.065f,
+                        center = Offset(w * 0.50f, h * 0.77f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Displays an attached image (from `imageBase64` or `imageUrl`) inside a Developer Alert/Broadcast banner
+ * with rounded corners (`RoundedCornerShape(12.dp)`) and opens a full-screen zoomable dialog when tapped.
+ */
+@Composable
+fun DeveloperAttachedImageBannerSection(
+    imageBase64: String,
+    imageUrl: String = "",
+    modifier: Modifier = Modifier
+) {
+    val decodedBase64Bitmap = remember(imageBase64) {
+        if (imageBase64.isNotBlank()) {
+            runCatching {
+                val clean = imageBase64.substringAfter("base64,", imageBase64)
+                val bytes = Base64.decode(clean, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }.getOrNull()
+        } else null
+    }
+
+    var remoteBitmap by remember(imageUrl) {
+        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+    }
+
+    LaunchedEffect(imageUrl, decodedBase64Bitmap) {
+        if (decodedBase64Bitmap == null && imageUrl.isNotBlank() &&
+            (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))
+        ) {
+            val fetched = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val conn = (java.net.URL(imageUrl).openConnection() as java.net.HttpURLConnection).apply {
+                        connectTimeout = 7000
+                        readTimeout = 7000
+                        instanceFollowRedirects = true
+                    }
+                    val bmp = conn.inputStream.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+                    conn.disconnect()
+                    bmp
+                }.getOrNull()
+            }
+            remoteBitmap = fetched
+        }
+    }
+
+    val activeBitmap = decodedBase64Bitmap ?: remoteBitmap
+    if (activeBitmap == null) return
+
+    var showEnlargedDialog by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, Color(0xFFA7F3D0), RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .clickable { showEnlargedDialog = true }
+            .testTag("developer_alert_attached_image")
+    ) {
+        Image(
+            bitmap = activeBitmap,
+            contentDescription = "صورة مرفقة مع تنبيه المطور",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(156.dp)
+                .clip(RoundedCornerShape(12.dp))
+        )
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(8.dp),
+            shape = RoundedCornerShape(50),
+            color = Color.White.copy(alpha = 0.92f),
+            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+        ) {
+            Text(
+                text = "اضغط لتكبير الصورة",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF065F46),
+                fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            )
+        }
+    }
+
+    if (showEnlargedDialog) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showEnlargedDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .clickable { showEnlargedDialog = false }
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.5.dp, Color(0xFFA7F3D0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "معاينة الصورة المرفقة",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color(0xFF065F46),
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clickable { showEnlargedDialog = false }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "إغلاق",
+                                        tint = Color(0xFF065F46),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Image(
+                            bitmap = activeBitmap,
+                            contentDescription = "معاينة مكبرة للصورة المرفقة",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
                         )
                     }
                 }
@@ -1183,15 +1565,17 @@ private fun DrawScope.drawStar(
 
 fun occasionThemeBrush(primaryHex: String, gradientHex: String): Brush {
     val c1 = runCatching { Color(android.graphics.Color.parseColor(primaryHex)) }
-        .getOrDefault(Color(0xFF064E3B))
+        .getOrDefault(Color(0xFF047857))
     val c2 = runCatching { Color(android.graphics.Color.parseColor(gradientHex)) }
         .getOrDefault(Color(0xFF059669))
     return Brush.horizontalGradient(colors = listOf(c1, c2))
 }
 
 /**
- * Compact Luxury Occasion Banner shown on User Screens ONLY when `config.isActive == true`
+ * Clean Bright Occasion / Developer Alert Banner shown on Login & Dashboard when `config.isActive == true`
  * (or when `forcePreview == true` inside the Developer Control Panel).
+ * Displays the developer's chosen custom icon (`OccasionIconKey`) in pure Emerald (`0xFF059669`)
+ * and renders any attached image (`customIconBase64` / `customIconUrl`) with rounded corners and click-to-enlarge.
  */
 @Composable
 fun LiveOccasionBannerCard(
@@ -1199,7 +1583,14 @@ fun LiveOccasionBannerCard(
     modifier: Modifier = Modifier,
     forcePreview: Boolean = false
 ) {
-    var isLocallyDismissed by remember(config.effectiveTitle, config.effectiveBannerText, config.updatedAt) {
+    var isLocallyDismissed by remember(
+        config.effectiveTitle,
+        config.effectiveBannerText,
+        config.selectedIconKey,
+        config.customIconBase64,
+        config.customIconUrl,
+        config.updatedAt
+    ) {
         mutableStateOf(false)
     }
     // Hidden by default unless explicitly activated by the developer (or previewed in Dev Panel)
@@ -1207,6 +1598,7 @@ fun LiveOccasionBannerCard(
 
     val titleText = config.effectiveTitle.ifBlank { "تنبيه عام" }
     val bodyText = config.effectiveBannerText
+    val resolvedIcon = OccasionIconKey.fromKey(config.selectedIconKey)
 
     Surface(
         modifier = modifier
@@ -1214,88 +1606,91 @@ fun LiveOccasionBannerCard(
             .testTag("live_occasion_banner_card"),
         shape = RoundedCornerShape(16.dp),
         color = Color(0xFFF0FDF4),
-        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
         shadowElevation = 1.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // على اليمين: أيقونة تنبيه خطية زمردية صافية داخل مربع ناعم (32.dp بلون Color(0xFFD1FAE5))
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFFD1FAE5)),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Campaign,
-                    contentDescription = titleText,
-                    tint = Color(0xFF059669),
-                    modifier = Modifier.size(18.dp)
+                // على اليمين: الأيقونة المختارة من قِبل المطور باللون الزمردي الصافي داخل مربع ناعم
+                DeveloperSelectedIconBox(
+                    iconKey = resolvedIcon,
+                    size = 38.dp
                 )
-            }
 
-            // في الوسط: العنوان كشارة زمردية رقيقة + نص الرسالة بلون كحلي/رمادي مريح (Color(0xFF1E293B))
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // في الوسط: العنوان كشارة زمردية رقيقة + نص الرسالة بلون كحلي/رمادي مريح (Color(0xFF1E293B))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFFD1FAE5),
-                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFD1FAE5),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                        ) {
+                            Text(
+                                text = titleText,
+                                color = Color(0xFF065F46),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                    if (bodyText.isNotBlank()) {
                         Text(
-                            text = titleText,
-                            color = Color(0xFF065F46),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 1,
+                            text = bodyText,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF1E293B),
+                            maxLines = 3,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                            lineHeight = 19.sp
                         )
                     }
                 }
-                if (bodyText.isNotBlank()) {
-                    Text(
-                        text = bodyText,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1E293B),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 18.sp
-                    )
+
+                // على اليسار: زر إغلاق (X) صغير وأنيق لإخفائه فوراً
+                if (!forcePreview) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFD1FAE5).copy(alpha = 0.7f))
+                            .clickable { isLocallyDismissed = true }
+                            .testTag("dismiss_live_occasion_banner_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "إغلاق",
+                            tint = Color(0xFF065F46),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 
-            // على اليسار: زر إغلاق (X) صغير وأنيق لإخفائه فوراً
-            if (!forcePreview) {
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFD1FAE5).copy(alpha = 0.65f))
-                        .clickable { isLocallyDismissed = true }
-                        .testTag("dismiss_live_occasion_banner_btn"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "إغلاق",
-                        tint = Color(0xFF065F46),
-                        modifier = Modifier.size(15.dp)
-                    )
-                }
+            // الصورة المرفقة مع التنبيه (إن وُجدت) بحواف ناعمة وإمكانية التكبير عند الضغط عليها
+            if (config.customIconBase64.isNotBlank() || config.customIconUrl.isNotBlank()) {
+                DeveloperAttachedImageBannerSection(
+                    imageBase64 = config.customIconBase64,
+                    imageUrl = config.customIconUrl
+                )
             }
         }
     }
