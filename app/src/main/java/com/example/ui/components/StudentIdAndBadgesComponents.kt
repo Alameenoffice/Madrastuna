@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -416,22 +417,27 @@ fun DigitalStudentIdCardView(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // على اليمين: صورة الطالب الدائرية وتحتها وسام الطالب الكبسولي الأنيق مباشرة
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        // على اليمين: صورة الطالب الدائرية مدمج في حافتها السفلية وسام الطالب الكبسولي داخل Box بحجم 58.dp
+                        Box(
+                            modifier = Modifier
+                                .width(58.dp)
+                                .padding(bottom = 4.dp),
+                            contentAlignment = Alignment.TopCenter
                         ) {
                             AvatarOrPhotoView(
                                 base64Image = student.photoBase64,
                                 fallbackName = student.fullNameWithFather,
-                                size = 64.dp,
+                                size = 52.dp,
                                 borderColor = GoldFoil
                             )
                             CompactStudentBadgeCapsule(
                                 badges = badges,
                                 fallbackHonorTitle = student.honorTitle,
                                 isOnHonorRoll = student.isOnHonorRoll,
-                                onLightBackground = true
+                                onLightBackground = true,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .offset(y = 4.dp)
                             )
                         }
 

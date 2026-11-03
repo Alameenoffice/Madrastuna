@@ -7162,19 +7162,37 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         suspensionFromDate: String = "",
         suspensionToDate: String = "",
         reason: String = "",
-        transferredToSchoolName: String = ""
+        transferredToSchoolName: String = "",
+        decisionDate: String = "",
+        orderNumber: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val effStart = suspensionStartDate.ifBlank { suspensionFromDate }
         val effEnd = suspensionEndDate.ifBlank { suspensionToDate }
-        val cleanStart = ArabicTextNormalizer.normalizeDateIso(effStart.trim())
-        val cleanEnd = ArabicTextNormalizer.normalizeDateIso(effEnd.trim())
+        val cleanStart = ArabicTextNormalizer.normalizeDateIso(effStart.trim()).ifBlank { todayIso }
+        val cleanEnd = ArabicTextNormalizer.normalizeDateIso(effEnd.trim()).ifBlank { todayIso }
+        val cleanDecisionDate = ArabicTextNormalizer.normalizeDateIso(decisionDate.trim()).ifBlank { todayIso }
         val cleanReason = InputSanitizer.sanitize(reason).trim()
+        val cleanOrderNum = InputSanitizer.sanitize(orderNumber).trim()
         val cleanTransferredSchool = InputSanitizer.sanitize(transferredToSchoolName).trim()
+        val actorLabel = _currentUser.value?.fullName?.ifBlank { "مدير المدرسة" } ?: "مدير المدرسة"
 
         var updatedStuObj: StudentRecord? = null
         val isStillActiveAccount = (newStatus == StudentEnrollmentStatus.ACTIVE || newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP)
+
+        val historyItem = com.example.model.EnrollmentHistoryEntry(
+            id = "eh_${System.currentTimeMillis()}",
+            status = newStatus,
+            decisionDate = cleanDecisionDate,
+            suspensionStartDate = if (newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) cleanStart else "",
+            suspensionEndDate = if (newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) cleanEnd else "",
+            reason = cleanReason,
+            orderNumber = cleanOrderNum,
+            transferSchoolName = if (newStatus == StudentEnrollmentStatus.TRANSFERRED) cleanTransferredSchool else "",
+            actorName = actorLabel
+        )
 
         val updatedStudents = _students.value.map { stu ->
             if (stu.id == studentId) {
@@ -7184,6 +7202,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     suspensionEndDate = if (newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) cleanEnd else "",
                     enrollmentStatusReason = cleanReason,
                     transferredToSchoolName = if (newStatus == StudentEnrollmentStatus.TRANSFERRED) cleanTransferredSchool else "",
+                    enrollmentDecisionDate = cleanDecisionDate,
+                    enrollmentOrderNumber = cleanOrderNum,
+                    enrollmentHistory = (listOf(historyItem) + stu.enrollmentHistory).take(40),
                     isActive = isStillActiveAccount
                 )
                 updatedStuObj = u
@@ -7202,13 +7223,16 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             if (newStatus == StudentEnrollmentStatus.TRANSFERRED && cleanTransferredSchool.isNotEmpty()) {
                 append(" المدرسة المنقول إليها: ($cleanTransferredSchool).")
             }
+            if (cleanOrderNum.isNotEmpty()) {
+                append(" رقم الأمر الإداري: ($cleanOrderNum).")
+            }
             if (cleanReason.isNotEmpty()) {
                 append(" السبب الإداري: $cleanReason.")
             }
         }
 
         pushNotification(
-            title = "تحديث رسمي لحالة قيد الطالب: ${newStatus.arabicLabel}",
+            title = "قرار إداري رسمي بحالة قيد الطالب: ${newStatus.arabicLabel}",
             body = detailsBody,
             type = NotificationType.REPORT,
             targetStudentId = targetStu.id,
@@ -7217,7 +7241,144 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             priority = "high"
         )
 
-        showToastAlert("تم اعتماد حالة القيد (${newStatus.arabicLabel}) للطالب ${targetStu.fullNameWithFather} وإشعار ولي أمره سحابياً", isSuccess = true)
+        showToastAlert("تم اعتماد وتوثيق قرار القيد (${newStatus.arabicLabel}) للطالب ${targetStu.fullNameWithFather} سحابياً", isSuccess = true)
+    }
+
+    /**
+     * Computes a live preview of the Annual Promotion & End-of-Year Principal Report
+     * without mutating student classes yet, so the Principal can review pass rates and students first.
+     */
+    fun buildAnnualPromotionPreviewReport(newAcademicYear: String = ""): AnnualPromotionReport {
+        val sid = _schoolConfig.value.schoolId
+        val currentYear = _schoolConfig.value.academicYear.ifBlank { "2024 - 2025" }
+        val nextYear = newAcademicYear.trim().ifBlank {
+            val parts = currentYear.split("-").map { it.trim().toIntOrNull() }
+            if (parts.size == 2 && parts[0] != null && parts[1] != null) {
+                "${parts[0]!! + 1} - ${parts[1]!! + 1}"
+            } else {
+                "$currentYear (المرحّل)"
+            }
+        }
+        val activeSchoolStudents = _students.value.filter {
+            (it.schoolId.isEmpty() || it.schoolId == sid) &&
+                it.enrollmentStatus == StudentEnrollmentStatus.ACTIVE
+        }
+        val promotedList = mutableListOf<PromotedStudentItem>()
+        val repeatingList = mutableListOf<PromotedStudentItem>()
+        var graduatedCounter = 0
+
+        activeSchoolStudents.forEach { stu ->
+            val stuGrades = _grades.value.filter { it.studentId == stu.id }
+            val avgScore: Double = if (stuGrades.isNotEmpty()) {
+                stuGrades.map { g ->
+                    val scale = g.maxScoreScale.coerceAtLeast(1)
+                    (g.finalAverage.toDouble() / scale.toDouble()) * 100.0
+                }.average()
+            } else {
+                val parsedNum = stu.overallAverage.replace("%", "").trim().toDoubleOrNull()
+                parsedNum ?: 75.0
+            }
+            val avgPctInt = avgScore.toInt().coerceIn(0, 100)
+            val passed = avgScore >= 50.0
+            val (targetNextGrade, isGraduated) = if (passed) {
+                promoteGradeClassToNext(stu.gradeClass)
+            } else {
+                stu.gradeClass to false
+            }
+            val itemReport = PromotedStudentItem(
+                studentId = stu.id,
+                studentName = stu.fullNameWithFather,
+                previousClass = stu.gradeClass,
+                newClass = if (isGraduated) stu.gradeClass else targetNextGrade,
+                sectionName = stu.sectionName,
+                finalAveragePercentage = avgPctInt,
+                isPromoted = passed,
+                isGraduatedStage = isGraduated
+            )
+            if (passed) {
+                promotedList.add(itemReport)
+                if (isGraduated) graduatedCounter++
+            } else {
+                repeatingList.add(itemReport)
+            }
+        }
+
+        val allEvaluated = promotedList + repeatingList
+        val breakdowns = allEvaluated.groupBy { it.previousClass }.map { (fromCls, list) ->
+            val passedCnt = list.count { it.isPromoted }
+            val repCnt = list.size - passedCnt
+            val (nextCls, _) = promoteGradeClassToNext(fromCls)
+            val passPct = if (list.isNotEmpty()) ((passedCnt * 100.0) / list.size.toDouble()).toInt() else 0
+            ClassPromotionBreakdown(
+                gradeClass = fromCls,
+                nextGradeClass = nextCls,
+                totalStudents = list.size,
+                passedCount = passedCnt,
+                failedCount = repCnt,
+                passRatePercentage = passPct
+            )
+        }
+        val overallPassRate = if (allEvaluated.isNotEmpty()) {
+            ((promotedList.size * 100.0) / allEvaluated.size.toDouble()).toInt()
+        } else 0
+
+        val preview = AnnualPromotionReport(
+            academicYear = "$currentYear ← $nextYear",
+            academicYearFrom = currentYear,
+            academicYearTo = nextYear,
+            executedAt = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date()),
+            totalEvaluatedStudents = allEvaluated.size,
+            totalPromotedCount = promotedList.size,
+            totalRepeatingCount = repeatingList.size,
+            graduatedCount = graduatedCounter,
+            overallPassRatePercentage = overallPassRate,
+            classBreakdowns = breakdowns,
+            studentResults = allEvaluated,
+            promotedStudents = promotedList,
+            repeatingStudents = repeatingList
+        )
+        _latestAnnualPromotionReport.value = preview
+        return preview
+    }
+
+    /**
+     * Allows the Principal to manually override any student's grade class, section, or enrollment status
+     * directly from the Annual Promotion Report modal or Comprehensive Student Archive.
+     */
+    fun manualUpdateStudentClassAndStatus(
+        studentId: String,
+        newGradeClass: String,
+        newSectionName: String,
+        newStatus: StudentEnrollmentStatus = StudentEnrollmentStatus.ACTIVE
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val (pureClass, pureSec) = ArabicTextNormalizer.normalizeAndExtractClass(newGradeClass, newSectionName.ifBlank { "أ" })
+        var targetName = ""
+        val updatedStudents = _students.value.map { stu ->
+            if (stu.id == studentId) {
+                targetName = stu.fullNameWithFather
+                stu.copy(
+                    gradeClass = pureClass.ifBlank { stu.gradeClass },
+                    sectionName = pureSec.ifBlank { stu.sectionName },
+                    enrollmentStatus = newStatus,
+                    isActive = (newStatus == StudentEnrollmentStatus.ACTIVE || newStatus == StudentEnrollmentStatus.SUSPENDED_TEMP)
+                )
+            } else stu
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+
+        val updatedAccounts = _accounts.value.map { acc ->
+            if (acc.linkedStudentId == studentId) {
+                acc.copy(gradeClass = pureClass.ifBlank { acc.gradeClass })
+            } else acc
+        }
+        _accounts.value = updatedAccounts
+        repo.saveAccounts(updatedAccounts, sid)
+
+        buildAnnualPromotionPreviewReport()
+        showToastAlert("تم تعديل صف وحالة الطالب ($targetName) إلى ($pureClass - شعبة $pureSec) سحابياً", isSuccess = true)
     }
 
     /**
@@ -7230,6 +7391,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             norm.contains("الروضة") || norm.contains("تمهيدي") -> "الأول الابتدائي" to false
             norm.contains("الأول الابتدائي") || norm.contains("الاول الابتدائي") -> "الثاني الابتدائي" to false
             norm.contains("الثاني الابتدائي") -> "الثالث الابتدائي" to false
+            norm.contains("الثالث الابتدائي") -> "الرابع الابتدائي" to false
             norm.contains("الثالث الابتدائي") -> "الرابع الابتدائي" to false
             norm.contains("الرابع الابتدائي") -> "الخامس الابتدائي" to false
             norm.contains("الخامس الابتدائي") -> "السادس الابتدائي" to false

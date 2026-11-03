@@ -891,6 +891,18 @@ data class CanteenWalletTransaction(
     val itemsSummary: String get() = note
 }
 
+data class EnrollmentHistoryEntry(
+    val id: String = "",
+    val status: StudentEnrollmentStatus = StudentEnrollmentStatus.ACTIVE,
+    val decisionDate: String = "",
+    val suspensionStartDate: String = "",
+    val suspensionEndDate: String = "",
+    val reason: String = "",
+    val orderNumber: String = "",
+    val transferSchoolName: String = "",
+    val actorName: String = "المدير"
+)
+
 data class StudentRecord(
     val id: String,
     val studentName: String,
@@ -930,11 +942,16 @@ data class StudentRecord(
     val suspensionEndDate: String = "",
     val enrollmentStatusReason: String = "",
     val transferredToSchoolName: String = "",
+    val enrollmentDecisionDate: String = "",
+    val enrollmentOrderNumber: String = "",
+    val enrollmentHistory: List<EnrollmentHistoryEntry> = emptyList(),
     val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList()
 ) {
     val enrollmentStatusEnum: StudentEnrollmentStatus get() = enrollmentStatus
     val suspensionFromDate: String get() = suspensionStartDate
     val suspensionToDate: String get() = suspensionEndDate
+    val statusReason: String get() = enrollmentStatusReason
+    val transferSchoolName: String get() = transferredToSchoolName
     val dailyGateLogs: Map<String, DailyGateLogEntry> get() = dailyGateLog
     val walletBalanceIqd: Int get() = walletBalance
     val overallAverage: String get() = "$excellencePoints%"
@@ -1019,6 +1036,36 @@ data class StudentRecord(
             StudentEnrollmentStatus.TRANSFERRED -> {
                 val schoolTarget = transferredToSchoolName.takeIf { it.isNotBlank() }?.let { " إلى ($it)" }.orEmpty()
                 "قيد الطالب: منقول$schoolTarget — رصد الحضور موقوف رسمياً$reasonSuffix"
+            }
+        }
+    }
+
+    fun getDetailedEnrollmentSummaryText(): String {
+        return when (enrollmentStatus) {
+            StudentEnrollmentStatus.ACTIVE ->
+                "مستمر بالدوام الرسمي — مسموح برصد الحضور والغياب والامتحانات بشكل اعتيادي."
+            StudentEnrollmentStatus.SUSPENDED_TEMP -> buildString {
+                append("فصل مؤقت من تاريخ (${suspensionStartDate.ifBlank { "غير محدد" }}) إلى تاريخ (${suspensionEndDate.ifBlank { "غير محدد" }})")
+                if (enrollmentStatusReason.isNotBlank()) append(" • السبب: $enrollmentStatusReason")
+                if (enrollmentOrderNumber.isNotBlank()) append(" • رقم الأمر: $enrollmentOrderNumber")
+            }
+            StudentEnrollmentStatus.EXPELLED -> buildString {
+                append("فصل دائمي من المدرسة")
+                if (enrollmentDecisionDate.isNotBlank()) append(" • تاريخ القرار: $enrollmentDecisionDate")
+                if (enrollmentOrderNumber.isNotBlank()) append(" • رقم الأمر الإداري: $enrollmentOrderNumber")
+                if (enrollmentStatusReason.isNotBlank()) append(" • السبب: $enrollmentStatusReason")
+            }
+            StudentEnrollmentStatus.DEREGISTERED -> buildString {
+                append("مرقّن القيد رسمياً")
+                if (enrollmentDecisionDate.isNotBlank()) append(" • تاريخ ترقين القيد: $enrollmentDecisionDate")
+                if (enrollmentOrderNumber.isNotBlank()) append(" • رقم الأمر الإداري: $enrollmentOrderNumber")
+                if (enrollmentStatusReason.isNotBlank()) append(" • السبب: $enrollmentStatusReason")
+            }
+            StudentEnrollmentStatus.TRANSFERRED -> buildString {
+                append("منقول إلى مدرسة: (${transferredToSchoolName.ifBlank { "مدرسة أخرى" }})")
+                if (enrollmentDecisionDate.isNotBlank()) append(" • تاريخ النقل: $enrollmentDecisionDate")
+                if (enrollmentOrderNumber.isNotBlank()) append(" • رقم كتاب النقل: $enrollmentOrderNumber")
+                if (enrollmentStatusReason.isNotBlank()) append(" • الملاحظات: $enrollmentStatusReason")
             }
         }
     }

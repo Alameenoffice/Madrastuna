@@ -1837,8 +1837,8 @@ fun InlineDialogToastBanner(
 }
 
 /**
- * Refined, compact capsule badge placed directly underneath the student's avatar/photo
- * without crowding or overflowing surrounding text.
+ * Refined, ultra-compact capsule badge integrated at the bottom edge of the student's avatar circle.
+ * Strips the prefix "وسام " and omits the icon so only the pure badge name (e.g., "الالتزام الذهبي") appears.
  */
 @Composable
 fun CompactStudentBadgeCapsule(
@@ -1847,47 +1847,90 @@ fun CompactStudentBadgeCapsule(
     fallbackHonorTitle: String = "",
     isOnHonorRoll: Boolean = false,
     onLightBackground: Boolean = true,
-    onDarkBackground: Boolean = false
+    onDarkBackground: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val effectiveOnLight = if (onDarkBackground) false else onLightBackground
     val primaryBadge = badge ?: badges.firstOrNull()
-    val badgeTitle = when {
+    val rawBadgeTitle = when {
         isOnHonorRoll && fallbackHonorTitle.isNotBlank() -> fallbackHonorTitle
         primaryBadge != null -> primaryBadge.title
-        else -> "وسام الالتزام"
+        else -> "وسام الالتزام الذهبي"
     }
-    val badgeBg = if (effectiveOnLight) Color(0xFFECFDF5) else Color.White.copy(alpha = 0.22f)
-    val badgeBorder = if (effectiveOnLight) Color(0xFF059669).copy(alpha = 0.45f) else Color.White.copy(alpha = 0.55f)
-    val badgeTextColor = if (effectiveOnLight) Color(0xFF047857) else Color.White
+    val cleanBadgeText = rawBadgeTitle
+        .trim()
+        .removePrefix("وسام ")
+        .removePrefix("وسام")
+        .trim()
+        .ifBlank { "الالتزام الذهبي" }
+
+    val badgeBg = if (effectiveOnLight) Color(0xFF059669) else Color.White
+    val badgeBorder = if (effectiveOnLight) Color.White else Color(0xFF059669).copy(alpha = 0.45f)
+    val badgeTextColor = if (effectiveOnLight) Color.White else Color(0xFF047857)
 
     Surface(
         shape = RoundedCornerShape(50),
         color = badgeBg,
-        modifier = Modifier
-            .padding(top = 4.dp)
+        shadowElevation = 2.dp,
+        modifier = modifier
             .border(1.dp, badgeBorder, RoundedCornerShape(50))
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.WorkspacePremium,
-                contentDescription = "وسام الطالب",
-                tint = if (onLightBackground) Color(0xFF059669) else Color.White,
-                modifier = Modifier.size(11.dp)
-            )
-            Text(
-                text = badgeTitle,
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = badgeTextColor,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Text(
+            text = cleanBadgeText,
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Bold,
+            color = badgeTextColor,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+        )
     }
 }
+
+/**
+ * Unified 58.dp-wide Avatar + Bottom-Edge Overlay Badge Box.
+ * Keeps the avatar column strictly 58.dp wide so the student's full name and details never get squeezed.
+ */
+@Composable
+fun StudentAvatarWithOverlayBadge(
+    base64Data: String,
+    contentDescription: String,
+    badge: com.example.model.StudentAutoBadge? = null,
+    badges: List<com.example.model.StudentAutoBadge> = emptyList(),
+    fallbackHonorTitle: String = "",
+    isOnHonorRoll: Boolean = false,
+    fallbackIcon: ImageVector = Icons.Filled.Person,
+    avatarSize: Dp = 52.dp,
+    boxWidth: Dp = 58.dp,
+    tint: Color? = null,
+    onDarkBackground: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .width(boxWidth)
+            .padding(bottom = 4.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Base64AvatarImage(
+            base64Data = base64Data,
+            fallbackIcon = fallbackIcon,
+            contentDescription = contentDescription,
+            size = avatarSize,
+            tint = tint ?: if (onDarkBackground) Color.White else MaterialTheme.colorScheme.primary
+        )
+        CompactStudentBadgeCapsule(
+            badges = badges,
+            badge = badge,
+            fallbackHonorTitle = fallbackHonorTitle,
+            isOnHonorRoll = isOnHonorRoll,
+            onDarkBackground = onDarkBackground,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = 4.dp)
+        )
+    }
+}
+
 

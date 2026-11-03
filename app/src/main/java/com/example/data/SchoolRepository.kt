@@ -834,6 +834,28 @@ class SchoolRepository(context: Context) {
                 val enrollmentStatus = StudentEnrollmentStatus.fromKeyOrName(
                     o.optString("enrollmentStatus", StudentEnrollmentStatus.ACTIVE.name)
                 )
+                val historyArr = o.optJSONArray("enrollmentHistory")
+                val parsedEnrollmentHistory = mutableListOf<com.example.model.EnrollmentHistoryEntry>()
+                if (historyArr != null) {
+                    for (hIdx in 0 until historyArr.length()) {
+                        val hObj = historyArr.optJSONObject(hIdx) ?: continue
+                        parsedEnrollmentHistory.add(
+                            com.example.model.EnrollmentHistoryEntry(
+                                id = hObj.optString("id", "eh_$hIdx"),
+                                status = StudentEnrollmentStatus.fromKeyOrName(
+                                    hObj.optString("status", StudentEnrollmentStatus.ACTIVE.name)
+                                ),
+                                decisionDate = ArabicTextNormalizer.normalizeDateIso(hObj.optString("decisionDate", "")),
+                                suspensionStartDate = ArabicTextNormalizer.normalizeDateIso(hObj.optString("suspensionStartDate", "")),
+                                suspensionEndDate = ArabicTextNormalizer.normalizeDateIso(hObj.optString("suspensionEndDate", "")),
+                                reason = hObj.optString("reason", ""),
+                                orderNumber = hObj.optString("orderNumber", ""),
+                                transferSchoolName = hObj.optString("transferSchoolName", ""),
+                                actorName = hObj.optString("actorName", "المدير")
+                            )
+                        )
+                    }
+                }
                 val archivedArr = o.optJSONArray("archivedYearlySummaries")
                 val parsedArchivedSummaries = mutableListOf<ArchivedYearlySummary>()
                 if (archivedArr != null) {
@@ -894,8 +916,11 @@ class SchoolRepository(context: Context) {
                         enrollmentStatus = enrollmentStatus,
                         suspensionStartDate = ArabicTextNormalizer.normalizeDateIso(o.optString("suspensionStartDate", "")),
                         suspensionEndDate = ArabicTextNormalizer.normalizeDateIso(o.optString("suspensionEndDate", "")),
-                        enrollmentStatusReason = o.optString("enrollmentStatusReason", ""),
-                        transferredToSchoolName = o.optString("transferredToSchoolName", ""),
+                        enrollmentStatusReason = o.optString("enrollmentStatusReason", o.optString("statusReason", "")),
+                        transferredToSchoolName = o.optString("transferredToSchoolName", o.optString("transferSchoolName", "")),
+                        enrollmentDecisionDate = ArabicTextNormalizer.normalizeDateIso(o.optString("enrollmentDecisionDate", "")),
+                        enrollmentOrderNumber = o.optString("enrollmentOrderNumber", ""),
+                        enrollmentHistory = parsedEnrollmentHistory,
                         archivedYearlySummaries = parsedArchivedSummaries
                     )
                 )
@@ -1027,7 +1052,26 @@ class SchoolRepository(context: Context) {
                 put("suspensionStartDate", ArabicTextNormalizer.normalizeDateIso(s.suspensionStartDate))
                 put("suspensionEndDate", ArabicTextNormalizer.normalizeDateIso(s.suspensionEndDate))
                 put("enrollmentStatusReason", InputSanitizer.sanitize(s.enrollmentStatusReason))
+                put("statusReason", InputSanitizer.sanitize(s.enrollmentStatusReason))
                 put("transferredToSchoolName", InputSanitizer.sanitize(s.transferredToSchoolName))
+                put("transferSchoolName", InputSanitizer.sanitize(s.transferredToSchoolName))
+                put("enrollmentDecisionDate", ArabicTextNormalizer.normalizeDateIso(s.enrollmentDecisionDate))
+                put("enrollmentOrderNumber", InputSanitizer.sanitize(s.enrollmentOrderNumber))
+                val historyJsonArr = JSONArray()
+                s.enrollmentHistory.take(40).forEach { eh ->
+                    historyJsonArr.put(JSONObject().apply {
+                        put("id", eh.id)
+                        put("status", eh.status.name)
+                        put("decisionDate", ArabicTextNormalizer.normalizeDateIso(eh.decisionDate))
+                        put("suspensionStartDate", ArabicTextNormalizer.normalizeDateIso(eh.suspensionStartDate))
+                        put("suspensionEndDate", ArabicTextNormalizer.normalizeDateIso(eh.suspensionEndDate))
+                        put("reason", InputSanitizer.sanitize(eh.reason))
+                        put("orderNumber", InputSanitizer.sanitize(eh.orderNumber))
+                        put("transferSchoolName", InputSanitizer.sanitize(eh.transferSchoolName))
+                        put("actorName", InputSanitizer.sanitize(eh.actorName))
+                    })
+                }
+                put("enrollmentHistory", historyJsonArr)
                 val archivedJsonArr = JSONArray()
                 s.archivedYearlySummaries.forEach { arch ->
                     archivedJsonArr.put(JSONObject().apply {

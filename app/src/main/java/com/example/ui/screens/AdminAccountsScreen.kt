@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -192,7 +194,9 @@ fun AdminAccountsScreen(
 
                     // Deliverable 6b: Automatic Annual Promotion & End-of-Year Principal Report Tool
                     Button(
-                        onClick = { showAnnualPromotionConfirmDialog = true },
+                        onClick = {
+                            viewModel.buildAnnualPromotionPreviewReport()
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("open_annual_promotion_engine_btn"),
@@ -209,7 +213,7 @@ fun AdminAccountsScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "الترحيل السنوي التلقائي واعتماد نتائج نهاية العام (تقرير المدير)",
+                            text = "الترحيل السنوي وتقرير النجاح العام",
                             fontWeight = FontWeight.ExtraBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -480,45 +484,48 @@ fun AdminAccountsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
+                                StudentAvatarWithOverlayBadge(
+                                    base64Data = stu.photoBase64,
+                                    contentDescription = stu.studentName,
+                                    badge = stuAutoBadges.firstOrNull(),
+                                    fallbackHonorTitle = stu.honorTitle,
+                                    isOnHonorRoll = stu.isOnHonorRoll,
+                                    fallbackIcon = Icons.Filled.School
+                                )
                                 Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
-                                    Base64AvatarImage(
-                                        base64Data = stu.photoBase64,
-                                        fallbackIcon = Icons.Filled.School,
-                                        contentDescription = stu.studentName,
-                                        size = 50.dp
+                                    Text(
+                                        text = stu.fullNameWithFather,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                    CompactStudentBadgeCapsule(badge = stuAutoBadges.firstOrNull())
-                                }
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = stu.studentName,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        NoWrapBadge(
-                                            text = stu.enrollmentStatusEnum.arabicLabel,
-                                            icon = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) Icons.Filled.VerifiedUser else Icons.Filled.Gavel,
-                                            containerColor = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) DeepEmerald.copy(alpha = 0.14f) else DangerRed.copy(alpha = 0.15f),
-                                            contentColor = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) DeepEmerald else DangerRed
-                                        )
-                                    }
                                     Text(
                                         text = "الصف المسجل: ${stu.gradeClass} (شعبة ${stu.sectionName})",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "ولي الأمر: ${stu.parentName} | هاتف: ${stu.parentPhone}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    NoWrapBadge(
+                                        text = "حالة القيد: ${stu.enrollmentStatusEnum.arabicLabel}",
+                                        icon = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) Icons.Filled.VerifiedUser else Icons.Filled.Gavel,
+                                        containerColor = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) DeepEmerald.copy(alpha = 0.14f) else DangerRed.copy(alpha = 0.15f),
+                                        contentColor = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) DeepEmerald else DangerRed
                                     )
                                 }
                             }
@@ -753,6 +760,21 @@ fun AdminAccountsScreen(
                     studentForEnrollmentStatus = null
                 }
             },
+            onSaveFullDecision = { status, reason, suspFrom, suspTo, decisionDate, orderNum, transferSchool ->
+                viewModel.requireOnlineAndExecute {
+                    viewModel.updateStudentEnrollmentStatus(
+                        studentId = stu.id,
+                        newStatus = status,
+                        reason = reason,
+                        suspensionFromDate = suspFrom,
+                        suspensionToDate = suspTo,
+                        decisionDate = decisionDate,
+                        orderNumber = orderNum,
+                        transferredToSchoolName = transferSchool
+                    )
+                    studentForEnrollmentStatus = null
+                }
+            },
             onDismiss = { studentForEnrollmentStatus = null }
         )
     }
@@ -824,6 +846,16 @@ fun AdminAccountsScreen(
             report = report,
             schoolConfig = schoolConfig,
             toastAlert = toastAlert,
+            onExecutePromotion = { targetYear ->
+                viewModel.requireOnlineAndExecute {
+                    viewModel.executeAnnualPromotionAndGenerateReport(targetYear)
+                }
+            },
+            onManualOverrideStudent = { stuId, newClass, newSec, newStatus ->
+                viewModel.requireOnlineAndExecute {
+                    viewModel.manualUpdateStudentClassAndStatus(stuId, newClass, newSec, newStatus)
+                }
+            },
             onEditStudent = { stuId ->
                 val found = students.firstOrNull { it.id == stuId }
                 if (found != null) {
@@ -1745,12 +1777,12 @@ fun AdminAccountsScreen(
 
 /**
  * Deliverable 6a: Official Student Enrollment Status Modal Dialog
- * Allows the Principal to set:
+ * Allows the Principal to set and archive in Firestore:
  * - ACTIVE ("مستمر بالدوام")
- * - SUSPENDED_TEMP ("فصل مؤقت من - إلى")
- * - EXPELLED ("فصل دائمي")
- * - DEREGISTERED ("ترقين قيد")
- * - TRANSFERRED ("منقول إلى مدرسة أخرى")
+ * - SUSPENDED_TEMP ("فصل مؤقت من تاريخ - إلى تاريخ" + سبب الفصل المؤقت)
+ * - EXPELLED ("فصل دائمي" + سبب وتاريخ القرار ورقم الأمر الإداري)
+ * - DEREGISTERED ("ترقين قيد" + سبب وتاريخ ترقين القيد ورقم الأمر الإداري)
+ * - TRANSFERRED ("منقول" + اسم المدرسة المنقول إليها وتاريخ النقل)
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1758,7 +1790,8 @@ fun StudentEnrollmentStatusModalDialog(
     student: StudentRecord,
     todayIso: String,
     toastAlert: ToastAlertMessage? = null,
-    onSaveStatus: (StudentEnrollmentStatus, String, String, String) -> Unit,
+    onSaveStatus: (StudentEnrollmentStatus, String, String, String) -> Unit = { _, _, _, _ -> },
+    onSaveFullDecision: ((StudentEnrollmentStatus, String, String, String, String, String, String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var selectedStatus by remember(student.id) { mutableStateOf(student.enrollmentStatusEnum) }
@@ -1768,6 +1801,15 @@ fun StudentEnrollmentStatusModalDialog(
     }
     var suspensionTo by remember(student.id) {
         mutableStateOf(student.suspensionToDate.ifBlank { todayIso })
+    }
+    var decisionDate by remember(student.id) {
+        mutableStateOf(student.enrollmentDecisionDate.ifBlank { todayIso })
+    }
+    var orderNumber by remember(student.id) {
+        mutableStateOf(student.enrollmentOrderNumber)
+    }
+    var transferSchoolName by remember(student.id) {
+        mutableStateOf(student.transferredToSchoolName)
     }
 
     AlertDialog(
@@ -1781,23 +1823,27 @@ fun StudentEnrollmentStatusModalDialog(
                 ) {
                     Icon(Icons.Filled.Gavel, contentDescription = null, tint = DeepEmerald)
                     Text(
-                        text = "تحديث حالة قيد الطالب الرسمية",
+                        text = "اتخاذ قرار إداري بحالة قيد الطالب",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
                         color = DeepForestGreen
                     )
                 }
                 Text(
-                    text = "الطالب: ${student.fullNameWithFather} • ${student.gradeClass} (${student.sectionName})",
+                    text = "الطالب: ${student.fullNameWithFather} • ${student.gradeClass} (شعبة ${student.sectionName})",
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextMutedGreen
+                    color = TextMutedGreen,
+                    fontWeight = FontWeight.Bold
                 )
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
-                    text = "اختر حالة القيد الرسمية للطالب:",
+                    text = "اختر القرار الإداري وحالة قيد الطالب الرسمية:",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = DeepForestGreen
@@ -1806,6 +1852,13 @@ fun StudentEnrollmentStatusModalDialog(
                 StudentEnrollmentStatus.entries.forEach { st ->
                     val isSel = selectedStatus == st
                     val statusCol = if (st == StudentEnrollmentStatus.ACTIVE) DeepEmerald else DangerRed
+                    val subDesc = when (st) {
+                        StudentEnrollmentStatus.ACTIVE -> "إعادة تفعيل القيد الرسمي والسماح بالحضور والامتحانات"
+                        StudentEnrollmentStatus.SUSPENDED_TEMP -> "قفل الحضور تلقائياً من تاريخ البدء إلى تاريخ الانتهاء وإشعار ولي الأمر"
+                        StudentEnrollmentStatus.EXPELLED -> "فصل دائمي من المدرسة مع توثيق السبب وتاريخ القرار"
+                        StudentEnrollmentStatus.DEREGISTERED -> "ترقين قيد الطالب رسمياً مع توثيق رقم الأمر الإداري والتاريخ"
+                        StudentEnrollmentStatus.TRANSFERRED -> "نقل قيد الطالب إلى مدرسة أخرى مع توثيق اسم المدرسة وتاريخ النقل"
+                    }
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1813,7 +1866,7 @@ fun StudentEnrollmentStatusModalDialog(
                             .clickable { selectedStatus = st }
                             .testTag("select_enrollment_status_${st.name}"),
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isSel) statusCol.copy(alpha = 0.14f) else Color(0xFFF8FAFC),
+                        color = if (isSel) statusCol.copy(alpha = 0.12f) else Color(0xFFF8FAFC),
                         border = androidx.compose.foundation.BorderStroke(
                             if (isSel) 1.5.dp else 1.dp,
                             if (isSel) statusCol else DeepEmerald.copy(alpha = 0.2f)
@@ -1826,12 +1879,22 @@ fun StudentEnrollmentStatusModalDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = st.arabicLabel,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isSel) statusCol else DeepForestGreen
-                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = st.arabicLabel,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isSel) statusCol else DeepForestGreen
+                                )
+                                Text(
+                                    text = subDesc,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMutedGreen
+                                )
+                            }
                             Icon(
                                 imageVector = if (isSel) Icons.Filled.RadioButtonChecked else Icons.Filled.RadioButtonUnchecked,
                                 contentDescription = null,
@@ -1842,52 +1905,162 @@ fun StudentEnrollmentStatusModalDialog(
                     }
                 }
 
-                if (selectedStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) {
-                    Text(
-                        text = "فترة الفصل المؤقت (يُمنع تسجيل الحضور خلالها):",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = DangerRed
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ModernCalendarDatePickerField(
-                            selectedDateIso = suspensionFrom,
-                            label = "من تاريخ",
-                            onDateSelected = { iso, _ -> suspensionFrom = iso },
-                            modifier = Modifier.weight(1f)
+                when (selectedStatus) {
+                    StudentEnrollmentStatus.ACTIVE -> {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFECFDF5),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "سيتم اعتماد قيد الطالب (مستمر بالدوام) وإلغاء أي إيقاف سابق عن سجل الحضور والامتحانات.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = DeepForestGreen,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                    StudentEnrollmentStatus.SUSPENDED_TEMP -> {
+                        Text(
+                            text = "فترة الفصل المؤقت (يُقفل حضور الطالب تلقائياً خلالها ويُشعر ولي الأمر):",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DangerRed
                         )
-                        ModernCalendarDatePickerField(
-                            selectedDateIso = suspensionTo,
-                            label = "إلى تاريخ",
-                            onDateSelected = { iso, _ -> suspensionTo = iso },
-                            modifier = Modifier.weight(1f)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ModernCalendarDatePickerField(
+                                selectedDateIso = suspensionFrom,
+                                label = "من تاريخ (YYYY-MM-DD)",
+                                onDateSelected = { iso, _ -> suspensionFrom = iso },
+                                modifier = Modifier.weight(1f)
+                            )
+                            ModernCalendarDatePickerField(
+                                selectedDateIso = suspensionTo,
+                                label = "إلى تاريخ (YYYY-MM-DD)",
+                                onDateSelected = { iso, _ -> suspensionTo = iso },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        OutlinedTextField(
+                            value = reason,
+                            onValueChange = { reason = it },
+                            label = { Text("سبب الفصل المؤقت") },
+                            placeholder = { Text("اكتب سبب الفصل المؤقت ليتم إشعار ولي الأمر وتوثيقه في السجل...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2
+                        )
+                        OutlinedTextField(
+                            value = orderNumber,
+                            onValueChange = { orderNumber = it },
+                            label = { Text("رقم الأمر الإداري (اختياري)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
-                }
-
-                if (selectedStatus != StudentEnrollmentStatus.ACTIVE) {
-                    OutlinedTextField(
-                        value = reason,
-                        onValueChange = { reason = it },
-                        label = { Text("سبب الإجراء الإداري / رقم الأمر الإداري أو المدرسة المنقول إليها") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2
-                    )
+                    StudentEnrollmentStatus.EXPELLED -> {
+                        ModernCalendarDatePickerField(
+                            selectedDateIso = decisionDate,
+                            label = "تاريخ قرار الفصل الدائمي (YYYY-MM-DD)",
+                            onDateSelected = { iso, _ -> decisionDate = iso },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = orderNumber,
+                            onValueChange = { orderNumber = it },
+                            label = { Text("رقم الأمر الإداري للفصل الدائمي") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = reason,
+                            onValueChange = { reason = it },
+                            label = { Text("سبب الفصل الدائمي") },
+                            placeholder = { Text("اكتب سبب الفصل الدائمي لتوثيقه في أرشيف الطالب...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2
+                        )
+                    }
+                    StudentEnrollmentStatus.DEREGISTERED -> {
+                        ModernCalendarDatePickerField(
+                            selectedDateIso = decisionDate,
+                            label = "تاريخ ترقين القيد (YYYY-MM-DD)",
+                            onDateSelected = { iso, _ -> decisionDate = iso },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = orderNumber,
+                            onValueChange = { orderNumber = it },
+                            label = { Text("رقم الأمر الإداري لترقين القيد") },
+                            placeholder = { Text("مثال: الأمر الإداري المرقم 145 في ...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = reason,
+                            onValueChange = { reason = it },
+                            label = { Text("سبب ترقين القيد") },
+                            placeholder = { Text("مثال: تجاوز الحد القانوني للغياب / انقطاع عن الدوام...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2
+                        )
+                    }
+                    StudentEnrollmentStatus.TRANSFERRED -> {
+                        OutlinedTextField(
+                            value = transferSchoolName,
+                            onValueChange = { transferSchoolName = it },
+                            label = { Text("اسم المدرسة المنقول إليها الطالب") },
+                            placeholder = { Text("اكتب اسم المدرسة التي انتقل إليها الطالب...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        ModernCalendarDatePickerField(
+                            selectedDateIso = decisionDate,
+                            label = "تاريخ النقل (YYYY-MM-DD)",
+                            onDateSelected = { iso, _ -> decisionDate = iso },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = orderNumber,
+                            onValueChange = { orderNumber = it },
+                            label = { Text("رقم وكتاب النقل (اختياري)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = reason,
+                            onValueChange = { reason = it },
+                            label = { Text("سبب النقل / ملاحظات إدارية") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    onSaveStatus(
-                        selectedStatus,
-                        reason.trim(),
-                        if (selectedStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) suspensionFrom else "",
-                        if (selectedStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) suspensionTo else ""
-                    )
+                    val cleanReason = reason.trim()
+                    val cleanFrom = if (selectedStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) suspensionFrom else ""
+                    val cleanTo = if (selectedStatus == StudentEnrollmentStatus.SUSPENDED_TEMP) suspensionTo else ""
+                    if (onSaveFullDecision != null) {
+                        onSaveFullDecision(
+                            selectedStatus,
+                            cleanReason,
+                            cleanFrom,
+                            cleanTo,
+                            decisionDate.trim(),
+                            orderNumber.trim(),
+                            transferSchoolName.trim()
+                        )
+                    } else {
+                        onSaveStatus(selectedStatus, cleanReason, cleanFrom, cleanTo)
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (selectedStatus == StudentEnrollmentStatus.ACTIVE) DeepEmerald else DangerRed,
@@ -1897,7 +2070,7 @@ fun StudentEnrollmentStatusModalDialog(
             ) {
                 Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("اعتماد وتوثيق سحابياً", fontWeight = FontWeight.ExtraBold)
+                Text("اعتماد وتوثيق القرار سحابياً", fontWeight = FontWeight.ExtraBold)
             }
         },
         dismissButton = {
@@ -1913,7 +2086,8 @@ fun StudentEnrollmentStatusModalDialog(
  * Shows:
  * - Overall school pass rate, total promoted, graduated, and repeating students
  * - Per-class pass rate breakdown
- * - Tabs for Promoted / Graduated vs Repeating students with direct "تعديل بيانات الطالب" trigger
+ * - One-click button to execute automatic annual promotion of all passing students to their new classes
+ * - Tabs for Promoted / Graduated vs Repeating students with direct manual class/status editing
  * - Button to export the official PDF report
  */
 @Composable
@@ -1921,11 +2095,17 @@ fun AnnualPromotionReportModalDialog(
     report: AnnualPromotionReport,
     schoolConfig: SchoolConfig,
     toastAlert: ToastAlertMessage? = null,
-    onEditStudent: (String) -> Unit,
+    onExecutePromotion: ((String) -> Unit)? = null,
+    onManualOverrideStudent: ((String, String, String, StudentEnrollmentStatus) -> Unit)? = null,
+    onEditStudent: (String) -> Unit = {},
     onExportPdf: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) } // 0 = Class Breakdown, 1 = Promoted, 2 = Repeating
+    var targetNewAcademicYear by remember(report.newAcademicYear) {
+        mutableStateOf(report.newAcademicYear.ifBlank { "2026 - 2027" })
+    }
+    var studentForQuickManualOverride by remember { mutableStateOf<PromotedStudentItem?>(null) }
 
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
@@ -1934,7 +2114,7 @@ fun AnnualPromotionReportModalDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .heightIn(max = 780.dp)
+                .heightIn(max = 820.dp)
                 .testTag("annual_promotion_report_modal"),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1975,13 +2155,13 @@ fun AnnualPromotionReportModalDialog(
                         }
                         Column {
                             Text(
-                                text = "تقرير المدير للترحيل السنوي ونتائج نهاية العام",
+                                text = "تقرير الترحيل السنوي ونتائج النجاح العام",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = DeepForestGreen
                             )
                             Text(
-                                text = "${schoolConfig.schoolName} • من (${report.previousAcademicYear}) إلى (${report.newAcademicYear})",
+                                text = "${schoolConfig.schoolName} • من (${report.previousAcademicYear}) إلى ($targetNewAcademicYear)",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextMutedGreen
                             )
@@ -1999,7 +2179,7 @@ fun AnnualPromotionReportModalDialog(
                 ) {
                     listOf(
                         Triple("نسبة النجاح", "${report.overallPassRatePercent}%", DeepEmerald),
-                        Triple("الناجحون المرحّلون", "${report.promotedCount + report.graduatedCount}", SuccessGreen),
+                        Triple("الناجحون المرحّلون", "${report.promotedCount}", SuccessGreen),
                         Triple("المعيدون", "${report.repeatingCount}", DangerRed),
                         Triple("الإجمالي", "${report.totalEvaluated}", InfoBlue)
                     ).forEach { (lbl, valTxt, col) ->
@@ -2031,21 +2211,76 @@ fun AnnualPromotionReportModalDialog(
                     }
                 }
 
+                // Automatic Promotion Execution Box
+                if (onExecutePromotion != null) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFECFDF5),
+                        border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = targetNewAcademicYear,
+                                    onValueChange = { targetNewAcademicYear = it },
+                                    label = { Text("العام الدراسي الجديد بعد الترحيل") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    onExecutePromotion(targetNewAcademicYear.ifBlank { "2026 - 2027" })
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("execute_auto_annual_promotion_now_btn"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = DeepEmerald,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "اعتماد وترحيل كافة الطلاب الناجحين تلقائياً إلى صفوفهم الجديدة",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Export Official PDF Button
-                Button(
+                OutlinedButton(
                     onClick = onExportPdf,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("export_annual_promotion_pdf_btn"),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = DeepEmerald,
-                        contentColor = Color.White
-                    )
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald)
                 ) {
-                    Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.PictureAsPdf, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("طباعة / تصدير التقرير السنوي الشامل للمدير (PDF)", fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        text = "طباعة / تصدير التقرير السنوي الشامل للمدير (PDF)",
+                        color = DeepForestGreen,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
 
                 // Tabs
@@ -2059,7 +2294,7 @@ fun AnnualPromotionReportModalDialog(
                         FilterChip(
                             selected = selectedTab == idx,
                             onClick = { selectedTab = idx },
-                            label = { Text(title, fontWeight = FontWeight.Bold) }
+                            label = { Text(title, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
                         )
                     }
                 }
@@ -2088,19 +2323,20 @@ fun AnnualPromotionReportModalDialog(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "الصف: ${cb.gradeClass}",
+                                                text = "الصف: ${cb.gradeClass}  ←  ${cb.nextGradeClass}",
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = DeepForestGreen
                                             )
                                             Text(
-                                                text = "الإجمالي: ${cb.totalStudents} • ناجح: ${cb.passedCount} • معيد: ${cb.repeatingCount}",
+                                                text = "الإجمالي: ${cb.totalStudents} طالب • ناجح ومرحّل: ${cb.passedCount} • باقٍ للإعادة: ${cb.repeatingCount}",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = TextMutedGreen
+                                                color = TextMutedGreen,
+                                                fontWeight = FontWeight.SemiBold
                                             )
                                         }
                                         NoWrapBadge(
-                                            text = "نسبة النجاح: ${cb.passRatePercent}%",
+                                            text = "النجاح: ${cb.passRatePercent}%",
                                             icon = Icons.Filled.TrendingUp,
                                             containerColor = DeepEmerald,
                                             contentColor = Color.White
@@ -2130,20 +2366,26 @@ fun AnnualPromotionReportModalDialog(
                                                 color = DeepForestGreen
                                             )
                                             Text(
-                                                text = "من (${item.previousGrade}) إلى (${item.newGrade}) • المعدل: ${item.finalAverage}%",
+                                                text = "ينتقل من (${item.previousGrade}) إلى (${item.newGrade}) • المعدل: ${item.finalAverage}%",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = DeepEmerald,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
                                         OutlinedButton(
-                                            onClick = { onEditStudent(item.studentId) },
+                                            onClick = {
+                                                if (onManualOverrideStudent != null) {
+                                                    studentForQuickManualOverride = item
+                                                } else {
+                                                    onEditStudent(item.studentId)
+                                                }
+                                            },
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                         ) {
                                             Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("تعديل", style = MaterialTheme.typography.labelSmall)
+                                            Text("تعديل الصف/الحالة", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                                         }
                                     }
                                 }
@@ -2170,20 +2412,26 @@ fun AnnualPromotionReportModalDialog(
                                                 color = DeepForestGreen
                                             )
                                             Text(
-                                                text = "باقٍ في (${item.previousGrade} - شعبة ${item.sectionName}) • المعدل: ${item.finalAverage}%",
+                                                text = "باقٍ للإعادة في (${item.previousGrade} - شعبة ${item.sectionName}) • المعدل: ${item.finalAverage}%",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = DangerRed,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
                                         OutlinedButton(
-                                            onClick = { onEditStudent(item.studentId) },
+                                            onClick = {
+                                                if (onManualOverrideStudent != null) {
+                                                    studentForQuickManualOverride = item
+                                                } else {
+                                                    onEditStudent(item.studentId)
+                                                }
+                                            },
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                         ) {
                                             Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("تعديل", style = MaterialTheme.typography.labelSmall)
+                                            Text("تعديل الصف/الحالة", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                                         }
                                     }
                                 }
@@ -2194,5 +2442,74 @@ fun AnnualPromotionReportModalDialog(
             }
         }
     }
+
+    studentForQuickManualOverride?.let { targetItem ->
+        var selClass by remember(targetItem.studentId) { mutableStateOf(targetItem.newGrade.ifBlank { targetItem.previousGrade }) }
+        var selSec by remember(targetItem.studentId) { mutableStateOf(targetItem.sectionName.ifBlank { "أ" }) }
+        var selStatus by remember(targetItem.studentId) { mutableStateOf(StudentEnrollmentStatus.ACTIVE) }
+        val classChoices = remember(schoolConfig.registeredClasses) {
+            (schoolConfig.registeredClasses + schoolConfig.schoolStage.defaultClasses).distinct()
+        }
+
+        AlertDialog(
+            onDismissRequest = { studentForQuickManualOverride = null },
+            title = {
+                Text(
+                    text = "تعديل يدوي لصف أو حالة الطالب: ${targetItem.studentName}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepForestGreen
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("اختر الصف الدراسي للطالب:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(classChoices) { cls ->
+                            FilterChip(
+                                selected = selClass == cls,
+                                onClick = { selClass = cls },
+                                label = { Text(cls, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = selSec,
+                        onValueChange = { selSec = it },
+                        label = { Text("الشعبة") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("حالة القيد:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(StudentEnrollmentStatus.entries) { st ->
+                            FilterChip(
+                                selected = selStatus == st,
+                                onClick = { selStatus = st },
+                                label = { Text(st.arabicLabel, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onManualOverrideStudent?.invoke(targetItem.studentId, selClass, selSec, selStatus)
+                        studentForQuickManualOverride = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+                ) {
+                    Text("حفظ التعديل سحابياً", fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { studentForQuickManualOverride = null }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
 }
+
 
