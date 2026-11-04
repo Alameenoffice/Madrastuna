@@ -1853,6 +1853,12 @@ fun SettingsScreen(
     }
     var selectedType by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolType) }
     var selectedStage by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolStage) }
+    var selectedMinistryAffiliation by remember(schoolConfig) {
+        mutableStateOf(schoolConfig.ministryAffiliation.ifBlank { "وزارة التربية" })
+    }
+    var selectedSchoolGenderType by remember(schoolConfig) {
+        mutableStateOf(schoolConfig.schoolGenderType.ifBlank { "مدرسة بنين" })
+    }
     var registeredClasses by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredClasses) }
     var registeredSections by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredSections) }
     var registeredSubjects by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredSubjects) }
@@ -2687,6 +2693,60 @@ fun SettingsScreen(
                     }
 
                     Text(
+                        text = "عائدية المدرسة الرسمية:",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("وزارة التربية", "التعليم الإسلامي - الوقف السني").forEach { affiliation ->
+                            val isSelected = selectedMinistryAffiliation == affiliation
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedMinistryAffiliation = affiliation },
+                                label = {
+                                    Text(
+                                        text = affiliation,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "جنس المدرسة:",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("مدرسة بنين", "مدرسة بنات", "مدرسة مختلطة").forEach { genderType ->
+                            val isSelected = selectedSchoolGenderType == genderType
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedSchoolGenderType = genderType },
+                                label = {
+                                    Text(
+                                        text = genderType,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    Text(
                         text = "المرحلة الدراسية (توليد الصفوف المسجلة تلقائياً):",
                         style = MaterialTheme.typography.labelLarge
                     )
@@ -2825,7 +2885,9 @@ fun SettingsScreen(
                                 registeredClasses = registeredClasses,
                                 registeredSections = registeredSections,
                                 registeredSubjects = registeredSubjects,
-                                phone = schoolPhone
+                                phone = schoolPhone,
+                                ministryAffiliation = selectedMinistryAffiliation,
+                                schoolGenderType = selectedSchoolGenderType
                             )
                             savedMessage = "تم حفظ إعدادات المدرسة وتحديث الصفوف والشعب المسجلة بنجاح"
                         },

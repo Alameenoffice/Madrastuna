@@ -170,6 +170,8 @@ class SchoolRepository(context: Context) {
                 address = ArabicTextNormalizer.cleanDefaultAddress(obj.optString("address", "")),
                 schoolType = SchoolType.valueOf(obj.optString("schoolType", SchoolType.PRIVATE.name)),
                 schoolStage = stage,
+                ministryAffiliation = obj.optString("ministryAffiliation", "وزارة التربية").ifBlank { "وزارة التربية" },
+                schoolGenderType = obj.optString("schoolGenderType", "مدرسة بنين").ifBlank { "مدرسة بنين" },
                 registeredClasses = regClasses,
                 registeredSections = regSections,
                 registeredSubjects = regSubjects,
@@ -359,6 +361,8 @@ class SchoolRepository(context: Context) {
             put("address", InputSanitizer.sanitize(ArabicTextNormalizer.cleanDefaultAddress(config.address)))
             put("schoolType", config.schoolType.name)
             put("schoolStage", config.schoolStage.name)
+            put("ministryAffiliation", config.ministryAffiliation.ifBlank { "وزارة التربية" })
+            put("schoolGenderType", config.schoolGenderType.ifBlank { "مدرسة بنين" })
             put("registeredClasses", JSONArray(config.registeredClasses))
             put("registeredSections", JSONArray(config.registeredSections))
             put("registeredSubjects", JSONArray(config.registeredSubjects))
@@ -2163,6 +2167,8 @@ class SchoolRepository(context: Context) {
                             address = ArabicTextNormalizer.cleanDefaultAddress(o.optString("address", "")),
                             schoolStage = o.optString("schoolStage", "ثانوية"),
                             schoolType = o.optString("schoolType", "مدرسة أهلية"),
+                            ministryAffiliation = o.optString("ministryAffiliation", "وزارة التربية").ifBlank { "وزارة التربية" },
+                            schoolGenderType = o.optString("schoolGenderType", "مدرسة بنين").ifBlank { "مدرسة بنين" },
                             createdAt = o.optString("createdAt", "2026-10-29"),
                             isActive = o.optBoolean("isActive", true),
                             adminUsername = o.optString("adminUsername", ""),
@@ -2186,6 +2192,8 @@ class SchoolRepository(context: Context) {
                 put("address", InputSanitizer.sanitize(s.address))
                 put("schoolStage", s.schoolStage)
                 put("schoolType", s.schoolType)
+                put("ministryAffiliation", s.ministryAffiliation.ifBlank { "وزارة التربية" })
+                put("schoolGenderType", s.schoolGenderType.ifBlank { "مدرسة بنين" })
                 put("createdAt", s.createdAt)
                 put("isActive", s.isActive)
                 put("adminUsername", s.adminUsername)
@@ -2220,6 +2228,8 @@ class SchoolRepository(context: Context) {
             address = config.address,
             schoolStage = config.schoolStage.arabicLabel,
             schoolType = config.schoolType.arabicLabel,
+            ministryAffiliation = config.ministryAffiliation.ifBlank { "وزارة التربية" },
+            schoolGenderType = config.schoolGenderType.ifBlank { "مدرسة بنين" },
             createdAt = config.createdAt.ifBlank { "2026-10-29" },
             isActive = config.isActive,
             adminUsername = resolvedAdminUser,

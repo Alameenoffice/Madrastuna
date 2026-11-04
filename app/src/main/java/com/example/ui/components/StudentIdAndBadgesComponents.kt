@@ -1740,18 +1740,42 @@ fun AdminSubscriptionAndBroadcastBanner(
         }
 
         if (latestBroadcast != null) {
-            Surface(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("admin_developer_broadcast_banner"),
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFFF0FDF4),
-                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                    .testTag("admin_developer_broadcast_banner")
             ) {
+                // Seamless Wave Canvas Body (No traditional rectangular box border)
+                androidx.compose.foundation.Canvas(modifier = Modifier.matchParentSize()) {
+                    val w = size.width
+                    val h = size.height
+                    val wavePath = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(0f, h * 0.08f)
+                        cubicTo(
+                            w * 0.30f, 0f,
+                            w * 0.70f, h * 0.16f,
+                            w, h * 0.05f
+                        )
+                        lineTo(w, h * 0.94f)
+                        quadraticBezierTo(w * 0.50f, h * 1.04f, 0f, h * 0.92f)
+                        close()
+                    }
+                    drawPath(
+                        path = wavePath,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(0xFFDFF7EC),
+                                Color(0xFFF0FDF4),
+                                Color(0xFFE6F8F0)
+                            )
+                        )
+                    )
+                }
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
@@ -1759,18 +1783,19 @@ fun AdminSubscriptionAndBroadcastBanner(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        DeveloperSelectedIconBox(
-                            iconKey = OccasionIconKey.fromKey(latestBroadcast.iconKey),
-                            size = 36.dp
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            DeveloperSelectedIconBox(
+                                iconKey = OccasionIconKey.fromKey(latestBroadcast.iconKey),
+                                size = 40.dp
+                            )
+                        }
                         Column(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = Color(0xFFD1FAE5),
-                                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                color = Color(0xFF059669).copy(alpha = 0.14f)
                             ) {
                                 Text(
                                     text = "تعميم مدراء المدارس: ${latestBroadcast.title}",
@@ -1783,15 +1808,15 @@ fun AdminSubscriptionAndBroadcastBanner(
                             Text(
                                 text = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
                                 style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF1E293B)
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
                             )
                         }
                         Box(
                             modifier = Modifier
-                                .size(26.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFD1FAE5).copy(alpha = 0.65f))
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF059669).copy(alpha = 0.14f))
                                 .clickable {
                                     isBroadcastBannerDismissed = true
                                     developerBroadcasts.forEach { bc ->
@@ -1809,7 +1834,7 @@ fun AdminSubscriptionAndBroadcastBanner(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "تجاهل وإغلاق التعميم",
                                 tint = Color(0xFF065F46),
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -1938,48 +1963,37 @@ fun SmartCanteenPosAndWalletDialog(
                     InlineDialogToastBanner(toastAlert = toastAlert, onDismiss = onDismissToast)
                 }
 
-                // Header
+                // 3D Wave Hero Header for Smart Canteen & E-Wallet
                 item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        ThreeDHeroHeaderCard(
+                            title = "الحانوت والمحفظة الذكية",
+                            subtitle = "نقطة بيع الباركود وشحن الأرصدة المتزامن فورياً مع حساب ولي الأمر",
+                            rightPillText = "كاشير الحانوت الذكي",
+                            rightPillIcon = Icons.Default.Storefront,
+                            leftPillText = "الطلبة: ${students.size}",
+                            leftPillIcon = Icons.Default.QrCode2,
+                            illustrationType = ThreeDIllustrationType.SMART_WALLET_CARD
+                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.22f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 12.dp, end = 12.dp)
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .clickable { onDismiss() }
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(DeepEmerald.copy(alpha = 0.14f)),
-                                contentAlignment = Alignment.Center
-                            ) {
+                            Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Default.Storefront,
-                                    contentDescription = null,
-                                    tint = DeepEmerald,
-                                    modifier = Modifier.size(24.dp)
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "إغلاق",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
-                            Column {
-                                Text(
-                                    text = "نظام كاشير ومحفظة الحانوت الذكية",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = DeepForestGreen,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                                Text(
-                                    text = "نقطة بيع الباركود وشحن الأرصدة المتزامن سحابياً",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextMutedGreen
-                                )
-                            }
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = DeepForestGreen)
                         }
                     }
                 }
@@ -2233,16 +2247,23 @@ fun SmartCanteenPosAndWalletDialog(
                                 )
                             }
 
-                            // Full-width comfortable Barcode/Name input with inline trailing action button so label never wraps into 3 lines
+                            // Full-width comfortable Barcode/Name input with zero right-edge text clipping
                             OutlinedTextField(
                                 value = barcodeManualInput,
                                 onValueChange = { barcodeManualInput = it },
+                                label = {
+                                    Text(
+                                        text = "قارئ باركود المحفظة أو بحث بالاسم",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                },
                                 placeholder = {
                                     Text(
                                         text = "قارئ باركود المحفظة أو بحث بالاسم...",
-                                        fontSize = 12.sp,
-                                        maxLines = 1,
-                                        softWrap = false
+                                        fontSize = 11.sp,
+                                        maxLines = 1
                                     )
                                 },
                                 singleLine = true,
@@ -2255,7 +2276,7 @@ fun SmartCanteenPosAndWalletDialog(
                                         shape = RoundedCornerShape(10.dp),
                                         color = if (barcodeManualInput.isNotBlank()) DeepEmerald else DeepEmerald.copy(alpha = 0.25f),
                                         modifier = Modifier
-                                            .padding(end = 6.dp)
+                                            .padding(horizontal = 6.dp)
                                             .clip(RoundedCornerShape(10.dp))
                                             .clickable(enabled = barcodeManualInput.isNotBlank()) {
                                                 handleScannedWalletCode(barcodeManualInput.trim())
@@ -2264,12 +2285,12 @@ fun SmartCanteenPosAndWalletDialog(
                                     ) {
                                         Text(
                                             text = "قراءة",
-                                            fontSize = 11.5.sp,
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = Color.White,
                                             maxLines = 1,
                                             softWrap = false,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                         )
                                     }
                                 },
@@ -2757,19 +2778,27 @@ fun SmartCanteenPosAndWalletDialog(
                                                         },
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .height(46.dp)
+                                                            .heightIn(min = 52.dp)
                                                             .testTag("pos_reject_and_notify_parent_btn"),
-                                                        shape = RoundedCornerShape(12.dp),
+                                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                                        shape = RoundedCornerShape(14.dp),
                                                         colors = ButtonDefaults.buttonColors(
                                                             containerColor = DangerRed,
                                                             contentColor = Color.White
                                                         )
                                                     ) {
-                                                        Icon(Icons.Default.WarningAmber, contentDescription = null)
+                                                        Icon(
+                                                            imageVector = Icons.Default.WarningAmber,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
                                                         Spacer(modifier = Modifier.width(6.dp))
                                                         Text(
                                                             text = "تثبيت رفض العملية وإرسال إشعار فوري لولي الأمر",
-                                                            fontWeight = FontWeight.ExtraBold
+                                                            fontSize = 11.5.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            textAlign = TextAlign.Center,
+                                                            maxLines = 2
                                                         )
                                                     }
                                                 }

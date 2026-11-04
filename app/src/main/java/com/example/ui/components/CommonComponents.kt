@@ -1994,10 +1994,15 @@ enum class ThreeDIllustrationType {
     BOOKS_GRADUATION_CAP,
     MEGAPHONE,
     GLOWING_CHART_SPHERE,
+    ATTENDANCE_GATE_CLOCK,
+    EXAM_CERTIFICATE_PEN,
     TROPHY_STARS,
+    ROYAL_HONOR_SHIELD,
+    SCHEDULE_BOOKS_3D,
     SMART_WALLET_CARD,
     SECURITY_SHIELD,
-    CALENDAR_HOLIDAYS
+    CALENDAR_HOLIDAYS,
+    CLOUD_OFFLINE_3D
 }
 
 /**
@@ -2526,13 +2531,14 @@ fun ThreeDIllustrationBox(
                 )
             }
 
-            ThreeDIllustrationType.GLOWING_CHART_SPHERE -> {
-                // Outer neon halo (pulsing)
+            ThreeDIllustrationType.GLOWING_CHART_SPHERE,
+            ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK -> {
+                // 3D Smart School Gate + Digital Attendance Clock + 3D Checkmark Badge (Zero bar-chart/coverage towers)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF4ADE80).copy(alpha = (glowPulseAlpha + 0.15f).coerceAtMost(0.75f)),
-                            Color(0xFF10B981).copy(alpha = glowPulseAlpha * 0.5f),
+                            Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.16f).coerceAtMost(0.76f)),
+                            Color(0xFF10B981).copy(alpha = glowPulseAlpha * 0.45f),
                             Color.Transparent
                         ),
                         center = Offset(cx, cy),
@@ -2542,136 +2548,429 @@ fun ThreeDIllustrationBox(
                     center = Offset(cx, cy)
                 )
 
-                // 3D Glass Sphere body
-                drawCircle(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF10B981),
-                            Color(0xFF059669),
-                            Color(0xFF065F46)
-                        ),
-                        start = Offset(w * 0.2f, h * 0.2f),
-                        end = Offset(w * 0.8f, h * 0.8f)
-                    ),
-                    radius = w * 0.39f,
-                    center = Offset(cx, cy)
-                )
-
-                // Neon outer ring
-                drawCircle(
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFFA7F3D0), Color(0xFF34D399), Color(0xFF10B981))
-                    ),
-                    radius = w * 0.39f,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = 2.5.dp.toPx())
-                )
-
-                // Top specular glass highlight
-                drawOval(
-                    brush = Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.45f), Color.Transparent)
-                    ),
-                    topLeft = Offset(w * 0.26f, h * 0.16f),
-                    size = Size(w * 0.48f, h * 0.22f)
-                )
-
-                // 4 White 3D Bar Columns inside sphere
-                val barWidth = w * 0.065f
-                val baseLineY = h * 0.68f
-                val bars = listOf(
-                    w * 0.31f to h * 0.56f,
-                    w * 0.41f to h * 0.49f,
-                    w * 0.51f to h * 0.42f,
-                    w * 0.61f to h * 0.35f
-                )
-                bars.forEach { (bx, topY) ->
-                    drawRoundRect(
-                        color = Color.White,
-                        topLeft = Offset(bx, topY),
-                        size = Size(barWidth, baseLineY - topY),
-                        cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                    )
-                }
-
-                // Rising arrow above the bars
-                val arrowPath = Path().apply {
-                    moveTo(w * 0.30f, h * 0.48f)
-                    quadraticBezierTo(w * 0.45f, h * 0.38f, w * 0.63f, h * 0.26f)
-                }
-                drawPath(
-                    path = arrowPath,
-                    color = Color.White,
-                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
-                )
-                val arrowHead = Path().apply {
-                    moveTo(w * 0.55f, h * 0.25f)
-                    lineTo(w * 0.65f, h * 0.24f)
-                    lineTo(w * 0.63f, h * 0.34f)
-                }
-                drawPath(
-                    path = arrowHead,
-                    color = Color.White,
-                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-            }
-
-            ThreeDIllustrationType.TROPHY_STARS -> {
-                // Radiant aura
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFFFBBF24).copy(alpha = 0.38f), Color.Transparent),
-                        center = Offset(cx, cy),
-                        radius = w * 0.48f
-                    ),
-                    radius = w * 0.48f,
-                    center = Offset(cx, cy)
-                )
-                // Pedestal base
+                // 3D School Archway Gate Pedestal Base
                 drawRoundRect(
-                    brush = Brush.horizontalGradient(listOf(Color(0xFF047857), Color(0xFF065F46))),
-                    topLeft = Offset(w * 0.28f, h * 0.72f),
-                    size = Size(w * 0.44f, h * 0.12f),
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFF0F3D5E), Color(0xFF047857), Color(0xFF0F3D5E))
+                    ),
+                    topLeft = Offset(w * 0.14f, h * 0.72f),
+                    size = Size(w * 0.72f, h * 0.11f),
                     cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
                 )
-                // Golden stem
-                drawRect(
-                    brush = Brush.horizontalGradient(listOf(Color(0xFFFDE68A), Color(0xFFD97706))),
-                    topLeft = Offset(w * 0.45f, h * 0.56f),
-                    size = Size(w * 0.10f, h * 0.17f)
+
+                // Left & Right 3D Gate Pillars (White/Silver 3D columns with Emerald caps)
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(listOf(Color.White, Color(0xFFCBD5E1))),
+                    topLeft = Offset(w * 0.20f, h * 0.34f),
+                    size = Size(w * 0.12f, h * 0.40f),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                 )
-                // Cup body
-                val cupPath = Path().apply {
-                    moveTo(w * 0.28f, h * 0.22f)
-                    lineTo(w * 0.72f, h * 0.22f)
-                    quadraticBezierTo(w * 0.70f, h * 0.58f, w * 0.50f, h * 0.58f)
-                    quadraticBezierTo(w * 0.30f, h * 0.58f, w * 0.28f, h * 0.22f)
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(listOf(Color.White, Color(0xFFCBD5E1))),
+                    topLeft = Offset(w * 0.68f, h * 0.34f),
+                    size = Size(w * 0.12f, h * 0.40f),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                )
+
+                // 3D Royal Arch Roof over the School Gate
+                val archPath = Path().apply {
+                    moveTo(w * 0.15f, h * 0.36f)
+                    quadraticBezierTo(w * 0.50f, h * 0.10f, w * 0.85f, h * 0.36f)
+                    lineTo(w * 0.78f, h * 0.41f)
+                    quadraticBezierTo(w * 0.50f, h * 0.20f, w * 0.22f, h * 0.41f)
                     close()
                 }
                 drawPath(
-                    path = cupPath,
+                    path = archPath,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFD97706))
+                    )
+                )
+
+                // Center 3D Digital Attendance Clock Sphere
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF0F3D5E))
+                    ),
+                    radius = w * 0.22f,
+                    center = Offset(cx, h * 0.50f)
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = w * 0.18f,
+                    center = Offset(cx, h * 0.50f)
+                )
+                // Clock hands (8:00 AM school attendance time)
+                drawLine(
+                    color = Color(0xFF0F3D5E),
+                    start = Offset(cx, h * 0.50f),
+                    end = Offset(cx, h * 0.38f),
+                    strokeWidth = 2.8.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFF059669),
+                    start = Offset(cx, h * 0.50f),
+                    end = Offset(w * 0.40f, h * 0.55f),
+                    strokeWidth = 2.6.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawCircle(
+                    color = Color(0xFFF59E0B),
+                    radius = w * 0.025f,
+                    center = Offset(cx, h * 0.50f)
+                )
+
+                // Floating 3D Emerald Checkmark Shield Badge on bottom-right
+                val badgeCenter = Offset(w * 0.72f, h * 0.66f)
+                drawCircle(
+                    brush = Brush.linearGradient(listOf(Color(0xFF34D399), Color(0xFF059669))),
+                    radius = w * 0.15f,
+                    center = badgeCenter
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = w * 0.15f,
+                    center = badgeCenter,
+                    style = Stroke(width = 2.dp.toPx())
+                )
+                val checkPath = Path().apply {
+                    moveTo(w * 0.65f, h * 0.66f)
+                    lineTo(w * 0.70f, h * 0.71f)
+                    lineTo(w * 0.79f, h * 0.60f)
+                }
+                drawPath(
+                    path = checkPath,
+                    color = Color.White,
+                    style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+            }
+
+            ThreeDIllustrationType.EXAM_CERTIFICATE_PEN -> {
+                // 3D Certified Exam Certificate Scroll + A+/100 Seal + Floating 3D Golden Pen
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.12f).coerceAtMost(0.7f)), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = Offset(cx, cy)
+                )
+
+                // Back 3D Folder / Exam Board (Navy & Emerald)
+                rotate(-6f, pivot = Offset(cx, cy)) {
+                    drawRoundRect(
+                        brush = Brush.linearGradient(listOf(Color(0xFF0F3D5E), Color(0xFF047857))),
+                        topLeft = Offset(w * 0.18f, h * 0.16f),
+                        size = Size(w * 0.58f, h * 0.68f),
+                        cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx())
+                    )
+                }
+
+                // Front 3D White Certificate Sheet with Golden Header Bar
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFF1F5F9))),
+                    topLeft = Offset(w * 0.22f, h * 0.18f),
+                    size = Size(w * 0.56f, h * 0.66f),
+                    cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx())
+                )
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))),
+                    topLeft = Offset(w * 0.22f, h * 0.18f),
+                    size = Size(w * 0.56f, h * 0.12f),
+                    cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx())
+                )
+
+                // Certificate horizontal text lines
+                for (i in 0..2) {
+                    val lineY = h * (0.38f + i * 0.09f)
+                    drawRoundRect(
+                        color = if (i == 0) Color(0xFF059669).copy(alpha = 0.65f) else Color(0xFF94A3B8).copy(alpha = 0.55f),
+                        topLeft = Offset(w * 0.29f, lineY),
+                        size = Size(w * (if (i == 2) 0.28f else 0.42f), h * 0.038f),
+                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                    )
+                }
+
+                // 3D Golden Excellence Seal & Ribbons on Bottom-Left of Certificate
+                val sealCenter = Offset(w * 0.38f, h * 0.70f)
+                val ribbonLeft = Path().apply {
+                    moveTo(w * 0.34f, h * 0.74f)
+                    lineTo(w * 0.29f, h * 0.88f)
+                    lineTo(w * 0.37f, h * 0.85f)
+                    close()
+                }
+                val ribbonRight = Path().apply {
+                    moveTo(w * 0.42f, h * 0.74f)
+                    lineTo(w * 0.47f, h * 0.88f)
+                    lineTo(w * 0.39f, h * 0.85f)
+                    close()
+                }
+                drawPath(ribbonLeft, color = Color(0xFF059669))
+                drawPath(ribbonRight, color = Color(0xFF047857))
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))),
+                    radius = w * 0.11f,
+                    center = sealCenter
+                )
+                // Star/Check inside Golden Seal
+                val sealCheck = Path().apply {
+                    moveTo(w * 0.34f, h * 0.70f)
+                    lineTo(w * 0.37f, h * 0.73f)
+                    lineTo(w * 0.43f, h * 0.66f)
+                }
+                drawPath(
+                    path = sealCheck,
+                    color = Color.White,
+                    style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+
+                // Floating 3D Golden & Emerald Fountain Pen on the Right
+                rotate(-32f, pivot = Offset(w * 0.74f, h * 0.52f)) {
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(listOf(Color(0xFF10B981), Color(0xFF0F3D5E))),
+                        topLeft = Offset(w * 0.69f, h * 0.24f),
+                        size = Size(w * 0.10f, h * 0.44f),
+                        cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                    )
+                    // Golden ring & nib
+                    drawRect(
+                        color = Color(0xFFFBBF24),
+                        topLeft = Offset(w * 0.69f, h * 0.62f),
+                        size = Size(w * 0.10f, h * 0.05f)
+                    )
+                    val nibPath = Path().apply {
+                        moveTo(w * 0.69f, h * 0.68f)
+                        lineTo(w * 0.79f, h * 0.68f)
+                        lineTo(w * 0.74f, h * 0.80f)
+                        close()
+                    }
+                    drawPath(
+                        path = nibPath,
+                        brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFD97706)))
+                    )
+                }
+            }
+
+            ThreeDIllustrationType.TROPHY_STARS,
+            ThreeDIllustrationType.ROYAL_HONOR_SHIELD -> {
+                // Multi-Layered 3D Royal Excellence Shield + Glowing Golden Laurel Wreath + Pulsing 3D Stars
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(
+                            Color(0xFFFDE68A).copy(alpha = (glowPulseAlpha + 0.18f).coerceAtMost(0.78f)),
+                            Color(0xFF34D399).copy(alpha = glowPulseAlpha * 0.4f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = w * 0.52f
+                    ),
+                    radius = w * 0.52f,
+                    center = Offset(cx, cy)
+                )
+
+                // Golden Laurel Wreath Arcs (Left & Right)
+                drawArc(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))),
+                    startAngle = 110f,
+                    sweepAngle = 140f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.10f, h * 0.18f),
+                    size = Size(w * 0.80f, h * 0.68f),
+                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                )
+                drawArc(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))),
+                    startAngle = -70f,
+                    sweepAngle = 140f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.10f, h * 0.18f),
+                    size = Size(w * 0.80f, h * 0.68f),
+                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // Outer 3D Golden Shield Frame
+                val outerShield = Path().apply {
+                    moveTo(cx, h * 0.14f)
+                    lineTo(w * 0.78f, h * 0.25f)
+                    lineTo(w * 0.76f, h * 0.54f)
+                    quadraticBezierTo(w * 0.74f, h * 0.76f, cx, h * 0.88f)
+                    quadraticBezierTo(w * 0.26f, h * 0.76f, w * 0.24f, h * 0.54f)
+                    lineTo(w * 0.22f, h * 0.25f)
+                    close()
+                }
+                drawPath(
+                    path = outerShield,
                     brush = Brush.linearGradient(
                         listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))
                     )
                 )
-                // Handles
+
+                // Inner 3D Emerald & Royal Navy Shield Core
+                val innerShield = Path().apply {
+                    moveTo(cx, h * 0.20f)
+                    lineTo(w * 0.72f, h * 0.29f)
+                    lineTo(w * 0.70f, h * 0.53f)
+                    quadraticBezierTo(w * 0.68f, h * 0.71f, cx, h * 0.81f)
+                    quadraticBezierTo(w * 0.32f, h * 0.71f, w * 0.30f, h * 0.53f)
+                    lineTo(w * 0.28f, h * 0.29f)
+                    close()
+                }
+                drawPath(
+                    path = innerShield,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF0F3D5E))
+                    )
+                )
+
+                // Center 3D 5-Point Golden Star inside the Royal Shield
+                val starCenterY = h * 0.49f
+                val starOuterR = w * 0.16f
+                val starInnerR = w * 0.07f
+                val starPath = Path().apply {
+                    for (i in 0 until 10) {
+                        val r = if (i % 2 == 0) starOuterR else starInnerR
+                        val angle = Math.toRadians((i * 36.0) - 90.0)
+                        val px = cx + (r * kotlin.math.cos(angle)).toFloat()
+                        val py = starCenterY + (r * kotlin.math.sin(angle)).toFloat()
+                        if (i == 0) moveTo(px, py) else lineTo(px, py)
+                    }
+                    close()
+                }
+                drawPath(
+                    path = starPath,
+                    brush = Brush.linearGradient(listOf(Color(0xFFFFFBEB), Color(0xFFFDE047), Color(0xFFF59E0B)))
+                )
+
+                // 3 Pulsing Sparkle Stars around the shield top
+                val sparkleAlpha = (glowPulseAlpha + 0.35f).coerceAtMost(1f)
+                drawCircle(color = Color(0xFFFEF08A).copy(alpha = sparkleAlpha), radius = w * 0.032f, center = Offset(w * 0.20f, h * 0.16f))
+                drawCircle(color = Color(0xFFFEF08A).copy(alpha = sparkleAlpha), radius = w * 0.038f, center = Offset(w * 0.50f, h * 0.08f))
+                drawCircle(color = Color(0xFFFEF08A).copy(alpha = sparkleAlpha), radius = w * 0.032f, center = Offset(w * 0.80f, h * 0.16f))
+            }
+
+            ThreeDIllustrationType.SCHEDULE_BOOKS_3D -> {
+                // 3D Weekly Timetable Board + Stacked Study Books + Bookmark Ribbon
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = glowPulseAlpha), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = Offset(cx, cy)
+                )
+
+                // 3D Timetable Card on Top-Right
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFE2E8F0))),
+                    topLeft = Offset(w * 0.24f, h * 0.14f),
+                    size = Size(w * 0.60f, h * 0.48f),
+                    cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx())
+                )
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(listOf(Color(0xFF059669), Color(0xFF0F3D5E))),
+                    topLeft = Offset(w * 0.24f, h * 0.14f),
+                    size = Size(w * 0.60f, h * 0.13f),
+                    cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx())
+                )
+                for (r in 0..1) {
+                    for (c in 0..2) {
+                        drawRoundRect(
+                            color = if ((r + c) % 2 == 0) Color(0xFF10B981).copy(alpha = 0.75f) else Color(0xFF94A3B8).copy(alpha = 0.45f),
+                            topLeft = Offset(w * (0.30f + c * 0.17f), h * (0.32f + r * 0.12f)),
+                            size = Size(w * 0.12f, h * 0.07f),
+                            cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                        )
+                    }
+                }
+
+                // Foreground 3D Study Book with Golden Bookmark
+                drawRoundRect(
+                    brush = Brush.linearGradient(listOf(Color(0xFF10B981), Color(0xFF047857))),
+                    topLeft = Offset(w * 0.14f, h * 0.56f),
+                    size = Size(w * 0.64f, h * 0.24f),
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color.White,
+                    topLeft = Offset(w * 0.18f, h * 0.60f),
+                    size = Size(w * 0.56f, h * 0.16f),
+                    cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                )
+                // Golden Bookmark Ribbon
+                drawRect(
+                    color = Color(0xFFF59E0B),
+                    topLeft = Offset(w * 0.32f, h * 0.56f),
+                    size = Size(w * 0.07f, h * 0.28f)
+                )
+            }
+
+            ThreeDIllustrationType.CLOUD_OFFLINE_3D -> {
+                // 3D Glassmorphic Cloud + Pulsing Signal Arcs for Offline Screen
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = glowPulseAlpha), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = Offset(cx, cy)
+                )
+                // Pulsing Wi-Fi / Signal waves above the cloud
+                val waveCol = Color(0xFF10B981).copy(alpha = (glowPulseAlpha + 0.25f).coerceAtMost(0.95f))
                 drawArc(
-                    color = Color(0xFFFBBF24),
-                    startAngle = 90f,
-                    sweepAngle = 180f,
+                    color = waveCol,
+                    startAngle = -140f,
+                    sweepAngle = 100f,
                     useCenter = false,
-                    topLeft = Offset(w * 0.18f, h * 0.26f),
-                    size = Size(w * 0.20f, h * 0.22f),
-                    style = Stroke(width = 3.dp.toPx())
+                    topLeft = Offset(w * 0.26f, h * 0.10f),
+                    size = Size(w * 0.48f, h * 0.42f),
+                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
                 )
                 drawArc(
-                    color = Color(0xFFFBBF24),
-                    startAngle = -90f,
-                    sweepAngle = 180f,
+                    color = waveCol.copy(alpha = waveCol.alpha * 0.75f),
+                    startAngle = -135f,
+                    sweepAngle = 90f,
                     useCenter = false,
-                    topLeft = Offset(w * 0.62f, h * 0.26f),
-                    size = Size(w * 0.20f, h * 0.22f),
-                    style = Stroke(width = 3.dp.toPx())
+                    topLeft = Offset(w * 0.34f, h * 0.18f),
+                    size = Size(w * 0.32f, h * 0.30f),
+                    style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // 3D Layered Cloud Body
+                drawCircle(
+                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFD1FAE5))),
+                    radius = w * 0.18f,
+                    center = Offset(w * 0.36f, h * 0.56f)
+                )
+                drawCircle(
+                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFA7F3D0))),
+                    radius = w * 0.22f,
+                    center = Offset(w * 0.52f, h * 0.48f)
+                )
+                drawCircle(
+                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFD1FAE5))),
+                    radius = w * 0.16f,
+                    center = Offset(w * 0.67f, h * 0.58f)
+                )
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFA7F3D0))),
+                    topLeft = Offset(w * 0.22f, h * 0.52f),
+                    size = Size(w * 0.58f, h * 0.22f),
+                    cornerRadius = CornerRadius(18.dp.toPx(), 18.dp.toPx())
+                )
+                // Golden sync badge on cloud
+                drawCircle(
+                    brush = Brush.linearGradient(listOf(Color(0xFFFBBF24), Color(0xFFD97706))),
+                    radius = w * 0.11f,
+                    center = Offset(w * 0.68f, h * 0.68f)
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = w * 0.045f,
+                    center = Offset(w * 0.68f, h * 0.68f)
                 )
             }
 
@@ -3174,67 +3473,75 @@ fun ThreeDHeroHeaderCard(
                 .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Top Row: Two Frosted Glass Pills
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Right Pill (School Type & Stage)
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.18f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+            // Top Row: Two Frosted Glass Pills (Guaranteed non-clipping for academic year & role badges)
+            if (rightPillText.isNotBlank() || leftPillText.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = rightPillIcon,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = rightPillText,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            maxLines = 1,
-                            softWrap = false
-                        )
+                    if (rightPillText.isNotBlank()) {
+                        Surface(
+                            modifier = Modifier.weight(1f, fill = false),
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = rightPillIcon,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = rightPillText,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
-                }
 
-                // Left Pill (Role Badge)
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.18f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = leftPillIcon,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = leftPillText,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            maxLines = 1,
-                            softWrap = false
-                        )
+                    Spacer(modifier = Modifier.weight(0.01f))
+
+                    if (leftPillText.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = leftPillIcon,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = leftPillText,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -3358,27 +3665,35 @@ fun SectionDividerHeaderWithLines(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Colored 3D mini bar chart icon matching reference screenshot
+            // 3D Royal Emerald & Gold Diamond Emblem (replaces mini bar chart)
             Canvas(modifier = Modifier.size(22.dp)) {
                 val w = size.width
                 val h = size.height
-                drawRoundRect(
-                    color = Color(0xFF0F3D5E),
-                    topLeft = Offset(w * 0.08f, h * 0.46f),
-                    size = Size(w * 0.22f, h * 0.48f),
-                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                val outerDiamond = Path().apply {
+                    moveTo(w * 0.50f, h * 0.06f)
+                    lineTo(w * 0.94f, h * 0.50f)
+                    lineTo(w * 0.50f, h * 0.94f)
+                    lineTo(w * 0.06f, h * 0.50f)
+                    close()
+                }
+                drawPath(
+                    path = outerDiamond,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF0F3D5E))
+                    )
                 )
-                drawRoundRect(
-                    color = Color(0xFF059669),
-                    topLeft = Offset(w * 0.39f, h * 0.14f),
-                    size = Size(w * 0.22f, h * 0.80f),
-                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                )
-                drawRoundRect(
-                    color = Color(0xFF10B981),
-                    topLeft = Offset(w * 0.70f, h * 0.32f),
-                    size = Size(w * 0.22f, h * 0.62f),
-                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                val innerDiamond = Path().apply {
+                    moveTo(w * 0.50f, h * 0.24f)
+                    lineTo(w * 0.76f, h * 0.50f)
+                    lineTo(w * 0.50f, h * 0.76f)
+                    lineTo(w * 0.24f, h * 0.50f)
+                    close()
+                }
+                drawPath(
+                    path = innerDiamond,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
+                    )
                 )
             }
 
@@ -3535,45 +3850,45 @@ fun ThreeDDailyAttendanceGateSummaryCard(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Left side (in RTL): 3D Glowing Chart Sphere (72.dp)
+                    // Left side (in RTL): 3D Smart Attendance Gate & Digital Clock (72.dp)
                     ThreeDIllustrationBox(
-                        type = ThreeDIllustrationType.GLOWING_CHART_SPHERE,
+                        type = ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK,
                         modifier = Modifier.size(72.dp)
                     )
                 }
 
-                // Bottom Row: 5 Frosted Glass Emerald Capsules in a single balanced row
+                // Bottom Row: 5 Frosted Glass Emerald Capsules in a single balanced row (Zero truncation on "متواجدون: 1")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf(
-                        "حاضرون: $presentCount",
-                        "غائبون: $absentCount",
-                        "دخلوا: $checkedInCount",
-                        "غادروا: $checkedOutCount",
-                        "متواجدون: $insideNowCount"
-                    ).forEach { pillLabel ->
+                    val capsules = listOf(
+                        "حاضرون: $presentCount" to 0.96f,
+                        "غائبون: $absentCount" to 0.94f,
+                        "دخلوا: $checkedInCount" to 0.92f,
+                        "غادروا: $checkedOutCount" to 0.94f,
+                        "متواجدون: $insideNowCount" to 1.24f
+                    )
+                    capsules.forEach { (pillLabel, pillWeight) ->
                         Surface(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(pillWeight),
                             shape = RoundedCornerShape(50),
                             color = Color.White.copy(alpha = 0.16f),
                             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.36f))
                         ) {
                             Box(
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = pillLabel,
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 10.sp,
+                                    fontSize = 9.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
                                     maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis
+                                    softWrap = false
                                 )
                             }
                         }

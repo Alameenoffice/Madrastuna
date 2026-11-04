@@ -163,7 +163,7 @@ fun DashboardScreen(
 
                 ThreeDHeroHeaderCard(
                     title = "مرحباً بك، ${currentUser?.fullName ?: ""}",
-                    subtitle = welcomeSubtitle,
+                    subtitle = "$welcomeSubtitle • ${schoolConfig.ministryAffiliation} (${schoolConfig.schoolGenderType})",
                     rightPillText = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel}",
                     rightPillIcon = Icons.Filled.School,
                     leftPillText = currentUser?.role?.arabicTitle ?: "مستخدم",
@@ -6477,8 +6477,8 @@ fun LiveOperationsRadarScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             ThreeDIllustrationBox(
-                                type = ThreeDIllustrationType.GLOWING_CHART_SPHERE,
-                                modifier = Modifier.size(56.dp)
+                                type = ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK,
+                                modifier = Modifier.size(58.dp)
                             )
                             Column {
                                 Text(

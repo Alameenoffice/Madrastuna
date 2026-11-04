@@ -221,8 +221,20 @@ fun ScheduleAndHomeworkScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // 3D Wave Hero Header for Schedule, Homework & Study Library
+        ThreeDHeroHeaderCard(
+            title = "الجدول والواجبات والمكتبة",
+            subtitle = "تنظيم جدول الحصص الأسبوعي والواجبات اليومية والملخصات الدراسية",
+            rightPillText = "$selectedClass • شعبة $selectedSection",
+            rightPillIcon = Icons.Filled.MenuBook,
+            leftPillText = "الواجبات: ${filteredHomeworks.size}",
+            leftPillIcon = Icons.Filled.CalendarMonth,
+            illustrationType = ThreeDIllustrationType.SCHEDULE_BOOKS_3D
+        )
+
         // Compact 3D Wave Header & Unclipped 3-Tab Pill Switcher (الواجبات | جدول الحصص | المكتبة والملخصات)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -3165,7 +3177,7 @@ fun ExamsAndGradesScreen(
                             rightPillIcon = Icons.Filled.Class,
                             leftPillText = "طلاب الصف: ${classSectionStudents.size}",
                             leftPillIcon = Icons.Filled.Groups,
-                            illustrationType = ThreeDIllustrationType.GLOWING_CHART_SPHERE
+                            illustrationType = ThreeDIllustrationType.EXAM_CERTIFICATE_PEN
                         )
                     }
 
@@ -3249,16 +3261,17 @@ fun ExamsAndGradesScreen(
                                     }
                                 }
 
-                                // 3.B Flexible Grading Scale Toggle (نظام الدرجة: من 10 / من 100)
+                                // 3.B Flexible Grading Scale Toggle (نظام الدرجة: من 10 / من 100) — Comfortable horizontal layout with zero vertical wrapping
                                 Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -3270,38 +3283,95 @@ fun ExamsAndGradesScreen(
                                             Icon(
                                                 imageVector = Icons.Filled.Tune,
                                                 contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
+                                                tint = Color(0xFF059669),
                                                 modifier = Modifier.size(18.dp)
                                             )
                                             Text(
-                                                text = "نظام الدرجة (${if (GradingRules.defaultMaxScoreForClass(selectedClass) == 10) "تلقائي للأول-الرابع الابتدائي" else "قياسي"}):",
+                                                text = "نظام الدرجة (${if (GradingRules.defaultMaxScoreForClass(selectedClass) == 10) "ابتدائي" else "قياسي"}):",
                                                 style = MaterialTheme.typography.labelLarge,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF065F46),
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            FilterChip(
-                                                selected = selectedMaxScale == 10,
-                                                onClick = { selectedMaxScale = 10 },
-                                                label = { Text("من 10", maxLines = 1, softWrap = false) },
-                                                leadingIcon = {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = if (selectedMaxScale == 10) Color(0xFF059669) else Color.White,
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (selectedMaxScale == 10) Color(0xFF047857) else Color(0xFFA7F3D0)
+                                                ),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable { selectedMaxScale = 10 }
+                                                    .testTag("scale_toggle_10")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
                                                     if (selectedMaxScale == 10) {
-                                                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Check,
+                                                            contentDescription = null,
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
                                                     }
-                                                },
-                                                modifier = Modifier.testTag("scale_toggle_10")
-                                            )
-                                            FilterChip(
-                                                selected = selectedMaxScale == 100,
-                                                onClick = { selectedMaxScale = 100 },
-                                                label = { Text("من 100", maxLines = 1, softWrap = false) },
-                                                leadingIcon = {
+                                                    Text(
+                                                        text = "من 10",
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (selectedMaxScale == 10) Color.White else Color(0xFF065F46),
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = if (selectedMaxScale == 100) Color(0xFF059669) else Color.White,
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (selectedMaxScale == 100) Color(0xFF047857) else Color(0xFFA7F3D0)
+                                                ),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable { selectedMaxScale = 100 }
+                                                    .testTag("scale_toggle_100")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
                                                     if (selectedMaxScale == 100) {
-                                                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Check,
+                                                            contentDescription = null,
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
                                                     }
-                                                },
-                                                modifier = Modifier.testTag("scale_toggle_100")
-                                            )
+                                                    Text(
+                                                        text = "من 100",
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (selectedMaxScale == 100) Color.White else Color(0xFF065F46),
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }

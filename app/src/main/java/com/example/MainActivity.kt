@@ -15,6 +15,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -76,6 +77,8 @@ import com.example.ui.components.SoftWaveMeshBackground
 import com.example.ui.components.ProgressiveInfiniteScrollFooter
 import com.example.ui.components.SchoolHolidaysManagementModalDialog
 import com.example.ui.components.StudentActivitiesLinearVector
+import com.example.ui.components.ThreeDIllustrationBox
+import com.example.ui.components.ThreeDIllustrationType
 import com.example.ui.components.UrgentSchoolAlertModalDialog
 import com.example.ui.components.VectorActionButton
 import com.example.ui.screens.*
@@ -243,6 +246,20 @@ fun MadrasatiRootApp(
                             adminUsername = adminUsername,
                             adminPassword = adminPassword,
                             schoolStage = schoolStage
+                        )
+                    },
+                    onCompleteSetupWithAffiliation = { schoolName, address, schoolType, logoBase64, adminFullName, adminUsername, adminPassword, schoolStage, ministryAffiliation, schoolGenderType ->
+                        viewModel.setupSchoolAndAdmin(
+                            schoolName = schoolName,
+                            address = address,
+                            schoolType = schoolType,
+                            logoBase64 = logoBase64,
+                            adminFullName = adminFullName,
+                            adminUsername = adminUsername,
+                            adminPassword = adminPassword,
+                            schoolStage = schoolStage,
+                            ministryAffiliation = ministryAffiliation,
+                            schoolGenderType = schoolGenderType
                         )
                     }
                 )
@@ -580,7 +597,7 @@ fun MadrasatiRootApp(
             }
         }
 
-        // Full-Screen Offline Experience (بتصميم مطابق لفخامة شاشة الترحيب Onboarding/Splash بدون صندوق قاتم أو لون برتقالي)
+        // Full-Screen 3D Glassmorphic Offline Experience (واجهة انقطاع الإنترنت ثلاثية الأبعاد وزجاجية 3D Glassmorphism)
         val isNetworkOnline by viewModel.isNetworkOnline.collectAsState()
         val isDarkOffline by viewModel.isDarkMode.collectAsState()
         AnimatedVisibility(
@@ -591,332 +608,206 @@ fun MadrasatiRootApp(
                 .fillMaxSize()
                 .zIndex(99999f)
         ) {
-            val infiniteTransition = rememberInfiniteTransition(label = "offline_splash_lottie_scene")
+            val hapticOffline = LocalHapticFeedback.current
+            var retrySpinCount by remember { mutableStateOf(0) }
+            val retryRotationDegrees by animateFloatAsState(
+                targetValue = retrySpinCount * 360f,
+                animationSpec = tween(durationMillis = 680, easing = FastOutSlowInEasing),
+                label = "offline_retry_rotation"
+            )
+            val infiniteTransition = rememberInfiniteTransition(label = "offline_3d_glass_scene")
             val floatOffset by infiniteTransition.animateFloat(
-                initialValue = -9f,
-                targetValue = 9f,
+                initialValue = -7f,
+                targetValue = 7f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(2200, easing = FastOutSlowInEasing),
+                    animation = tween(2100, easing = FastOutSlowInEasing),
                     repeatMode = RepeatMode.Reverse
                 ),
                 label = "offline_float_offset"
             )
             val pulseWave by infiniteTransition.animateFloat(
-                initialValue = 0.86f,
-                targetValue = 1.22f,
+                initialValue = 0.88f,
+                targetValue = 1.18f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(1900, easing = FastOutSlowInEasing),
+                    animation = tween(1800, easing = FastOutSlowInEasing),
                     repeatMode = RepeatMode.Reverse
                 ),
                 label = "offline_pulse_wave"
             )
-            val orbitAngle by infiniteTransition.animateFloat(
-                initialValue = 0f,
-                targetValue = 360f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(12000, easing = androidx.compose.animation.core.LinearEasing),
-                    repeatMode = RepeatMode.Restart
-                ),
-                label = "offline_orbit_angle"
-            )
-            val signalSweep by infiniteTransition.animateFloat(
-                initialValue = 0.25f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1500, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "offline_signal_sweep"
-            )
 
-            Box(
+            SoftWaveMeshBackground(
+                isDarkMode = isDarkOffline,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = if (isDarkOffline) {
-                                listOf(
-                                    Color(0xFF031F18),
-                                    Color(0xFF063729),
-                                    Color(0xFF04261D)
-                                )
-                            } else {
-                                listOf(
-                                    Color(0xFFEFFBF5),
-                                    Color(0xFFF7FDF9),
-                                    Color(0xFFFFFFFF)
-                                )
-                            }
-                        )
-                    )
                     .pointerInput(Unit) {
                         detectTapGestures { /* Block all underlying clicks/touches while offline */ }
                     }
                     .testTag("network_connectivity_guard_banner")
             ) {
-                // Soft Ambient Glows (إضاءة محيطية ناعمة مطابقة لشاشة الترحيب)
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFF10B981).copy(alpha = if (isDarkOffline) 0.16f else 0.12f),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width * 0.85f, size.height * 0.15f),
-                            radius = size.minDimension * 0.65f
-                        ),
-                        center = Offset(size.width * 0.85f, size.height * 0.15f),
-                        radius = size.minDimension * 0.65f
-                    )
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                GoldAccent.copy(alpha = if (isDarkOffline) 0.12f else 0.10f),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width * 0.15f, size.height * 0.82f),
-                            radius = size.minDimension * 0.60f
-                        ),
-                        center = Offset(size.width * 0.15f, size.height * 0.82f),
-                        radius = size.minDimension * 0.60f
-                    )
-                }
-
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 28.dp, vertical = 36.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 22.dp, vertical = 32.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Center Multi-Layer JSON/Lottie-Style Animated Scene + Concise Typography
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(228.dp)
-                                .clip(RoundedCornerShape(36.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(
-                                            Color(0xFF042F2E),
-                                            DeepEmerald,
-                                            Color(0xFF0D9488)
-                                        )
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val cx = size.width / 2f
-                                val cy = size.height / 2f
-
-                                // Multi-layer animated radar waves searching for signal
-                                drawCircle(
-                                    color = Color.White.copy(alpha = 0.07f),
-                                    radius = size.minDimension * 0.44f * pulseWave,
-                                    center = Offset(cx, cy)
+                    // 3D Glassmorphic Center Card
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(
+                                elevation = 24.dp,
+                                shape = RoundedCornerShape(34.dp),
+                                ambientColor = Color(0xFF047857).copy(alpha = 0.25f),
+                                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.30f)
+                            ),
+                        shape = RoundedCornerShape(34.dp),
+                        color = if (isDarkOffline) {
+                            Color(0xFF062C22).copy(alpha = 0.94f)
+                        } else {
+                            Color.White.copy(alpha = 0.94f)
+                        },
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.6.dp,
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF10B981).copy(alpha = 0.45f),
+                                    GoldAccent.copy(alpha = 0.50f),
+                                    Color(0xFF0F3D5E).copy(alpha = 0.35f)
                                 )
-                                drawCircle(
-                                    color = Color(0xFF34D399).copy(alpha = 0.22f * signalSweep),
-                                    radius = size.minDimension * 0.38f * pulseWave,
-                                    center = Offset(cx, cy),
-                                    style = Stroke(width = 2.2.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = GoldAccent.copy(alpha = 0.32f * signalSweep),
-                                    radius = size.minDimension * 0.30f * (2f - pulseWave * 0.75f),
-                                    center = Offset(cx, cy),
-                                    style = Stroke(width = 2.dp.toPx())
-                                )
-
-                                // Orbiting golden & emerald smart nodes
-                                val rad1 = Math.toRadians(orbitAngle.toDouble())
-                                val rad2 = Math.toRadians((orbitAngle + 120f).toDouble())
-                                val rad3 = Math.toRadians((orbitAngle + 240f).toDouble())
-                                val orbitR = size.minDimension * 0.37f
-
-                                drawCircle(
-                                    color = GoldAccent.copy(alpha = 0.85f),
-                                    radius = 5.5.dp.toPx(),
-                                    center = Offset(
-                                        cx + (kotlin.math.cos(rad1) * orbitR).toFloat(),
-                                        cy + (kotlin.math.sin(rad1) * orbitR).toFloat()
-                                    )
-                                )
-                                drawCircle(
-                                    color = Color(0xFF6EE7B7).copy(alpha = 0.80f),
-                                    radius = 4.5.dp.toPx(),
-                                    center = Offset(
-                                        cx + (kotlin.math.cos(rad2) * orbitR).toFloat(),
-                                        cy + (kotlin.math.sin(rad2) * orbitR).toFloat()
-                                    )
-                                )
-                                drawCircle(
-                                    color = Color.White.copy(alpha = 0.70f),
-                                    radius = 4.dp.toPx(),
-                                    center = Offset(
-                                        cx + (kotlin.math.cos(rad3) * orbitR).toFloat(),
-                                        cy + (kotlin.math.sin(rad3) * orbitR).toFloat()
-                                    )
-                                )
-
-                                // Floating glassmorphic card backdrop
-                                drawRoundRect(
-                                    color = Color.White.copy(alpha = 0.11f),
-                                    topLeft = Offset(cx - 64.dp.toPx(), cy - 64.dp.toPx() + floatOffset),
-                                    size = androidx.compose.ui.geometry.Size(128.dp.toPx(), 128.dp.toPx()),
-                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(28.dp.toPx(), 28.dp.toPx())
-                                )
-                                drawRoundRect(
-                                    color = GoldAccent.copy(alpha = 0.42f),
-                                    topLeft = Offset(cx - 64.dp.toPx(), cy - 64.dp.toPx() + floatOffset),
-                                    size = androidx.compose.ui.geometry.Size(128.dp.toPx(), 128.dp.toPx()),
-                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(28.dp.toPx(), 28.dp.toPx()),
-                                    style = Stroke(width = 1.4.dp.toPx())
-                                )
-
-                                // Animated 3D-style Signal Waves & Smart Hub Node
-                                val waveCenterY = cy + floatOffset + 12.dp.toPx()
-                                drawArc(
-                                    color = Color.White.copy(alpha = 0.35f + 0.55f * signalSweep),
-                                    startAngle = 215f,
-                                    sweepAngle = 110f,
-                                    useCenter = false,
-                                    topLeft = Offset(cx - 38.dp.toPx(), waveCenterY - 38.dp.toPx()),
-                                    size = androidx.compose.ui.geometry.Size(76.dp.toPx(), 76.dp.toPx()),
-                                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
-                                )
-                                drawArc(
-                                    color = Color(0xFFA7F3D0).copy(alpha = 0.45f + 0.50f * (1f - signalSweep * 0.5f)),
-                                    startAngle = 220f,
-                                    sweepAngle = 100f,
-                                    useCenter = false,
-                                    topLeft = Offset(cx - 25.dp.toPx(), waveCenterY - 25.dp.toPx()),
-                                    size = androidx.compose.ui.geometry.Size(50.dp.toPx(), 50.dp.toPx()),
-                                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
-                                )
-                                drawArc(
-                                    color = GoldAccent,
-                                    startAngle = 225f,
-                                    sweepAngle = 90f,
-                                    useCenter = false,
-                                    topLeft = Offset(cx - 13.dp.toPx(), waveCenterY - 13.dp.toPx()),
-                                    size = androidx.compose.ui.geometry.Size(26.dp.toPx(), 26.dp.toPx()),
-                                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
-                                )
-                                // Glowing Hub Core Dot
-                                drawCircle(
-                                    color = GoldAccent,
-                                    radius = 5.5.dp.toPx(),
-                                    center = Offset(cx, waveCenterY + 4.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = Color.White,
-                                    radius = 2.4.dp.toPx(),
-                                    center = Offset(cx, waveCenterY + 4.dp.toPx())
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = "انقطع الاتصال بالشبكة مؤقتاً",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isDarkOffline) Color.White else DeepForestGreen,
-                            textAlign = TextAlign.Center
+                            )
                         )
-
-                        Text(
-                            text = "يرجى التحقق من اتصال جهازك بالإنترنت لاستئناف المزامنة السحابية الفورية.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                            color = if (isDarkOffline) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 25.sp,
-                            modifier = Modifier.padding(horizontal = 12.dp)
-                        )
-                    }
-
-                    // Bottom Luxury Capsule Emerald/Gold Action Button
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(24.dp)
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(DeepEmerald)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(GoldAccent.copy(alpha = 0.65f))
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(DeepEmerald.copy(alpha = 0.30f))
-                            )
-                        }
-
-                        Surface(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(54.dp)
-                                .clip(RoundedCornerShape(50))
-                                .clickable { viewModel.triggerImmediateCloudResync() }
-                                .testTag("network_retry_sync_button"),
-                            shape = RoundedCornerShape(50),
-                            color = Color.Transparent,
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, GoldAccent.copy(alpha = 0.65f)),
-                            shadowElevation = 8.dp
+                                .padding(horizontal = 24.dp, vertical = 30.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(20.dp)
                         ) {
+                            // Top 3D Wave & Animated Cloud Centerpiece
                             Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
+                                    .size(182.dp)
+                                    .graphicsLayer {
+                                        translationY = floatOffset
+                                    }
+                                    .shadow(
+                                        elevation = 16.dp,
+                                        shape = RoundedCornerShape(36.dp),
+                                        ambientColor = Color(0xFF059669).copy(alpha = 0.30f),
+                                        spotColor = Color(0xFF0F3D5E).copy(alpha = 0.35f)
+                                    )
+                                    .clip(RoundedCornerShape(36.dp))
                                     .background(
-                                        Brush.horizontalGradient(
+                                        Brush.linearGradient(
                                             colors = listOf(
-                                                Color(0xFF042F2E),
-                                                DeepEmerald,
-                                                Color(0xFF0D9488)
+                                                Color(0xFF064E3B),
+                                                Color(0xFF059669),
+                                                Color(0xFF0F3D5E)
                                             )
                                         )
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val cx = size.width / 2f
+                                    val cy = size.height / 2f
+                                    drawCircle(
+                                        color = Color.White.copy(alpha = 0.08f),
+                                        radius = size.minDimension * 0.45f * pulseWave,
+                                        center = Offset(cx, cy)
+                                    )
+                                    drawCircle(
+                                        color = GoldAccent.copy(alpha = 0.25f),
+                                        radius = size.minDimension * 0.36f * (2f - pulseWave * 0.78f),
+                                        center = Offset(cx, cy),
+                                        style = Stroke(width = 1.8.dp.toPx())
+                                    )
+                                }
+                                ThreeDIllustrationBox(
+                                    type = ThreeDIllustrationType.CLOUD_OFFLINE_3D,
+                                    modifier = Modifier.size(134.dp)
+                                )
+                            }
+
+                            Text(
+                                text = "لا يوجد اتصال بالإنترنت حالياً",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkOffline) Color.White else DeepForestGreen,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Text(
+                                text = "يرجى التحقق من اتصال الشبكة؛ سيستأنف النظام التحديث التلقائي فور عودة الاتصال.",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isDarkOffline) Color.White.copy(alpha = 0.85f) else Color(0xFF334155),
+                                textAlign = TextAlign.Center,
+                                lineHeight = 25.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+
+                            // 3D Interactive Retry Button with Smooth Rotation & HapticFeedback
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(54.dp)
+                                    .shadow(
+                                        elevation = 10.dp,
+                                        shape = RoundedCornerShape(50),
+                                        ambientColor = Color(0xFF059669).copy(alpha = 0.30f),
+                                        spotColor = Color(0xFF0F3D5E).copy(alpha = 0.35f)
+                                    )
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable {
+                                        hapticOffline.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        retrySpinCount += 1
+                                        viewModel.triggerImmediateCloudResync()
+                                    }
+                                    .testTag("network_retry_sync_button"),
+                                shape = RoundedCornerShape(50),
+                                color = Color.Transparent,
+                                border = androidx.compose.foundation.BorderStroke(1.3.dp, GoldAccent.copy(alpha = 0.72f))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                colors = listOf(
+                                                    Color(0xFF064E3B),
+                                                    Color(0xFF059669),
+                                                    Color(0xFF0F3D5E)
+                                                )
+                                            )
+                                        ),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Refresh,
-                                        contentDescription = "إعادة الفحص الآن",
-                                        tint = GoldAccent,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = "إعادة الفحص الآن",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Refresh,
+                                            contentDescription = "إعادة المحاولة الآن",
+                                            tint = GoldAccent,
+                                            modifier = Modifier
+                                                .size(21.dp)
+                                                .graphicsLayer {
+                                                    rotationZ = retryRotationDegrees
+                                                }
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = "إعادة المحاولة الآن",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }

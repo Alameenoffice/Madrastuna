@@ -91,7 +91,7 @@ fun HonorRollScreen(
                 rightPillIcon = Icons.Filled.EmojiEvents,
                 leftPillText = schoolConfig.academicYear,
                 leftPillIcon = Icons.Filled.WorkspacePremium,
-                illustrationType = ThreeDIllustrationType.TROPHY_STARS
+                illustrationType = ThreeDIllustrationType.ROYAL_HONOR_SHIELD
             )
         }
 

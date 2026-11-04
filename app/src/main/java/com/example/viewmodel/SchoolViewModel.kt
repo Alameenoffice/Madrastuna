@@ -2271,7 +2271,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         schoolStage: SchoolStage = SchoolStage.SECONDARY,
         customSections: List<String> = listOf("أ", "ب", "ج"),
         customSchoolId: String = "",
-        adminPhone: String = ""
+        adminPhone: String = "",
+        ministryAffiliation: String = "وزارة التربية",
+        schoolGenderType: String = "مدرسة بنين"
     ) {
         val cleanName = InputSanitizer.sanitize(schoolName)
         val cleanUser = InputSanitizer.sanitizeUsername(adminUsername)
@@ -2311,6 +2313,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             address = finalAddress,
             schoolType = schoolType,
             schoolStage = schoolStage,
+            ministryAffiliation = ministryAffiliation.ifBlank { "وزارة التربية" },
+            schoolGenderType = schoolGenderType.ifBlank { "مدرسة بنين" },
             registeredClasses = generatedClasses,
             registeredSections = finalSections,
             registeredSubjects = generatedSubjects,
@@ -2459,7 +2463,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         registeredClasses: List<String> = _schoolConfig.value.registeredClasses,
         registeredSections: List<String> = _schoolConfig.value.registeredSections,
         registeredSubjects: List<String> = _schoolConfig.value.registeredSubjects,
-        phone: String = _schoolConfig.value.phone
+        phone: String = _schoolConfig.value.phone,
+        ministryAffiliation: String = _schoolConfig.value.ministryAffiliation,
+        schoolGenderType: String = _schoolConfig.value.schoolGenderType
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val cleanName = InputSanitizer.sanitize(schoolName)
@@ -2493,6 +2499,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             address = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address)),
             schoolType = schoolType,
             schoolStage = schoolStage,
+            ministryAffiliation = ministryAffiliation.ifBlank { "وزارة التربية" },
+            schoolGenderType = schoolGenderType.ifBlank { "مدرسة بنين" },
             registeredClasses = finalClasses,
             registeredSections = finalSections,
             registeredSubjects = finalSubjects,

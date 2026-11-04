@@ -805,42 +805,20 @@ fun SchoolHolidaysManagementModalDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = Color(0xFFF4FBF8),
+        shape = RoundedCornerShape(26.dp),
         title = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 InlineDialogToastBanner(toastAlert = toastAlert, onDismiss = onDismissToast)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                Surface(
-                    shape = CircleShape,
-                    color = DeepEmerald.copy(alpha = 0.14f),
-                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.5f)),
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.CalendarMonth,
-                            contentDescription = null,
-                            tint = DeepEmerald,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                Column {
-                    Text(
-                        text = "إدارة العطل الأسبوعية والرسمية",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = DeepEmerald
-                    )
-                    Text(
-                        text = "توثيق تلقائي في سجلات حضور جميع الطلبة ومنع احتساب الغياب",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                }
+                ThreeDHeroHeaderCard(
+                    title = "إدارة العطل الأسبوعية والرسمية",
+                    subtitle = "توثيق تلقائي في سجلات حضور جميع الطلبة ومنع احتساب الغياب",
+                    rightPillText = "عطل الأسبوع: ${holidaysConfig.weeklyDaysOff.size}",
+                    rightPillIcon = Icons.Filled.CalendarMonth,
+                    leftPillText = "الرسمية: ${holidaysConfig.officialHolidays.size}",
+                    leftPillIcon = Icons.Filled.CalendarMonth,
+                    illustrationType = ThreeDIllustrationType.CALENDAR_HOLIDAYS
+                )
             }
         },
         text = {
@@ -852,9 +830,10 @@ fun SchoolHolidaysManagementModalDialog(
             ) {
                 // 1. أيام العطلة الأسبوعية الثابتة
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = DeepEmerald.copy(alpha = 0.06f),
-                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White,
+                    shadowElevation = 4.dp,
+                    border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.25f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(

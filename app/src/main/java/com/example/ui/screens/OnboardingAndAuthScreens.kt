@@ -222,27 +222,23 @@ fun OnboardingScreen(
                     val slide = slides[index]
                     val slideIllustration = when (index) {
                         0 -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
-                        1 -> ThreeDIllustrationType.GLOWING_CHART_SPHERE
-                        else -> ThreeDIllustrationType.TROPHY_STARS
+                        1 -> ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK
+                        else -> ThreeDIllustrationType.SMART_WALLET_CARD
                     }
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        // 3D Seamless Wave Hero Section for the active Onboarding Slide
+                        // 3D Seamless Wave Hero Section for the active Onboarding Slide (without "الشريحة X من 3" badge or duplicate middle box)
                         ThreeDHeroHeaderCard(
                             title = slide.title,
                             subtitle = slide.description,
-                            rightPillText = slide.badge,
-                            rightPillIcon = Icons.Filled.AutoAwesome,
-                            leftPillText = discoveredSchoolName?.takeIf { it.isNotBlank() } ?: "بيئة تربوية ذكية",
+                            rightPillText = "",
+                            leftPillText = discoveredSchoolName?.takeIf { it.isNotBlank() } ?: "منصة مدرستي الذكية",
                             leftPillIcon = Icons.Filled.VerifiedUser,
                             illustrationType = slideIllustration
                         )
-
-                        // Interactive Lottie-Style Animated Vector Scene
-                        OnboardingAnimatedScene(slideIndex = index)
 
                         // 3D Glassmorphic Highlights Card
                         Card(
@@ -409,6 +405,18 @@ fun SchoolSetupScreen(
     isDarkMode: Boolean,
     onToggleDarkMode: () -> Unit,
     onCancelSetup: () -> Unit = {},
+    onCompleteSetupWithAffiliation: ((
+        schoolName: String,
+        address: String,
+        schoolType: SchoolType,
+        logoBase64: String,
+        adminFullName: String,
+        adminUsername: String,
+        adminPassword: String,
+        schoolStage: SchoolStage,
+        ministryAffiliation: String,
+        schoolGenderType: String
+    ) -> Unit)? = null,
     onCompleteSetup: (
         schoolName: String,
         address: String,
@@ -418,7 +426,7 @@ fun SchoolSetupScreen(
         adminUsername: String,
         adminPassword: String,
         schoolStage: SchoolStage
-    ) -> Unit
+    ) -> Unit = { _, _, _, _, _, _, _, _ -> }
 ) {
     BackHandler { onCancelSetup() }
 
@@ -426,6 +434,8 @@ fun SchoolSetupScreen(
     var address by remember { mutableStateOf("") }
     var selectedSchoolType by remember { mutableStateOf(SchoolType.PRIVATE) }
     var selectedSchoolStage by remember { mutableStateOf(SchoolStage.SECONDARY) }
+    var selectedMinistryAffiliation by remember { mutableStateOf("وزارة التربية") }
+    var selectedSchoolGenderType by remember { mutableStateOf("مدرسة بنين") }
     var logoBase64 by remember { mutableStateOf("") }
     var adminFullName by remember { mutableStateOf("المدير") }
     var adminPhone by remember { mutableStateOf("") }
@@ -668,6 +678,99 @@ fun SchoolSetupScreen(
                         }
                     }
 
+                    // Official School Affiliation Selector (الجهة الرسمية التابعة لها المدرسة)
+                    Text(
+                        text = "الجهة الرسمية التابعة لها المدرسة:",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("وزارة التربية", "التعليم الإسلامي - الوقف السني").forEach { affiliation ->
+                            val isSelected = selectedMinistryAffiliation == affiliation
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .border(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) Color(0xFF059669) else MaterialTheme.colorScheme.outline,
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable { selectedMinistryAffiliation = affiliation }
+                                    .testTag("school_affiliation_$affiliation"),
+                                color = if (isSelected) Color(0xFFECFDF5) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.AccountBalance,
+                                        contentDescription = affiliation,
+                                        tint = if (isSelected) Color(0xFF059669) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = affiliation,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isSelected) Color(0xFF065F46) else MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // School Gender Type Selector (جنس المدرسة: بنين / بنات / مختلطة)
+                    Text(
+                        text = "جنس المدرسة:",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("مدرسة بنين", "مدرسة بنات", "مدرسة مختلطة").forEach { genderOption ->
+                            val isSelected = selectedSchoolGenderType == genderOption
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .border(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) Color(0xFF059669) else MaterialTheme.colorScheme.outline,
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable { selectedSchoolGenderType = genderOption }
+                                    .testTag("school_gender_$genderOption"),
+                                color = if (isSelected) Color(0xFFECFDF5) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = genderOption,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isSelected) Color(0xFF065F46) else MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // Preview of Auto-Generated Classes & Sections
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
@@ -820,16 +923,31 @@ fun SchoolSetupScreen(
                             } else if (!phoneOk) {
                                 errorMessage = phoneErr
                             } else {
-                                onCompleteSetup(
-                                    schoolName,
-                                    address.trim(),
-                                    selectedSchoolType,
-                                    logoBase64,
-                                    adminFullName,
-                                    adminUsername,
-                                    adminPassword,
-                                    selectedSchoolStage
-                                )
+                                if (onCompleteSetupWithAffiliation != null) {
+                                    onCompleteSetupWithAffiliation(
+                                        schoolName,
+                                        address.trim(),
+                                        selectedSchoolType,
+                                        logoBase64,
+                                        adminFullName,
+                                        adminUsername,
+                                        adminPassword,
+                                        selectedSchoolStage,
+                                        selectedMinistryAffiliation,
+                                        selectedSchoolGenderType
+                                    )
+                                } else {
+                                    onCompleteSetup(
+                                        schoolName,
+                                        address.trim(),
+                                        selectedSchoolType,
+                                        logoBase64,
+                                        adminFullName,
+                                        adminUsername,
+                                        adminPassword,
+                                        selectedSchoolStage
+                                    )
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -1037,63 +1155,105 @@ fun UnifiedLoginScreen(
                     ThreeDHeroHeaderCard(
                         title = schoolTitleText,
                         subtitle = "بوابة تسجيل الدخول الموحدة والآمنة للهيئة الإدارية والتدريسية والطلبة وأولياء الأمور",
-                        rightPillText = if (schoolConfig.isSetupCompleted) schoolConfig.schoolStage.arabicLabel else "بيئة سحابية مشفرة",
+                        rightPillText = "${schoolConfig.ministryAffiliation} • ${schoolConfig.schoolGenderType}",
                         rightPillIcon = Icons.Filled.School,
-                        leftPillText = "حماية ذكية",
+                        leftPillText = schoolConfig.schoolStage.arabicLabel,
                         leftPillIcon = Icons.Filled.VerifiedUser,
                         illustrationType = ThreeDIllustrationType.SECURITY_SHIELD,
                         extraBottomContent = {
-                            // 5-Tap Logo Row preserved inside the 3D Wave Hero Header
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            // Official Selected School Identity Card with 5-Tap Logo Gesture
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = Color.White.copy(alpha = 0.16f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f)),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.White,
-                                    border = BorderStroke(2.dp, Color(0xFFA7F3D0)),
-                                    shadowElevation = 6.dp,
+                                Row(
                                     modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(CircleShape)
-                                        .clickable {
-                                            val now = System.currentTimeMillis()
-                                            if (now - lastLogoTapTime > 2200L) {
-                                                logoTapCount = 1
-                                            } else {
-                                                logoTapCount++
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color.White,
+                                        border = BorderStroke(2.dp, Color(0xFFA7F3D0)),
+                                        shadowElevation = 6.dp,
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                val now = System.currentTimeMillis()
+                                                if (now - lastLogoTapTime > 2200L) {
+                                                    logoTapCount = 1
+                                                } else {
+                                                    logoTapCount++
+                                                }
+                                                lastLogoTapTime = now
+                                                if (logoTapCount >= 5) {
+                                                    logoTapCount = 0
+                                                    showActivationCodeDialog = true
+                                                }
                                             }
-                                            lastLogoTapTime = now
-                                            if (logoTapCount >= 5) {
-                                                logoTapCount = 0
-                                                showActivationCodeDialog = true
+                                            .testTag("platform_logo_five_taps")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Base64AvatarImage(
+                                                base64Data = schoolConfig.logoBase64,
+                                                fallbackIcon = Icons.Filled.School,
+                                                contentDescription = schoolTitleText,
+                                                size = 46.dp,
+                                                tint = Color(0xFF059669)
+                                            )
+                                        }
+                                    }
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = schoolTitleText,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = Color.White.copy(alpha = 0.22f)
+                                            ) {
+                                                Text(
+                                                    text = schoolConfig.ministryAffiliation.ifBlank { "وزارة التربية" },
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = Color(0xFFFDE68A).copy(alpha = 0.28f)
+                                            ) {
+                                                Text(
+                                                    text = schoolConfig.schoolGenderType.ifBlank { "مدرسة بنين" },
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
                                             }
                                         }
-                                        .testTag("platform_logo_five_taps")
-                                ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                        Base64AvatarImage(
-                                            base64Data = schoolConfig.logoBase64,
-                                            fallbackIcon = Icons.Filled.School,
-                                            contentDescription = schoolTitleText,
-                                            size = 48.dp,
-                                            tint = Color(0xFF059669)
-                                        )
                                     }
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "شعار المدرسة الرسمي المعتمد",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                    Text(
-                                        text = "ارتباط سحابي فوري بحساب مدرستك",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White.copy(alpha = 0.88f)
-                                    )
                                 }
                             }
                         }
@@ -1177,7 +1337,7 @@ fun UnifiedLoginScreen(
                                         }
                                     }
                                     Text(
-                                        text = "تنبيه للطلبة وأولياء الأمور والمعلمين: يمكنك الحصول على بيانات تسجيل الدخول الخاصة بك (اسم المستخدم وكلمة المرور) مباشرة من إدارة مدرستك.",
+                                        text = "تنبيه للإدارة والمعلمين والطلبة وأولياء الأمور: يتم استلام بيانات تسجيل الدخول الخاصة بك (اسم المستخدم وكلمة المرور) مباشرة من إدارة مدرستك.",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.ExtraBold,
@@ -1483,72 +1643,38 @@ fun DeveloperControlPanelScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Redesigned Top Header Card (Pure Emerald + White, Zero Overlap)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = DeepEmerald),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+            // Selected Developer Hub Section (-1 = All sections visible, 0..3 = Focused section)
+            var selectedDevSection by remember { mutableStateOf(-1) }
+
+            // 3D Royal Wave Hero Header for Developer Control Panel
+            ThreeDHeroHeaderCard(
+                title = "لوحة تحكم النظام العام",
+                subtitle = "إدارة المدارس والاشتراكات وتأسيس المنصات وبث التنبيهات والنسخ الاحتياطي",
+                rightPillText = "المدارس المشتركة: ${registeredSchools.size}",
+                rightPillIcon = Icons.Filled.School,
+                leftPillText = "الأكواد المتاحة: ${licenses.count { !it.used }}",
+                leftPillIcon = Icons.Filled.VpnKey,
+                illustrationType = ThreeDIllustrationType.SECURITY_SHIELD,
+                extraBottomContent = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        NoWrapBadge(
+                            text = "الأكواد المستخدمة: ${licenses.count { it.used }}",
+                            icon = Icons.Filled.Verified,
+                            containerColor = Color.White.copy(alpha = 0.18f),
+                            contentColor = Color.White
+                        )
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color.White.copy(alpha = 0.18f),
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Terminal,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "لوحة تحكم النظام العام",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "إدارة السحابة السيادية والتراخيص والمدارس",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.90f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(
                                 onClick = {
                                     viewModel.refreshDeveloperCloudData()
-                                    viewModel.showToastAlert("تمت مزامنة التراخيص والمدارس مع السحابة", isSuccess = true)
+                                    viewModel.showToastAlert("تمت مزامنة التراخيص والمدارس بنجاح", isSuccess = true)
                                 },
                                 modifier = Modifier
                                     .size(38.dp)
@@ -1557,7 +1683,7 @@ fun DeveloperControlPanelScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Sync,
-                                    contentDescription = "مزامنة السحابة",
+                                    contentDescription = "مزامنة",
                                     tint = Color.White,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -1593,32 +1719,71 @@ fun DeveloperControlPanelScreen(
                             }
                         }
                     }
+                }
+            )
 
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.18f))
-
-                    FlowRow(
+            // 4-Section 3D Categorized Navigation Bar for Developer Control Panel
+            val devSections = remember {
+                listOf(
+                    Triple(0, "إدارة المدارس والاشتراكات", Icons.Filled.Domain),
+                    Triple(1, "تأسيس مدرسة جديدة", Icons.Filled.AddBusiness),
+                    Triple(2, "بث تنبيهات المطور الحية", Icons.Filled.Campaign),
+                    Triple(3, "النسخ الاحتياطي والأمان", Icons.Filled.EnhancedEncryption)
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                devSections.chunked(2).forEach { rowItems ->
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        NoWrapBadge(
-                            text = "الأكواد المتاحة: ${licenses.count { !it.used }}",
-                            icon = Icons.Filled.VpnKey,
-                            containerColor = Color.White.copy(alpha = 0.18f),
-                            contentColor = Color.White
-                        )
-                        NoWrapBadge(
-                            text = "الأكواد المستخدمة: ${licenses.count { it.used }}",
-                            icon = Icons.Filled.Verified,
-                            containerColor = Color.White.copy(alpha = 0.18f),
-                            contentColor = Color.White
-                        )
-                        NoWrapBadge(
-                            text = "المدارس المشتركة: ${registeredSchools.size}",
-                            icon = Icons.Filled.School,
-                            containerColor = Color.White.copy(alpha = 0.18f),
-                            contentColor = Color.White
-                        )
+                        rowItems.forEach { (secIdx, secTitle, secIcon) ->
+                            val isSelected = selectedDevSection == secIdx
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSelected) Color(0xFF059669) else Color.White,
+                                border = BorderStroke(
+                                    1.2.dp,
+                                    if (isSelected) Color(0xFFA7F3D0) else Color(0xFFCBD5E1)
+                                ),
+                                shadowElevation = if (isSelected) 6.dp else 2.dp,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        selectedDevSection = if (selectedDevSection == secIdx) -1 else secIdx
+                                    }
+                                    .testTag("dev_hub_tab_$secIdx")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 11.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = secIcon,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color.White else Color(0xFF059669),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = secTitle,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2857,12 +3022,19 @@ fun DeveloperControlPanelScreen(
                             }
 
                             Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.fillMaxWidth()
+                                color = Color.White,
+                                border = BorderStroke(1.2.dp, Color(0xFFE2E8F0)),
+                                shadowElevation = 4.dp,
+                                shape = RoundedCornerShape(18.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentHeight()
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(14.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .wrapContentHeight()
+                                        .padding(14.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Row(
@@ -2874,25 +3046,27 @@ fun DeveloperControlPanelScreen(
                                             Text(
                                                 text = school.schoolName,
                                                 style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurface
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF0F172A)
                                             )
                                             Text(
                                                 text = "كود المدرسة المميز: ${school.schoolId} • تاريخ التأسيس: ${school.createdAt}",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.primary
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF059669)
                                             )
                                             Text(
-                                                text = "${school.schoolType} • ${school.schoolStage} • ${school.address}",
+                                                text = "${school.ministryAffiliation} • ${school.schoolGenderType} • ${school.schoolType} • ${school.schoolStage}",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF475569)
                                             )
                                             if (school.adminUsername.isNotBlank()) {
                                                 Text(
                                                     text = "حساب المدير: ${school.adminUsername}",
                                                     style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.secondary
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF0F3D5E)
                                                 )
                                             }
                                         }
@@ -2908,7 +3082,8 @@ fun DeveloperControlPanelScreen(
 
                                     // Subscription Expiry Row with Remaining Days Badge & Edit Button
                                     Surface(
-                                        color = MaterialTheme.colorScheme.surface,
+                                        color = Color(0xFFF8FAFC),
+                                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                                         shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
@@ -2923,7 +3098,8 @@ fun DeveloperControlPanelScreen(
                                                 Text(
                                                     text = "تاريخ انتهاء الاشتراك: ${school.subscriptionExpiryDate}",
                                                     style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF0F172A)
                                                 )
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 NoWrapBadge(
@@ -2941,18 +3117,19 @@ fun DeveloperControlPanelScreen(
                                             ) {
                                                 Icon(Icons.Filled.EditCalendar, contentDescription = null, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
-                                                Text("تحديد الانتهاء", style = MaterialTheme.typography.labelMedium)
+                                                Text("تحديد الانتهاء", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                                             }
                                         }
                                     }
 
+                                    // Clean Horizontal Action Row: Status Badge + Horizontal Capsule Toggle + Delete Button (Zero vertical character wrapping)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         NoWrapBadge(
-                                            text = if (school.isActive) "الاشتراك مفعّل (isActive: true)" else "الاشتراك متوقف (isActive: false)",
+                                            text = if (school.isActive) "الاشتراك مفعل ونشط" else "الاشتراك متوقف مؤقتاً",
                                             icon = if (school.isActive) Icons.Filled.CheckCircle else Icons.Filled.Block,
                                             containerColor = if (school.isActive) SuccessGreen.copy(alpha = 0.16f) else DangerRed.copy(alpha = 0.16f),
                                             contentColor = if (school.isActive) SuccessGreen else DangerRed
@@ -2962,36 +3139,59 @@ fun DeveloperControlPanelScreen(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            TextButton(
-                                                onClick = { viewModel.toggleSchoolSubscriptionActive(school.schoolId) }
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = if (school.isActive) DangerRed.copy(alpha = 0.10f) else SuccessGreen.copy(alpha = 0.14f),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (school.isActive) DangerRed.copy(alpha = 0.45f) else SuccessGreen.copy(alpha = 0.45f)
+                                                ),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable { viewModel.toggleSchoolSubscriptionActive(school.schoolId) }
                                             ) {
                                                 Text(
                                                     text = if (school.isActive) "إيقاف الاشتراك" else "تفعيل الاشتراك",
+                                                    fontSize = 11.sp,
                                                     color = if (school.isActive) DangerRed else SuccessGreen,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                                 )
                                             }
-                                            OutlinedButton(
-                                                onClick = {
-                                                    deleteSchoolConfirmInput = ""
-                                                    schoolPendingFullDelete = school
-                                                },
-                                                shape = RoundedCornerShape(10.dp),
-                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                                modifier = Modifier.testTag("delete_school_cloud_btn_${school.schoolId}")
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = DangerRed.copy(alpha = 0.10f),
+                                                border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f)),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable {
+                                                        deleteSchoolConfirmInput = ""
+                                                        schoolPendingFullDelete = school
+                                                    }
+                                                    .testTag("delete_school_cloud_btn_${school.schoolId}")
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.DeleteForever,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = "حذف المدرسة نهائياً",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.ExtraBold
-                                                )
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.DeleteForever,
+                                                        contentDescription = null,
+                                                        tint = DangerRed,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Text(
+                                                        text = "حذف المدرسة",
+                                                        fontSize = 11.sp,
+                                                        color = DangerRed,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
                                             }
                                         }
                                     }
