@@ -28,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.*
@@ -1412,59 +1414,21 @@ fun EventsAndNewsScreen(
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.PhotoLibrary,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "معرض الفعاليات والأخبار المدرسية",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                        }
-                        NoWrapBadge(
-                            text = "توثيق الأنشطة والأخبار",
-                            icon = Icons.Filled.PhotoLibrary,
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = Color.White
-                        )
-                    }
-
-                    Text(
-                        text = "تابع أحدث الفعاليات والأنشطة العلمية والثقافية والأخبار الرسمية للمدرسة.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-
-                    if (canPublish) {
-                        VectorActionButton(
-                            text = "نشر فعالية أو خبر مدرسي مع صورة",
-                            icon = Icons.Filled.AddAPhoto,
-                            onClick = { showPublishEventDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            testTag = "publish_event_button"
-                        )
-                    }
-                }
-            }
+            ThreeDHeroHeaderCard(
+                title = "معرض الفعاليات والأخبار المدرسية",
+                subtitle = "تابع أحدث الفعاليات والأنشطة العلمية والثقافية والأخبار الرسمية للمدرسة.",
+                rightPillText = "توثيق الأنشطة والأخبار",
+                rightPillIcon = Icons.Filled.PhotoLibrary,
+                leftPillText = schoolConfig.academicYear,
+                leftPillIcon = Icons.Filled.Newspaper,
+                illustrationType = ThreeDIllustrationType.MEGAPHONE,
+                bottomActionText = if (canPublish) "نشر فعالية أو خبر مدرسي مع صورة" else null,
+                bottomActionIcon = Icons.Filled.AddAPhoto,
+                bottomActionTestTag = "publish_event_button",
+                onBottomActionClick = if (canPublish) {
+                    { showPublishEventDialog = true }
+                } else null
+            )
         }
 
         val displayedEvents = events.take(eventsVisibleCount)
@@ -1861,6 +1825,20 @@ fun SettingsScreen(
 
     val isAdmin = currentUser?.role == UserRole.ADMIN
 
+    // 3D Categorized Settings Hub state (0..4)
+    var selectedSettingsCategory by remember { mutableStateOf(0) }
+    val settingsCategories = remember(isAdmin) {
+        buildList {
+            add(Triple(0, "الحساب والملف الشخصي", Icons.Filled.AccountCircle))
+            add(Triple(1, "الأمان والدخول السريع", Icons.Filled.Fingerprint))
+            add(Triple(2, "المظهر والتنقل", Icons.Filled.Palette))
+            if (isAdmin) {
+                add(Triple(3, "إدارة العطل الرسمية وأيام الدوام", Icons.Filled.EventAvailable))
+            }
+            add(Triple(4, "الإشعارات والنسخ الاحتياطي", Icons.Filled.SettingsBackupRestore))
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1868,64 +1846,189 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Current User Profile Card + Logout Button
+        // 1) Top 3D Account Summary Header Card
+        val cleanUserAddr = ArabicTextNormalizer.cleanDefaultAddress(currentUser?.address ?: "")
+        ThreeDHeroHeaderCard(
+            title = currentUser?.fullName ?: "مستخدم المنصة",
+            subtitle = if (cleanUserAddr.isNotBlank()) {
+                "الصلاحية: ${currentUser?.role?.arabicTitle ?: ""} • العنوان: $cleanUserAddr"
+            } else {
+                "الصلاحية: ${currentUser?.role?.arabicTitle ?: ""} • اسم المستخدم: ${currentUser?.username ?: ""}"
+            },
+            rightPillText = "كود المدرسة: ${schoolConfig.schoolId}",
+            rightPillIcon = Icons.Filled.School,
+            leftPillText = currentUser?.role?.arabicTitle ?: "إعدادات الحساب",
+            leftPillIcon = Icons.Filled.VerifiedUser,
+            illustrationType = ThreeDIllustrationType.SECURITY_SHIELD
+        )
+
+        // 2) 3D Categorized Settings Hub Selector Grid (5 Organized Categories)
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(24.dp),
+                    ambientColor = Color(0xFF059669).copy(alpha = 0.16f),
+                    spotColor = Color(0xFF0F3D5E).copy(alpha = 0.18f)
+                ),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Base64AvatarImage(
-                        base64Data = currentUser?.photoBase64 ?: "",
-                        fallbackIcon = Icons.Filled.AccountCircle,
-                        contentDescription = currentUser?.fullName ?: "",
-                        size = 56.dp
+                    Icon(
+                        imageVector = Icons.Filled.Category,
+                        contentDescription = null,
+                        tint = Color(0xFF059669),
+                        modifier = Modifier.size(20.dp)
                     )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = currentUser?.fullName ?: "مستخدم المنصة",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = "الصلاحية: ${currentUser?.role?.arabicTitle ?: ""} • المستخدم: ${currentUser?.username ?: ""}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        val cleanUserAddr = ArabicTextNormalizer.cleanDefaultAddress(currentUser?.address ?: "")
-                        Text(
-                            text = if (cleanUserAddr.isNotBlank()) {
-                                "العنوان: $cleanUserAddr • كود المدرسة: ${schoolConfig.schoolId}"
-                            } else {
-                                "كود المدرسة: ${schoolConfig.schoolId}"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Text(
+                        text = "أقسام الإعدادات والتحكم المنظمة",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF0F172A)
+                    )
                 }
 
-                VectorActionButton(
-                    text = "تسجيل الخروج من الحساب",
-                    icon = Icons.AutoMirrored.Filled.Logout,
-                    containerColor = DangerRed,
-                    onClick = { viewModel.logout() },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "settings_logout_button"
-                )
+                // 2-column grid of 3D Category Cards
+                settingsCategories.chunked(2).forEach { rowCats ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowCats.forEach { (catIdx, catTitle, catIcon) ->
+                            val isSelected = selectedSettingsCategory == catIdx
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable { selectedSettingsCategory = catIdx }
+                                    .testTag("settings_category_tab_$catIdx"),
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSelected) Color.Transparent else Color(0xFFF8FAFC),
+                                border = BorderStroke(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) Color(0xFF059669) else Color(0xFFE2E8F0)
+                                ),
+                                shadowElevation = if (isSelected) 4.dp else 1.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier.background(
+                                                    Brush.horizontalGradient(
+                                                        listOf(Color(0xFF059669), Color(0xFF047857))
+                                                    )
+                                                )
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 11.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isSelected) Color.White.copy(alpha = 0.22f) else Color(0xFFD1FAE5),
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Icon(
+                                                imageVector = catIcon,
+                                                contentDescription = catTitle,
+                                                tint = if (isSelected) Color.White else Color(0xFF047857),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = catTitle,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // Biometric Fingerprint Login Settings Card (متاح لجميع الأدوار: مدير، معلم، طالب، ولي أمر)
+        // Category 0: الحساب والملف الشخصي
+        if (selectedSettingsCategory == 0) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Base64AvatarImage(
+                            base64Data = currentUser?.photoBase64 ?: "",
+                            fallbackIcon = Icons.Filled.AccountCircle,
+                            contentDescription = currentUser?.fullName ?: "",
+                            size = 56.dp
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = currentUser?.fullName ?: "مستخدم المنصة",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "الصلاحية: ${currentUser?.role?.arabicTitle ?: ""} • المستخدم: ${currentUser?.username ?: ""}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = if (cleanUserAddr.isNotBlank()) {
+                                    "العنوان: $cleanUserAddr • كود المدرسة: ${schoolConfig.schoolId}"
+                                } else {
+                                    "كود المدرسة: ${schoolConfig.schoolId}"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    VectorActionButton(
+                        text = "تسجيل الخروج من الحساب",
+                        icon = Icons.AutoMirrored.Filled.Logout,
+                        containerColor = DangerRed,
+                        onClick = { viewModel.logout() },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "settings_logout_button"
+                    )
+                }
+            }
+        }
+
+        // Category 1: الأمان والدخول السريع (Biometric Fingerprint Login Settings Card)
         val biometricCredentials by viewModel.biometricCredentials.collectAsState()
-        if (currentUser != null) {
+        if (selectedSettingsCategory == 1 && currentUser != null) {
             BiometricSettingsSectionCard(
                 currentAccountUsername = currentUser?.username ?: "",
                 currentAccountFullName = currentUser?.fullName ?: "",
@@ -1943,98 +2046,100 @@ fun SettingsScreen(
             )
         }
 
-        // Theme & Display Preferences Card (includes Side Navigation Drawer toggle)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+        // Category 2: المظهر والتنقل (Theme & Display Preferences Card)
+        if (selectedSettingsCategory == 2) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
-                Text(
-                    text = "المظهر والعرض والتنقل",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(
-                            imageVector = if (isDarkMode) Icons.Filled.DarkMode else Icons.Filled.LightMode,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text("الوضع الليلي والنهاري (Dark / Light Mode)", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                text = if (isDarkMode) "الوضع الليلي مفعل حالياً" else "الوضع النهاري مفعل حالياً",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = isDarkMode,
-                        onCheckedChange = { viewModel.toggleDarkMode() }
+                    Text(
+                        text = "المظهر والعرض والتنقل",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
                     )
-                }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(
-                            imageVector = Icons.Filled.MenuOpen,
-                            contentDescription = null,
-                            tint = DeepEmerald
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "تفعيل القائمة الجانبية السريعة (Side Navigation Drawer)",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = if (isDarkMode) Icons.Filled.DarkMode else Icons.Filled.LightMode,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
                             )
-                            Text(
-                                text = if (isSideDrawerEnabled) "مفعلة (تظهر أيقونة القائمة الجانبية أعلى الشاشة للانتقال الفوري)" else "مخفية حالياً",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("الوضع الليلي والنهاري (Dark / Light Mode)", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    text = if (isDarkMode) "الوضع الليلي مفعل حالياً" else "الوضع النهاري مفعل حالياً",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
+                        Switch(
+                            checked = isDarkMode,
+                            onCheckedChange = { viewModel.toggleDarkMode() }
+                        )
                     }
-                    Switch(
-                        checked = isSideDrawerEnabled,
-                        onCheckedChange = { viewModel.toggleSideDrawerEnabled() },
-                        modifier = Modifier.testTag("toggle_side_drawer_switch")
-                    )
-                }
 
-                OutlinedButton(
-                    onClick = { viewModel.reopenOnboarding() },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Filled.PlayCircleOutline, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("استعراض شاشة الترحيب التفاعلية (Onboarding)", maxLines = 1, softWrap = false)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = Icons.Filled.MenuOpen,
+                                contentDescription = null,
+                                tint = DeepEmerald
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "تفعيل القائمة الجانبية السريعة (Side Navigation Drawer)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (isSideDrawerEnabled) "مفعلة (تظهر أيقونة القائمة الجانبية أعلى الشاشة للانتقال الفوري)" else "مخفية حالياً",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = isSideDrawerEnabled,
+                            onCheckedChange = { viewModel.toggleSideDrawerEnabled() },
+                            modifier = Modifier.testTag("toggle_side_drawer_switch")
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.reopenOnboarding() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Filled.PlayCircleOutline, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("استعراض شاشة الترحيب التفاعلية (Onboarding)", maxLines = 1, softWrap = false)
+                    }
                 }
             }
         }
 
-        // Private Principal Suggestions Box (صندوق المقترحات والشكاوى السري للمدير)
-        if (featureSettings.suggestionsBoxEnabled) {
+        // Category 4: الإشعارات والنسخ الاحتياطي (Private Principal Suggestions Box)
+        if (selectedSettingsCategory == 4 && featureSettings.suggestionsBoxEnabled) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -2202,8 +2307,54 @@ fun SettingsScreen(
             }
         }
 
-        // Principal Modular Feature Toggles Card (لوحة تحكم المدير في تفعيل أو إيقاف مزايا مدرسته)
-        if (isAdmin) {
+        // Category 3: إدارة العطل الرسمية وأيام الدوام + مزايا المدرسة والصفوف والمواد (خاص بالمدير)
+        if (selectedSettingsCategory == 3 && isAdmin) {
+            // Prominent 3D Official Holidays & Working Days Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
+                border = BorderStroke(1.5.dp, Color(0xFF059669).copy(alpha = 0.45f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ThreeDIllustrationBox(
+                            type = ThreeDIllustrationType.CALENDAR_HOLIDAYS,
+                            modifier = Modifier.size(56.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "إدارة العطل الرسمية وأيام الدوام الأسبوعية",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF047857)
+                            )
+                            Text(
+                                text = "تحديد أيام العطل الأسبوعية والمناسبات الرسمية؛ يُقفل التحضير تلقائياً ولا يُحتسب غياب في أيام العطل.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF0F172A)
+                            )
+                        }
+                    }
+
+                    VectorActionButton(
+                        text = "فتح نافذة إدارة العطل الرسمية والمناسبات",
+                        icon = Icons.Filled.EventAvailable,
+                        containerColor = Color(0xFF059669),
+                        onClick = { viewModel.openHolidaysManagementModal() },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "settings_open_holidays_modal_btn"
+                    )
+                }
+            }
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -2375,8 +2526,8 @@ fun SettingsScreen(
             }
         }
 
-        // School Settings & Registered Classes Management (Editable by Director)
-        if (isAdmin) {
+        // School Settings & Registered Classes Management (Editable by Director under Category 3)
+        if (selectedSettingsCategory == 3 && isAdmin) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -2781,10 +2932,12 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
 
-            // =========================================================================
-            // REQUIREMENT 6.C: FULL JSON BACKUP & RESTORE (النسخ الاحتياطي والاستعادة)
-            // =========================================================================
+        // =========================================================================
+        // Category 4: FULL JSON BACKUP & RESTORE (النسخ الاحتياطي والاستعادة)
+        // =========================================================================
+        if (selectedSettingsCategory == 4 && isAdmin) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -2861,7 +3014,7 @@ fun SettingsScreen(
             }
         }
 
-        if (isAdmin) {
+        if (isAdmin && (selectedSettingsCategory == 0 || selectedSettingsCategory == 4)) {
             DeveloperCreditFooter()
         }
 

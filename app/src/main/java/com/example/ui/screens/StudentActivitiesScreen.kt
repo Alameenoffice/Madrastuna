@@ -419,45 +419,42 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Main Tabs Row
-                    LazyRow(
+                    // Main Tabs Row (Full-width balanced tabs so "صندوق البلاغات" never clips at the edge)
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        item {
+                        ActivityHeaderTabChip(
+                            title = "ساحة الإبداع (${approvedPosts.size})",
+                            selected = selectedMainTab == 0,
+                            onClick = { selectedMainTab = 0 },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        val pendingLabel = if (canModerate) {
+                            "المراجعة (${pendingPosts.size})"
+                        } else {
+                            "قيد المراجعة (${pendingPosts.size})"
+                        }
+                        if (canModerate || pendingPosts.isNotEmpty()) {
                             ActivityHeaderTabChip(
-                                title = "ساحة الإبداع (${approvedPosts.size})",
-                                selected = selectedMainTab == 0,
-                                onClick = { selectedMainTab = 0 }
+                                title = pendingLabel,
+                                selected = selectedMainTab == 1,
+                                badgeHighlight = canModerate && pendingPosts.isNotEmpty(),
+                                onClick = { selectedMainTab = 1 },
+                                modifier = Modifier.weight(1f)
                             )
                         }
 
-                        val pendingLabel = if (canModerate) {
-                            "قائمة المراجعة (${pendingPosts.size})"
-                        } else {
-                            "منشوراتي قيد المراجعة (${pendingPosts.size})"
-                        }
-                        if (canModerate || pendingPosts.isNotEmpty()) {
-                            item {
-                                ActivityHeaderTabChip(
-                                    title = pendingLabel,
-                                    selected = selectedMainTab == 1,
-                                    badgeHighlight = canModerate && pendingPosts.isNotEmpty(),
-                                    onClick = { selectedMainTab = 1 }
-                                )
-                            }
-                        }
-
                         if (isAdmin) {
-                            item {
-                                ActivityHeaderTabChip(
-                                    title = "صندوق البلاغات ($unresolvedReportsCount)",
-                                    selected = selectedMainTab == 2,
-                                    badgeHighlight = unresolvedReportsCount > 0,
-                                    onClick = { selectedMainTab = 2 }
-                                )
-                            }
+                            ActivityHeaderTabChip(
+                                title = "صندوق البلاغات ($unresolvedReportsCount)",
+                                selected = selectedMainTab == 2,
+                                badgeHighlight = unresolvedReportsCount > 0,
+                                onClick = { selectedMainTab = 2 },
+                                modifier = Modifier.weight(1.1f)
+                            )
                         }
                     }
 
@@ -570,16 +567,14 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                 Text(
                                     text = if (isMuted) {
                                         "النشر معلق مؤقتاً بقرار إداري (${myProfile.remainingPostingBanLabel()})"
-                                    } else if (canModerate) {
-                                        "نشر نشاط أو إبداع جديد (نشر فوري معتمد)"
                                     } else {
-                                        "شارك إبداعك أو مشروعك العلمي (يُنشر بعد موافقة الإدارة)"
+                                        "+ نشر نشاط أو إبداع طلابي جديد"
                                     },
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 13.sp,
+                                    fontSize = 13.5.sp,
                                     color = if (isMuted) Color.White.copy(alpha = 0.65f) else Color.White,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    softWrap = false
                                 )
                             }
                         }
@@ -989,36 +984,43 @@ private fun ActivityHeaderTabChip(
     title: String,
     selected: Boolean,
     badgeHighlight: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) Color.White else Color.White.copy(alpha = 0.14f),
+        color = if (selected) Color.White else Color.White.copy(alpha = 0.16f),
         border = BorderStroke(
             1.dp,
-            if (badgeHighlight && !selected) GoldAccent else Color.White.copy(alpha = 0.3f)
+            if (badgeHighlight && !selected) GoldAccent else Color.White.copy(alpha = 0.35f)
         ),
-        modifier = Modifier.clickable { onClick() }
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
+            horizontalArrangement = Arrangement.Center
         ) {
             if (badgeHighlight) {
                 Box(
                     modifier = Modifier
-                        .size(7.dp)
+                        .size(6.dp)
                         .clip(CircleShape)
                         .background(if (selected) DangerRed else GoldAccent)
                 )
+                Spacer(modifier = Modifier.width(4.dp))
             }
             Text(
                 text = title,
-                style = MaterialTheme.typography.labelSmall,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (selected) DeepEmerald else Color.White,
-                maxLines = 1
+                maxLines = 1,
+                softWrap = false
             )
         }
     }

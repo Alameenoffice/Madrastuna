@@ -39,6 +39,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -65,6 +66,7 @@ import com.example.ui.components.GlobalImageLightboxDialog
 import com.example.ui.components.ParentMultiChildSwitcherBar
 import com.example.ui.components.ParentStudentCanteenWalletDialog
 import com.example.ui.components.SmartCanteenPosAndWalletDialog
+import com.example.ui.components.SoftWaveMeshBackground
 import com.example.ui.components.ProgressiveInfiniteScrollFooter
 import com.example.ui.components.SchoolHolidaysManagementModalDialog
 import com.example.ui.components.StudentActivitiesLinearVector
@@ -1412,27 +1414,29 @@ fun AuthenticatedMainPlatform(
             }
         }
     ) {
+        SoftWaveMeshBackground(isDarkMode = isDarkMode) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = Color.Transparent,
             topBar = {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
+                        .background(Color.Transparent)
                         .statusBarsPadding()
                 ) {
-                    // Main Header Bar (Compact Action Icons on Left + Wide User Name & Role Section on Right)
+                    // Main Header Bar (3D Action Icons + Rose Logout Capsule on Left, User Profile + School Name on Right)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Right side (in RTL): Hamburger Menu + Avatar (44.dp) + Name & "• School Name"
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(end = 6.dp)
@@ -1445,29 +1449,46 @@ fun AuthenticatedMainPlatform(
                                         }
                                     },
                                     shape = CircleShape,
-                                    color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFECFDF5),
+                                    color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE6F7F0),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (isDarkMode) Color(0xFF334155) else Color.White
+                                    ),
+                                    shadowElevation = 2.dp,
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(36.dp)
                                         .testTag("top_hamburger_menu_button")
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             imageVector = Icons.Filled.Menu,
                                             contentDescription = "القائمة الجانبية السريعة",
-                                            tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
-                                            modifier = Modifier.size(18.dp)
+                                            tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }
                             }
 
-                            Base64AvatarImage(
-                                base64Data = currentUser?.photoBase64?.ifBlank { schoolConfig.logoBase64 }
-                                    ?: schoolConfig.logoBase64,
-                                fallbackIcon = Icons.Filled.Person,
-                                contentDescription = currentUser?.fullName ?: schoolConfig.schoolName,
-                                size = 38.dp
-                            )
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFD1FAE5),
+                                border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                                shadowElevation = 3.dp,
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Base64AvatarImage(
+                                        base64Data = currentUser?.photoBase64?.ifBlank { schoolConfig.logoBase64 }
+                                            ?: schoolConfig.logoBase64,
+                                        fallbackIcon = Icons.Filled.Person,
+                                        contentDescription = currentUser?.fullName ?: schoolConfig.schoolName,
+                                        size = 40.dp,
+                                        tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
+                                    )
+                                }
+                            }
+
                             Column(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(1.dp)
@@ -1476,44 +1497,57 @@ fun AuthenticatedMainPlatform(
                                     text = currentUser?.fullName?.ifBlank { schoolConfig.schoolName }
                                         ?: schoolConfig.schoolName,
                                     style = MaterialTheme.typography.titleSmall,
-                                    fontSize = 13.5.sp,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = if (isDarkMode) Color.White else Color(0xFF0F172A),
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text(
-                                    text = schoolConfig.schoolName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(5.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669))
+                                    )
+                                    Text(
+                                        text = schoolConfig.schoolName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
 
+                        // Left side (in RTL): 3 Circular 3D Buttons (Bell, Crescent, Gear) + Soft Rose Logout Capsule
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            // Notification Bell with Numeric Badge (32.dp compact circular button, 18.dp icon)
+                            // 1) Notification Bell (34.dp 3D white circle, navy icon)
                             Surface(
                                 onClick = {
                                     showNotificationsSheet = true
                                     viewModel.markAllNotificationsRead()
                                 },
                                 shape = CircleShape,
-                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
                                 border = androidx.compose.foundation.BorderStroke(
-                                    0.8.dp,
+                                    1.dp,
                                     if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                                 ),
+                                shadowElevation = 3.dp,
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(34.dp)
                                     .testTag("top_notifications_bell")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -1537,24 +1571,25 @@ fun AuthenticatedMainPlatform(
                                         Icon(
                                             imageVector = Icons.Filled.Notifications,
                                             contentDescription = "مركز الإشعارات الفورية",
-                                            tint = if (isDarkMode) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.onSurface,
+                                            tint = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF0F3D5E),
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 }
                             }
 
-                            // Dark / Light Mode Toggle (32.dp compact circular button, 18.dp icon)
+                            // 2) Dark / Light Mode Toggle (34.dp 3D white circle, emerald crescent icon)
                             Surface(
                                 onClick = { viewModel.toggleDarkMode() },
                                 shape = CircleShape,
-                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
                                 border = androidx.compose.foundation.BorderStroke(
-                                    0.8.dp,
+                                    1.dp,
                                     if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                                 ),
+                                shadowElevation = 3.dp,
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(34.dp)
                                     .testTag("top_theme_toggle")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -1567,53 +1602,60 @@ fun AuthenticatedMainPlatform(
                                 }
                             }
 
-                            // Settings Shortcut (32.dp compact circular button, 18.dp icon)
+                            // 3) Settings Shortcut (34.dp 3D white circle, navy gear icon)
                             Surface(
                                 onClick = { viewModel.navigateToSection(AppSection.SETTINGS) },
                                 shape = CircleShape,
-                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
                                 border = androidx.compose.foundation.BorderStroke(
-                                    0.8.dp,
+                                    1.dp,
                                     if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                                 ),
+                                shadowElevation = 3.dp,
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(34.dp)
                                     .testTag("top_settings_button")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Filled.Settings,
                                         contentDescription = "الإعدادات",
-                                        tint = if (isDarkMode) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF0F3D5E),
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
 
-                            // Compact Top Bar Logout Button (horizontal = 8.dp, vertical = 4.dp, fontSize = 11.sp)
+                            // 4) Soft Rose Capsule Logout Button ("خروج [->")
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = DangerRed.copy(alpha = if (isDarkMode) 0.22f else 0.14f),
+                                shape = RoundedCornerShape(50),
+                                color = if (isDarkMode) DangerRed.copy(alpha = 0.24f) else Color(0xFFFFE4E6),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isDarkMode) Color(0xFFFCA5A5).copy(alpha = 0.45f) else Color(0xFFFECDD3)
+                                ),
+                                shadowElevation = 2.dp,
                                 modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
                                     .clickable { viewModel.logout() }
                                     .testTag("top_logout_button")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.Logout,
                                         contentDescription = "تسجيل الخروج",
-                                        tint = if (isDarkMode) Color(0xFFFCA5A5) else DangerRed,
+                                        tint = if (isDarkMode) Color(0xFFFCA5A5) else Color(0xFFDC2626),
                                         modifier = Modifier.size(14.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         text = "خروج",
-                                        color = if (isDarkMode) Color(0xFFFCA5A5) else DangerRed,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkMode) Color(0xFFFCA5A5) else Color(0xFFDC2626),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
                                         maxLines = 1,
                                         softWrap = false
                                     )
@@ -1622,64 +1664,68 @@ fun AuthenticatedMainPlatform(
                         }
                     }
 
-                    // Scrollable Section Pills Strip for instant access to all active sections (with Dark Mode Contrast & Live Radar Dot)
-                    val pulseTransition = rememberInfiniteTransition(label = "live_radar_pill_pulse")
-                    val liveDotAlpha by pulseTransition.animateFloat(
-                        initialValue = 0.35f,
-                        targetValue = 1.0f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(750, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "live_dot_alpha"
-                    )
+                    // Scrollable 3D Section Capsule Tabs Strip
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         items(allSections, key = { it.first.name }) { (section, icon) ->
                             val selected = activeSection == section
-                            val pillBg = when {
-                                selected -> Color(0xFF059669)
-                                isDarkMode -> Color(0xFF1E293B)
-                                else -> Color(0xFFF1F5F9)
-                            }
-                            val pillBorder = when {
-                                selected -> Color(0xFF059669)
-                                isDarkMode -> Color(0xFF334155)
-                                else -> Color(0xFFE2E8F0)
-                            }
+                            val pillIcon = if (section == AppSection.DASHBOARD) Icons.Filled.GridView else icon
                             val pillContentColor = when {
                                 selected -> Color.White
                                 isDarkMode -> Color(0xFFE2E8F0)
-                                else -> Color(0xFF1E293B)
+                                else -> Color(0xFF0F172A)
                             }
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = pillBg,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, pillBorder),
+                                color = if (selected) Color.Transparent else if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    when {
+                                        selected -> Color(0xFF10B981)
+                                        isDarkMode -> Color(0xFF334155)
+                                        else -> Color(0xFFE2E8F0)
+                                    }
+                                ),
+                                shadowElevation = if (selected) 6.dp else 3.dp,
                                 modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
                                     .clickable { viewModel.navigateToSection(section) }
                                     .testTag("nav_pill_${section.name}")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier
+                                        .then(
+                                            if (selected) {
+                                                Modifier.background(
+                                                    Brush.horizontalGradient(
+                                                        listOf(Color(0xFF059669), Color(0xFF047857))
+                                                    )
+                                                )
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Icon(
-                                        imageVector = icon,
+                                        imageVector = pillIcon,
                                         contentDescription = section.arabicTitle,
-                                        tint = pillContentColor,
-                                        modifier = Modifier.size(16.dp)
+                                        tint = if (selected) Color.White else Color(0xFF059669),
+                                        modifier = Modifier.size(17.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = section.arabicTitle,
                                         color = pillContentColor,
                                         style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold,
                                         maxLines = 1,
                                         softWrap = false
                                     )
@@ -1687,36 +1733,109 @@ fun AuthenticatedMainPlatform(
                             }
                         }
                     }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                 }
             },
             bottomBar = {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
+                // 3D Rounded White Bottom Navigation Bar with vertical dividers & glowing mint active indicator
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 16.dp,
+                            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                            ambientColor = Color(0xFF059669).copy(alpha = 0.22f),
+                            spotColor = Color(0xFF0F3D5E).copy(alpha = 0.25f)
+                        ),
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    color = if (isDarkMode) Color(0xFF0F172A) else Color.White,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+                    )
                 ) {
-                    bottomNavItems.forEach { (section, icon) ->
-                        val selected = activeSection == section
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { viewModel.navigateToSection(section) },
-                            icon = {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = section.arabicTitle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        bottomNavItems.forEachIndexed { index, (section, icon) ->
+                            val selected = activeSection == section
+                            val navIcon = if (section == AppSection.DASHBOARD) Icons.Filled.Home else icon
+                            val activeBg = if (isDarkMode) {
+                                Color(0xFF059669).copy(alpha = 0.25f)
+                            } else {
+                                Color(0xFFD1FAE5)
+                            }
+                            val iconTint = when {
+                                selected -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
+                                isDarkMode -> Color(0xFF94A3B8)
+                                else -> Color(0xFF334155)
+                            }
+                            val textTint = when {
+                                selected -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
+                                isDarkMode -> Color(0xFFCBD5E1)
+                                else -> Color(0xFF1E293B)
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(if (selected) activeBg else Color.Transparent)
+                                    .clickable { viewModel.navigateToSection(section) }
+                                    .testTag("bottom_nav_${section.name}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 6.dp, bottom = 4.dp, start = 2.dp, end = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = navIcon,
+                                        contentDescription = section.arabicTitle,
+                                        tint = iconTint,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Text(
+                                        text = section.arabicTitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                        color = textTint,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    // Bottom thick emerald indicator bar on active tab
+                                    Box(
+                                        modifier = Modifier
+                                            .width(32.dp)
+                                            .height(3.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .background(
+                                                if (selected) Color(0xFF059669) else Color.Transparent
+                                            )
+                                    )
+                                }
+                            }
+
+                            if (index < bottomNavItems.lastIndex) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .height(32.dp)
+                                        .background(
+                                            if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+                                        )
                                 )
-                            },
-                            label = {
-                                Text(
-                                    text = section.arabicTitle,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            modifier = Modifier.testTag("bottom_nav_${section.name}")
-                        )
+                            }
+                        }
                     }
                 }
             }
@@ -1849,6 +1968,7 @@ fun AuthenticatedMainPlatform(
                     }
                 }
             }
+        }
         }
     }
 

@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -14,12 +15,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -1932,5 +1935,1583 @@ fun StudentAvatarWithOverlayBadge(
         )
     }
 }
+
+// =========================================================================================
+// 3D DEPTH, GLASSMORPHISM & LAYERED CANVAS UI ENGINE
+// =========================================================================================
+
+enum class ThreeDIllustrationType {
+    BOOKS_GRADUATION_CAP,
+    MEGAPHONE,
+    GLOWING_CHART_SPHERE,
+    TROPHY_STARS,
+    SMART_WALLET_CARD,
+    SECURITY_SHIELD,
+    CALENDAR_HOLIDAYS
+}
+
+/**
+ * الخلفية المتموجة الناعمة (Soft Wave Mesh Background) لكامل التطبيق:
+ * في الوضع النهاري: لون ثلجي فاتح جداً مائل للنعناع (0xFFF4FBF8) مع تموجات مائية ناعمة قطرية شفافة (0xFFE0F7EE و 0xFFD1FAE5)
+ * في الوضع الليلي: كحلي داكن عميق عالي التباين (0xFF0F172A) مع إضاءة زمردية محيطية هادئة.
+ */
+@Composable
+fun SoftWaveMeshBackground(
+    isDarkMode: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val baseBg = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF4FBF8)
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(baseBg)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+
+            if (!isDarkMode) {
+                // Top diagonal soft mint waves
+                val topWave1 = Path().apply {
+                    moveTo(0f, 0f)
+                    lineTo(w, 0f)
+                    lineTo(w, h * 0.24f)
+                    cubicTo(
+                        w * 0.72f, h * 0.16f,
+                        w * 0.32f, h * 0.29f,
+                        0f, h * 0.19f
+                    )
+                    close()
+                }
+                drawPath(
+                    path = topWave1,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFD1FAE5).copy(alpha = 0.65f),
+                            Color(0xFFE0F7EE).copy(alpha = 0.45f),
+                            Color(0xFFF4FBF8).copy(alpha = 0.1f)
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(w, h * 0.28f)
+                    )
+                )
+
+                val topWave2 = Path().apply {
+                    moveTo(0f, h * 0.06f)
+                    cubicTo(
+                        w * 0.35f, h * 0.14f,
+                        w * 0.65f, h * 0.03f,
+                        w, h * 0.12f
+                    )
+                    lineTo(w, h * 0.32f)
+                    cubicTo(
+                        w * 0.60f, h * 0.22f,
+                        w * 0.25f, h * 0.34f,
+                        0f, h * 0.26f
+                    )
+                    close()
+                }
+                drawPath(
+                    path = topWave2,
+                    color = Color(0xFFE0F7EE).copy(alpha = 0.50f)
+                )
+
+                // Bottom soft mint ribbons
+                val bottomWave1 = Path().apply {
+                    moveTo(0f, h * 0.78f)
+                    cubicTo(
+                        w * 0.34f, h * 0.72f,
+                        w * 0.68f, h * 0.86f,
+                        w, h * 0.76f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(
+                    path = bottomWave1,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFFE0F7EE).copy(alpha = 0.40f),
+                            Color(0xFFD1FAE5).copy(alpha = 0.70f)
+                        ),
+                        startY = h * 0.74f,
+                        endY = h
+                    )
+                )
+
+                val bottomWave2 = Path().apply {
+                    moveTo(0f, h * 0.86f)
+                    cubicTo(
+                        w * 0.40f, h * 0.94f,
+                        w * 0.75f, h * 0.81f,
+                        w, h * 0.89f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(
+                    path = bottomWave2,
+                    color = Color(0xFFA7F3D0).copy(alpha = 0.32f)
+                )
+            } else {
+                // Dark mode ambient emerald & navy mesh glow
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF059669).copy(alpha = 0.18f),
+                            Color.Transparent
+                        ),
+                        center = Offset(w * 0.85f, h * 0.12f),
+                        radius = w * 0.65f
+                    ),
+                    radius = w * 0.65f,
+                    center = Offset(w * 0.85f, h * 0.12f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF0F3D5E).copy(alpha = 0.28f),
+                            Color.Transparent
+                        ),
+                        center = Offset(w * 0.18f, h * 0.82f),
+                        radius = w * 0.7f
+                    ),
+                    radius = w * 0.7f,
+                    center = Offset(w * 0.18f, h * 0.82f)
+                )
+            }
+        }
+        content()
+    }
+}
+
+/**
+ * مجسمات ثلاثية الأبعاد مرسومة بـ Canvas متعدد الطبقات (Multi-layer 3D Canvas Illustrations)
+ * مع تدرجات الإضاءة والظل العميق والحلقات المضيئة.
+ */
+@Composable
+fun ThreeDIllustrationBox(
+    type: ThreeDIllustrationType,
+    modifier: Modifier = Modifier.size(110.dp)
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+        val cy = h * 0.5f
+
+        when (type) {
+            ThreeDIllustrationType.BOOKS_GRADUATION_CAP -> {
+                // 1) Glowing emerald aura & neon base ring
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = 0.42f),
+                            Color(0xFF10B981).copy(alpha = 0.12f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy * 1.05f),
+                        radius = w * 0.52f
+                    ),
+                    radius = w * 0.52f,
+                    center = Offset(cx, cy * 1.05f)
+                )
+
+                // Neon glowing ring at the base
+                drawOval(
+                    color = Color(0xFF34D399).copy(alpha = 0.85f),
+                    topLeft = Offset(w * 0.06f, h * 0.66f),
+                    size = Size(w * 0.88f, h * 0.24f),
+                    style = Stroke(width = 2.6.dp.toPx())
+                )
+                drawOval(
+                    color = Color(0xFFA7F3D0).copy(alpha = 0.45f),
+                    topLeft = Offset(w * 0.03f, h * 0.64f),
+                    size = Size(w * 0.94f, h * 0.28f),
+                    style = Stroke(width = 5.dp.toPx())
+                )
+
+                // Drop shadow under bottom book
+                drawOval(
+                    color = Color(0xFF042F2E).copy(alpha = 0.45f),
+                    topLeft = Offset(w * 0.14f, h * 0.72f),
+                    size = Size(w * 0.72f, h * 0.14f)
+                )
+
+                // 2) Bottom 3D Book (Royal Blue Cover + White 3D Pages)
+                val b1CoverBottom = Path().apply {
+                    moveTo(w * 0.15f, h * 0.68f)
+                    lineTo(w * 0.54f, h * 0.80f)
+                    lineTo(w * 0.87f, h * 0.68f)
+                    lineTo(w * 0.48f, h * 0.57f)
+                    close()
+                }
+                drawPath(b1CoverBottom, color = Color(0xFF1D4ED8))
+
+                // Pages block of bottom book
+                val b1Pages = Path().apply {
+                    moveTo(w * 0.17f, h * 0.60f)
+                    lineTo(w * 0.54f, h * 0.71f)
+                    lineTo(w * 0.85f, h * 0.60f)
+                    lineTo(w * 0.85f, h * 0.67f)
+                    lineTo(w * 0.54f, h * 0.78f)
+                    lineTo(w * 0.17f, h * 0.67f)
+                    close()
+                }
+                drawPath(
+                    path = b1Pages,
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFFF8FAFC), Color(0xFFE2E8F0), Color(0xFFCBD5E1))
+                    )
+                )
+
+                // Left spine of bottom book
+                val b1Spine = Path().apply {
+                    moveTo(w * 0.15f, h * 0.59f)
+                    lineTo(w * 0.54f, h * 0.71f)
+                    lineTo(w * 0.54f, h * 0.79f)
+                    lineTo(w * 0.15f, h * 0.67f)
+                    close()
+                }
+                drawPath(
+                    path = b1Spine,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF2563EB), Color(0xFF1E40AF))
+                    )
+                )
+
+                // Top cover of bottom book
+                val b1CoverTop = Path().apply {
+                    moveTo(w * 0.15f, h * 0.59f)
+                    lineTo(w * 0.54f, h * 0.71f)
+                    lineTo(w * 0.87f, h * 0.59f)
+                    lineTo(w * 0.48f, h * 0.48f)
+                    close()
+                }
+                drawPath(
+                    path = b1CoverTop,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF60A5FA), Color(0xFF2563EB))
+                    )
+                )
+
+                // 3) Upper 3D Book (Bright Cyan/Blue + White Pages)
+                val b2Pages = Path().apply {
+                    moveTo(w * 0.19f, h * 0.48f)
+                    lineTo(w * 0.53f, h * 0.58f)
+                    lineTo(w * 0.83f, h * 0.48f)
+                    lineTo(w * 0.83f, h * 0.55f)
+                    lineTo(w * 0.53f, h * 0.65f)
+                    lineTo(w * 0.19f, h * 0.55f)
+                    close()
+                }
+                drawPath(
+                    path = b2Pages,
+                    brush = Brush.horizontalGradient(
+                        listOf(Color.White, Color(0xFFF1F5F9), Color(0xFFCBD5E1))
+                    )
+                )
+
+                val b2Spine = Path().apply {
+                    moveTo(w * 0.18f, h * 0.47f)
+                    lineTo(w * 0.53f, h * 0.58f)
+                    lineTo(w * 0.53f, h * 0.65f)
+                    lineTo(w * 0.18f, h * 0.54f)
+                    close()
+                }
+                drawPath(
+                    path = b2Spine,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF3B82F6), Color(0xFF1D4ED8))
+                    )
+                )
+
+                val b2CoverTop = Path().apply {
+                    moveTo(w * 0.18f, h * 0.47f)
+                    lineTo(w * 0.53f, h * 0.58f)
+                    lineTo(w * 0.84f, h * 0.47f)
+                    lineTo(w * 0.49f, h * 0.37f)
+                    close()
+                }
+                drawPath(
+                    path = b2CoverTop,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF93C5FD), Color(0xFF3B82F6))
+                    )
+                )
+
+                // 4) 3D Graduation Cap on top (Deep Navy/Charcoal Skullcap + Mortarboard + Golden Tassel)
+                val capSkull = Path().apply {
+                    moveTo(w * 0.33f, h * 0.30f)
+                    lineTo(w * 0.69f, h * 0.30f)
+                    lineTo(w * 0.66f, h * 0.44f)
+                    quadraticBezierTo(w * 0.51f, h * 0.50f, w * 0.36f, h * 0.44f)
+                    close()
+                }
+                drawPath(
+                    path = capSkull,
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFF1E293B), Color(0xFF334155), Color(0xFF0F172A))
+                    )
+                )
+
+                // Mortarboard 3D thickness
+                val capRim = Path().apply {
+                    moveTo(w * 0.12f, h * 0.25f)
+                    lineTo(w * 0.51f, h * 0.36f)
+                    lineTo(w * 0.90f, h * 0.25f)
+                    lineTo(w * 0.90f, h * 0.28f)
+                    lineTo(w * 0.51f, h * 0.39f)
+                    lineTo(w * 0.12f, h * 0.28f)
+                    close()
+                }
+                drawPath(capRim, color = Color(0xFF0F172A))
+
+                // Mortarboard top diamond
+                val capTop = Path().apply {
+                    moveTo(w * 0.12f, h * 0.25f)
+                    lineTo(w * 0.51f, h * 0.36f)
+                    lineTo(w * 0.90f, h * 0.25f)
+                    lineTo(w * 0.51f, h * 0.14f)
+                    close()
+                }
+                drawPath(
+                    path = capTop,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF475569), Color(0xFF1E293B), Color(0xFF0F172A))
+                    )
+                )
+
+                // Center button & Golden Tassel
+                drawCircle(
+                    color = Color(0xFFFBBF24),
+                    radius = 3.2.dp.toPx(),
+                    center = Offset(w * 0.51f, h * 0.25f)
+                )
+                val tasselCord = Path().apply {
+                    moveTo(w * 0.51f, h * 0.25f)
+                    quadraticBezierTo(w * 0.74f, h * 0.28f, w * 0.80f, h * 0.34f)
+                    lineTo(w * 0.80f, h * 0.50f)
+                }
+                drawPath(
+                    path = tasselCord,
+                    color = Color(0xFFF59E0B),
+                    style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+                )
+                val tasselFringe = Path().apply {
+                    moveTo(w * 0.80f, h * 0.46f)
+                    lineTo(w * 0.76f, h * 0.57f)
+                    lineTo(w * 0.84f, h * 0.57f)
+                    close()
+                }
+                drawPath(
+                    path = tasselFringe,
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xFFFBBF24), Color(0xFFD97706))
+                    )
+                )
+            }
+
+            ThreeDIllustrationType.MEGAPHONE -> {
+                // Soft emerald glow behind megaphone
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF10B981).copy(alpha = 0.25f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = w * 0.48f
+                    ),
+                    radius = w * 0.48f,
+                    center = Offset(cx, cy)
+                )
+
+                // Handle (Emerald 3D grip)
+                val handlePath = Path().apply {
+                    moveTo(w * 0.30f, h * 0.58f)
+                    lineTo(w * 0.40f, h * 0.55f)
+                    lineTo(w * 0.46f, h * 0.82f)
+                    lineTo(w * 0.35f, h * 0.85f)
+                    close()
+                }
+                drawPath(
+                    path = handlePath,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF10B981), Color(0xFF047857))
+                    )
+                )
+
+                // Back emerald cap of megaphone
+                drawOval(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF34D399), Color(0xFF059669))
+                    ),
+                    topLeft = Offset(w * 0.16f, h * 0.44f),
+                    size = Size(w * 0.20f, h * 0.24f)
+                )
+
+                // White/Silver 3D Cone Body
+                val coneBody = Path().apply {
+                    moveTo(w * 0.26f, h * 0.45f)
+                    lineTo(w * 0.66f, h * 0.22f)
+                    lineTo(w * 0.74f, h * 0.64f)
+                    lineTo(w * 0.30f, h * 0.66f)
+                    close()
+                }
+                drawPath(
+                    path = coneBody,
+                    brush = Brush.verticalGradient(
+                        listOf(Color.White, Color(0xFFE2E8F0), Color(0xFFCBD5E1))
+                    )
+                )
+
+                // Emerald middle band on cone
+                val emeraldBand = Path().apply {
+                    moveTo(w * 0.24f, h * 0.46f)
+                    lineTo(w * 0.38f, h * 0.39f)
+                    lineTo(w * 0.43f, h * 0.65f)
+                    lineTo(w * 0.28f, h * 0.66f)
+                    close()
+                }
+                drawPath(
+                    path = emeraldBand,
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xFF10B981), Color(0xFF047857))
+                    )
+                )
+
+                // Front Mouth Oval (3D shaded interior)
+                rotate(degrees = -12f, pivot = Offset(w * 0.70f, h * 0.43f)) {
+                    drawOval(
+                        color = Color(0xFFF8FAFC),
+                        topLeft = Offset(w * 0.60f, h * 0.20f),
+                        size = Size(w * 0.20f, h * 0.46f)
+                    )
+                    drawOval(
+                        brush = Brush.linearGradient(
+                            listOf(Color(0xFF64748B), Color(0xFF94A3B8), Color(0xFFE2E8F0))
+                        ),
+                        topLeft = Offset(w * 0.63f, h * 0.24f),
+                        size = Size(w * 0.14f, h * 0.38f)
+                    )
+                    // Inner speaker dome
+                    drawCircle(
+                        color = Color(0xFF059669),
+                        radius = w * 0.045f,
+                        center = Offset(w * 0.68f, h * 0.43f)
+                    )
+                }
+
+                // 3 Emerald Sound Waves on the right
+                val waveColor = Color(0xFF059669)
+                drawLine(
+                    color = waveColor,
+                    start = Offset(w * 0.83f, h * 0.28f),
+                    end = Offset(w * 0.94f, h * 0.20f),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = waveColor,
+                    start = Offset(w * 0.85f, h * 0.42f),
+                    end = Offset(w * 0.97f, h * 0.40f),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = waveColor,
+                    start = Offset(w * 0.83f, h * 0.55f),
+                    end = Offset(w * 0.94f, h * 0.61f),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+
+            ThreeDIllustrationType.GLOWING_CHART_SPHERE -> {
+                // Outer neon halo
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF4ADE80).copy(alpha = 0.55f),
+                            Color(0xFF10B981).copy(alpha = 0.22f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = Offset(cx, cy)
+                )
+
+                // 3D Glass Sphere body
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF10B981),
+                            Color(0xFF059669),
+                            Color(0xFF065F46)
+                        ),
+                        start = Offset(w * 0.2f, h * 0.2f),
+                        end = Offset(w * 0.8f, h * 0.8f)
+                    ),
+                    radius = w * 0.39f,
+                    center = Offset(cx, cy)
+                )
+
+                // Neon outer ring
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFA7F3D0), Color(0xFF34D399), Color(0xFF10B981))
+                    ),
+                    radius = w * 0.39f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 2.5.dp.toPx())
+                )
+
+                // Top specular glass highlight
+                drawOval(
+                    brush = Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.45f), Color.Transparent)
+                    ),
+                    topLeft = Offset(w * 0.26f, h * 0.16f),
+                    size = Size(w * 0.48f, h * 0.22f)
+                )
+
+                // 4 White 3D Bar Columns inside sphere
+                val barWidth = w * 0.065f
+                val baseLineY = h * 0.68f
+                val bars = listOf(
+                    w * 0.31f to h * 0.56f,
+                    w * 0.41f to h * 0.49f,
+                    w * 0.51f to h * 0.42f,
+                    w * 0.61f to h * 0.35f
+                )
+                bars.forEach { (bx, topY) ->
+                    drawRoundRect(
+                        color = Color.White,
+                        topLeft = Offset(bx, topY),
+                        size = Size(barWidth, baseLineY - topY),
+                        cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                    )
+                }
+
+                // Rising arrow above the bars
+                val arrowPath = Path().apply {
+                    moveTo(w * 0.30f, h * 0.48f)
+                    quadraticBezierTo(w * 0.45f, h * 0.38f, w * 0.63f, h * 0.26f)
+                }
+                drawPath(
+                    path = arrowPath,
+                    color = Color.White,
+                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
+                )
+                val arrowHead = Path().apply {
+                    moveTo(w * 0.55f, h * 0.25f)
+                    lineTo(w * 0.65f, h * 0.24f)
+                    lineTo(w * 0.63f, h * 0.34f)
+                }
+                drawPath(
+                    path = arrowHead,
+                    color = Color.White,
+                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+            }
+
+            ThreeDIllustrationType.TROPHY_STARS -> {
+                // Radiant aura
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFFFBBF24).copy(alpha = 0.38f), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.48f
+                    ),
+                    radius = w * 0.48f,
+                    center = Offset(cx, cy)
+                )
+                // Pedestal base
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(listOf(Color(0xFF047857), Color(0xFF065F46))),
+                    topLeft = Offset(w * 0.28f, h * 0.72f),
+                    size = Size(w * 0.44f, h * 0.12f),
+                    cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+                )
+                // Golden stem
+                drawRect(
+                    brush = Brush.horizontalGradient(listOf(Color(0xFFFDE68A), Color(0xFFD97706))),
+                    topLeft = Offset(w * 0.45f, h * 0.56f),
+                    size = Size(w * 0.10f, h * 0.17f)
+                )
+                // Cup body
+                val cupPath = Path().apply {
+                    moveTo(w * 0.28f, h * 0.22f)
+                    lineTo(w * 0.72f, h * 0.22f)
+                    quadraticBezierTo(w * 0.70f, h * 0.58f, w * 0.50f, h * 0.58f)
+                    quadraticBezierTo(w * 0.30f, h * 0.58f, w * 0.28f, h * 0.22f)
+                    close()
+                }
+                drawPath(
+                    path = cupPath,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))
+                    )
+                )
+                // Handles
+                drawArc(
+                    color = Color(0xFFFBBF24),
+                    startAngle = 90f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.18f, h * 0.26f),
+                    size = Size(w * 0.20f, h * 0.22f),
+                    style = Stroke(width = 3.dp.toPx())
+                )
+                drawArc(
+                    color = Color(0xFFFBBF24),
+                    startAngle = -90f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.62f, h * 0.26f),
+                    size = Size(w * 0.20f, h * 0.22f),
+                    style = Stroke(width = 3.dp.toPx())
+                )
+            }
+
+            ThreeDIllustrationType.SMART_WALLET_CARD -> {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = 0.35f), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.48f
+                    ),
+                    radius = w * 0.48f,
+                    center = Offset(cx, cy)
+                )
+                rotate(-8f, pivot = Offset(cx, cy)) {
+                    drawRoundRect(
+                        brush = Brush.linearGradient(
+                            listOf(Color(0xFF0F3D5E), Color(0xFF047857))
+                        ),
+                        topLeft = Offset(w * 0.14f, h * 0.22f),
+                        size = Size(w * 0.72f, h * 0.48f),
+                        cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
+                    )
+                }
+                rotate(4f, pivot = Offset(cx, cy)) {
+                    drawRoundRect(
+                        brush = Brush.linearGradient(
+                            listOf(Color(0xFF10B981), Color(0xFF059669), Color(0xFF065F46))
+                        ),
+                        topLeft = Offset(w * 0.14f, h * 0.28f),
+                        size = Size(w * 0.74f, h * 0.48f),
+                        cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
+                    )
+                    // Smart Gold Chip
+                    drawRoundRect(
+                        brush = Brush.linearGradient(listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))),
+                        topLeft = Offset(w * 0.22f, h * 0.40f),
+                        size = Size(w * 0.16f, h * 0.12f),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    )
+                    // Barcode stripes
+                    for (i in 0..5) {
+                        drawRect(
+                            color = Color.White.copy(alpha = 0.85f),
+                            topLeft = Offset(w * (0.52f + i * 0.045f), h * 0.56f),
+                            size = Size(w * 0.022f, h * 0.12f)
+                        )
+                    }
+                }
+            }
+
+            ThreeDIllustrationType.SECURITY_SHIELD -> {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = 0.40f), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.48f
+                    ),
+                    radius = w * 0.48f,
+                    center = Offset(cx, cy)
+                )
+                val shield = Path().apply {
+                    moveTo(cx, h * 0.14f)
+                    lineTo(w * 0.82f, h * 0.26f)
+                    lineTo(w * 0.82f, h * 0.52f)
+                    quadraticBezierTo(w * 0.82f, h * 0.76f, cx, h * 0.88f)
+                    quadraticBezierTo(w * 0.18f, h * 0.76f, w * 0.18f, h * 0.52f)
+                    lineTo(w * 0.18f, h * 0.26f)
+                    close()
+                }
+                drawPath(
+                    path = shield,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF34D399), Color(0xFF059669), Color(0xFF0F3D5E))
+                    )
+                )
+                drawPath(
+                    path = shield,
+                    color = Color.White.copy(alpha = 0.7f),
+                    style = Stroke(width = 2.dp.toPx())
+                )
+                // Checkmark inside shield
+                val check = Path().apply {
+                    moveTo(w * 0.36f, h * 0.52f)
+                    lineTo(w * 0.47f, h * 0.62f)
+                    lineTo(w * 0.66f, h * 0.40f)
+                }
+                drawPath(
+                    path = check,
+                    color = Color.White,
+                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+            }
+
+            ThreeDIllustrationType.CALENDAR_HOLIDAYS -> {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = 0.35f), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.48f
+                    ),
+                    radius = w * 0.48f,
+                    center = Offset(cx, cy)
+                )
+                // Calendar body
+                drawRoundRect(
+                    color = Color.White,
+                    topLeft = Offset(w * 0.18f, h * 0.22f),
+                    size = Size(w * 0.64f, h * 0.60f),
+                    cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
+                )
+                // Calendar top bar
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(listOf(Color(0xFF10B981), Color(0xFF047857))),
+                    topLeft = Offset(w * 0.18f, h * 0.22f),
+                    size = Size(w * 0.64f, h * 0.18f),
+                    cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
+                )
+                // Rings
+                drawRoundRect(
+                    color = Color(0xFF0F3D5E),
+                    topLeft = Offset(w * 0.30f, h * 0.16f),
+                    size = Size(w * 0.06f, h * 0.12f),
+                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFF0F3D5E),
+                    topLeft = Offset(w * 0.64f, h * 0.16f),
+                    size = Size(w * 0.06f, h * 0.12f),
+                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                )
+                // Grid dots
+                for (r in 0..1) {
+                    for (c in 0..2) {
+                        drawRoundRect(
+                            color = if (r == 0 && c == 1) Color(0xFF059669) else Color(0xFFCBD5E1),
+                            topLeft = Offset(w * (0.28f + c * 0.17f), h * (0.48f + r * 0.14f)),
+                            size = Size(w * 0.10f, h * 0.08f),
+                            cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * بطاقة الإعلان البانورامية ثلاثية الأبعاد مع مكبر الصوت (3D Megaphone Announcement Banner)
+ * تطابق التصميم المرجعي حرفياً:
+ * - أقصى اليمين: دائرة خضراء داكنة بداخلها سهم أبيض يتبعها خط فاصل عمودي زمردي
+ * - المنتصف: عنوان الإعلان بالزمردي الغامق العريض + النص الفرعي بالكحلي الداكن
+ * - أقصى اليسار: مجسم مكبر الصوت ثلاثي الأبعاد (3D Megaphone) مع 3 موجات صوتية
+ */
+@Composable
+fun ThreeDMegaphoneAnnouncementBanner(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(22.dp),
+                ambientColor = Color(0xFF059669).copy(alpha = 0.16f),
+                spotColor = Color(0xFF059669).copy(alpha = 0.18f)
+            )
+            .clip(RoundedCornerShape(22.dp))
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        shape = RoundedCornerShape(22.dp),
+        color = Color.Transparent,
+        border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.90f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFFE6F7F0),
+                            Color(0xFFF2FBF7),
+                            Color(0xFFE0F7EE)
+                        )
+                    )
+                )
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Right side (in RTL): Dark emerald circle with white arrow + vertical emerald line + text
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF047857),
+                        modifier = Modifier.size(28.dp),
+                        shadowElevation = 2.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .width(2.dp)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFF059669).copy(alpha = 0.55f))
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF047857),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Left side (in RTL): 3D Megaphone Illustration
+                ThreeDIllustrationBox(
+                    type = ThreeDIllustrationType.MEGAPHONE,
+                    modifier = Modifier.size(74.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * البطاقة الترحيبية / الترويسية الملكية ثلاثية الأبعاد (3D Royal Hero Card)
+ * مع تدرج زمردي إلى كحلي عميق، شبكة نقاط مضيئة (Halftone Dot Matrix)، كبسولات زجاجية علوية،
+ * مجسم ثلاثي الأبعاد على اليسار، وشريط زر زجاجي سفلي اختياري.
+ */
+@Composable
+fun ThreeDHeroHeaderCard(
+    title: String,
+    subtitle: String,
+    rightPillText: String,
+    rightPillIcon: ImageVector = Icons.Filled.School,
+    leftPillText: String,
+    leftPillIcon: ImageVector = Icons.Filled.VerifiedUser,
+    illustrationType: ThreeDIllustrationType = ThreeDIllustrationType.BOOKS_GRADUATION_CAP,
+    bottomActionText: String? = null,
+    bottomActionIcon: ImageVector = Icons.Filled.ManageAccounts,
+    bottomActionTestTag: String = "hero_bottom_action_btn",
+    onBottomActionClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    extraBottomContent: (@Composable ColumnScope.() -> Unit)? = null
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 14.dp,
+                shape = RoundedCornerShape(28.dp),
+                ambientColor = Color(0xFF047857).copy(alpha = 0.35f),
+                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.40f)
+            ),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.40f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF059669),
+                            Color(0xFF047857),
+                            Color(0xFF0F3D5E)
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(900f, 650f)
+                    )
+                )
+        ) {
+            // Halftone Dot Matrix & Radial Glow Overlay
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val w = size.width
+                val h = size.height
+
+                // Radial emerald highlight behind the 3D illustration (left side in RTL)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = 0.28f),
+                            Color.Transparent
+                        ),
+                        center = Offset(w * 0.22f, h * 0.48f),
+                        radius = w * 0.42f
+                    ),
+                    radius = w * 0.42f,
+                    center = Offset(w * 0.22f, h * 0.48f)
+                )
+
+                // Halftone dot matrix in top-left and bottom-right corners
+                val step = 11.dp.toPx()
+                val dotRadius = 1.6.dp.toPx()
+                for (row in 0..6) {
+                    for (col in 0..7) {
+                        val alpha = ((1f - (row + col) / 14f) * 0.22f).coerceIn(0.03f, 0.22f)
+                        // Top-left dots
+                        drawCircle(
+                            color = Color.White.copy(alpha = alpha),
+                            radius = dotRadius,
+                            center = Offset(w * 0.04f + col * step, h * 0.08f + row * step)
+                        )
+                        // Bottom-right dots
+                        drawCircle(
+                            color = Color.White.copy(alpha = alpha),
+                            radius = dotRadius,
+                            center = Offset(w * 0.96f - col * step, h * 0.92f - row * step)
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Top Row: Two Frosted Glass Pills
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Right Pill (School Type & Stage)
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.18f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = rightPillIcon,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = rightPillText,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    // Left Pill (Role Badge)
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.18f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = leftPillIcon,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = leftPillText,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+
+                // Middle Row: Welcome Title & Subtitle on Right + 3D Illustration on Left
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.92f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    ThreeDIllustrationBox(
+                        type = illustrationType,
+                        modifier = Modifier.size(106.dp)
+                    )
+                }
+
+                // Optional Bottom Glassmorphic Capsule Action Bar
+                if (bottomActionText != null && onBottomActionClick != null) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onBottomActionClick() }
+                            .testTag(bottomActionTestTag),
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.16f),
+                        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.38f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Icon(
+                                imageVector = bottomActionIcon,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Text(
+                                text = bottomActionText,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (extraBottomContent != null) {
+                    extraBottomContent()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * عنوان قسم الإحصائيات الفاصل مع الخطوط الجانبية وأيقونة الأعمدة الملونة
+ * (Section Divider Header: ── 📊 لوحة الإحصائيات العامة للمدرسة ──)
+ */
+@Composable
+fun SectionDividerHeaderWithLines(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(2.dp)
+                .clip(RoundedCornerShape(50))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, Color(0xFF10B981))
+                    )
+                )
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Colored 3D mini bar chart icon matching reference screenshot
+            Canvas(modifier = Modifier.size(22.dp)) {
+                val w = size.width
+                val h = size.height
+                drawRoundRect(
+                    color = Color(0xFF0F3D5E),
+                    topLeft = Offset(w * 0.08f, h * 0.46f),
+                    size = Size(w * 0.22f, h * 0.48f),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFF059669),
+                    topLeft = Offset(w * 0.39f, h * 0.14f),
+                    size = Size(w * 0.22f, h * 0.80f),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFF10B981),
+                    topLeft = Offset(w * 0.70f, h * 0.32f),
+                    size = Size(w * 0.22f, h * 0.62f),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+            }
+
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(2.dp)
+                .clip(RoundedCornerShape(50))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xFF10B981), Color.Transparent)
+                    )
+                )
+        )
+    }
+}
+
+/**
+ * بطاقة "موجز الدوام وحركة البوابة اليومية" الزمردية ثلاثية الأبعاد (مع الكرة المضيئة و 5 كبسولات زجاجية)
+ * تطابق الصورة المرجعية مع الحفاظ الصارم على المصطلحات التربوية المعتمدة (موجز الدوام وحركة البوابة اليومية / عرض التفاصيل).
+ */
+@Composable
+fun ThreeDDailyAttendanceGateSummaryCard(
+    title: String = "موجز الدوام وحركة البوابة اليومية",
+    subtitle: String = "متابعة حضور وغياب وإجازات كل صف وحركة الدخول والانصراف في المدرسة",
+    buttonText: String = "عرض التفاصيل",
+    presentCount: Int,
+    absentCount: Int,
+    checkedInCount: Int,
+    checkedOutCount: Int,
+    insideNowCount: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    testTag: String = "dashboard_live_radar_card"
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(26.dp),
+                ambientColor = Color(0xFF059669).copy(alpha = 0.32f),
+                spotColor = Color(0xFF047857).copy(alpha = 0.36f)
+            )
+            .clip(RoundedCornerShape(26.dp))
+            .clickable { onClick() }
+            .testTag(testTag),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.42f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF059669),
+                            Color(0xFF047857),
+                            Color(0xFF065F46)
+                        )
+                    )
+                )
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Right side (in RTL): Pure White Capsule Button ("عرض التفاصيل <")
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White,
+                        shadowElevation = 4.dp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onClick() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Text(
+                                text = buttonText,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF047857),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = null,
+                                tint = Color(0xFF047857),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Center: Title & Educational Description
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.92f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Vertical translucent white divider
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(54.dp)
+                            .background(Color.White.copy(alpha = 0.30f))
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Left side (in RTL): 3D Glowing Chart Sphere (72.dp)
+                    ThreeDIllustrationBox(
+                        type = ThreeDIllustrationType.GLOWING_CHART_SPHERE,
+                        modifier = Modifier.size(72.dp)
+                    )
+                }
+
+                // Bottom Row: 5 Frosted Glass Emerald Capsules in a single balanced row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf(
+                        "حاضرون: $presentCount",
+                        "غائبون: $absentCount",
+                        "دخلوا: $checkedInCount",
+                        "غادروا: $checkedOutCount",
+                        "متواجدون: $insideNowCount"
+                    ).forEach { pillLabel ->
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.16f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.36f))
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = pillLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * بطاقات الإحصائيات البيضاء ذات الأمواج السفلية ثلاثية الأبعاد (3D Wave Stat Cards)
+ * تطابق الصورة المرجعية:
+ * - خلفية بيضاء نقية بحواف دائرية 24.dp وظل ثلاثي الأبعاد ناعم
+ * - في الجزء السفلي: رسم موجة مائية مزدوجة ناعمة عبر Canvas (نعناعي فاتح أو أزرق سماوي فاتح)
+ * - الأعلى يميناً: دائرة ناعمة بداخلها الأيقونة، الأعلى يساراً: دائرة صغيرة بداخلها سهم صغير
+ * - المنتصف: الرقم العريض + العنوان الملون + الوصف المختصر
+ */
+@Composable
+fun WaveStatCard3D(
+    title: String,
+    value: String,
+    subtitle: String,
+    icon: ImageVector,
+    accentColor: Color,
+    isBlueTheme: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val waveColor1 = if (isBlueTheme) Color(0xFFDBEAFE) else Color(0xFFCCFBF1)
+    val waveColor2 = if (isBlueTheme) Color(0xFFBFDBFE) else Color(0xFFA7F3D0)
+    val circleBg = if (isBlueTheme) Color(0xFFDBEAFE) else Color(0xFFD1FAE5)
+    val iconTint = if (isBlueTheme) Color(0xFF2563EB) else Color(0xFF059669)
+
+    Card(
+        modifier = modifier
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(24.dp),
+                ambientColor = iconTint.copy(alpha = 0.14f),
+                spotColor = iconTint.copy(alpha = 0.16f)
+            )
+            .clip(RoundedCornerShape(24.dp))
+            .clickable { onClick() },
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 148.dp)
+        ) {
+            // Double smooth water wave drawn at the bottom of the card
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val w = size.width
+                val h = size.height
+
+                val backWave = Path().apply {
+                    moveTo(0f, h * 0.72f)
+                    cubicTo(
+                        w * 0.30f, h * 0.62f,
+                        w * 0.68f, h * 0.84f,
+                        w, h * 0.70f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(
+                    path = backWave,
+                    color = waveColor1.copy(alpha = 0.75f)
+                )
+
+                val frontWave = Path().apply {
+                    moveTo(0f, h * 0.80f)
+                    cubicTo(
+                        w * 0.36f, h * 0.90f,
+                        w * 0.72f, h * 0.70f,
+                        w, h * 0.82f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(
+                    path = frontWave,
+                    color = waveColor2.copy(alpha = 0.65f)
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Top Row: Large tinted icon circle on Right (in RTL) + small chevron circle on Left
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = circleBg,
+                        border = BorderStroke(2.dp, Color.White),
+                        shadowElevation = 2.dp,
+                        modifier = Modifier.size(46.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = title,
+                                tint = iconTint,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = circleBg.copy(alpha = 0.65f),
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = iconTint,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Value & Titles aligned cleanly above the bottom wave
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.Start,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontSize = 21.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF0F172A),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = iconTint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (subtitle.isNotBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF475569),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 

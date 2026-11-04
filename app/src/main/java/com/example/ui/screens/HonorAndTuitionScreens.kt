@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
@@ -83,70 +84,15 @@ fun HonorRollScreen(
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF047857),
-                                    Color(0xFF059669),
-                                    Color(0xFF0D9488)
-                                )
-                            )
-                        )
-                        .padding(20.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color.White.copy(alpha = 0.18f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.EmojiEvents,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "لوحة الشرف • ${schoolConfig.schoolName}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = "نخبة الطلبة الأوائل والمجتهدين",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = Color.White
-                        )
-
-                        Text(
-                            text = "تفتخر إدارة (${schoolConfig.schoolName}) بتكريم كوكبة التفوق والإبداع العلمي",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.92f)
-                        )
-                    }
-                }
-            }
+            ThreeDHeroHeaderCard(
+                title = "نخبة الطلبة الأوائل والمجتهدين",
+                subtitle = "تفتخر إدارة (${schoolConfig.schoolName}) بتكريم كوكبة التفوق والإبداع العلمي",
+                rightPillText = "لوحة الشرف • ${schoolConfig.schoolName}",
+                rightPillIcon = Icons.Filled.EmojiEvents,
+                leftPillText = schoolConfig.academicYear,
+                leftPillIcon = Icons.Filled.WorkspacePremium,
+                illustrationType = ThreeDIllustrationType.TROPHY_STARS
+            )
         }
 
         // Class Filter Row from Registered Classes
@@ -352,6 +298,7 @@ fun HonorRollScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    val autoBadges = viewModel.getStudentAutoBadges(stu.id)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -359,36 +306,38 @@ fun HonorRollScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.weight(1f)
                         ) {
                             GoldenVectorMedal(rank = rank)
 
-                            Base64AvatarImage(
+                            StudentAvatarWithOverlayBadge(
                                 base64Data = stu.photoBase64,
-                                fallbackIcon = Icons.Filled.School,
                                 contentDescription = stu.fullNameWithFather,
-                                size = 60.dp,
+                                badges = autoBadges,
+                                fallbackHonorTitle = stu.honorTitle,
+                                isOnHonorRoll = true,
+                                fallbackIcon = Icons.Filled.School,
+                                avatarSize = 56.dp,
+                                boxWidth = 64.dp,
                                 tint = Color(0xFF059669)
                             )
 
-                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
                                 Text(
                                     text = stu.fullNameWithFather,
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E293B)
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF0F172A)
                                 )
                                 Text(
                                     text = "الصف: ${stu.gradeClass} • شعبة (${stu.sectionName})",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                NoWrapBadge(
-                                    text = "سبب التكريم: ${stu.honorTitle}",
-                                    icon = Icons.Filled.MilitaryTech,
-                                    containerColor = Color(0xFFECFDF5),
-                                    contentColor = Color(0xFF059669)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }
@@ -421,9 +370,36 @@ fun HonorRollScreen(
                         }
                     }
 
-                    val autoBadges = viewModel.getStudentAutoBadges(stu.id)
-                    if (autoBadges.isNotEmpty()) {
-                        StudentAutoBadgesRow(badges = autoBadges)
+                    // Full-width comfortable row for the Honor Reason so it never clips ("سبب التكريم")
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFECFDF5),
+                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MilitaryTech,
+                                contentDescription = null,
+                                tint = Color(0xFF059669),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "سبب التكريم: ${stu.honorTitle.ifBlank { "التفوق والالتزام المثالي" }}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF047857),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
 
                     HorizontalDivider(color = Color(0xFFD1FAE5))

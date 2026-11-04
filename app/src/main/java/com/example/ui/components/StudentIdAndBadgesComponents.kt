@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -2095,7 +2096,7 @@ fun SmartCanteenPosAndWalletDialog(
                                     color = if (isSelected) DeepEmerald else Color.Transparent
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
                                         horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -2103,17 +2104,16 @@ fun SmartCanteenPosAndWalletDialog(
                                             imageVector = icon,
                                             contentDescription = null,
                                             tint = if (isSelected) Color.White else DeepForestGreen,
-                                            modifier = Modifier.size(14.dp)
+                                            modifier = Modifier.size(13.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Spacer(modifier = Modifier.width(3.dp))
                                         Text(
                                             text = title,
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                                            fontSize = 11.sp,
                                             color = if (isSelected) Color.White else DeepForestGreen,
                                             fontWeight = FontWeight.ExtraBold,
                                             maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Ellipsis
+                                            softWrap = false
                                         )
                                     }
                                 }
@@ -2163,9 +2163,9 @@ fun SmartCanteenPosAndWalletDialog(
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = Color(0xFFF0FDF4),
-                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f))
+                        border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.28f))
                     ) {
                         Column(
                             modifier = Modifier
@@ -2233,48 +2233,67 @@ fun SmartCanteenPosAndWalletDialog(
                                 )
                             }
 
-                            Row(
+                            // Full-width comfortable Barcode/Name input with inline trailing action button so label never wraps into 3 lines
+                            OutlinedTextField(
+                                value = barcodeManualInput,
+                                onValueChange = { barcodeManualInput = it },
+                                placeholder = {
+                                    Text(
+                                        text = "قارئ باركود المحفظة أو بحث بالاسم...",
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                },
+                                singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedTextField(
-                                    value = barcodeManualInput,
-                                    onValueChange = { barcodeManualInput = it },
-                                    label = { Text("قارئ باركود المحفظة أو بحث بالاسم...") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f),
-                                    leadingIcon = {
-                                        Icon(Icons.Default.QrCode2, contentDescription = null, tint = DeepEmerald)
-                                    },
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                Button(
-                                    onClick = {
-                                        if (barcodeManualInput.isNotBlank()) {
-                                            handleScannedWalletCode(barcodeManualInput.trim())
-                                            barcodeManualInput = ""
-                                        }
-                                    },
-                                    enabled = barcodeManualInput.isNotBlank(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald)
-                                ) {
-                                    Text("قراءة", fontWeight = FontWeight.Bold)
-                                }
-                            }
+                                leadingIcon = {
+                                    Icon(Icons.Default.QrCode2, contentDescription = null, tint = DeepEmerald)
+                                },
+                                trailingIcon = {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (barcodeManualInput.isNotBlank()) DeepEmerald else DeepEmerald.copy(alpha = 0.25f),
+                                        modifier = Modifier
+                                            .padding(end = 6.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable(enabled = barcodeManualInput.isNotBlank()) {
+                                                handleScannedWalletCode(barcodeManualInput.trim())
+                                                barcodeManualInput = ""
+                                            }
+                                    ) {
+                                        Text(
+                                            text = "قراءة",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                        )
+                                    }
+                                },
+                                shape = RoundedCornerShape(14.dp)
+                            )
 
                             // Quick Student Selector Chips
                             OutlinedTextField(
                                 value = searchFilter,
                                 onValueChange = { searchFilter = it },
-                                label = { Text("تصفية قائمة الطلاب بالاسم أو الصف...") },
+                                placeholder = {
+                                    Text(
+                                        text = "تصفية قائمة الطلاب بالاسم أو الصف...",
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                                 leadingIcon = {
                                     Icon(Icons.Default.Search, contentDescription = null, tint = DeepEmerald)
                                 },
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(14.dp)
                             )
 
                             Row(
@@ -2332,7 +2351,7 @@ fun SmartCanteenPosAndWalletDialog(
                     }
                 }
 
-                // Selected Student Wallet Card
+                // Selected Student 3D Smart Wallet Card
                 if (selectedStudent != null) {
                     val spentToday = selectedStudent.getSpentToday(todayIso)
                     val dailyLimit = selectedStudent.dailySpendLimit
@@ -2340,11 +2359,31 @@ fun SmartCanteenPosAndWalletDialog(
 
                     item {
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            color = Color(0xFF059669),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(
+                                    elevation = 10.dp,
+                                    shape = RoundedCornerShape(22.dp),
+                                    ambientColor = Color(0xFF059669).copy(alpha = 0.30f),
+                                    spotColor = Color(0xFF0F3D5E).copy(alpha = 0.35f)
+                                ),
+                            shape = RoundedCornerShape(22.dp),
+                            color = Color.Transparent,
+                            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f))
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(
+                                                Color(0xFF059669),
+                                                Color(0xFF047857),
+                                                Color(0xFF0F3D5E)
+                                            )
+                                        )
+                                    )
+                            ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2547,6 +2586,7 @@ fun SmartCanteenPosAndWalletDialog(
                                         }
                                     }
                                 }
+                            }
                             }
                         }
                     }
