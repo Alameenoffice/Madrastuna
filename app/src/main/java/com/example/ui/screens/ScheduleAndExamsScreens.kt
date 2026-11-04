@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -222,63 +223,125 @@ fun ScheduleAndHomeworkScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
+        // Compact 3D Wave Header & Unclipped 3-Tab Pill Switcher (الواجبات | جدول الحصص | المكتبة والملخصات)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(
-                onClick = { selectedTab = 0 },
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 46.dp)
-                    .testTag("tab_daily_homework"),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+            val isHwTab = selectedTab == 0
+            Surface(
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                color = if (isHwTab) Color(0xFF059669) else Color.White,
+                border = BorderStroke(1.2.dp, if (isHwTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                shadowElevation = if (isHwTab) 5.dp else 2.dp,
+                modifier = Modifier
+                    .weight(0.85f)
+                    .heightIn(min = 44.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { selectedTab = 0 }
+                    .testTag("tab_daily_homework")
             ) {
-                Icon(Icons.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("الواجبات", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MenuBook,
+                        contentDescription = null,
+                        tint = if (isHwTab) Color.White else Color(0xFF047857),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "الواجبات",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isHwTab) Color.White else Color(0xFF0F172A),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
 
-            Button(
-                onClick = { selectedTab = 1 },
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 46.dp)
-                    .testTag("tab_weekly_schedule"),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+            val isSchedTab = selectedTab == 1
+            Surface(
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                color = if (isSchedTab) Color(0xFF059669) else Color.White,
+                border = BorderStroke(1.2.dp, if (isSchedTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                shadowElevation = if (isSchedTab) 5.dp else 2.dp,
+                modifier = Modifier
+                    .weight(1.0f)
+                    .heightIn(min = 44.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { selectedTab = 1 }
+                    .testTag("tab_weekly_schedule")
             ) {
-                Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("جدول الحصص", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CalendarMonth,
+                        contentDescription = null,
+                        tint = if (isSchedTab) Color.White else Color(0xFF047857),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "جدول الحصص",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isSchedTab) Color.White else Color(0xFF0F172A),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
 
             if (featureSettings.studyLibraryEnabled) {
-                Button(
-                    onClick = { selectedTab = 2 },
-                    modifier = Modifier
-                        .weight(1.1f)
-                        .heightIn(min = 46.dp)
-                        .testTag("tab_study_materials"),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                val isLibTab = selectedTab == 2
+                Surface(
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (selectedTab == 2) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    color = if (isLibTab) Color(0xFF059669) else Color.White,
+                    border = BorderStroke(1.2.dp, if (isLibTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                    shadowElevation = if (isLibTab) 5.dp else 2.dp,
+                    modifier = Modifier
+                        .weight(1.2f)
+                        .heightIn(min = 44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { selectedTab = 2 }
+                        .testTag("tab_study_materials")
                 ) {
-                    Icon(Icons.Filled.LocalLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("المكتبة والملخصات", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.LocalLibrary,
+                            contentDescription = null,
+                            tint = if (isLibTab) Color.White else Color(0xFF047857),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "المكتبة والملخصات",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isLibTab) Color.White else Color(0xFF0F172A),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
         }
@@ -2698,56 +2761,85 @@ fun ExamsAndGradesScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
+        // Unclipped 3D Tab Switcher for Exams & Grades
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
-                onClick = { selectedTab = 0 },
+            val isGradesTab = selectedTab == 0
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (isGradesTab) Color(0xFF059669) else Color.White,
+                border = BorderStroke(1.2.dp, if (isGradesTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                shadowElevation = if (isGradesTab) 6.dp else 2.dp,
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 46.dp)
-                    .testTag("tab_detailed_grades"),
-                shape = RoundedCornerShape(14.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { selectedTab = 0 }
+                    .testTag("tab_detailed_grades")
             ) {
-                Icon(Icons.Filled.Assessment, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(5.dp))
-                Text(
-                    text = if (isParentOrStudent) "جدول كشف الدرجات" else "الدرجات حسب المادة",
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Assessment,
+                        contentDescription = null,
+                        tint = if (isGradesTab) Color.White else Color(0xFF047857),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = if (isParentOrStudent) "جدول كشف الدرجات" else "الدرجات حسب المادة",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isGradesTab) Color.White else Color(0xFF0F172A),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
 
-            Button(
-                onClick = { selectedTab = 1 },
+            val isScheduleTab = selectedTab == 1
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (isScheduleTab) Color(0xFF059669) else Color.White,
+                border = BorderStroke(1.2.dp, if (isScheduleTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                shadowElevation = if (isScheduleTab) 6.dp else 2.dp,
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 46.dp)
-                    .testTag("tab_exam_schedule"),
-                shape = RoundedCornerShape(14.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { selectedTab = 1 }
+                    .testTag("tab_exam_schedule")
             ) {
-                Icon(Icons.Filled.EventNote, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(5.dp))
-                Text(
-                    text = "مواعيد الامتحانات",
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.EventNote,
+                        contentDescription = null,
+                        tint = if (isScheduleTab) Color.White else Color(0xFF047857),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = "مواعيد الامتحانات",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isScheduleTab) Color.White else Color(0xFF0F172A),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
         }
 
@@ -3064,39 +3156,40 @@ fun ExamsAndGradesScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 28.dp)
                 ) {
-                    // Step A & B Filter Card
+                    // 3D Wave Hero Header for Grades & Exams
+                    item {
+                        ThreeDHeroHeaderCard(
+                            title = "الامتحانات ورصد الدرجات",
+                            subtitle = "رصد الدرجات الشهرية والفصلية وحساب السعي والمعدل النهائي آلياً",
+                            rightPillText = "$selectedClass • شعبة $selectedSection",
+                            rightPillIcon = Icons.Filled.Class,
+                            leftPillText = "طلاب الصف: ${classSectionStudents.size}",
+                            leftPillIcon = Icons.Filled.Groups,
+                            illustrationType = ThreeDIllustrationType.GLOWING_CHART_SPHERE
+                        )
+                    }
+
+                    // Step A & B Filter Card (Removed overlapping green badge next to title)
                     item {
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(8.dp, RoundedCornerShape(22.dp)),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "أولاً: اختر الصف والشعبة والمادة الدراسية",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    NoWrapBadge(
-                                        text = if (currentUser?.role == UserRole.TEACHER) {
-                                            "طلابك في الصف: ${classSectionStudents.size}"
-                                        } else {
-                                            "طلاب الصف: ${classSectionStudents.size}"
-                                        },
-                                        icon = Icons.Filled.Groups,
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
+                                Text(
+                                    text = "أولاً: اختر الصف والشعبة والمادة الدراسية",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF047857),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
 
                                 // 1. Registered Class Selector
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

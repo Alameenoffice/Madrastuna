@@ -109,7 +109,7 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // 3D Megaphone Announcement Banner (Academic Year / Occasion / Urgent School Announcement)
+        // Seamless Wave Body Integration: Single Announcement Wave Band + 3D Royal Welcome Wave Hero (Zero Duplicate Box Frames)
         item {
             val bannerTitle = when {
                 shouldShowUrgentAlertBanner -> activeUrgentAlert.authorName.ifBlank { "تبليغ إداري هام" }
@@ -123,52 +123,6 @@ fun DashboardScreen(
                 todayHolidayLabel != null -> "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
                 else -> "مبروك لطلبتنا الأعزاء العام الدراسي الجديد (${schoolConfig.academicYear})"
             }
-            ThreeDMegaphoneAnnouncementBanner(
-                title = bannerTitle,
-                subtitle = bannerSubtitle,
-                onClick = if (isAdmin) {
-                    { viewModel.openUrgentSchoolAlertModal() }
-                } else null
-            )
-        }
-
-        // Urgent School Alert Banner (for all members of this school: Teachers, Students, Parents, Admin)
-        if (shouldShowUrgentAlertBanner) {
-            item {
-                UrgentSchoolAlertBannerCard(
-                    alert = activeUrgentAlert,
-                    isAdmin = isAdmin,
-                    onDismissForUser = { viewModel.dismissUrgentSchoolAlertLocally() },
-                    onEditRequest = { viewModel.openUrgentSchoolAlertModal() },
-                    onDeleteAlert = { viewModel.deleteOrStopUrgentSchoolAlert() }
-                )
-            }
-        }
-
-        // Live Occasion Theme Greeting Banner (Hidden by default unless explicitly activated by Developer)
-        if (occasionThemeConfig.isActive) {
-            item {
-                LiveOccasionBannerCard(
-                    config = occasionThemeConfig,
-                    modifier = Modifier.testTag("dashboard_occasion_theme_banner")
-                )
-            }
-        }
-
-        // Official / Weekly Holiday Banner when today is a holiday
-        if (todayHolidayLabel != null) {
-            item {
-                OfficialHolidayBannerCard(
-                    holidayLabel = todayHolidayLabel,
-                    dateIso = todayIso,
-                    isAdmin = isAdmin,
-                    onManageHolidaysClick = { viewModel.openHolidaysManagementModal() }
-                )
-            }
-        }
-
-        // 3D Royal Welcome Hero Card (with Stacked Books, Graduation Cap & Bottom Glassmorphic Action Bar)
-        item {
             val welcomeSubtitle = when {
                 isParentOrStudent && myStudent != null ->
                     "الطالب: ${myStudent.studentName} • الصف: ${myStudent.gradeClass} (شعبة ${myStudent.sectionName})"
@@ -183,21 +137,46 @@ fun DashboardScreen(
                     }
                 }
             }
-            ThreeDHeroHeaderCard(
-                title = "مرحباً بك، ${currentUser?.fullName ?: ""}",
-                subtitle = welcomeSubtitle,
-                rightPillText = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel}",
-                rightPillIcon = Icons.Filled.School,
-                leftPillText = currentUser?.role?.arabicTitle ?: "مستخدم",
-                leftPillIcon = Icons.Filled.VerifiedUser,
-                illustrationType = ThreeDIllustrationType.BOOKS_GRADUATION_CAP,
-                bottomActionText = if (isAdmin) "إدارة الحسابات والمستخدمين" else null,
-                bottomActionIcon = Icons.Filled.ManageAccounts,
-                bottomActionTestTag = "dashboard_admin_accounts_btn",
-                onBottomActionClick = if (isAdmin) {
-                    { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) }
-                } else null
-            )
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                ThreeDMegaphoneAnnouncementBanner(
+                    title = bannerTitle,
+                    subtitle = bannerSubtitle,
+                    onClick = when {
+                        isAdmin && todayHolidayLabel != null && !shouldShowUrgentAlertBanner -> {
+                            { viewModel.openHolidaysManagementModal() }
+                        }
+                        isAdmin -> {
+                            { viewModel.openUrgentSchoolAlertModal() }
+                        }
+                        else -> null
+                    },
+                    isUrgentActive = shouldShowUrgentAlertBanner,
+                    isAdmin = isAdmin,
+                    onEditUrgent = { viewModel.openUrgentSchoolAlertModal() },
+                    onStopUrgent = { viewModel.deleteOrStopUrgentSchoolAlert() },
+                    onDismissUrgent = { viewModel.dismissUrgentSchoolAlertLocally() }
+                )
+
+                ThreeDHeroHeaderCard(
+                    title = "مرحباً بك، ${currentUser?.fullName ?: ""}",
+                    subtitle = welcomeSubtitle,
+                    rightPillText = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel}",
+                    rightPillIcon = Icons.Filled.School,
+                    leftPillText = currentUser?.role?.arabicTitle ?: "مستخدم",
+                    leftPillIcon = Icons.Filled.VerifiedUser,
+                    illustrationType = ThreeDIllustrationType.BOOKS_GRADUATION_CAP,
+                    bottomActionText = if (isAdmin) "إدارة الحسابات والمستخدمين" else null,
+                    bottomActionIcon = Icons.Filled.ManageAccounts,
+                    bottomActionTestTag = "dashboard_admin_accounts_btn",
+                    onBottomActionClick = if (isAdmin) {
+                        { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) }
+                    } else null
+                )
+            }
         }
 
         // Strict Privacy Isolation vs Admin/Teacher Stat Cards
@@ -686,14 +665,12 @@ fun DashboardScreen(
             }
         }
 
-        // All Sections Quick Access Grid
+        // All Sections 3D Wave Quick Access Grid
         item {
-            Text(
-                text = "الأقسام التعليمية والإدارية",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
+            SectionDividerHeaderWithLines(
+                title = "الأقسام التعليمية والإدارية",
+                modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
             )
-            Spacer(modifier = Modifier.height(8.dp))
 
             val sectionsList = remember(schoolConfig.schoolType, featureSettings, currentUser) {
                 buildList {
@@ -713,7 +690,7 @@ fun DashboardScreen(
                     if (featureSettings.eventsGalleryEnabled) {
                         add(Triple(AppSection.EVENTS_NEWS, Icons.Filled.Newspaper, "معرض الفعاليات والأخبار (عام)"))
                     }
-                    add(Triple(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE, Icons.Filled.FolderSpecial, "السجل الشامل للطالب (الأرشيف الشهري والسنوي)"))
+                    add(Triple(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE, Icons.Filled.FolderSpecial, "الأرشيف الشهري والسنوي الموثق"))
                     if (isAdmin) {
                         add(Triple(AppSection.ADMIN_ACCOUNTS, Icons.Filled.ManageAccounts, "إدارة وتفعيل حسابات المستخدمين"))
                     }
@@ -721,56 +698,26 @@ fun DashboardScreen(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                sectionsList.chunked(2).forEach { pair ->
+                sectionsList.chunked(2).forEachIndexed { rowIdx, pair ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        pair.forEach { (sec, icon, desc) ->
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { viewModel.navigateToSection(sec) }
-                                    .testTag("section_card_${sec.name}"),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = icon,
-                                            contentDescription = sec.arabicTitle,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-                                    Text(
-                                        text = sec.arabicTitle,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                        pair.forEachIndexed { colIdx, (sec, icon, desc) ->
+                            val displayTitle = if (sec == AppSection.STUDENT_COMPREHENSIVE_ARCHIVE) {
+                                "السجل الأكاديمي الشامل"
+                            } else {
+                                sec.arabicTitle
                             }
+                            SectionWaveQuickCard3D(
+                                title = displayTitle,
+                                subtitle = desc,
+                                icon = icon,
+                                isBlueAccent = (rowIdx + colIdx) % 2 == 1,
+                                onClick = { viewModel.navigateToSection(sec) },
+                                modifier = Modifier.weight(1f),
+                                testTag = "section_card_${sec.name}"
+                            )
                         }
                         if (pair.size == 1) {
                             Spacer(modifier = Modifier.weight(1f))
@@ -1133,15 +1080,17 @@ fun DailyAttendanceScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        if (selectedDateHolidayLabel != null) {
-            item {
-                OfficialHolidayBannerCard(
-                    holidayLabel = selectedDateHolidayLabel,
-                    dateIso = selectedDate,
-                    isAdmin = isAdmin,
-                    onManageHolidaysClick = { viewModel.openHolidaysManagementModal() }
-                )
-            }
+        // 3D Seamless Wave Hero Header for Daily Attendance Section
+        item {
+            ThreeDHeroHeaderCard(
+                title = "الحضور والغياب والعطل الرسمية",
+                subtitle = "رصد المواظبة اليومية، حركة البوابة بالباركود، وطلبات الإجازات الإلكترونية",
+                rightPillText = selectedDate,
+                rightPillIcon = Icons.Filled.Today,
+                leftPillText = if (selectedDateHolidayLabel != null) "عطلة رسمية" else "دوام رسمي",
+                leftPillIcon = if (selectedDateHolidayLabel != null) Icons.Filled.EventAvailable else Icons.Filled.HowToReg,
+                illustrationType = ThreeDIllustrationType.CALENDAR_HOLIDAYS
+            )
         }
 
         if (isParentOrStudent) {
@@ -1576,422 +1525,664 @@ fun DailyAttendanceScreen(
                 }
             }
         } else {
-            // Admin & Scoped Teacher Attendance Filter Card + QR Scanner + Monthly PDF Export
+            // 4-Tab 3D Sub-Navigation Bar for Admin & Teacher inside DailyAttendanceScreen
+            val scopedLeaveRequestsForManager = if (isAdmin) {
+                leaveRequests
+            } else {
+                val allowedIds = scopedStudents.map { it.id.trim() }.toSet()
+                leaveRequests.filter { it.studentId.trim() in allowedIds }
+            }
+            val pendingLeavesCount = scopedLeaveRequestsForManager.count { it.status == LeaveRequestStatus.PENDING }
+            val activeDismissalCalls = dismissalCalls.filter { !it.isAcknowledged }
+
             item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(
-                            elevation = 10.dp,
-                            shape = RoundedCornerShape(24.dp),
-                            ambientColor = Color(0xFF059669).copy(alpha = 0.18f),
-                            spotColor = Color(0xFF0F3D5E).copy(alpha = 0.18f)
-                        ),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFE2E8F0))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                var selectedAttendanceSubTab by remember { mutableIntStateOf(0) }
+                val subTabs = listOf(
+                    Triple(0, "رصد الدوام اليومي", Icons.Filled.HowToReg),
+                    Triple(1, "البوابة الذكية (الباركود)", Icons.Filled.QrCodeScanner),
+                    Triple(2, if (pendingLeavesCount > 0) "طلبات الإجازات ($pendingLeavesCount)" else "طلبات الإجازات", Icons.Filled.EventNote),
+                    Triple(3, "العطل الرسمية والمفقودات", Icons.Filled.EventAvailable)
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Scrollable 3D Glassmorphic Sub-Tab Switcher
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Header Row with Full Unclipped Date Badge
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color(0xFFD1FAE5),
-                                    modifier = Modifier.size(38.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                        Icon(
-                                            imageVector = Icons.Filled.HowToReg,
-                                            contentDescription = null,
-                                            tint = Color(0xFF059669),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = "سجل الحضور والغياب",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF0F172A),
-                                    maxLines = 1
-                                )
-                            }
+                        items(subTabs, key = { it.first }) { (tabIdx, tabLabel, tabIcon) ->
+                            val isSelected = selectedAttendanceSubTab == tabIdx
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = Color(0xFFECFDF5),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+                                color = if (isSelected) Color(0xFF059669) else Color.White,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.2.dp,
+                                    if (isSelected) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)
+                                ),
+                                shadowElevation = if (isSelected) 6.dp else 2.dp,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { selectedAttendanceSubTab = tabIdx }
+                                    .testTag("attendance_subtab_$tabIdx")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.Today,
+                                        imageVector = tabIcon,
                                         contentDescription = null,
-                                        tint = Color(0xFF047857),
-                                        modifier = Modifier.size(15.dp)
+                                        tint = if (isSelected) Color.White else Color(0xFF047857),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                     Text(
-                                        text = selectedDate,
-                                        style = MaterialTheme.typography.labelMedium,
+                                        text = tabLabel,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF047857),
+                                        color = if (isSelected) Color.White else Color(0xFF0F172A),
                                         maxLines = 1,
                                         softWrap = false
                                     )
                                 }
                             }
                         }
+                    }
 
-                        // Prominent 3D Official Holiday Lock Banner when selectedDate is a holiday
-                        if (selectedDateHolidayLabel != null) {
+                    // Sub-Tab 1: Smart Barcode Gate & Dismissal Calls & Bus Alerts
+                    if (selectedAttendanceSubTab == 1) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(8.dp, RoundedCornerShape(22.dp)),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "البوابة الذكية وحركة الدخول والمغادرة بالباركود",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = "امسح باركود هوية الطالب لتسجيل وقت الدخول صباحاً أو وقت المغادرة مع إرسال إشعار فوري لولي الأمر.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF475569)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            gateScannerInitialMode = GateScanMode.CHECK_IN
+                                            showQrScannerDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(46.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF059669),
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text("مسح باركود الدخول", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            gateScannerInitialMode = GateScanMode.CHECK_OUT
+                                            showQrScannerDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(46.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF059669))
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text("مسح باركود المغادرة", fontSize = 12.sp, color = Color(0xFF047857), fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Sub-Tab 2: Electronic Leave Requests
+                    if (selectedAttendanceSubTab == 2) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(8.dp, RoundedCornerShape(22.dp)),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "طلبات الإجازة الإلكترونية الواردة (${scopedLeaveRequestsForManager.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    if (pendingLeavesCount > 0) {
+                                        NoWrapBadge(
+                                            text = "$pendingLeavesCount قيد المراجعة",
+                                            icon = Icons.Filled.PendingActions,
+                                            containerColor = WarningAmber,
+                                            contentColor = Color.White
+                                        )
+                                    }
+                                }
+                                if (scopedLeaveRequestsForManager.isEmpty()) {
+                                    Text(
+                                        text = "لا توجد طلبات إجازة واردة حالياً.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF64748B)
+                                    )
+                                } else {
+                                    val visibleAdminLeaves = scopedLeaveRequestsForManager.take(adminLeaveRequestsVisibleCount)
+                                    visibleAdminLeaves.forEach { req ->
+                                        LeaveRequestCardItem(
+                                            req = req,
+                                            isAdmin = canEdit,
+                                            onApprove = {
+                                                viewModel.requireOnlineAndExecute {
+                                                    viewModel.respondToLeaveRequest(req.id, approve = true)
+                                                }
+                                            },
+                                            onReject = {
+                                                viewModel.requireOnlineAndExecute {
+                                                    viewModel.respondToLeaveRequest(req.id, approve = false)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Sub-Tab 3: Official Holidays & Lost and Found Registry
+                    if (selectedAttendanceSubTab == 3) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(8.dp, RoundedCornerShape(22.dp)),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "إدارة العطل الرسمية وسجل المفقودات المدرسية",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF0F172A)
+                                )
+                                if (isAdmin) {
+                                    Button(
+                                        onClick = { viewModel.openHolidaysManagementModal() },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F3D5E), contentColor = Color.White)
+                                    ) {
+                                        Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("فتح نافذة إدارة العطل الرسمية والأسبوعية", fontWeight = FontWeight.ExtraBold)
+                                    }
+                                }
+                                if (featureSettings.lostAndFoundEnabled) {
+                                    OutlinedButton(
+                                        onClick = { showLostAndFoundDialog = true },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF059669))
+                                    ) {
+                                        Icon(Icons.Filled.Inventory2, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("سجل المفقودات المدرسية المصور (${lostAndFoundItems.size})", fontWeight = FontWeight.ExtraBold, color = Color(0xFF047857))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Main Attendance Filter & Action Card (Always accessible in Tab 0 & keeps all testTags active)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(
+                                elevation = 10.dp,
+                                shape = RoundedCornerShape(24.dp),
+                                ambientColor = Color(0xFF059669).copy(alpha = 0.18f),
+                                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.18f)
+                            ),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Header Row with Full Unclipped Date Badge
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFD1FAE5),
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Icon(
+                                                imageVector = Icons.Filled.HowToReg,
+                                                contentDescription = null,
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = "سجل الحضور والغياب",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF0F172A),
+                                        maxLines = 1
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0xFFECFDF5),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Today,
+                                            contentDescription = null,
+                                            tint = Color(0xFF047857),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = selectedDate,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF047857),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Prominent 3D Official Holiday Lock Banner when selectedDate is a holiday
+                            if (selectedDateHolidayLabel != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color(0xFF059669),
+                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, Color.White.copy(alpha = 0.5f)),
+                                    shadowElevation = 4.dp,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.EventAvailable,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "اليوم عطلة رسمية معتمدة - لا يُحتسب غياب على الطلبة",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White
+                                            )
+                                            Text(
+                                                text = "المناسبة: $selectedDateHolidayLabel • أزرار التحضير مقفولة تلقائياً لحماية سجل الطلبة",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 11.sp,
+                                                color = Color.White.copy(alpha = 0.92f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3D Barcode Check-In / Check-Out Buttons (Unclipped single-line text)
+                            if (featureSettings.qrAttendanceEnabled) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            gateScannerInitialMode = GateScanMode.CHECK_IN
+                                            showQrScannerDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(46.dp)
+                                            .testTag("open_qr_attendance_scanner_btn"),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF059669),
+                                            contentColor = Color.White
+                                        ),
+                                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Login,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "مسح باركود الدخول",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            gateScannerInitialMode = GateScanMode.CHECK_OUT
+                                            showQrScannerDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(46.dp)
+                                            .testTag("open_qr_checkout_scanner_btn"),
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF059669)),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = Color(0xFFECFDF5),
+                                            contentColor = Color(0xFF047857)
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                                            contentDescription = null,
+                                            tint = Color(0xFF047857),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "مسح باركود المغادرة",
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF047857),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Admin Action Row: Prominent 3D Official Holidays Manager Button + Monthly PDF Report
+                            if (isAdmin) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { viewModel.openHolidaysManagementModal() },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .testTag("attendance_open_holidays_modal_btn"),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF0F3D5E),
+                                            contentColor = Color.White
+                                        ),
+                                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.EventAvailable,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "إدارة العطل الرسمية",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val monthPrefix = selectedDate.take(7)
+                                            val classStudents = students.filter {
+                                                ArabicTextNormalizer.matchesClass(it.gradeClass, selectedClass) &&
+                                                    ArabicTextNormalizer.matchesSection(it.sectionName, selectedSection)
+                                            }
+                                            val res = DocumentAndIdExporter.exportMonthlyAttendanceReportPdf(
+                                                context = context,
+                                                schoolConfig = schoolConfig,
+                                                gradeClass = selectedClass,
+                                                sectionName = selectedSection,
+                                                monthPrefix = monthPrefix,
+                                                students = classStudents,
+                                                attendanceList = attendance,
+                                                principalName = currentUser?.fullName ?: "المدير"
+                                            )
+                                            if (res.isSuccess) {
+                                                viewModel.showToastAlert(
+                                                    "تم تصدير كشف الغياب الشهري بصيغة PDF وفتح نافذة الطباعة بنجاح",
+                                                    isSuccess = true
+                                                )
+                                            } else {
+                                                viewModel.showToastAlert(
+                                                    "تعذر تصدير كشف الغياب الشهري: ${res.exceptionOrNull()?.message}",
+                                                    isSuccess = false
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .testTag("export_monthly_attendance_pdf_btn"),
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF059669)),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.PictureAsPdf,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "كشف الغياب الشهري",
+                                            fontSize = 11.5.sp,
+                                            color = Color(0xFF047857),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (featureSettings.lostAndFoundEnabled) {
+                                OutlinedButton(
+                                    onClick = { showLostAndFoundDialog = true },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("open_lost_and_found_btn_admin"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Filled.Inventory2, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "سجل المفقودات المدرسية المصور (${lostAndFoundItems.size})",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            // Date Picker Row (Full width comfortable row)
+                            ModernCalendarDatePickerField(
+                                selectedDateIso = selectedDate,
+                                label = "تاريخ رصد الحضور والغياب",
+                                onDateSelected = { selectedIso, _ -> viewModel.setSelectedAttendanceDate(selectedIso) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Student Search Field in its own full-width comfortable row so "ابحث باسم الطالب..." never clips
+                            OutlinedTextField(
+                                value = searchName,
+                                onValueChange = { searchName = it },
+                                placeholder = {
+                                    Text(
+                                        text = "ابحث باسم الطالب...",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Search,
+                                        contentDescription = null,
+                                        tint = Color(0xFF059669),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                trailingIcon = if (searchName.isNotBlank()) {
+                                    {
+                                        IconButton(onClick = { searchName = "" }) {
+                                            Icon(Icons.Filled.Close, contentDescription = "مسح البحث", modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                } else null,
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+
+                            Text(
+                                text = "اختر الصف الدراسي المسجل:",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(allowedClasses) { cls ->
+                                    FilterChip(
+                                        selected = selectedClass == cls,
+                                        onClick = {
+                                            viewModel.setSelectedAttendanceClass(cls)
+                                            val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                            if (selectedSection !in nextSecs) {
+                                                viewModel.setSelectedAttendanceSection(nextSecs.firstOrNull() ?: "أ")
+                                            }
+                                        },
+                                        label = { Text(cls, maxLines = 1, softWrap = false) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (selectedClass == cls) Icons.Filled.Check else Icons.Filled.Class,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("الشعبة المسجلة:", style = MaterialTheme.typography.labelLarge)
+                                allowedSections.forEach { sec ->
+                                    FilterChip(
+                                        selected = selectedSection == sec,
+                                        onClick = { viewModel.setSelectedAttendanceSection(sec) },
+                                        label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                                    )
+                                }
+                            }
+
+                            // Scoped Student Count Indicator
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF059669),
-                                border = androidx.compose.foundation.BorderStroke(1.2.dp, Color.White.copy(alpha = 0.5f)),
-                                shadowElevation = 4.dp,
+                                shape = RoundedCornerShape(14.dp),
+                                color = DeepEmerald.copy(alpha = 0.08f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.EventAvailable,
+                                        imageVector = Icons.Filled.Groups,
                                         contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(22.dp)
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "اليوم عطلة رسمية معتمدة - لا يُحتسب غياب على الطلبة",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            text = "المناسبة: $selectedDateHolidayLabel • أزرار التحضير مقفولة تلقائياً لحماية سجل الطلبة",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontSize = 11.sp,
-                                            color = Color.White.copy(alpha = 0.92f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // 3D Barcode Check-In / Check-Out Buttons (Unclipped single-line text)
-                        if (featureSettings.qrAttendanceEnabled) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        gateScannerInitialMode = GateScanMode.CHECK_IN
-                                        showQrScannerDialog = true
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(46.dp)
-                                        .testTag("open_qr_attendance_scanner_btn"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF059669),
-                                        contentColor = Color.White
-                                    ),
-                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Login,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        text = "مسح باركود الدخول",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        gateScannerInitialMode = GateScanMode.CHECK_OUT
-                                        showQrScannerDialog = true
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(46.dp)
-                                        .testTag("open_qr_checkout_scanner_btn"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF059669)),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = Color(0xFFECFDF5),
-                                        contentColor = Color(0xFF047857)
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Logout,
-                                        contentDescription = null,
-                                        tint = Color(0xFF047857),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = "مسح باركود المغادرة",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF047857),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                            }
-                        }
-
-                        // Admin Action Row: Prominent 3D Official Holidays Manager Button + Monthly PDF Report
-                        if (isAdmin) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = { viewModel.openHolidaysManagementModal() },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(44.dp)
-                                        .testTag("attendance_open_holidays_modal_btn"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF0F3D5E),
-                                        contentColor = Color.White
-                                    ),
-                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.EventAvailable,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = "إدارة العطل الرسمية",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        val monthPrefix = selectedDate.take(7)
-                                        val classStudents = students.filter {
-                                            ArabicTextNormalizer.matchesClass(it.gradeClass, selectedClass) &&
-                                                ArabicTextNormalizer.matchesSection(it.sectionName, selectedSection)
-                                        }
-                                        val res = DocumentAndIdExporter.exportMonthlyAttendanceReportPdf(
-                                            context = context,
-                                            schoolConfig = schoolConfig,
-                                            gradeClass = selectedClass,
-                                            sectionName = selectedSection,
-                                            monthPrefix = monthPrefix,
-                                            students = classStudents,
-                                            attendanceList = attendance,
-                                            principalName = currentUser?.fullName ?: "المدير"
-                                        )
-                                        if (res.isSuccess) {
-                                            viewModel.showToastAlert(
-                                                "تم تصدير كشف الغياب الشهري بصيغة PDF وفتح نافذة الطباعة بنجاح",
-                                                isSuccess = true
-                                            )
+                                        text = if (isTeacher) {
+                                            "طلابك في ($selectedClass - شعبة $selectedSection): ${scopedStudents.size} طالب (إجمالي طلابك المسندين: ${allTeacherAssignedStudents.size})"
                                         } else {
-                                            viewModel.showToastAlert(
-                                                "تعذر تصدير كشف الغياب الشهري: ${res.exceptionOrNull()?.message}",
-                                                isSuccess = false
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(44.dp)
-                                        .testTag("export_monthly_attendance_pdf_btn"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF059669)),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.PictureAsPdf,
-                                        contentDescription = null,
-                                        tint = Color(0xFF059669),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = "كشف الغياب الشهري",
-                                        fontSize = 11.5.sp,
-                                        color = Color(0xFF047857),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        maxLines = 1,
-                                        softWrap = false
+                                            "عدد طلاب ($selectedClass - شعبة $selectedSection): ${scopedStudents.size} طالب"
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = DeepForestGreen,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
-                            }
-                        }
-
-                        if (featureSettings.lostAndFoundEnabled) {
-                            OutlinedButton(
-                                onClick = { showLostAndFoundDialog = true },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("open_lost_and_found_btn_admin"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Filled.Inventory2, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "سجل المفقودات المدرسية المصور (${lostAndFoundItems.size})",
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        // Date Picker Row (Full width comfortable row)
-                        ModernCalendarDatePickerField(
-                            selectedDateIso = selectedDate,
-                            label = "تاريخ رصد الحضور والغياب",
-                            onDateSelected = { selectedIso, _ -> viewModel.setSelectedAttendanceDate(selectedIso) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Student Search Field in its own full-width comfortable row so "ابحث باسم الطالب..." never clips
-                        OutlinedTextField(
-                            value = searchName,
-                            onValueChange = { searchName = it },
-                            placeholder = {
-                                Text(
-                                    text = "ابحث باسم الطالب...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Filled.Search,
-                                    contentDescription = null,
-                                    tint = Color(0xFF059669),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            },
-                            trailingIcon = if (searchName.isNotBlank()) {
-                                {
-                                    IconButton(onClick = { searchName = "" }) {
-                                        Icon(Icons.Filled.Close, contentDescription = "مسح البحث", modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            } else null,
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-
-                        Text(
-                            text = "اختر الصف الدراسي المسجل:",
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(allowedClasses) { cls ->
-                                FilterChip(
-                                    selected = selectedClass == cls,
-                                    onClick = {
-                                        viewModel.setSelectedAttendanceClass(cls)
-                                        val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
-                                        if (selectedSection !in nextSecs) {
-                                            viewModel.setSelectedAttendanceSection(nextSecs.firstOrNull() ?: "أ")
-                                        }
-                                    },
-                                    label = { Text(cls, maxLines = 1, softWrap = false) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = if (selectedClass == cls) Icons.Filled.Check else Icons.Filled.Class,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                )
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("الشعبة المسجلة:", style = MaterialTheme.typography.labelLarge)
-                            allowedSections.forEach { sec ->
-                                FilterChip(
-                                    selected = selectedSection == sec,
-                                    onClick = { viewModel.setSelectedAttendanceSection(sec) },
-                                    label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
-                                )
-                            }
-                        }
-
-                        // Scoped Student Count Indicator
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = DeepEmerald.copy(alpha = 0.08f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Groups,
-                                    contentDescription = null,
-                                    tint = DeepEmerald,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = if (isTeacher) {
-                                        "طلابك في ($selectedClass - شعبة $selectedSection): ${scopedStudents.size} طالب (إجمالي طلابك المسندين: ${allTeacherAssignedStudents.size})"
-                                    } else {
-                                        "عدد طلاب ($selectedClass - شعبة $selectedSection): ${scopedStudents.size} طالب"
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = DeepForestGreen,
-                                    fontWeight = FontWeight.Bold
-                                )
                             }
                         }
                     }
@@ -1999,7 +2190,6 @@ fun DailyAttendanceScreen(
             }
 
             // Live Parent Dismissal Calls Card ("الاستدعاء السريع عند الانصراف")
-            val activeDismissalCalls = dismissalCalls.filter { !it.isAcknowledged }
             if (featureSettings.dismissalCallEnabled && activeDismissalCalls.isNotEmpty()) {
                 item {
                     Card(
@@ -2085,12 +2275,6 @@ fun DailyAttendanceScreen(
             }
 
             // Electronic Leave Requests Section for Admin & Authorized Class Teacher (with Approve / Reject buttons)
-            val scopedLeaveRequestsForManager = if (isAdmin) {
-                leaveRequests
-            } else {
-                val allowedIds = scopedStudents.map { it.id.trim() }.toSet()
-                leaveRequests.filter { it.studentId.trim() in allowedIds }
-            }
             if (canEdit && featureSettings.leaveRequestsEnabled && scopedLeaveRequestsForManager.isNotEmpty()) {
                 item {
                     Card(
@@ -2123,10 +2307,9 @@ fun DailyAttendanceScreen(
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                 }
-                                val pendingCount = scopedLeaveRequestsForManager.count { it.status == LeaveRequestStatus.PENDING }
-                                if (pendingCount > 0) {
+                                if (pendingLeavesCount > 0) {
                                     NoWrapBadge(
-                                        text = "$pendingCount قيد المراجعة",
+                                        text = "$pendingLeavesCount قيد المراجعة",
                                         icon = Icons.Filled.PendingActions,
                                         containerColor = WarningAmber,
                                         contentColor = Color.White

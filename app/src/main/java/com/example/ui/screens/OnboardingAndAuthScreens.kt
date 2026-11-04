@@ -26,9 +26,12 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -38,6 +41,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
@@ -98,284 +102,297 @@ fun OnboardingScreen(
 
     var currentSlide by remember { mutableIntStateOf(0) }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp, vertical = 14.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+    SoftWaveMeshBackground(isDarkMode = isDarkMode) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                NoWrapBadge(
-                    text = if (!discoveredSchoolName.isNullOrBlank()) {
-                        "منصة مدرستي الذكية • $discoveredSchoolName"
-                    } else {
-                        "منصة مدرستي الذكية"
-                    },
-                    icon = Icons.Filled.School,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-
+                // Top Bar: School Platform Capsule + Theme Toggle + Skip Capsule
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onToggleDarkMode,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .testTag("onboarding_theme_toggle")
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFF059669).copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
                     ) {
-                        Icon(
-                            imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                            contentDescription = "تبديل الوضع الليلي والنهاري",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    if (currentSlide < slides.lastIndex) {
-                        TextButton(
-                            onClick = onFinishOnboarding,
-                            modifier = Modifier.testTag("skip_onboarding_button")
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.FastForward,
-                                contentDescription = "تخطي",
+                                imageVector = Icons.Filled.School,
+                                contentDescription = null,
+                                tint = Color(0xFF047857),
                                 modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "تخطي",
+                                text = if (!discoveredSchoolName.isNullOrBlank()) {
+                                    "منصة مدرستي الذكية • $discoveredSchoolName"
+                                } else {
+                                    "منصة مدرستي الذكية"
+                                },
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF047857),
                                 maxLines = 1,
                                 softWrap = false
                             )
                         }
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (occasionThemeConfig.isActive) {
-                LiveOccasionBannerCard(config = occasionThemeConfig)
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
-            AnimatedContent(
-                targetState = currentSlide,
-                label = "onboarding_slide_transition"
-            ) { index ->
-                val slide = slides[index]
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    OnboardingAnimatedScene(slideIndex = index)
-
-                    if (!discoveredSchoolName.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "منصة مدرستي الذكية",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF047857),
-                                textAlign = TextAlign.Center
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .padding(vertical = 6.dp)
-                                    .width(48.dp)
-                                    .height(2.dp)
-                                    .background(
-                                        androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                            colors = listOf(
-                                                Color.Transparent,
-                                                Color(0xFFF59E0B),
-                                                Color.Transparent
-                                            )
-                                        )
-                                    )
-                            )
-                            Text(
-                                text = discoveredSchoolName,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    NoWrapBadge(
-                        text = slide.badge,
-                        icon = Icons.Filled.School,
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = slide.title,
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = slide.description,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        Surface(
+                            onClick = onToggleDarkMode,
+                            shape = CircleShape,
+                            color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                            border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                            shadowElevation = 3.dp,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("onboarding_theme_toggle")
                         ) {
-                            slide.highlights.forEach { point ->
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                    contentDescription = "تبديل الوضع الليلي والنهاري",
+                                    tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        if (currentSlide < slides.lastIndex) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                shadowElevation = 2.dp,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { onFinishOnboarding() }
+                                    .testTag("skip_onboarding_button")
+                            ) {
                                 Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.CheckCircle,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
+                                        imageVector = Icons.Filled.FastForward,
+                                        contentDescription = "تخطي",
+                                        tint = Color(0xFF0F3D5E),
+                                        modifier = Modifier.size(15.dp)
                                     )
                                     Text(
-                                        text = point,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        text = "تخطي",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF0F3D5E),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    slides.indices.forEach { idx ->
-                        val active = idx == currentSlide
-                        Box(
-                            modifier = Modifier
-                                .height(8.dp)
-                                .width(if (active) 28.dp else 10.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (active) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                                )
-                                .clickable { currentSlide = idx }
+                AnimatedContent(
+                    targetState = currentSlide,
+                    label = "onboarding_slide_transition"
+                ) { index ->
+                    val slide = slides[index]
+                    val slideIllustration = when (index) {
+                        0 -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
+                        1 -> ThreeDIllustrationType.GLOWING_CHART_SPHERE
+                        else -> ThreeDIllustrationType.TROPHY_STARS
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // 3D Seamless Wave Hero Section for the active Onboarding Slide
+                        ThreeDHeroHeaderCard(
+                            title = slide.title,
+                            subtitle = slide.description,
+                            rightPillText = slide.badge,
+                            rightPillIcon = Icons.Filled.AutoAwesome,
+                            leftPillText = discoveredSchoolName?.takeIf { it.isNotBlank() } ?: "بيئة تربوية ذكية",
+                            leftPillIcon = Icons.Filled.VerifiedUser,
+                            illustrationType = slideIllustration
                         )
+
+                        // Interactive Lottie-Style Animated Vector Scene
+                        OnboardingAnimatedScene(slideIndex = index)
+
+                        // 3D Glassmorphic Highlights Card
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(
+                                    elevation = 10.dp,
+                                    shape = RoundedCornerShape(24.dp),
+                                    ambientColor = Color(0xFF059669).copy(alpha = 0.16f),
+                                    spotColor = Color(0xFF0F3D5E).copy(alpha = 0.18f)
+                                ),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                            ),
+                            border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                slide.highlights.forEach { point ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color(0xFFD1FAE5),
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = point,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    if (currentSlide > 0) {
-                        OutlinedButton(
-                            onClick = { currentSlide-- },
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        slides.indices.forEach { idx ->
+                            val active = idx == currentSlide
+                            Box(
+                                modifier = Modifier
+                                    .height(9.dp)
+                                    .width(if (active) 32.dp else 10.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (active) Color(0xFF059669)
+                                        else Color(0xFF94A3B8).copy(alpha = 0.45f)
+                                    )
+                                    .clickable { currentSlide = idx }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (currentSlide > 0) {
+                            OutlinedButton(
+                                onClick = { currentSlide-- },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 50.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.4.dp, Color(0xFF059669))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "السابق",
+                                    tint = Color(0xFF047857),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "السابق",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color(0xFF047857),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                if (currentSlide < slides.lastIndex) {
+                                    currentSlide++
+                                } else {
+                                    onFinishOnboarding()
+                                }
+                            },
                             modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 50.dp),
-                            shape = RoundedCornerShape(14.dp)
+                                .weight(if (currentSlide > 0) 1.5f else 1f)
+                                .heightIn(min = 50.dp)
+                                .testTag("start_now_button"),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF059669),
+                                contentColor = Color.White
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "السابق",
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "البدء الآن",
                                 modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "السابق",
-                                style = MaterialTheme.typography.labelLarge,
+                                text = if (currentSlide == slides.lastIndex) "البدء الآن" else "التالي",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
                                 maxLines = 1,
                                 softWrap = false
                             )
                         }
                     }
 
-                    Button(
-                        onClick = {
-                            if (currentSlide < slides.lastIndex) {
-                                currentSlide++
-                            } else {
-                                onFinishOnboarding()
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(if (currentSlide > 0) 1.5f else 1f)
-                            .heightIn(min = 50.dp)
-                            .testTag("start_now_button"),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "البدء الآن",
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (currentSlide == slides.lastIndex) "البدء الآن" else "التالي",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color.White,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
@@ -930,347 +947,433 @@ fun UnifiedLoginScreen(
         )
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp, vertical = 14.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                NoWrapBadge(
-                    text = if (!discoveredSchoolName.isNullOrBlank()) {
-                        "منصة: $discoveredSchoolName"
-                    } else if (schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank()) {
-                        "كود المدرسة: ${schoolConfig.schoolId} • ${schoolConfig.schoolStage.arabicLabel}"
-                    } else {
-                        "منصة مدرستي الذكية"
-                    },
-                    icon = Icons.Filled.School,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-
-                IconButton(
-                    onClick = onToggleDarkMode,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .testTag("login_theme_toggle")
-                ) {
-                    Icon(
-                        imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                        contentDescription = "تبديل الوضع الليلي والنهاري",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
+    SoftWaveMeshBackground(isDarkMode = isDarkMode) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent
+        ) { innerPadding ->
             Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Tapping 5 consecutive times on the top platform logo opens the Activation Code dialog
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable {
-                            val now = System.currentTimeMillis()
-                            if (now - lastLogoTapTime > 2200L) {
-                                logoTapCount = 1
-                            } else {
-                                logoTapCount++
-                            }
-                            lastLogoTapTime = now
-                            if (logoTapCount >= 5) {
-                                logoTapCount = 0
-                                showActivationCodeDialog = true
-                            }
-                        }
-                        .testTag("platform_logo_five_taps"),
-                    contentAlignment = Alignment.BottomEnd
+                // Top Row: School Capsule + Theme Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Base64AvatarImage(
-                        base64Data = schoolConfig.logoBase64,
-                        fallbackIcon = Icons.Filled.School,
-                        contentDescription = discoveredSchoolName ?: schoolConfig.schoolName,
-                        size = 84.dp,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFF059669).copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.School,
+                                contentDescription = null,
+                                tint = Color(0xFF047857),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = if (!discoveredSchoolName.isNullOrBlank()) {
+                                    "منصة: $discoveredSchoolName"
+                                } else if (schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank()) {
+                                    "كود المدرسة: ${schoolConfig.schoolId} • ${schoolConfig.schoolStage.arabicLabel}"
+                                } else {
+                                    "منصة مدرستي الذكية"
+                                },
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF047857),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = onToggleDarkMode,
+                        shape = CircleShape,
+                        color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("login_theme_toggle")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                contentDescription = "تبديل الوضع الليلي والنهاري",
+                                tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Text(
-                    text = when {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val schoolTitleText = when {
                         !discoveredSchoolName.isNullOrBlank() -> discoveredSchoolName
                         schoolConfig.isSetupCompleted -> schoolConfig.schoolName
                         else -> "منصة مدرستي المتكاملة"
-                    },
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    textAlign = TextAlign.Center
-                )
+                    }
 
-                Text(
-                    text = "بوابة تسجيل الدخول الموحدة",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-
-                if (occasionThemeConfig.isActive) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    LiveOccasionBannerCard(config = occasionThemeConfig)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Security,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "تسجيل الدخول ببيانات الحساب المعتمدة",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = {
-                                username = it
-                                loginError = null
-                                onUsernameChanged(it)
-                            },
-                            label = { Text("اسم المستخدم") },
-                            placeholder = { Text("مثال: 105-1 أو 105-ali") },
-                            leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("login_username_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        if (!discoveredSchoolName.isNullOrBlank() && loginConnectingMessage == null) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
+                    // Seamless 3D Wave Hero Header for Unified Login Screen
+                    ThreeDHeroHeaderCard(
+                        title = schoolTitleText,
+                        subtitle = "بوابة تسجيل الدخول الموحدة والآمنة للهيئة الإدارية والتدريسية والطلبة وأولياء الأمور",
+                        rightPillText = if (schoolConfig.isSetupCompleted) schoolConfig.schoolStage.arabicLabel else "بيئة سحابية مشفرة",
+                        rightPillIcon = Icons.Filled.School,
+                        leftPillText = "حماية ذكية",
+                        leftPillIcon = Icons.Filled.VerifiedUser,
+                        illustrationType = ThreeDIllustrationType.SECURITY_SHIELD,
+                        extraBottomContent = {
+                            // 5-Tap Logo Row preserved inside the 3D Wave Hero Header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White,
+                                    border = BorderStroke(2.dp, Color(0xFFA7F3D0)),
+                                    shadowElevation = 6.dp,
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            val now = System.currentTimeMillis()
+                                            if (now - lastLogoTapTime > 2200L) {
+                                                logoTapCount = 1
+                                            } else {
+                                                logoTapCount++
+                                            }
+                                            lastLogoTapTime = now
+                                            if (logoTapCount >= 5) {
+                                                logoTapCount = 0
+                                                showActivationCodeDialog = true
+                                            }
+                                        }
+                                        .testTag("platform_logo_five_taps")
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Verified,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = "جاري الاتصال بـ $discoveredSchoolName...",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
-                        }
-
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = {
-                                password = it
-                                loginError = null
-                            },
-                            label = { Text("كلمة المرور") },
-                            placeholder = { Text("أدخل كلمة المرور") },
-                            leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null) },
-                            trailingIcon = {
-                                IconButton(onClick = { showPassword = !showPassword }) {
-                                    Icon(
-                                        imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                        contentDescription = "إظهار كلمة المرور"
-                                    )
-                                }
-                            },
-                            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("login_password_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        val activeConnectingBanner = loginConnectingMessage
-                            ?: loginError?.takeIf { it.startsWith("جاري الاتصال") }
-
-                        if (!activeConnectingBanner.isNullOrBlank()) {
-                            val resolvedBannerText = if (!discoveredSchoolName.isNullOrBlank()) {
-                                "جاري الاتصال بـ $discoveredSchoolName..."
-                            } else {
-                                activeConnectingBanner
-                            }
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = resolvedBannerText,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
-                        } else if (loginError != null) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.errorContainer,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.GppBad,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = loginError!!,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-                                }
-                            }
-                        }
-
-                        if (remainingLockoutSec > 0L) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.errorContainer,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.LockClock,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = "الدرع الأمني مفعل: يرجى الانتظار ${remainingLockoutSec} ثانية قبل المحاولة مجدداً.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-                                }
-                            }
-                        }
-
-                        VectorActionButton(
-                            text = if (remainingLockoutSec > 0L) "مقفل مؤقتاً (${remainingLockoutSec}ث)" else "تسجيل الدخول",
-                            icon = Icons.AutoMirrored.Filled.Login,
-                            enabled = remainingLockoutSec == 0L,
-                            onClick = {
-                                val res = onLoginAttempt(username, password)
-                                if (res.isFailure) {
-                                    loginError = res.exceptionOrNull()?.message ?: "خطأ في تسجيل الدخول"
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            testTag = "login_submit_button"
-                        )
-
-                        if (biometricCredentials != null && biometricCredentials.isValid && remainingLockoutSec == 0L) {
-                            BiometricQuickLoginButton(
-                                savedCredentials = biometricCredentials,
-                                onBiometricAuthenticated = {
-                                    val res = onBiometricLogin()
-                                    if (res.isFailure) {
-                                        loginError = res.exceptionOrNull()?.message ?: "تعذر تسجيل الدخول بالبصمة المحفوظة"
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Base64AvatarImage(
+                                            base64Data = schoolConfig.logoBase64,
+                                            fallbackIcon = Icons.Filled.School,
+                                            contentDescription = schoolTitleText,
+                                            size = 48.dp,
+                                            tint = Color(0xFF059669)
+                                        )
                                     }
-                                },
-                                onBiometricError = { errMsg ->
-                                    loginError = errMsg
                                 }
-                            )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "شعار المدرسة الرسمي المعتمد",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Text(
+                                        text = "ارتباط سحابي فوري بحساب مدرستك",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = 0.88f)
+                                    )
+                                }
+                            }
                         }
+                    )
 
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 3D Glassmorphic Login Card
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(
+                                elevation = 12.dp,
+                                shape = RoundedCornerShape(26.dp),
+                                ambientColor = Color(0xFF059669).copy(alpha = 0.18f),
+                                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.22f)
+                            ),
+                        shape = RoundedCornerShape(26.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                        ),
+                        border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Info,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFD1FAE5),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Security,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
                                 Text(
-                                    text = "يتم إنشاء وتفعيل حسابات المعلمين وأولياء الأمور والطلبة حصرياً من قبل إدارة المدرسة وإرسالها عبر واتساب.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "تسجيل الدخول ببيانات الحساب المعتمدة",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                )
+                            }
+
+                            // Mandatory Prominent Emerald Notice Banner for Students, Parents & Teachers
+                            Surface(
+                                color = Color(0xFFECFDF5),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.55f)),
+                                shadowElevation = 2.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("login_school_admin_credentials_notice")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFF059669),
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Campaign,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = "تنبيه للطلبة وأولياء الأمور والمعلمين: يمكنك الحصول على بيانات تسجيل الدخول الخاصة بك (اسم المستخدم وكلمة المرور) مباشرة من إدارة مدرستك.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = username,
+                                onValueChange = {
+                                    username = it
+                                    loginError = null
+                                    onUsernameChanged(it)
+                                },
+                                label = { Text("اسم المستخدم") },
+                                placeholder = { Text("مثال: 105-1 أو 105-ali") },
+                                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null, tint = Color(0xFF059669)) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("login_username_input"),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+
+                            if (!discoveredSchoolName.isNullOrBlank() && loginConnectingMessage == null) {
+                                Surface(
+                                    color = Color(0xFFECFDF5),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Verified,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = "جاري الاتصال بـ $discoveredSchoolName...",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF047857)
+                                        )
+                                    }
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = {
+                                    password = it
+                                    loginError = null
+                                },
+                                label = { Text("كلمة المرور") },
+                                placeholder = { Text("أدخل كلمة المرور") },
+                                leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null, tint = Color(0xFF059669)) },
+                                trailingIcon = {
+                                    IconButton(onClick = { showPassword = !showPassword }) {
+                                        Icon(
+                                            imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = "إظهار كلمة المرور"
+                                        )
+                                    }
+                                },
+                                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("login_password_input"),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+
+                            val activeConnectingBanner = loginConnectingMessage
+                                ?: loginError?.takeIf { it.startsWith("جاري الاتصال") }
+
+                            if (!activeConnectingBanner.isNullOrBlank()) {
+                                val resolvedBannerText = if (!discoveredSchoolName.isNullOrBlank()) {
+                                    "جاري الاتصال بـ $discoveredSchoolName..."
+                                } else {
+                                    activeConnectingBanner
+                                }
+                                Surface(
+                                    color = Color(0xFFECFDF5),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF059669)
+                                        )
+                                        Text(
+                                            text = resolvedBannerText,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF047857)
+                                        )
+                                    }
+                                }
+                            } else if (loginError != null) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.GppBad,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = loginError!!,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (remainingLockoutSec > 0L) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.LockClock,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            text = "الدرع الأمني مفعل: يرجى الانتظار ${remainingLockoutSec} ثانية قبل المحاولة مجدداً.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    }
+                                }
+                            }
+
+                            VectorActionButton(
+                                text = if (remainingLockoutSec > 0L) "مقفل مؤقتاً (${remainingLockoutSec}ث)" else "تسجيل الدخول",
+                                icon = Icons.AutoMirrored.Filled.Login,
+                                enabled = remainingLockoutSec == 0L,
+                                onClick = {
+                                    val res = onLoginAttempt(username, password)
+                                    if (res.isFailure) {
+                                        loginError = res.exceptionOrNull()?.message ?: "خطأ في تسجيل الدخول"
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                testTag = "login_submit_button"
+                            )
+
+                            if (biometricCredentials != null && biometricCredentials.isValid && remainingLockoutSec == 0L) {
+                                BiometricQuickLoginButton(
+                                    savedCredentials = biometricCredentials,
+                                    onBiometricAuthenticated = {
+                                        val res = onBiometricLogin()
+                                        if (res.isFailure) {
+                                            loginError = res.exceptionOrNull()?.message ?: "تعذر تسجيل الدخول بالبصمة المحفوظة"
+                                        }
+                                    },
+                                    onBiometricError = { errMsg ->
+                                        loginError = errMsg
+                                    }
                                 )
                             }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+            }
         }
     }
 }

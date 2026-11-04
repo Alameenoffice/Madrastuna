@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -23,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -1796,44 +1799,91 @@ fun InlineDialogToastBanner(
     toastAlert: com.example.model.ToastAlertMessage?,
     onDismiss: () -> Unit = {}
 ) {
+    val haptic = LocalHapticFeedback.current
+    LaunchedEffect(toastAlert?.timestamp) {
+        if (toastAlert != null) {
+            runCatching { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+        }
+    }
+    val infiniteTransition = rememberInfiniteTransition(label = "inline_toast_pulse")
+    val iconScale by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 750, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "inline_toast_icon_scale"
+    )
+
     androidx.compose.animation.AnimatedVisibility(
         visible = toastAlert != null,
         enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
         exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
     ) {
         val alert = toastAlert ?: return@AnimatedVisibility
-        val bgColor = if (alert.isSuccess) Color(0xFF059669) else Color(0xFFDC2626)
+        val gradientColors = if (alert.isSuccess) {
+            listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
+        } else {
+            listOf(Color(0xFFDC2626), Color(0xFFB91C1C), Color(0xFF7F1D1D))
+        }
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp)
+                .shadow(
+                    elevation = 10.dp,
+                    shape = RoundedCornerShape(20.dp),
+                    ambientColor = gradientColors.first().copy(alpha = 0.35f),
+                    spotColor = gradientColors.first().copy(alpha = 0.40f)
+                )
+                .clip(RoundedCornerShape(20.dp))
                 .clickable { onDismiss() },
-            shape = RoundedCornerShape(12.dp),
-            color = bgColor,
-            shadowElevation = 4.dp
+            shape = RoundedCornerShape(20.dp),
+            color = Color.Transparent,
+            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f))
         ) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .background(Brush.horizontalGradient(gradientColors))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                Icon(
-                    imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
-                    contentDescription = "إشعار الإجراء",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = alert.message,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.22f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .size(30.dp)
+                            .graphicsLayer {
+                                scaleX = iconScale
+                                scaleY = iconScale
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                                contentDescription = "إشعار الإجراء",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = alert.message,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -2097,7 +2147,52 @@ fun ThreeDIllustrationBox(
     type: ThreeDIllustrationType,
     modifier: Modifier = Modifier.size(110.dp)
 ) {
-    Canvas(modifier = modifier) {
+    // Lottie-Style Infinite Smooth Canvas Animation Engine
+    val infiniteTransition = rememberInfiniteTransition(label = "three_d_illustration_${type.name}")
+    val floatOffsetY by infiniteTransition.animateFloat(
+        initialValue = -4.5f,
+        targetValue = 4.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "float_offset_y"
+    )
+    val breathScale by infiniteTransition.animateFloat(
+        initialValue = 0.97f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "breath_scale"
+    )
+    val glowPulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.28f,
+        targetValue = 0.58f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow_pulse_alpha"
+    )
+    val waveExpandFactor by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 950, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wave_expand_factor"
+    )
+
+    Canvas(
+        modifier = modifier.graphicsLayer {
+            translationY = floatOffsetY
+            scaleX = breathScale
+            scaleY = breathScale
+        }
+    ) {
         val w = size.width
         val h = size.height
         val cx = w * 0.5f
@@ -2105,12 +2200,12 @@ fun ThreeDIllustrationBox(
 
         when (type) {
             ThreeDIllustrationType.BOOKS_GRADUATION_CAP -> {
-                // 1) Glowing emerald aura & neon base ring
+                // 1) Glowing emerald aura & neon base ring (pulsing)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF34D399).copy(alpha = 0.42f),
-                            Color(0xFF10B981).copy(alpha = 0.12f),
+                            Color(0xFF34D399).copy(alpha = glowPulseAlpha),
+                            Color(0xFF10B981).copy(alpha = glowPulseAlpha * 0.35f),
                             Color.Transparent
                         ),
                         center = Offset(cx, cy * 1.05f),
@@ -2122,13 +2217,13 @@ fun ThreeDIllustrationBox(
 
                 // Neon glowing ring at the base
                 drawOval(
-                    color = Color(0xFF34D399).copy(alpha = 0.85f),
+                    color = Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.32f).coerceAtMost(0.95f)),
                     topLeft = Offset(w * 0.06f, h * 0.66f),
                     size = Size(w * 0.88f, h * 0.24f),
                     style = Stroke(width = 2.6.dp.toPx())
                 )
                 drawOval(
-                    color = Color(0xFFA7F3D0).copy(alpha = 0.45f),
+                    color = Color(0xFFA7F3D0).copy(alpha = glowPulseAlpha),
                     topLeft = Offset(w * 0.03f, h * 0.64f),
                     size = Size(w * 0.94f, h * 0.28f),
                     style = Stroke(width = 5.dp.toPx())
@@ -2406,38 +2501,38 @@ fun ThreeDIllustrationBox(
                     )
                 }
 
-                // 3 Emerald Sound Waves on the right
-                val waveColor = Color(0xFF059669)
+                // 3 Animated Emerald Sound Waves on the right (pulsing & expanding)
+                val waveColor = Color(0xFF059669).copy(alpha = (glowPulseAlpha + 0.38f).coerceAtMost(1f))
                 drawLine(
                     color = waveColor,
-                    start = Offset(w * 0.83f, h * 0.28f),
-                    end = Offset(w * 0.94f, h * 0.20f),
-                    strokeWidth = 3.dp.toPx(),
+                    start = Offset(w * 0.82f, h * 0.28f),
+                    end = Offset(w * (0.82f + 0.12f * waveExpandFactor), h * (0.28f - 0.08f * waveExpandFactor)),
+                    strokeWidth = 3.2.dp.toPx(),
                     cap = StrokeCap.Round
                 )
                 drawLine(
                     color = waveColor,
-                    start = Offset(w * 0.85f, h * 0.42f),
-                    end = Offset(w * 0.97f, h * 0.40f),
-                    strokeWidth = 3.dp.toPx(),
+                    start = Offset(w * 0.84f, h * 0.42f),
+                    end = Offset(w * (0.84f + 0.13f * waveExpandFactor), h * 0.40f),
+                    strokeWidth = 3.2.dp.toPx(),
                     cap = StrokeCap.Round
                 )
                 drawLine(
                     color = waveColor,
-                    start = Offset(w * 0.83f, h * 0.55f),
-                    end = Offset(w * 0.94f, h * 0.61f),
-                    strokeWidth = 3.dp.toPx(),
+                    start = Offset(w * 0.82f, h * 0.55f),
+                    end = Offset(w * (0.82f + 0.12f * waveExpandFactor), h * (0.55f + 0.07f * waveExpandFactor)),
+                    strokeWidth = 3.2.dp.toPx(),
                     cap = StrokeCap.Round
                 )
             }
 
             ThreeDIllustrationType.GLOWING_CHART_SPHERE -> {
-                // Outer neon halo
+                // Outer neon halo (pulsing)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF4ADE80).copy(alpha = 0.55f),
-                            Color(0xFF10B981).copy(alpha = 0.22f),
+                            Color(0xFF4ADE80).copy(alpha = (glowPulseAlpha + 0.15f).coerceAtMost(0.75f)),
+                            Color(0xFF10B981).copy(alpha = glowPulseAlpha * 0.5f),
                             Color.Transparent
                         ),
                         center = Offset(cx, cy),
@@ -2730,41 +2825,84 @@ fun ThreeDIllustrationBox(
  * - المنتصف: عنوان الإعلان بالزمردي الغامق العريض + النص الفرعي بالكحلي الداكن
  * - أقصى اليسار: مجسم مكبر الصوت ثلاثي الأبعاد (3D Megaphone) مع 3 موجات صوتية
  */
+/**
+ * شريط الإعلان المدمج بانسيابية موجية مع جسم الصفحة بدون إطار صندوقي تقليدي
+ * (Seamless Wave Announcement Section with 3D Animated Megaphone)
+ * يطابق الصورة المرجعية حرفياً:
+ * - ممتد بانسيابية موجية ناعمة بدون حدود صندوقية (Zero Box BorderStroke)
+ * - أقصى اليمين: دائرة خضراء داكنة بداخلها سهم أبيض يتبعها خط فاصل عمودي زمردي
+ * - المنتصف: عنوان الإعلان بالزمردي الغامق العريض + النص الفرعي بالكحلي الداكن
+ * - أقصى اليسار: مجسم مكبر الصوت ثلاثي الأبعاد المتحرك (3D Animated Megaphone)
+ * - يدعم أزرار التحكم السريع للمدير عند وجود تبليغ عاجل مفعّل لمنع تكرار البطاقات نهائياً.
+ */
 @Composable
 fun ThreeDMegaphoneAnnouncementBanner(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    isUrgentActive: Boolean = false,
+    isAdmin: Boolean = false,
+    onEditUrgent: (() -> Unit)? = null,
+    onStopUrgent: (() -> Unit)? = null,
+    onDismissUrgent: (() -> Unit)? = null
 ) {
-    Surface(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(22.dp),
-                ambientColor = Color(0xFF059669).copy(alpha = 0.16f),
-                spotColor = Color(0xFF059669).copy(alpha = 0.18f)
-            )
-            .clip(RoundedCornerShape(22.dp))
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
-        shape = RoundedCornerShape(22.dp),
-        color = Color.Transparent,
-        border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.90f))
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFFE6F7F0),
-                            Color(0xFFF2FBF7),
-                            Color(0xFFE0F7EE)
-                        )
+        // Seamless Multi-Layer Wave Background Canvas (No rectangular border frame)
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+
+            // Soft mint-white wave body that flows into the hero section below
+            val waveBody = Path().apply {
+                moveTo(0f, h * 0.08f)
+                cubicTo(
+                    w * 0.28f, 0f,
+                    w * 0.72f, h * 0.14f,
+                    w, h * 0.04f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = waveBody,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFFDFF7EC),
+                        Color(0xFFF2FBF7),
+                        Color(0xFFE6F8F0)
                     )
                 )
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+            )
+
+            // Subtle upper luminous wave ribbon
+            val topRibbon = Path().apply {
+                moveTo(0f, h * 0.16f)
+                cubicTo(
+                    w * 0.35f, h * 0.02f,
+                    w * 0.65f, h * 0.24f,
+                    w, h * 0.10f
+                )
+                lineTo(w, 0f)
+                lineTo(0f, 0f)
+                close()
+            }
+            drawPath(
+                path = topRibbon,
+                color = Color.White.copy(alpha = 0.55f)
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2780,8 +2918,8 @@ fun ThreeDMegaphoneAnnouncementBanner(
                     Surface(
                         shape = CircleShape,
                         color = Color(0xFF047857),
-                        modifier = Modifier.size(28.dp),
-                        shadowElevation = 2.dp
+                        modifier = Modifier.size(30.dp),
+                        shadowElevation = 4.dp
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             Icon(
@@ -2795,10 +2933,10 @@ fun ThreeDMegaphoneAnnouncementBanner(
 
                     Box(
                         modifier = Modifier
-                            .width(2.dp)
-                            .height(36.dp)
+                            .width(2.2.dp)
+                            .height(38.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF059669).copy(alpha = 0.55f))
+                            .background(Color(0xFF059669).copy(alpha = 0.65f))
                     )
 
                     Column(
@@ -2808,7 +2946,7 @@ fun ThreeDMegaphoneAnnouncementBanner(
                         Text(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
-                            fontSize = 16.sp,
+                            fontSize = 16.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF047857),
                             maxLines = 1,
@@ -2828,20 +2966,90 @@ fun ThreeDMegaphoneAnnouncementBanner(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Left side (in RTL): 3D Megaphone Illustration
+                // Left side (in RTL): 3D Animated Megaphone Illustration
                 ThreeDIllustrationBox(
                     type = ThreeDIllustrationType.MEGAPHONE,
-                    modifier = Modifier.size(74.dp)
+                    modifier = Modifier.size(78.dp)
                 )
+            }
+
+            // Compact inline control chips when an urgent school alert is active (replaces duplicate card)
+            if (isUrgentActive) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isAdmin && onEditUrgent != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFF059669).copy(alpha = 0.14f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { onEditUrgent() }
+                                .testTag("urgent_alert_banner_edit_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Filled.Edit, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(13.dp))
+                                Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF047857))
+                            }
+                        }
+                    }
+                    if (isAdmin && onStopUrgent != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFDC2626).copy(alpha = 0.12f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { onStopUrgent() }
+                                .testTag("urgent_alert_banner_delete_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Filled.StopCircle, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(13.dp))
+                                Text("إيقاف البث", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                            }
+                        }
+                    }
+                    if (onDismissUrgent != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFF0F172A).copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { onDismissUrgent() }
+                                .testTag("urgent_alert_banner_dismiss_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Filled.DoneAll, contentDescription = null, tint = Color(0xFF334155), modifier = Modifier.size(13.dp))
+                                Text("تم الاطلاع", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 /**
- * البطاقة الترحيبية / الترويسية الملكية ثلاثية الأبعاد (3D Royal Hero Card)
- * مع تدرج زمردي إلى كحلي عميق، شبكة نقاط مضيئة (Halftone Dot Matrix)، كبسولات زجاجية علوية،
- * مجسم ثلاثي الأبعاد على اليسار، وشريط زر زجاجي سفلي اختياري.
+ * القسم الترحيبي / الترويسي الملكي ثلاثي الأبعاد المدمج بأمواج انسيابية مع جسم الصفحة
+ * (Seamless Wave-Curved 3D Royal Hero Section)
+ * يطابق الصورة المرجعية حرفياً:
+ * - حافة علوية وسفلية منحنية بموجة Bezier ناعمة بدلاً من الصندوق المستطيل ذي الإطار
+ * - تدرج زمردي إلى كحلي عميق + شبكة نقاط مضيئة (Halftone Dot Matrix)
+ * - كبسولات زجاجية علوية + مجسم ثلاثي الأبعاد متحرك على اليسار + شريط زر زجاجي سفلي اختياري.
  */
 @Composable
 fun ThreeDHeroHeaderCard(
@@ -2859,228 +3067,260 @@ fun ThreeDHeroHeaderCard(
     modifier: Modifier = Modifier,
     extraBottomContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
-    Card(
+    // Custom Bezier Wave Shape: curved wave top & curved wave bottom matching reference image
+    val waveHeroShape = remember {
+        GenericShape { size, _ ->
+            val w = size.width
+            val h = size.height
+            val topWaveDepth = (h * 0.065f).coerceIn(10f, 22f)
+            val bottomWaveDepth = (h * 0.095f).coerceIn(16f, 30f)
+
+            moveTo(0f, topWaveDepth * 0.45f)
+            cubicTo(
+                w * 0.32f, -topWaveDepth * 0.35f,
+                w * 0.68f, topWaveDepth * 1.35f,
+                w, topWaveDepth * 0.25f
+            )
+            lineTo(w, h - bottomWaveDepth)
+            quadraticBezierTo(
+                w * 0.50f, h + bottomWaveDepth * 0.85f,
+                0f, h - bottomWaveDepth * 0.85f
+            )
+            close()
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 14.dp,
-                shape = RoundedCornerShape(28.dp),
-                ambientColor = Color(0xFF047857).copy(alpha = 0.35f),
-                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.40f)
-            ),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.40f))
+                elevation = 12.dp,
+                shape = waveHeroShape,
+                ambientColor = Color(0xFF047857).copy(alpha = 0.32f),
+                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.38f)
+            )
+            .clip(waveHeroShape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF059669),
+                        Color(0xFF047857),
+                        Color(0xFF0F3D5E)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(950f, 680f)
+                )
+            )
     ) {
-        Box(
+        // Halftone Dot Matrix, Wave Highlights & Radial Glow Overlay
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+
+            // Soft internal wave sheen
+            val innerWave = Path().apply {
+                moveTo(0f, h * 0.72f)
+                cubicTo(
+                    w * 0.35f, h * 0.60f,
+                    w * 0.70f, h * 0.88f,
+                    w, h * 0.74f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = innerWave,
+                color = Color(0xFF0F3D5E).copy(alpha = 0.28f)
+            )
+
+            // Radial emerald highlight behind the 3D illustration (left side in RTL)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF34D399).copy(alpha = 0.32f),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.22f, h * 0.48f),
+                    radius = w * 0.44f
+                ),
+                radius = w * 0.44f,
+                center = Offset(w * 0.22f, h * 0.48f)
+            )
+
+            // Halftone dot matrix in top-left and bottom-right corners
+            val step = 11.dp.toPx()
+            val dotRadius = 1.6.dp.toPx()
+            for (row in 0..6) {
+                for (col in 0..7) {
+                    val alpha = ((1f - (row + col) / 14f) * 0.22f).coerceIn(0.03f, 0.22f)
+                    drawCircle(
+                        color = Color.White.copy(alpha = alpha),
+                        radius = dotRadius,
+                        center = Offset(w * 0.04f + col * step, h * 0.10f + row * step)
+                    )
+                    drawCircle(
+                        color = Color.White.copy(alpha = alpha),
+                        radius = dotRadius,
+                        center = Offset(w * 0.96f - col * step, h * 0.88f - row * step)
+                    )
+                }
+            }
+        }
+
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF059669),
-                            Color(0xFF047857),
-                            Color(0xFF0F3D5E)
-                        ),
-                        start = Offset(0f, 0f),
-                        end = Offset(900f, 650f)
-                    )
-                )
+                .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Halftone Dot Matrix & Radial Glow Overlay
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val w = size.width
-                val h = size.height
-
-                // Radial emerald highlight behind the 3D illustration (left side in RTL)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF34D399).copy(alpha = 0.28f),
-                            Color.Transparent
-                        ),
-                        center = Offset(w * 0.22f, h * 0.48f),
-                        radius = w * 0.42f
-                    ),
-                    radius = w * 0.42f,
-                    center = Offset(w * 0.22f, h * 0.48f)
-                )
-
-                // Halftone dot matrix in top-left and bottom-right corners
-                val step = 11.dp.toPx()
-                val dotRadius = 1.6.dp.toPx()
-                for (row in 0..6) {
-                    for (col in 0..7) {
-                        val alpha = ((1f - (row + col) / 14f) * 0.22f).coerceIn(0.03f, 0.22f)
-                        // Top-left dots
-                        drawCircle(
-                            color = Color.White.copy(alpha = alpha),
-                            radius = dotRadius,
-                            center = Offset(w * 0.04f + col * step, h * 0.08f + row * step)
+            // Top Row: Two Frosted Glass Pills
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Right Pill (School Type & Stage)
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = rightPillIcon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
                         )
-                        // Bottom-right dots
-                        drawCircle(
-                            color = Color.White.copy(alpha = alpha),
-                            radius = dotRadius,
-                            center = Offset(w * 0.96f - col * step, h * 0.92f - row * step)
+                        Text(
+                            text = rightPillText,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                // Left Pill (Role Badge)
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = leftPillIcon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = leftPillText,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Middle Row: Welcome Title & Subtitle on Right + 3D Animated Illustration on Left
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Row: Two Frosted Glass Pills
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Right Pill (School Type & Stage)
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color.White.copy(alpha = 0.18f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = rightPillIcon,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = rightPillText,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-
-                    // Left Pill (Role Badge)
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color.White.copy(alpha = 0.18f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = leftPillIcon,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = leftPillText,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
-
-                // Middle Row: Welcome Title & Subtitle on Right + 3D Illustration on Left
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.92f)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    ThreeDIllustrationBox(
-                        type = illustrationType,
-                        modifier = Modifier.size(106.dp)
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.92f)
                     )
                 }
 
-                // Optional Bottom Glassmorphic Capsule Action Bar
-                if (bottomActionText != null && onBottomActionClick != null) {
-                    Surface(
+                Spacer(modifier = Modifier.width(8.dp))
+
+                ThreeDIllustrationBox(
+                    type = illustrationType,
+                    modifier = Modifier.size(108.dp)
+                )
+            }
+
+            // Optional Bottom Glassmorphic Capsule Action Bar
+            if (bottomActionText != null && onBottomActionClick != null) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onBottomActionClick() }
+                        .testTag(bottomActionTestTag),
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.16f),
+                    border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.38f))
+                ) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(50))
-                            .clickable { onBottomActionClick() }
-                            .testTag(bottomActionTestTag),
-                        shape = RoundedCornerShape(50),
-                        color = Color.White.copy(alpha = 0.16f),
-                        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.38f))
+                            .padding(horizontal = 16.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Icon(
-                                imageVector = bottomActionIcon,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Text(
-                                text = bottomActionText,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            )
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = bottomActionIcon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            text = bottomActionText,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
+            }
 
-                if (extraBottomContent != null) {
-                    extraBottomContent()
-                }
+            if (extraBottomContent != null) {
+                extraBottomContent()
             }
         }
     }
@@ -3512,6 +3752,148 @@ fun WaveStatCard3D(
         }
     }
 }
+
+/**
+ * بطاقة الأقسام التعليمية والإدارية ثلاثية الأبعاد ذات الأمواج السفلية
+ * (3D Wave Quick-Access Section Card)
+ * تمنع اقتصاص العناوين الطويلة (مثل: "السجل الأكاديمي الشامل") وتمنح كل قسم عمقاً ثلاثي الأبعاد.
+ */
+@Composable
+fun SectionWaveQuickCard3D(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    isBlueAccent: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    testTag: String = ""
+) {
+    val waveColor1 = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFCCFBF1)
+    val waveColor2 = if (isBlueAccent) Color(0xFFBFDBFE) else Color(0xFFA7F3D0)
+    val iconCircleBg = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFD1FAE5)
+    val iconTint = if (isBlueAccent) Color(0xFF1D4ED8) else Color(0xFF059669)
+
+    Card(
+        modifier = modifier
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(22.dp),
+                ambientColor = iconTint.copy(alpha = 0.14f),
+                spotColor = iconTint.copy(alpha = 0.18f)
+            )
+            .clip(RoundedCornerShape(22.dp))
+            .clickable { onClick() }
+            .then(if (testTag.isNotBlank()) Modifier.testTag(testTag) else Modifier),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 132.dp)
+        ) {
+            // Double smooth water wave drawn at the bottom of the card
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val w = size.width
+                val h = size.height
+
+                val backWave = Path().apply {
+                    moveTo(0f, h * 0.74f)
+                    cubicTo(
+                        w * 0.32f, h * 0.64f,
+                        w * 0.68f, h * 0.86f,
+                        w, h * 0.72f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(path = backWave, color = waveColor1.copy(alpha = 0.72f))
+
+                val frontWave = Path().apply {
+                    moveTo(0f, h * 0.82f)
+                    cubicTo(
+                        w * 0.38f, h * 0.92f,
+                        w * 0.72f, h * 0.72f,
+                        w, h * 0.84f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(path = frontWave, color = waveColor2.copy(alpha = 0.62f))
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = iconCircleBg,
+                        border = BorderStroke(1.5.dp, Color.White),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = title,
+                                tint = iconTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = iconCircleBg.copy(alpha = 0.65f),
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = null,
+                                tint = iconTint,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF0F172A),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF475569),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
 
 
 

@@ -614,52 +614,102 @@ fun ReportsAndChatScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // Hide the top tab switcher when an active chat conversation is expanded so messages get full height
+        // Hide the top hero & tab switcher when an active chat conversation is expanded so messages get full height
         if (!(selectedTab == 1 && isChatConversationOpen && selectedContact != null)) {
+            ThreeDHeroHeaderCard(
+                title = "البلاغات والمراسلة المباشرة",
+                subtitle = "التواصل التربوي المباشر بين الإدارة والكادر التدريسي وأولياء الأمور والطلبة",
+                rightPillText = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات الرسمية",
+                rightPillIcon = Icons.Filled.Campaign,
+                leftPillText = "مراسلة فورية",
+                leftPillIcon = Icons.Filled.Forum,
+                illustrationType = ThreeDIllustrationType.MEGAPHONE
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
-                    onClick = {
-                        selectedTab = 0
-                        isChatConversationOpen = false
-                    },
+                val isTab0 = selectedTab == 0
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isTab0) Color(0xFF059669) else Color.White,
+                    border = BorderStroke(1.2.dp, if (isTab0) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                    shadowElevation = if (isTab0) 6.dp else 2.dp,
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 46.dp)
-                        .testTag("tab_official_reports"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            selectedTab = 0
+                            isChatConversationOpen = false
+                        }
+                        .testTag("tab_official_reports")
                 ) {
-                    Icon(Icons.Filled.Campaign, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات والتبليغات",
-                        maxLines = 1,
-                        softWrap = false
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Campaign,
+                            contentDescription = null,
+                            tint = if (isTab0) Color.White else Color(0xFF047857),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات والتبليغات",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isTab0) Color.White else Color(0xFF0F172A),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
 
                 if (featureSettings.directChatEnabled) {
-                    Button(
-                        onClick = { selectedTab = 1 },
+                    val isTab1 = selectedTab == 1
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isTab1) Color(0xFF059669) else Color.White,
+                        border = BorderStroke(1.2.dp, if (isTab1) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                        shadowElevation = if (isTab1) 6.dp else 2.dp,
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 46.dp)
-                            .testTag("tab_direct_chat"),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { selectedTab = 1 }
+                            .testTag("tab_direct_chat")
                     ) {
-                        Icon(Icons.Filled.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("صندوق المراسلة المباشر", maxLines = 1, softWrap = false)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Forum,
+                                contentDescription = null,
+                                tint = if (isTab1) Color.White else Color(0xFF047857),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "المراسلة المباشرة",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isTab1) Color.White else Color(0xFF0F172A),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
                 }
             }
