@@ -109,17 +109,18 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // Seamless Wave Body Integration: Single Announcement Wave Band + 3D Royal Welcome Wave Hero (Zero Duplicate Box Frames)
+        // Complete Architectural & Visual Separation:
+        // 1) Developer System Broadcast Banner (Royal Deep Navy/Indigo + Cyan Border)
+        // 2) Principal School Announcement Banner (Warm Emerald/Gold + 3D Megaphone)
+        // 3) 3D Royal Welcome Wave Hero Card
         item {
-            val bannerTitle = when {
+            val schoolBannerTitle = when {
                 shouldShowUrgentAlertBanner -> activeUrgentAlert.authorName.ifBlank { "تبليغ إداري هام" }
-                occasionThemeConfig.isActive -> occasionThemeConfig.effectiveTitle
                 todayHolidayLabel != null -> "عطلة رسمية: $todayHolidayLabel"
                 else -> "عام دراسي جديد"
             }
-            val bannerSubtitle = when {
+            val schoolBannerSubtitle = when {
                 shouldShowUrgentAlertBanner -> activeUrgentAlert.message
-                occasionThemeConfig.isActive -> occasionThemeConfig.effectiveBannerText
                 todayHolidayLabel != null -> "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
                 else -> "مبروك لطلبتنا الأعزاء العام الدراسي الجديد (${schoolConfig.academicYear})"
             }
@@ -140,11 +141,19 @@ fun DashboardScreen(
 
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (occasionThemeConfig.isActive) {
+                    DeveloperSystemBroadcastBanner(
+                        title = occasionThemeConfig.effectiveTitle,
+                        subtitle = occasionThemeConfig.effectiveBannerText,
+                        badgeText = "إشعار النظام العام"
+                    )
+                }
+
                 ThreeDMegaphoneAnnouncementBanner(
-                    title = bannerTitle,
-                    subtitle = bannerSubtitle,
+                    title = schoolBannerTitle,
+                    subtitle = schoolBannerSubtitle,
                     onClick = when {
                         isAdmin && todayHolidayLabel != null && !shouldShowUrgentAlertBanner -> {
                             { viewModel.openHolidaysManagementModal() }

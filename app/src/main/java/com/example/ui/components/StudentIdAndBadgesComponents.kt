@@ -1581,34 +1581,38 @@ fun ParentMultiChildSwitcherBar(
                 Row(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     AvatarOrPhotoView(
                         base64Image = activeChild.photoBase64,
                         fallbackName = activeChild.fullNameWithFather,
-                        size = 22.dp,
+                        size = 20.dp,
                         borderColor = EmeraldAccent.copy(alpha = 0.7f)
                     )
                     Text(
                         text = activeChild.fullNameWithFather,
                         style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.92f),
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.95f),
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     Text(
                         text = "• ${activeChild.gradeClass} (${activeChild.sectionName})",
                         style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = Color(0xFFA7F3D0),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        softWrap = false
                     )
                 }
             }
 
             if (showDigitalIdButton) {
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
 
                 // Left Side: Sleek compact "بطاقة الهوية" pill button
                 Surface(
@@ -1620,7 +1624,7 @@ fun ParentMultiChildSwitcherBar(
                     border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.55f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -1628,14 +1632,16 @@ fun ParentMultiChildSwitcherBar(
                             imageVector = Icons.Default.Badge,
                             contentDescription = "بطاقة الهوية",
                             tint = Color(0xFFA7F3D0),
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(13.dp)
                         )
                         Text(
                             text = "بطاقة الهوية",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -1740,111 +1746,33 @@ fun AdminSubscriptionAndBroadcastBanner(
         }
 
         if (latestBroadcast != null) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("admin_developer_broadcast_banner")
+                    .testTag("admin_developer_broadcast_banner"),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Seamless Wave Canvas Body (No traditional rectangular box border)
-                androidx.compose.foundation.Canvas(modifier = Modifier.matchParentSize()) {
-                    val w = size.width
-                    val h = size.height
-                    val wavePath = androidx.compose.ui.graphics.Path().apply {
-                        moveTo(0f, h * 0.08f)
-                        cubicTo(
-                            w * 0.30f, 0f,
-                            w * 0.70f, h * 0.16f,
-                            w, h * 0.05f
-                        )
-                        lineTo(w, h * 0.94f)
-                        quadraticBezierTo(w * 0.50f, h * 1.04f, 0f, h * 0.92f)
-                        close()
-                    }
-                    drawPath(
-                        path = wavePath,
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                Color(0xFFDFF7EC),
-                                Color(0xFFF0FDF4),
-                                Color(0xFFE6F8F0)
-                            )
-                        )
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            DeveloperSelectedIconBox(
-                                iconKey = OccasionIconKey.fromKey(latestBroadcast.iconKey),
-                                size = 40.dp
-                            )
-                        }
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFF059669).copy(alpha = 0.14f)
-                            ) {
-                                Text(
-                                    text = "تعميم مدراء المدارس: ${latestBroadcast.title}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF065F46),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                )
+                DeveloperSystemBroadcastBanner(
+                    title = latestBroadcast.title,
+                    subtitle = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
+                    badgeText = "إشعار النظام العام • تعميم مدراء المدارس",
+                    onDismiss = {
+                        isBroadcastBannerDismissed = true
+                        developerBroadcasts.forEach { bc ->
+                            val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                            onDismissBroadcast(key)
+                            if (bc.id.isNotBlank()) {
+                                onDismissBroadcast(bc.id)
                             }
-                            Text(
-                                text = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F172A)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF059669).copy(alpha = 0.14f))
-                                .clickable {
-                                    isBroadcastBannerDismissed = true
-                                    developerBroadcasts.forEach { bc ->
-                                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                                        onDismissBroadcast(key)
-                                        if (bc.id.isNotBlank()) {
-                                            onDismissBroadcast(bc.id)
-                                        }
-                                    }
-                                }
-                                .testTag("dismiss_developer_broadcast_btn"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "تجاهل وإغلاق التعميم",
-                                tint = Color(0xFF065F46),
-                                modifier = Modifier.size(16.dp)
-                            )
                         }
                     }
+                )
 
-                    if (latestBroadcast.imageBase64.isNotBlank() || latestBroadcast.imageUrl.isNotBlank()) {
-                        DeveloperAttachedImageBannerSection(
-                            imageBase64 = latestBroadcast.imageBase64,
-                            imageUrl = latestBroadcast.imageUrl
-                        )
-                    }
+                if (latestBroadcast.imageBase64.isNotBlank() || latestBroadcast.imageUrl.isNotBlank()) {
+                    DeveloperAttachedImageBannerSection(
+                        imageBase64 = latestBroadcast.imageBase64,
+                        imageUrl = latestBroadcast.imageUrl
+                    )
                 }
             }
         }

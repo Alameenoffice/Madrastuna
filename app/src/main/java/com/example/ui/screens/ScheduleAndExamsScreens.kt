@@ -218,118 +218,46 @@ fun ScheduleAndHomeworkScreen(
         }
     }
 
-    Column(
+    // Single unified LazyColumn so the 3D Hero Card, 3-Tab Switcher, Class/Section Filters, and Action Buttons scroll smoothly with the content
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(top = 10.dp, bottom = 110.dp)
     ) {
-        // 3D Wave Hero Header for Schedule, Homework & Study Library
-        ThreeDHeroHeaderCard(
-            title = "الجدول والواجبات والمكتبة",
-            subtitle = "تنظيم جدول الحصص الأسبوعي والواجبات اليومية والملخصات الدراسية",
-            rightPillText = "$selectedClass • شعبة $selectedSection",
-            rightPillIcon = Icons.Filled.MenuBook,
-            leftPillText = "الواجبات: ${filteredHomeworks.size}",
-            leftPillIcon = Icons.Filled.CalendarMonth,
-            illustrationType = ThreeDIllustrationType.SCHEDULE_BOOKS_3D
-        )
+        item {
+            // 3D Wave Hero Header for Schedule, Homework & Study Library
+            ThreeDHeroHeaderCard(
+                title = "الجدول والواجبات والمكتبة",
+                subtitle = "تنظيم جدول الحصص الأسبوعي والواجبات اليومية والملخصات الدراسية",
+                rightPillText = "$selectedClass • شعبة $selectedSection",
+                rightPillIcon = Icons.Filled.MenuBook,
+                leftPillText = "الواجبات: ${filteredHomeworks.size}",
+                leftPillIcon = Icons.Filled.CalendarMonth,
+                illustrationType = ThreeDIllustrationType.SCHEDULE_BOOKS_3D
+            )
+        }
 
-        // Compact 3D Wave Header & Unclipped 3-Tab Pill Switcher (الواجبات | جدول الحصص | المكتبة والملخصات)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val isHwTab = selectedTab == 0
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = if (isHwTab) Color(0xFF059669) else Color.White,
-                border = BorderStroke(1.2.dp, if (isHwTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
-                shadowElevation = if (isHwTab) 5.dp else 2.dp,
-                modifier = Modifier
-                    .weight(0.85f)
-                    .heightIn(min = 44.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable { selectedTab = 0 }
-                    .testTag("tab_daily_homework")
+        item {
+            // Compact 3D Wave Header & Unclipped 3-Tab Pill Switcher (الواجبات | جدول الحصص | المكتبة والملخصات)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 6.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.MenuBook,
-                        contentDescription = null,
-                        tint = if (isHwTab) Color.White else Color(0xFF047857),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "الواجبات",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isHwTab) Color.White else Color(0xFF0F172A),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-
-            val isSchedTab = selectedTab == 1
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = if (isSchedTab) Color(0xFF059669) else Color.White,
-                border = BorderStroke(1.2.dp, if (isSchedTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
-                shadowElevation = if (isSchedTab) 5.dp else 2.dp,
-                modifier = Modifier
-                    .weight(1.0f)
-                    .heightIn(min = 44.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable { selectedTab = 1 }
-                    .testTag("tab_weekly_schedule")
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 6.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.CalendarMonth,
-                        contentDescription = null,
-                        tint = if (isSchedTab) Color.White else Color(0xFF047857),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "جدول الحصص",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isSchedTab) Color.White else Color(0xFF0F172A),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-
-            if (featureSettings.studyLibraryEnabled) {
-                val isLibTab = selectedTab == 2
+                val isHwTab = selectedTab == 0
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = if (isLibTab) Color(0xFF059669) else Color.White,
-                    border = BorderStroke(1.2.dp, if (isLibTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
-                    shadowElevation = if (isLibTab) 5.dp else 2.dp,
+                    color = if (isHwTab) Color(0xFF059669) else Color.White,
+                    border = BorderStroke(1.2.dp, if (isHwTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                    shadowElevation = if (isHwTab) 5.dp else 2.dp,
                     modifier = Modifier
-                        .weight(1.2f)
+                        .weight(0.85f)
                         .heightIn(min = 44.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .clickable { selectedTab = 2 }
-                        .testTag("tab_study_materials")
+                        .clickable { selectedTab = 0 }
+                        .testTag("tab_daily_homework")
                 ) {
                     Row(
                         modifier = Modifier
@@ -339,118 +267,191 @@ fun ScheduleAndHomeworkScreen(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.LocalLibrary,
+                            imageVector = Icons.Filled.MenuBook,
                             contentDescription = null,
-                            tint = if (isLibTab) Color.White else Color(0xFF047857),
+                            tint = if (isHwTab) Color.White else Color(0xFF047857),
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
-                            text = "المكتبة والملخصات",
-                            fontSize = 11.sp,
+                            text = "الواجبات",
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (isLibTab) Color.White else Color(0xFF0F172A),
+                            color = if (isHwTab) Color.White else Color(0xFF0F172A),
                             maxLines = 1,
                             softWrap = false
                         )
                     }
                 }
-            }
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (!isParentOrStudent) {
-            // Class & Section Selector from Registered/Allowed lists
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(allowedClasses) { cls ->
-                    FilterChip(
-                        selected = selectedClass == cls,
-                        onClick = {
-                            selectedClass = cls
-                            val secs = viewModel.getAllowedSectionsForClass(cls, currentUser)
-                            if (selectedSection !in secs) selectedSection = secs.firstOrNull() ?: "أ"
-                        },
-                        label = { Text(cls, maxLines = 1, softWrap = false) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = if (selectedClass == cls) Icons.Filled.Check else Icons.Filled.School,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    )
-                }
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("الشعبة:", style = MaterialTheme.typography.labelLarge)
-                allowedSections.forEach { sec ->
-                    FilterChip(
-                        selected = selectedSection == sec,
-                        onClick = { selectedSection = sec },
-                        label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
-                    )
-                }
-            }
-        } else {
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                val isSchedTab = selectedTab == 1
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isSchedTab) Color(0xFF059669) else Color.White,
+                    border = BorderStroke(1.2.dp, if (isSchedTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                    shadowElevation = if (isSchedTab) 5.dp else 2.dp,
+                    modifier = Modifier
+                        .weight(1.0f)
+                        .heightIn(min = 44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { selectedTab = 1 }
+                        .testTag("tab_weekly_schedule")
                 ) {
-                    Icon(Icons.Filled.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Text(
-                        text = "جدول وتحضير الصف الخاص بالطالب: $selectedClass (شعبة $selectedSection)",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (selectedTab == 0) {
-            if (canPublish) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    VectorActionButton(
-                        text = "نشر تحضير وواجب",
-                        icon = Icons.Filled.PostAdd,
-                        onClick = { showPublishHomeworkDialog = true },
-                        modifier = Modifier.weight(1f),
-                        testTag = "publish_homework_button"
-                    )
-                    if (featureSettings.quickQuizzesEnabled) {
-                        VectorActionButton(
-                            text = "نشر اختبار سريع",
-                            icon = Icons.Filled.Quiz,
-                            containerColor = DeepEmerald,
-                            onClick = { showPublishQuickQuizDialog = true },
-                            modifier = Modifier.weight(1f),
-                            testTag = "publish_quick_quiz_button"
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CalendarMonth,
+                            contentDescription = null,
+                            tint = if (isSchedTab) Color.White else Color(0xFF047857),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "جدول الحصص",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isSchedTab) Color.White else Color(0xFF0F172A),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
+                if (featureSettings.studyLibraryEnabled) {
+                    val isLibTab = selectedTab == 2
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isLibTab) Color(0xFF059669) else Color.White,
+                        border = BorderStroke(1.2.dp, if (isLibTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                        shadowElevation = if (isLibTab) 5.dp else 2.dp,
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .heightIn(min = 44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { selectedTab = 2 }
+                            .testTag("tab_study_materials")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.LocalLibrary,
+                                contentDescription = null,
+                                tint = if (isLibTab) Color.White else Color(0xFF047857),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "المكتبة والملخصات",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isLibTab) Color.White else Color(0xFF0F172A),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            if (!isParentOrStudent) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Class & Section Selector from Registered/Allowed lists
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(allowedClasses) { cls ->
+                            FilterChip(
+                                selected = selectedClass == cls,
+                                onClick = {
+                                    selectedClass = cls
+                                    val secs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                    if (selectedSection !in secs) selectedSection = secs.firstOrNull() ?: "أ"
+                                },
+                                label = { Text(cls, maxLines = 1, softWrap = false) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (selectedClass == cls) Icons.Filled.Check else Icons.Filled.School,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("الشعبة:", style = MaterialTheme.typography.labelLarge)
+                        allowedSections.forEach { sec ->
+                            FilterChip(
+                                selected = selectedSection == sec,
+                                onClick = { selectedSection = sec },
+                                label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "جدول وتحضير الصف الخاص بالطالب: $selectedClass (شعبة $selectedSection)",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+        }
+
+        if (selectedTab == 0) {
+            if (canPublish) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        VectorActionButton(
+                            text = "نشر تحضير وواجب",
+                            icon = Icons.Filled.PostAdd,
+                            onClick = { showPublishHomeworkDialog = true },
+                            modifier = Modifier.weight(1f),
+                            testTag = "publish_homework_button"
+                        )
+                        if (featureSettings.quickQuizzesEnabled) {
+                            VectorActionButton(
+                                text = "نشر اختبار سريع",
+                                icon = Icons.Filled.Quiz,
+                                containerColor = DeepEmerald,
+                                onClick = { showPublishQuickQuizDialog = true },
+                                modifier = Modifier.weight(1f),
+                                testTag = "publish_quick_quiz_button"
+                            )
+                        }
+                    }
+                }
+            }
                 // Quick Quizzes Section (الاختبارات السريعة والتصحيح التلقائي والفرز الاحترافي)
                 if (featureSettings.quickQuizzesEnabled && classScopedQuickQuizzes.isNotEmpty()) {
                     item {
@@ -1698,90 +1699,84 @@ fun ScheduleAndHomeworkScreen(
                         }
                     }
                 }
-            }
         } else if (selectedTab == 1) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(viewModel.weekDays) { day ->
-                    FilterChip(
-                        selected = selectedDay == day,
-                        onClick = { selectedDay = day },
-                        label = { Text("يوم $day", maxLines = 1, softWrap = false) },
-                        leadingIcon = {
-                            Icon(Icons.Filled.Today, contentDescription = null, modifier = Modifier.size(16.dp))
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(viewModel.weekDays) { day ->
+                            FilterChip(
+                                selected = selectedDay == day,
+                                onClick = { selectedDay = day },
+                                label = { Text("يوم $day", maxLines = 1, softWrap = false) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Today, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            )
                         }
-                    )
+                    }
+
+                    if (canPublish) {
+                        VectorActionButton(
+                            text = "إضافة أو تعديل حصة في الجدول الأسبوعي",
+                            icon = Icons.Filled.AddAlarm,
+                            onClick = { showAddPeriodDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (canPublish) {
-                VectorActionButton(
-                    text = "إضافة أو تعديل حصة في الجدول الأسبوعي",
-                    icon = Icons.Filled.AddAlarm,
-                    onClick = { showAddPeriodDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                items(filteredPeriods, key = { it.id }) { period ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            items(filteredPeriods, key = { it.id }) { period ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.primary
-                                ) {
-                                    Text(
-                                        text = "الحصة ${period.periodNumber}",
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                                Column {
-                                    Text(
-                                        text = period.subjectName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "$staffTitleSingular: ${period.teacherName}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                Text(
+                                    text = "الحصة ${period.periodNumber}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
-
-                            NoWrapBadge(
-                                text = period.timeSlot,
-                                icon = Icons.Filled.AccessTime,
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
+                            Column {
+                                Text(
+                                    text = period.subjectName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "$staffTitleSingular: ${period.teacherName}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
+
+                        NoWrapBadge(
+                            text = period.timeSlot,
+                            icon = Icons.Filled.AccessTime,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
                     }
                 }
             }
@@ -1790,22 +1785,18 @@ fun ScheduleAndHomeworkScreen(
             // TAB 2: المكتبة الرقمية والملخصات الدراسية (study_materials)
             // =========================================================================
             if (canPublish) {
-                VectorActionButton(
-                    text = "نشر ملخص دراسي / ملزمة / ورقة عمل لـ ($selectedClass - $selectedSection)",
-                    icon = Icons.Filled.LibraryAdd,
-                    onClick = { showPublishStudyMaterialDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "publish_study_material_button"
-                )
-                Spacer(modifier = Modifier.height(10.dp))
+                item {
+                    VectorActionButton(
+                        text = "نشر ملخص دراسي / ملزمة / ورقة عمل لـ ($selectedClass - $selectedSection)",
+                        icon = Icons.Filled.LibraryAdd,
+                        onClick = { showPublishStudyMaterialDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "publish_study_material_button"
+                    )
+                }
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                if (filteredStudyMaterials.isEmpty()) {
+            if (filteredStudyMaterials.isEmpty()) {
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -1938,7 +1929,6 @@ fun ScheduleAndHomeworkScreen(
                         }
                     }
                 }
-            }
         }
     }
 
@@ -2907,7 +2897,7 @@ fun ExamsAndGradesScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp)
+                        contentPadding = PaddingValues(bottom = 110.dp)
                     ) {
                         item(key = "student_report_card_header_${myStu.id}") {
                             Card(
@@ -3166,7 +3156,7 @@ fun ExamsAndGradesScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 28.dp)
+                    contentPadding = PaddingValues(bottom = 110.dp)
                 ) {
                     // 3D Wave Hero Header for Grades & Exams
                     item {
@@ -3851,16 +3841,6 @@ fun ExamsAndGradesScreen(
             }
         } else {
             // Exam Schedule Tab with Live Countdown Badge
-            if (canEdit) {
-                VectorActionButton(
-                    text = "إضافة موعد امتحان جديد للجدول",
-                    icon = Icons.Filled.AddCard,
-                    onClick = { showAddExamDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
             val scopedExams = remember(examSchedules, allowedClasses) {
                 examSchedules.filter { ex ->
                     allowedClasses.any { cls -> ArabicTextNormalizer.matchesClass(ex.gradeClass, cls) }
@@ -3870,8 +3850,31 @@ fun ExamsAndGradesScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
+                contentPadding = PaddingValues(bottom = 110.dp)
             ) {
+                item {
+                    ThreeDHeroHeaderCard(
+                        title = "مواعيد الامتحانات الرسمية",
+                        subtitle = "جدول مواعيد الامتحانات الشهرية ونصف السنة وآخر السنة مع العد التنازلي",
+                        rightPillText = "الامتحانات المجدولة: ${scopedExams.size}",
+                        rightPillIcon = Icons.Filled.EventNote,
+                        leftPillText = schoolConfig.academicYear,
+                        leftPillIcon = Icons.Filled.CalendarMonth,
+                        illustrationType = ThreeDIllustrationType.EXAM_CERTIFICATE_PEN
+                    )
+                }
+
+                if (canEdit) {
+                    item {
+                        VectorActionButton(
+                            text = "إضافة موعد امتحان جديد للجدول",
+                            icon = Icons.Filled.AddCard,
+                            onClick = { showAddExamDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
                 items(scopedExams, key = { it.id }) { ex ->
                     val daysRemaining = ex.daysRemainingUntilExam()
                     val formattedExamDateLabel = listOf(ex.dayName.trim(), ex.examDate.trim())

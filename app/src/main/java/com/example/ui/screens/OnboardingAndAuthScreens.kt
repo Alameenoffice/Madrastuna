@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -139,11 +140,7 @@ fun OnboardingScreen(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = if (!discoveredSchoolName.isNullOrBlank()) {
-                                    "منصة مدرستي الذكية • $discoveredSchoolName"
-                                } else {
-                                    "منصة مدرستي الذكية"
-                                },
+                                text = "منصة مدرستي الذكية",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF047857),
@@ -223,7 +220,7 @@ fun OnboardingScreen(
                     val slideIllustration = when (index) {
                         0 -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
                         1 -> ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK
-                        else -> ThreeDIllustrationType.SMART_WALLET_CARD
+                        else -> ThreeDIllustrationType.SOCIAL_COMMUNITY_3D
                     }
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -235,7 +232,7 @@ fun OnboardingScreen(
                             title = slide.title,
                             subtitle = slide.description,
                             rightPillText = "",
-                            leftPillText = discoveredSchoolName?.takeIf { it.isNotBlank() } ?: "منصة مدرستي الذكية",
+                            leftPillText = "منصة مدرستي الذكية",
                             leftPillIcon = Icons.Filled.VerifiedUser,
                             illustrationType = slideIllustration
                         )
@@ -988,6 +985,22 @@ fun UnifiedLoginScreen(
     var showPassword by remember { mutableStateOf(false) }
     var loginError by remember { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(Unit) {
+        if (username.isBlank()) {
+            onUsernameChanged("")
+        }
+    }
+
+    val extractedSchoolCode: String? = remember(username) {
+        val trimmed = username.trim()
+        if (trimmed.contains("-")) {
+            trimmed.substringBefore("-").trim().takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
+    }
+    val isSchoolVerified = !extractedSchoolCode.isNullOrBlank() && !discoveredSchoolName.isNullOrBlank()
+
     var nowTickMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(loginLockoutUntilMs) {
         while (loginLockoutUntilMs > System.currentTimeMillis()) {
@@ -1102,10 +1115,8 @@ fun UnifiedLoginScreen(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = if (!discoveredSchoolName.isNullOrBlank()) {
+                                text = if (isSchoolVerified) {
                                     "منصة: $discoveredSchoolName"
-                                } else if (schoolConfig.isSetupCompleted && schoolConfig.schoolId.isNotBlank()) {
-                                    "كود المدرسة: ${schoolConfig.schoolId} • ${schoolConfig.schoolStage.arabicLabel}"
                                 } else {
                                     "منصة مدرستي الذكية"
                                 },
@@ -1145,23 +1156,17 @@ fun UnifiedLoginScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    val schoolTitleText = when {
-                        !discoveredSchoolName.isNullOrBlank() -> discoveredSchoolName
-                        schoolConfig.isSetupCompleted -> schoolConfig.schoolName
-                        else -> "منصة مدرستي المتكاملة"
-                    }
-
-                    // Seamless 3D Wave Hero Header for Unified Login Screen
+                    // Seamless 3D Wave Hero Header for Unified Login Screen (Strictly General Platform Identity before login)
                     ThreeDHeroHeaderCard(
-                        title = schoolTitleText,
+                        title = "منصة مدرستي الذكية",
                         subtitle = "بوابة تسجيل الدخول الموحدة والآمنة للهيئة الإدارية والتدريسية والطلبة وأولياء الأمور",
-                        rightPillText = "${schoolConfig.ministryAffiliation} • ${schoolConfig.schoolGenderType}",
+                        rightPillText = "",
                         rightPillIcon = Icons.Filled.School,
-                        leftPillText = schoolConfig.schoolStage.arabicLabel,
+                        leftPillText = "",
                         leftPillIcon = Icons.Filled.VerifiedUser,
                         illustrationType = ThreeDIllustrationType.SECURITY_SHIELD,
                         extraBottomContent = {
-                            // Official Selected School Identity Card with 5-Tap Logo Gesture
+                            // General Platform Badge with 5-Tap Logo Gesture for New School Setup
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
                                 color = Color.White.copy(alpha = 0.16f),
@@ -1181,7 +1186,7 @@ fun UnifiedLoginScreen(
                                         border = BorderStroke(2.dp, Color(0xFFA7F3D0)),
                                         shadowElevation = 6.dp,
                                         modifier = Modifier
-                                            .size(54.dp)
+                                            .size(50.dp)
                                             .clip(CircleShape)
                                             .clickable {
                                                 val now = System.currentTimeMillis()
@@ -1199,60 +1204,34 @@ fun UnifiedLoginScreen(
                                             .testTag("platform_logo_five_taps")
                                     ) {
                                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                            Base64AvatarImage(
-                                                base64Data = schoolConfig.logoBase64,
-                                                fallbackIcon = Icons.Filled.School,
-                                                contentDescription = schoolTitleText,
-                                                size = 46.dp,
-                                                tint = Color(0xFF059669)
+                                            Icon(
+                                                imageVector = Icons.Filled.School,
+                                                contentDescription = "منصة مدرستي الذكية",
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(28.dp)
                                             )
                                         }
                                     }
                                     Column(
                                         modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
                                     ) {
                                         Text(
-                                            text = schoolTitleText,
+                                            text = "البوابة التعليمية السحابية الموحدة",
                                             style = MaterialTheme.typography.titleSmall,
                                             color = Color.White,
                                             fontWeight = FontWeight.ExtraBold,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Surface(
-                                                shape = RoundedCornerShape(50),
-                                                color = Color.White.copy(alpha = 0.22f)
-                                            ) {
-                                                Text(
-                                                    text = schoolConfig.ministryAffiliation.ifBlank { "وزارة التربية" },
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color.White,
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                )
-                                            }
-                                            Surface(
-                                                shape = RoundedCornerShape(50),
-                                                color = Color(0xFFFDE68A).copy(alpha = 0.28f)
-                                            ) {
-                                                Text(
-                                                    text = schoolConfig.schoolGenderType.ifBlank { "مدرسة بنين" },
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color.White,
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                )
-                                            }
-                                        }
+                                        Text(
+                                            text = "أدخل اسم المستخدم المبدوء بكود مدرستك للتعرف التلقائي على المدرسة",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White.copy(alpha = 0.90f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
                             }
@@ -1347,6 +1326,102 @@ fun UnifiedLoginScreen(
                                 }
                             }
 
+                            // Single Verified School Identity Card (Revealed smoothly ONLY after typing a valid school code prefix)
+                            AnimatedVisibility(visible = isSchoolVerified) {
+                                val matchedLocalConfig = schoolConfig.isSetupCompleted &&
+                                    schoolConfig.schoolId.isNotBlank() &&
+                                    extractedSchoolCode == schoolConfig.schoolId
+                                Surface(
+                                    color = Color(0xFFECFDF5),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.65f)),
+                                    shadowElevation = 3.dp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("verified_school_identity_card")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color.White,
+                                            border = BorderStroke(1.5.dp, Color(0xFF10B981)),
+                                            modifier = Modifier.size(44.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                                if (matchedLocalConfig && schoolConfig.logoBase64.isNotBlank()) {
+                                                    Base64AvatarImage(
+                                                        base64Data = schoolConfig.logoBase64,
+                                                        fallbackIcon = Icons.Filled.Verified,
+                                                        contentDescription = discoveredSchoolName.orEmpty(),
+                                                        size = 38.dp,
+                                                        tint = Color(0xFF059669)
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Verified,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF059669),
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = discoveredSchoolName.orEmpty(),
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF065F46),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = Color(0xFFD1FAE5)
+                                                ) {
+                                                    Text(
+                                                        text = "كود المدرسة: ${extractedSchoolCode.orEmpty()}",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFF047857),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                                if (matchedLocalConfig) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(50),
+                                                        color = Color(0xFFFEF3C7)
+                                                    ) {
+                                                        Text(
+                                                            text = "${schoolConfig.ministryAffiliation} • ${schoolConfig.schoolGenderType} • ${schoolConfig.schoolStage.arabicLabel}",
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFF92400E),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             OutlinedTextField(
                                 value = username,
                                 onValueChange = {
@@ -1363,34 +1438,6 @@ fun UnifiedLoginScreen(
                                     .testTag("login_username_input"),
                                 shape = RoundedCornerShape(14.dp)
                             )
-
-                            if (!discoveredSchoolName.isNullOrBlank() && loginConnectingMessage == null) {
-                                Surface(
-                                    color = Color(0xFFECFDF5),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Verified,
-                                            contentDescription = null,
-                                            tint = Color(0xFF059669),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Text(
-                                            text = "جاري الاتصال بـ $discoveredSchoolName...",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF047857)
-                                        )
-                                    }
-                                }
-                            }
 
                             OutlinedTextField(
                                 value = password,
@@ -1421,7 +1468,7 @@ fun UnifiedLoginScreen(
                                 ?: loginError?.takeIf { it.startsWith("جاري الاتصال") }
 
                             if (!activeConnectingBanner.isNullOrBlank()) {
-                                val resolvedBannerText = if (!discoveredSchoolName.isNullOrBlank()) {
+                                val resolvedBannerText = if (isSchoolVerified) {
                                     "جاري الاتصال بـ $discoveredSchoolName..."
                                 } else {
                                     activeConnectingBanner

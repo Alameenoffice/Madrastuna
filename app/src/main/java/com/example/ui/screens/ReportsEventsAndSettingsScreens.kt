@@ -609,83 +609,70 @@ fun ReportsAndChatScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        // Hide the top hero & tab switcher when an active chat conversation is expanded so messages get full height
-        if (!(selectedTab == 1 && isChatConversationOpen && selectedContact != null)) {
-            ThreeDHeroHeaderCard(
-                title = "البلاغات والمراسلة المباشرة",
-                subtitle = "التواصل التربوي المباشر بين الإدارة والكادر التدريسي وأولياء الأمور والطلبة",
-                rightPillText = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات الرسمية",
-                rightPillIcon = Icons.Filled.Campaign,
-                leftPillText = "مراسلة فورية",
-                leftPillIcon = Icons.Filled.Forum,
-                illustrationType = ThreeDIllustrationType.MEGAPHONE
+    var reportBeingEdited by remember { mutableStateOf<ParentReport?>(null) }
+    var reportsVisibleCount by remember(visibleReports.size) { mutableStateOf(6) }
+    val displayedReports = remember(visibleReports, reportsVisibleCount) {
+        visibleReports.take(reportsVisibleCount)
+    }
+    var contactsVisibleCount by remember(chatSearchQuery, selectedRoleFilter, selectedClassFilter) {
+        mutableStateOf(6)
+    }
+    val displayedChatContacts = remember(filteredChatContacts, contactsVisibleCount) {
+        filteredChatContacts.take(contactsVisibleCount)
+    }
+
+    if (selectedTab == 1 && isChatConversationOpen && selectedContact != null) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            ExpandedConversationContent(
+                contact = selectedContact,
+                isInsideModal = false,
+                modifier = Modifier.fillMaxSize()
             )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)
+        ) {
+            item {
+                ThreeDHeroHeaderCard(
+                    title = "البلاغات والمراسلة المباشرة",
+                    subtitle = "التواصل التربوي المباشر بين الإدارة والكادر التدريسي وأولياء الأمور والطلبة",
+                    rightPillText = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات الرسمية",
+                    rightPillIcon = Icons.Filled.Campaign,
+                    leftPillText = "مراسلة فورية",
+                    leftPillIcon = Icons.Filled.Forum,
+                    illustrationType = ThreeDIllustrationType.DIRECT_CHAT_ENVELOPE_3D
+                )
+            }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val isTab0 = selectedTab == 0
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (isTab0) Color(0xFF059669) else Color.White,
-                    border = BorderStroke(1.2.dp, if (isTab0) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
-                    shadowElevation = if (isTab0) 6.dp else 2.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 46.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable {
-                            selectedTab = 0
-                            isChatConversationOpen = false
-                        }
-                        .testTag("tab_official_reports")
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Campaign,
-                            contentDescription = null,
-                            tint = if (isTab0) Color.White else Color(0xFF047857),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات والتبليغات",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isTab0) Color.White else Color(0xFF0F172A),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                if (featureSettings.directChatEnabled) {
-                    val isTab1 = selectedTab == 1
+                    val isTab0 = selectedTab == 0
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = if (isTab1) Color(0xFF059669) else Color.White,
-                        border = BorderStroke(1.2.dp, if (isTab1) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
-                        shadowElevation = if (isTab1) 6.dp else 2.dp,
+                        color = if (isTab0) Color(0xFF059669) else Color.White,
+                        border = BorderStroke(1.2.dp, if (isTab0) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                        shadowElevation = if (isTab0) 6.dp else 2.dp,
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 46.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .clickable { selectedTab = 1 }
-                            .testTag("tab_direct_chat")
+                            .clickable {
+                                selectedTab = 0
+                                isChatConversationOpen = false
+                            }
+                            .testTag("tab_official_reports")
                     ) {
                         Row(
                             modifier = Modifier
@@ -695,52 +682,78 @@ fun ReportsAndChatScreen(
                             horizontalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Forum,
+                                imageVector = Icons.Filled.Campaign,
                                 contentDescription = null,
-                                tint = if (isTab1) Color.White else Color(0xFF047857),
+                                tint = if (isTab0) Color.White else Color(0xFF047857),
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "المراسلة المباشرة",
+                                text = if (isParentOrStudent) "بلاغاتي الخاصة" else "البلاغات والتبليغات",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (isTab1) Color.White else Color(0xFF0F172A),
+                                color = if (isTab0) Color.White else Color(0xFF0F172A),
                                 maxLines = 1,
                                 softWrap = false
                             )
                         }
                     }
+
+                    if (featureSettings.directChatEnabled) {
+                        val isTab1 = selectedTab == 1
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isTab1) Color(0xFF059669) else Color.White,
+                            border = BorderStroke(1.2.dp, if (isTab1) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                            shadowElevation = if (isTab1) 6.dp else 2.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 46.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { selectedTab = 1 }
+                                .testTag("tab_direct_chat")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Forum,
+                                    contentDescription = null,
+                                    tint = if (isTab1) Color.White else Color(0xFF047857),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "المراسلة المباشرة",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isTab1) Color.White else Color(0xFF0F172A),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-        }
+            if (selectedTab == 0) {
+                if (canSendReport) {
+                    item {
+                        VectorActionButton(
+                            text = "إرسال بلاغ رسمي جديد",
+                            icon = Icons.Filled.MarkChatUnread,
+                            onClick = { showCreateReportDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            testTag = "create_report_button"
+                        )
+                    }
+                }
 
-        if (selectedTab == 0) {
-            var reportBeingEdited by remember { mutableStateOf<ParentReport?>(null) }
-
-            if (canSendReport) {
-                VectorActionButton(
-                    text = "إرسال بلاغ رسمي جديد",
-                    icon = Icons.Filled.MarkChatUnread,
-                    onClick = { showCreateReportDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "create_report_button"
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
-            var reportsVisibleCount by remember(visibleReports.size) { mutableStateOf(6) }
-            val displayedReports = remember(visibleReports, reportsVisibleCount) {
-                visibleReports.take(reportsVisibleCount)
-            }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
                 items(displayedReports, key = { it.id }) { rep ->
                     val badgeColor = when (rep.reportType) {
                         ReportType.APPRECIATION -> SuccessGreen
@@ -914,191 +927,117 @@ fun ReportsAndChatScreen(
                         )
                     }
                 }
-            }
-
-            reportBeingEdited?.let { editingRep ->
-                var editType by remember(editingRep.id) { mutableStateOf(editingRep.reportType) }
-                var editTitle by remember(editingRep.id) { mutableStateOf(editingRep.title) }
-                var editDetails by remember(editingRep.id) { mutableStateOf(editingRep.details) }
-
-                AlertDialog(
-                    onDismissRequest = { reportBeingEdited = null },
-                    title = { Text("تعديل البلاغ الرسمي (${editingRep.studentName})") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("نوع البلاغ:", style = MaterialTheme.typography.labelLarge)
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(ReportType.entries) { rt ->
-                                    FilterChip(
-                                        selected = editType == rt,
-                                        onClick = { editType = rt },
-                                        label = { Text(rt.arabicLabel, maxLines = 1, softWrap = false) }
-                                    )
-                                }
-                            }
-                            OutlinedTextField(
-                                value = editTitle,
-                                onValueChange = { editTitle = it },
-                                label = { Text("عنوان البلاغ") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = editDetails,
-                                onValueChange = { editDetails = it },
-                                label = { Text("نص البلاغ والتفاصيل") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        VectorActionButton(
-                            text = "حفظ التعديلات",
-                            icon = Icons.Filled.Save,
-                            onClick = {
-                                if (editTitle.isNotBlank()) {
-                                    viewModel.updateParentReport(
-                                        reportId = editingRep.id,
-                                        reportType = editType,
-                                        title = editTitle,
-                                        details = editDetails.ifBlank { editTitle }
-                                    )
-                                    reportBeingEdited = null
-                                }
-                            }
-                        )
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { reportBeingEdited = null }) { Text("إلغاء") }
-                    }
-                )
-            }
-        } else {
-            // =========================================================================
-            // Role-Based Direct Messaging & Smart Search (المراسلة والمحادثات حسب الدور)
-            // Automatically collapses Search/Filters/Contacts when a conversation is opened!
-            // =========================================================================
-            if (isChatConversationOpen && selectedContact != null) {
-                ExpandedConversationContent(
-                    contact = selectedContact,
-                    isInsideModal = false,
-                    modifier = Modifier.fillMaxSize()
-                )
             } else {
-                val searchPlaceholder = when (currentUser?.role) {
-                    UserRole.ADMIN -> "ابحث بالاسم أو الصف عن (معلم، طالب، أو ولي أمر)..."
-                    UserRole.TEACHER -> "ابحث عن المدير أو طلاب وأولياء أمور صفوفك المسندة..."
-                    else -> "ابحث عن مدير المدرسة أو معلمي صفك وشعبتك..."
-                }
-
-                val roleFilterOptions = remember(currentUser?.role) {
-                    when (currentUser?.role) {
-                        UserRole.ADMIN -> listOf("الكل", "المعلمون", "الطلاب", "أولياء الأمور")
-                        UserRole.TEACHER -> listOf("الكل", "مدير المدرسة", "طلابي", "أولياء الأمور")
-                        else -> listOf("الكل", "مدير المدرسة", "معلمو صفي")
+                // =========================================================================
+                // Role-Based Direct Messaging & Smart Search (المراسلة والمحادثات حسب الدور)
+                // Scrolls smoothly with the 3D Hero Header & Tabs inside the unified LazyColumn
+                // =========================================================================
+                item {
+                    val searchPlaceholder = when (currentUser?.role) {
+                        UserRole.ADMIN -> "ابحث بالاسم أو الصف عن (معلم، طالب، أو ولي أمر)..."
+                        UserRole.TEACHER -> "ابحث عن المدير أو طلاب وأولياء أمور صفوفك المسندة..."
+                        else -> "ابحث عن مدير المدرسة أو معلمي صفك وشعبتك..."
                     }
-                }
 
-                OutlinedTextField(
-                    value = chatSearchQuery,
-                    onValueChange = { chatSearchQuery = it },
-                    placeholder = { Text(searchPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "بحث") },
-                    trailingIcon = {
-                        if (chatSearchQuery.isNotEmpty()) {
-                            IconButton(onClick = { chatSearchQuery = "" }) {
-                                Icon(Icons.Filled.Clear, contentDescription = "مسح البحث")
-                            }
+                    val roleFilterOptions = remember(currentUser?.role) {
+                        when (currentUser?.role) {
+                            UserRole.ADMIN -> listOf("الكل", "المعلمون", "الطلاب", "أولياء الأمور")
+                            UserRole.TEACHER -> listOf("الكل", "مدير المدرسة", "طلابي", "أولياء الأمور")
+                            else -> listOf("الكل", "مدير المدرسة", "معلمو صفي")
                         }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("chat_contacts_search_input")
-                )
+                    }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Role Filter Chips
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(roleFilterOptions) { roleOpt ->
-                        FilterChip(
-                            selected = selectedRoleFilter == roleOpt,
-                            onClick = { selectedRoleFilter = roleOpt },
-                            label = { Text(roleOpt, maxLines = 1, softWrap = false) },
-                            leadingIcon = {
-                                val icon = when (roleOpt) {
-                                    "المدير", "مدير المدرسة" -> Icons.Filled.AdminPanelSettings
-                                    "المعلمون", "معلمو صفي" -> Icons.Filled.Badge
-                                    "الطلاب", "طلابي" -> Icons.Filled.School
-                                    "أولياء الأمور" -> Icons.Filled.FamilyRestroom
-                                    else -> Icons.Filled.Groups
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = chatSearchQuery,
+                            onValueChange = { chatSearchQuery = it },
+                            placeholder = { Text(searchPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "بحث") },
+                            trailingIcon = {
+                                if (chatSearchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { chatSearchQuery = "" }) {
+                                        Icon(Icons.Filled.Clear, contentDescription = "مسح البحث")
+                                    }
                                 }
-                                Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("chat_contacts_search_input")
                         )
-                    }
 
-                    // Class filter chips for Admin & Teacher
-                    if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
-                        val allowedCls = viewModel.getAllowedClassesForUser(currentUser)
-                        items(allowedCls) { cls ->
-                            FilterChip(
-                                selected = selectedClassFilter == cls,
-                                onClick = {
-                                    selectedClassFilter = if (selectedClassFilter == cls) "الكل" else cls
-                                },
-                                label = { Text(cls, maxLines = 1, softWrap = false) },
-                                leadingIcon = {
-                                    Icon(Icons.Filled.Class, contentDescription = null, modifier = Modifier.size(15.dp))
+                        // Role Filter Chips
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(roleFilterOptions) { roleOpt ->
+                                FilterChip(
+                                    selected = selectedRoleFilter == roleOpt,
+                                    onClick = { selectedRoleFilter = roleOpt },
+                                    label = { Text(roleOpt, maxLines = 1, softWrap = false) },
+                                    leadingIcon = {
+                                        val icon = when (roleOpt) {
+                                            "المدير", "مدير المدرسة" -> Icons.Filled.AdminPanelSettings
+                                            "المعلمون", "معلمو صفي" -> Icons.Filled.Badge
+                                            "الطلاب", "طلابي" -> Icons.Filled.School
+                                            "أولياء الأمور" -> Icons.Filled.FamilyRestroom
+                                            else -> Icons.Filled.Groups
+                                        }
+                                        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    }
+                                )
+                            }
+
+                            // Class filter chips for Admin & Teacher
+                            if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
+                                val allowedCls = viewModel.getAllowedClassesForUser(currentUser)
+                                items(allowedCls) { cls ->
+                                    FilterChip(
+                                        selected = selectedClassFilter == cls,
+                                        onClick = {
+                                            selectedClassFilter = if (selectedClassFilter == cls) "الكل" else cls
+                                        },
+                                        label = { Text(cls, maxLines = 1, softWrap = false) },
+                                        leadingIcon = {
+                                            Icon(Icons.Filled.Class, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        }
+                                    )
                                 }
-                            )
+                            }
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 if (filteredChatContacts.isEmpty()) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.12f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.12f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Info,
-                                contentDescription = null,
-                                tint = DeepEmerald
-                            )
-                            Text(
-                                text = "لا توجد جهات اتصال مطابقة للبحث ضمن صلاحيات حسابك.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Info,
+                                    contentDescription = null,
+                                    tint = DeepEmerald
+                                )
+                                Text(
+                                    text = "لا توجد جهات اتصال مطابقة للبحث ضمن صلاحيات حسابك.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 } else {
-                    var contactsVisibleCount by remember(chatSearchQuery, selectedRoleFilter, selectedClassFilter) {
-                        mutableStateOf(6)
-                    }
-                    val displayedChatContacts = remember(filteredChatContacts, contactsVisibleCount) {
-                        filteredChatContacts.take(contactsVisibleCount)
-                    }
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp)
-                    ) {
-                        items(displayedChatContacts, key = { it.accountId }) { contact ->
+                    items(displayedChatContacts, key = { it.accountId }) { contact ->
                             val roleColor = when (contact.role) {
                                 UserRole.ADMIN -> DeepEmerald
                                 UserRole.TEACHER -> InfoBlue
@@ -1242,8 +1181,65 @@ fun ReportsAndChatScreen(
                         }
                     }
                 }
-            }
         }
+    }
+
+    reportBeingEdited?.let { editingRep ->
+        var editType by remember(editingRep.id) { mutableStateOf(editingRep.reportType) }
+        var editTitle by remember(editingRep.id) { mutableStateOf(editingRep.title) }
+        var editDetails by remember(editingRep.id) { mutableStateOf(editingRep.details) }
+
+        AlertDialog(
+            onDismissRequest = { reportBeingEdited = null },
+            title = { Text("تعديل البلاغ الرسمي (${editingRep.studentName})") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("نوع البلاغ:", style = MaterialTheme.typography.labelLarge)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(ReportType.entries) { rt ->
+                            FilterChip(
+                                selected = editType == rt,
+                                onClick = { editType = rt },
+                                label = { Text(rt.arabicLabel, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = editTitle,
+                        onValueChange = { editTitle = it },
+                        label = { Text("عنوان البلاغ") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editDetails,
+                        onValueChange = { editDetails = it },
+                        label = { Text("نص البلاغ والتفاصيل") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "حفظ التعديلات",
+                    icon = Icons.Filled.Save,
+                    onClick = {
+                        if (editTitle.isNotBlank()) {
+                            viewModel.updateParentReport(
+                                reportId = editingRep.id,
+                                reportType = editType,
+                                title = editTitle,
+                                details = editDetails.ifBlank { editTitle }
+                            )
+                            reportBeingEdited = null
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { reportBeingEdited = null }) { Text("إلغاء") }
+            }
+        )
     }
 
     // =========================================================================

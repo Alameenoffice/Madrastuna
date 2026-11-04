@@ -273,7 +273,7 @@ fun MadrasatiRootApp(
                     onVerifyActivationCode = { code, callback ->
                         viewModel.verifyActivationCodeAndUnlockSetup(code, callback)
                     },
-                    discoveredSchoolName = activeDiscoveredSchoolName,
+                    discoveredSchoolName = discoveredSchoolName,
                     loginConnectingMessage = loginConnectingMessage,
                     onUsernameChanged = { u -> viewModel.previewSchoolNameByUsername(u) },
                     occasionThemeConfig = occasionThemeConfig,
@@ -1497,11 +1497,12 @@ fun AuthenticatedMainPlatform(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(1.dp)
                             ) {
+                                val headerDisplayName = currentUser?.fullName?.ifBlank { schoolConfig.schoolName }
+                                    ?: schoolConfig.schoolName
                                 Text(
-                                    text = currentUser?.fullName?.ifBlank { schoolConfig.schoolName }
-                                        ?: schoolConfig.schoolName,
+                                    text = headerDisplayName,
                                     style = MaterialTheme.typography.titleSmall,
-                                    fontSize = 14.sp,
+                                    fontSize = if (headerDisplayName.length > 18) 10.5.sp else 11.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (isDarkMode) Color.White else Color(0xFF0F172A),
                                     maxLines = 1,
@@ -1521,11 +1522,12 @@ fun AuthenticatedMainPlatform(
                                     Text(
                                         text = schoolConfig.schoolName,
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.5.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
                                         maxLines = 1,
-                                        softWrap = false
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
