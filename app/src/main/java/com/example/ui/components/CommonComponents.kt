@@ -17,7 +17,9 @@ import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
+import com.example.model.OccasionIconKey
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -2004,8 +2006,29 @@ enum class ThreeDIllustrationType {
     SCHEDULE_BOOKS_3D,
     SMART_WALLET_CARD,
     SECURITY_SHIELD,
+    USER_MANAGEMENT_AVATARS_3D,
+    SETTINGS_ROTATING_GEARS_3D,
+    TEACHER_EXCELLENCE_CROWN_3D,
+    CRESCENT_LANTERN_3D,
+    UPDATE_SPARK_3D,
     CALENDAR_HOLIDAYS,
     CLOUD_OFFLINE_3D
+}
+
+fun OccasionIconKey.toThreeDIllustrationType(): ThreeDIllustrationType {
+    return when (this) {
+        OccasionIconKey.BELL -> ThreeDIllustrationType.MEGAPHONE
+        OccasionIconKey.GRADUATION_CAP,
+        OccasionIconKey.BOOK,
+        OccasionIconKey.ROSE -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
+        OccasionIconKey.CRESCENT -> ThreeDIllustrationType.CRESCENT_LANTERN_3D
+        OccasionIconKey.TROPHY,
+        OccasionIconKey.CROWN -> ThreeDIllustrationType.TROPHY_STARS
+        OccasionIconKey.CALENDAR -> ThreeDIllustrationType.CALENDAR_HOLIDAYS
+        OccasionIconKey.STAR -> ThreeDIllustrationType.UPDATE_SPARK_3D
+        OccasionIconKey.SHIELD,
+        OccasionIconKey.FLAG -> ThreeDIllustrationType.SYSTEM_BROADCAST_3D
+    }
 }
 
 /**
@@ -2192,6 +2215,15 @@ fun ThreeDIllustrationBox(
             repeatMode = RepeatMode.Reverse
         ),
         label = "wave_expand_factor"
+    )
+    val continuousRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 9000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "continuous_rotation"
     )
 
     Canvas(
@@ -3280,100 +3312,476 @@ fun ThreeDIllustrationBox(
             }
 
             ThreeDIllustrationType.SECURITY_SHIELD -> {
-                // Luxury 3D Smart Academic Portal: Glowing 3D Digital ID Card + Golden Graduation Cap + Multi-Layer 3D Smart Lock (Zero flat green shield)
+                // Exclusive 3D Secure Digital Portal & Floating Golden Key with Smart Scan Waves (UnifiedLoginScreen ONLY)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        listOf(Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.16f).coerceAtMost(0.75f)), Color.Transparent),
+                        listOf(
+                            Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.18f).coerceAtMost(0.80f)),
+                            Color(0xFF059669).copy(alpha = 0.18f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = w * 0.52f
+                    ),
+                    radius = w * 0.52f,
+                    center = Offset(cx, cy)
+                )
+
+                // 1) Animated Smart Scan Waves radiating from the portal
+                for (ring in 1..2) {
+                    val rScale = (waveExpandFactor * (0.34f + ring * 0.10f)).coerceIn(0.28f, 0.49f)
+                    drawOval(
+                        color = Color(0xFF6EE7B7).copy(alpha = (0.62f - ring * 0.18f).coerceAtLeast(0.15f)),
+                        topLeft = Offset(cx - w * rScale, h * 0.68f - h * 0.08f * ring),
+                        size = Size(w * rScale * 2f, h * 0.22f),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                }
+
+                // 2) 3D Glowing Digital Portal Arch (Outer Emerald/Navy Frame + Inner Luminous Core)
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xFF0F3D5E), Color(0xFF064E3B), Color(0xFF022C22))
+                    ),
+                    topLeft = Offset(w * 0.20f, h * 0.14f),
+                    size = Size(w * 0.54f, h * 0.68f),
+                    cornerRadius = CornerRadius(24.dp.toPx(), 24.dp.toPx())
+                )
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF34D399), Color(0xFFFBBF24), Color(0xFF10B981))
+                    ),
+                    topLeft = Offset(w * 0.20f, h * 0.14f),
+                    size = Size(w * 0.54f, h * 0.68f),
+                    cornerRadius = CornerRadius(24.dp.toPx(), 24.dp.toPx()),
+                    style = Stroke(width = 2.5.dp.toPx())
+                )
+                // Inner glowing portal doorway
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color(0xFF6EE7B7).copy(alpha = (glowPulseAlpha + 0.30f).coerceAtMost(0.9f)),
+                            Color(0xFF10B981).copy(alpha = 0.45f),
+                            Color(0xFF0F172A).copy(alpha = 0.85f)
+                        )
+                    ),
+                    topLeft = Offset(w * 0.26f, h * 0.20f),
+                    size = Size(w * 0.42f, h * 0.56f),
+                    cornerRadius = CornerRadius(18.dp.toPx(), 18.dp.toPx())
+                )
+                // Animated horizontal laser scan line inside portal
+                val scanY = h * (0.26f + 0.40f * ((floatOffsetY + 4.5f) / 9f).coerceIn(0f, 1f))
+                drawLine(
+                    brush = Brush.horizontalGradient(
+                        listOf(Color.Transparent, Color(0xFFFEF08A), Color(0xFF34D399), Color.Transparent)
+                    ),
+                    start = Offset(w * 0.24f, scanY),
+                    end = Offset(w * 0.70f, scanY),
+                    strokeWidth = 2.8.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // 3) Floating 3D Royal Golden Key unlocking the portal
+                rotate(degrees = -18f + floatOffsetY * 1.4f, pivot = Offset(w * 0.66f, h * 0.52f)) {
+                    // Key Bow (3D Golden Ring)
+                    drawCircle(
+                        brush = Brush.linearGradient(
+                            listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))
+                        ),
+                        radius = w * 0.14f,
+                        center = Offset(w * 0.74f, h * 0.46f)
+                    )
+                    drawCircle(
+                        color = Color(0xFF064E3B),
+                        radius = w * 0.055f,
+                        center = Offset(w * 0.74f, h * 0.46f)
+                    )
+                    // Key Shaft
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))
+                        ),
+                        topLeft = Offset(w * 0.36f, h * 0.43f),
+                        size = Size(w * 0.28f, h * 0.065f),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    )
+                    // Key Teeth
+                    drawRoundRect(
+                        color = Color(0xFFFBBF24),
+                        topLeft = Offset(w * 0.38f, h * 0.49f),
+                        size = Size(w * 0.045f, h * 0.075f),
+                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                    )
+                    drawRoundRect(
+                        color = Color(0xFFF59E0B),
+                        topLeft = Offset(w * 0.45f, h * 0.49f),
+                        size = Size(w * 0.045f, h * 0.055f),
+                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                    )
+                }
+            }
+
+            ThreeDIllustrationType.USER_MANAGEMENT_AVATARS_3D -> {
+                // Exclusive 3D User Management Illustration: Overlapping 3D Staff/Student/Parent Avatars + Rotating Orbital Ring
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = glowPulseAlpha), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.52f
+                    ),
+                    radius = w * 0.52f,
+                    center = Offset(cx, cy)
+                )
+
+                // Rotating orbital communication ring around the avatars
+                rotate(degrees = continuousRotation, pivot = Offset(cx, cy * 1.05f)) {
+                    drawOval(
+                        brush = Brush.sweepGradient(
+                            listOf(
+                                Color(0xFF34D399).copy(alpha = 0.85f),
+                                Color(0xFFFBBF24).copy(alpha = 0.85f),
+                                Color(0xFF38BDF8).copy(alpha = 0.45f),
+                                Color(0xFF34D399).copy(alpha = 0.85f)
+                            )
+                        ),
+                        topLeft = Offset(w * 0.06f, h * 0.34f),
+                        size = Size(w * 0.88f, h * 0.42f),
+                        style = Stroke(width = 2.4.dp.toPx())
+                    )
+                    drawCircle(
+                        color = Color(0xFFFEF08A),
+                        radius = w * 0.038f,
+                        center = Offset(w * 0.94f, h * 0.55f)
+                    )
+                    drawCircle(
+                        color = Color(0xFF6EE7B7),
+                        radius = w * 0.034f,
+                        center = Offset(w * 0.06f, h * 0.55f)
+                    )
+                }
+
+                // Back Left Avatar (Teacher - Royal Blue/Cyan 3D Bust)
+                drawArc(
+                    brush = Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7))),
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = true,
+                    topLeft = Offset(w * 0.10f, h * 0.48f),
+                    size = Size(w * 0.36f, h * 0.34f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(Color(0xFFE0F2FE), Color(0xFF38BDF8))),
+                    radius = w * 0.095f,
+                    center = Offset(w * 0.28f, h * 0.36f)
+                )
+
+                // Back Right Avatar (Student/Parent - Golden Amber 3D Bust)
+                drawArc(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFBBF24), Color(0xFFD97706))),
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = true,
+                    topLeft = Offset(w * 0.54f, h * 0.48f),
+                    size = Size(w * 0.36f, h * 0.34f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
+                    radius = w * 0.095f,
+                    center = Offset(w * 0.72f, h * 0.36f)
+                )
+
+                // Center Foreground Avatar (Principal/Lead - Emerald & White 3D Bust with Verified Badge)
+                drawArc(
+                    brush = Brush.verticalGradient(listOf(Color(0xFF34D399), Color(0xFF059669), Color(0xFF064E3B))),
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = true,
+                    topLeft = Offset(w * 0.26f, h * 0.44f),
+                    size = Size(w * 0.48f, h * 0.44f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color.White, Color(0xFFD1FAE5), Color(0xFF10B981)),
+                        center = Offset(w * 0.47f, h * 0.27f)
+                    ),
+                    radius = w * 0.125f,
+                    center = Offset(w * 0.50f, h * 0.30f)
+                )
+                // Golden Star Badge on Center Avatar
+                drawCircle(
+                    brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
+                    radius = w * 0.065f,
+                    center = Offset(w * 0.64f, h * 0.58f)
+                )
+            }
+
+            ThreeDIllustrationType.SETTINGS_ROTATING_GEARS_3D -> {
+                // Exclusive 3D Settings Illustration: Interlocking Rotating 3D Mechanical Gears + Floating 3D Control Sliders
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = glowPulseAlpha), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.52f
+                    ),
+                    radius = w * 0.52f,
+                    center = Offset(cx, cy)
+                )
+
+                // 1) Floating 3D Glass Control Sliders Panel in Background
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color(0xFF0F3D5E), Color(0xFF064E3B))),
+                    topLeft = Offset(w * 0.12f, h * 0.18f),
+                    size = Size(w * 0.58f, h * 0.54f),
+                    cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFF6EE7B7).copy(alpha = 0.55f),
+                    topLeft = Offset(w * 0.12f, h * 0.18f),
+                    size = Size(w * 0.58f, h * 0.54f),
+                    cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx()),
+                    style = Stroke(width = 1.6.dp.toPx())
+                )
+                // Slider tracks & animated knobs
+                for (row in 0..1) {
+                    val yPos = h * (0.32f + row * 0.18f)
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.35f),
+                        start = Offset(w * 0.20f, yPos),
+                        end = Offset(w * 0.60f, yPos),
+                        strokeWidth = 3.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    val knobX = if (row == 0) w * (0.44f + floatOffsetY * 0.008f) else w * (0.30f - floatOffsetY * 0.008f)
+                    drawCircle(
+                        brush = Brush.radialGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
+                        radius = w * 0.045f,
+                        center = Offset(knobX, yPos)
+                    )
+                }
+
+                // 2) Main Primary 3D Rotating Emerald/Silver Gear (Bottom-Right)
+                val gear1Center = Offset(w * 0.64f, h * 0.58f)
+                rotate(degrees = continuousRotation, pivot = gear1Center) {
+                    for (tooth in 0 until 8) {
+                        rotate(degrees = tooth * 45f, pivot = gear1Center) {
+                            drawRoundRect(
+                                brush = Brush.verticalGradient(listOf(Color(0xFFA7F3D0), Color(0xFF10B981))),
+                                topLeft = Offset(gear1Center.x - w * 0.045f, gear1Center.y - w * 0.25f),
+                                size = Size(w * 0.09f, w * 0.12f),
+                                cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                            )
+                        }
+                    }
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(Color(0xFFD1FAE5), Color(0xFF10B981), Color(0xFF047857)),
+                            center = gear1Center
+                        ),
+                        radius = w * 0.185f,
+                        center = gear1Center
+                    )
+                    drawCircle(
+                        color = Color(0xFF064E3B),
+                        radius = w * 0.075f,
+                        center = gear1Center
+                    )
+                }
+
+                // 3) Secondary Interlocking 3D Golden Gear (Top-Right, Counter-Rotating)
+                val gear2Center = Offset(w * 0.76f, h * 0.26f)
+                rotate(degrees = -continuousRotation * 1.3f, pivot = gear2Center) {
+                    for (tooth in 0 until 6) {
+                        rotate(degrees = tooth * 60f, pivot = gear2Center) {
+                            drawRoundRect(
+                                brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
+                                topLeft = Offset(gear2Center.x - w * 0.035f, gear2Center.y - w * 0.16f),
+                                size = Size(w * 0.07f, w * 0.08f),
+                                cornerRadius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
+                            )
+                        }
+                    }
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309)),
+                            center = gear2Center
+                        ),
+                        radius = w * 0.115f,
+                        center = gear2Center
+                    )
+                    drawCircle(
+                        color = Color(0xFF0F172A),
+                        radius = w * 0.045f,
+                        center = gear2Center
+                    )
+                }
+            }
+
+            ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D -> {
+                // Exclusive 3D Teacher Evaluation & Excellence Illustration:
+                // 3D Royal Golden Crown & Emerald Crystal Shield surrounded by Orbiting 3D Golden Stars
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(
+                            Color(0xFFFBBF24).copy(alpha = (glowPulseAlpha + 0.22f).coerceAtMost(0.85f)),
+                            Color(0xFF10B981).copy(alpha = 0.25f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = w * 0.54f
+                    ),
+                    radius = w * 0.54f,
+                    center = Offset(cx, cy)
+                )
+
+                // 1) Orbiting 3D Golden Stars Ring
+                rotate(degrees = continuousRotation, pivot = Offset(cx, cy)) {
+                    drawOval(
+                        brush = Brush.sweepGradient(
+                            listOf(
+                                Color(0xFFFDE68A).copy(alpha = 0.85f),
+                                Color(0xFF34D399).copy(alpha = 0.55f),
+                                Color(0xFFF59E0B).copy(alpha = 0.90f),
+                                Color(0xFFFDE68A).copy(alpha = 0.85f)
+                            )
+                        ),
+                        topLeft = Offset(w * 0.06f, h * 0.34f),
+                        size = Size(w * 0.88f, h * 0.36f),
+                        style = Stroke(width = 2.2.dp.toPx())
+                    )
+                    val starPositions = listOf(
+                        Offset(w * 0.10f, h * 0.52f),
+                        Offset(w * 0.90f, h * 0.52f),
+                        Offset(w * 0.50f, h * 0.14f)
+                    )
+                    starPositions.forEach { pos ->
+                        drawCircle(
+                            brush = Brush.radialGradient(listOf(Color.White, Color(0xFFFBBF24))),
+                            radius = w * 0.052f,
+                            center = pos
+                        )
+                    }
+                }
+
+                // 2) 3D Emerald & Gold Pedestal Shield
+                val shieldPath = Path().apply {
+                    moveTo(w * 0.50f, h * 0.28f)
+                    lineTo(w * 0.78f, h * 0.38f)
+                    lineTo(w * 0.72f, h * 0.68f)
+                    quadraticBezierTo(w * 0.50f, h * 0.88f, w * 0.50f, h * 0.88f)
+                    quadraticBezierTo(w * 0.50f, h * 0.88f, w * 0.28f, h * 0.68f)
+                    lineTo(w * 0.22f, h * 0.38f)
+                    close()
+                }
+                drawPath(
+                    path = shieldPath,
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF064E3B))
+                    )
+                )
+                drawPath(
+                    path = shieldPath,
+                    brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))),
+                    style = Stroke(width = 3.dp.toPx())
+                )
+
+                // 3) 3D Royal Golden Crown atop the Shield
+                val crownPath = Path().apply {
+                    moveTo(w * 0.26f, h * 0.44f)
+                    lineTo(w * 0.22f, h * 0.22f)
+                    lineTo(w * 0.38f, h * 0.33f)
+                    lineTo(w * 0.50f, h * 0.16f)
+                    lineTo(w * 0.62f, h * 0.33f)
+                    lineTo(w * 0.78f, h * 0.22f)
+                    lineTo(w * 0.74f, h * 0.44f)
+                    close()
+                }
+                drawPath(
+                    path = crownPath,
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xFFFEF08A), Color(0xFFFBBF24), Color(0xFFD97706))
+                    )
+                )
+                // Crown jewels
+                drawCircle(color = Color.White, radius = w * 0.032f, center = Offset(w * 0.50f, h * 0.16f))
+                drawCircle(color = Color(0xFF34D399), radius = w * 0.028f, center = Offset(w * 0.22f, h * 0.22f))
+                drawCircle(color = Color(0xFF34D399), radius = w * 0.028f, center = Offset(w * 0.78f, h * 0.22f))
+            }
+
+            ThreeDIllustrationType.CRESCENT_LANTERN_3D -> {
+                // 3D Religious Occasion Illustration: Golden Crescent Moon & Glowing Lantern
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFFFBBF24).copy(alpha = glowPulseAlpha), Color.Transparent),
                         center = Offset(cx, cy),
                         radius = w * 0.50f
                     ),
                     radius = w * 0.50f,
                     center = Offset(cx, cy)
                 )
-
-                // 1) Glowing 3D Digital Academic ID Card (Tilted slightly for depth)
-                rotate(degrees = -5f, pivot = Offset(cx, cy)) {
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFE2E8F0))),
-                        topLeft = Offset(w * 0.14f, h * 0.34f),
-                        size = Size(w * 0.62f, h * 0.48f),
-                        cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
-                    )
-                    drawRoundRect(
-                        brush = Brush.horizontalGradient(listOf(Color(0xFF059669), Color(0xFF0F3D5E))),
-                        topLeft = Offset(w * 0.14f, h * 0.34f),
-                        size = Size(w * 0.62f, h * 0.13f),
-                        cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
-                    )
-                    // Smart Golden Chip & ID lines
-                    drawRoundRect(
-                        brush = Brush.linearGradient(listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))),
-                        topLeft = Offset(w * 0.22f, h * 0.53f),
-                        size = Size(w * 0.15f, h * 0.12f),
-                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-                    )
-                    drawRoundRect(
-                        color = Color(0xFF0F3D5E).copy(alpha = 0.8f),
-                        topLeft = Offset(w * 0.42f, h * 0.54f),
-                        size = Size(w * 0.26f, h * 0.042f),
-                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                    )
-                    drawRoundRect(
-                        color = Color(0xFF059669).copy(alpha = 0.7f),
-                        topLeft = Offset(w * 0.42f, h * 0.62f),
-                        size = Size(w * 0.18f, h * 0.038f),
-                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                    )
-                }
-
-                // 2) 3D Royal & Gold Graduation Cap crowning the ID Card
-                val capTop = Path().apply {
-                    moveTo(w * 0.18f, h * 0.22f)
-                    lineTo(w * 0.50f, h * 0.11f)
-                    lineTo(w * 0.82f, h * 0.22f)
-                    lineTo(w * 0.50f, h * 0.33f)
-                    close()
-                }
-                drawPath(
-                    path = capTop,
-                    brush = Brush.linearGradient(listOf(Color(0xFF1E293B), Color(0xFF0F3D5E), Color(0xFF0F172A)))
-                )
-                drawPath(
-                    path = capTop,
-                    color = Color(0xFFFBBF24).copy(alpha = 0.75f),
-                    style = Stroke(width = 1.5.dp.toPx())
-                )
-                // Golden Tassel
-                drawCircle(color = Color(0xFFFBBF24), radius = 3.dp.toPx(), center = Offset(w * 0.50f, h * 0.22f))
-                drawLine(
-                    color = Color(0xFFF59E0B),
-                    start = Offset(w * 0.50f, h * 0.22f),
-                    end = Offset(w * 0.74f, h * 0.34f),
-                    strokeWidth = 2.2.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-
-                // 3) Foreground Multi-Layer 3D Golden Smart Padlock (Bottom-Right)
-                drawArc(
-                    color = Color(0xFFFEF08A),
-                    startAngle = 180f,
-                    sweepAngle = 180f,
-                    useCenter = false,
-                    topLeft = Offset(w * 0.62f, h * 0.48f),
-                    size = Size(w * 0.20f, h * 0.20f),
-                    style = Stroke(width = 3.6.dp.toPx(), cap = StrokeCap.Round)
-                )
-                drawRoundRect(
-                    brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))),
-                    topLeft = Offset(w * 0.57f, h * 0.58f),
-                    size = Size(w * 0.30f, h * 0.26f),
-                    cornerRadius = CornerRadius(7.dp.toPx(), 7.dp.toPx())
+                // Golden Crescent Moon
+                drawCircle(
+                    brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))),
+                    radius = w * 0.32f,
+                    center = Offset(w * 0.46f, h * 0.50f)
                 )
                 drawCircle(
-                    color = Color(0xFF0F172A),
-                    radius = w * 0.032f,
-                    center = Offset(w * 0.72f, h * 0.69f)
+                    color = Color(0xFF064E3B),
+                    radius = w * 0.25f,
+                    center = Offset(w * 0.56f, h * 0.44f)
                 )
+                // Hanging 3D Glowing Star/Lantern
+                drawLine(
+                    color = Color(0xFFFEF08A),
+                    start = Offset(w * 0.68f, h * 0.16f),
+                    end = Offset(w * 0.68f, h * 0.42f),
+                    strokeWidth = 2.dp.toPx()
+                )
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
+                    topLeft = Offset(w * 0.60f, h * 0.42f),
+                    size = Size(w * 0.16f, h * 0.22f),
+                    cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+                )
+            }
+
+            ThreeDIllustrationType.UPDATE_SPARK_3D -> {
+                // 3D App Update & New Feature Illustration: Glowing 3D Cube / Rocket Sparkles
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF38BDF8).copy(alpha = glowPulseAlpha), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = Offset(cx, cy)
+                )
+                rotate(degrees = continuousRotation * 0.5f, pivot = Offset(cx, cy)) {
+                    drawRoundRect(
+                        brush = Brush.linearGradient(listOf(Color(0xFF38BDF8), Color(0xFF34D399), Color(0xFFFBBF24))),
+                        topLeft = Offset(w * 0.24f, h * 0.24f),
+                        size = Size(w * 0.52f, h * 0.52f),
+                        cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx()),
+                        style = Stroke(width = 2.6.dp.toPx())
+                    )
+                }
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color(0xFF34D399), Color(0xFF059669))),
+                    topLeft = Offset(w * 0.30f, h * 0.30f),
+                    size = Size(w * 0.40f, h * 0.40f),
+                    cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
+                )
+                // Upward 3D Boost Arrow inside cube
+                val arrowPath = Path().apply {
+                    moveTo(w * 0.50f, h * 0.36f)
+                    lineTo(w * 0.62f, h * 0.50f)
+                    lineTo(w * 0.54f, h * 0.50f)
+                    lineTo(w * 0.54f, h * 0.64f)
+                    lineTo(w * 0.46f, h * 0.64f)
+                    lineTo(w * 0.46f, h * 0.50f)
+                    lineTo(w * 0.38f, h * 0.50f)
+                    close()
+                }
+                drawPath(path = arrowPath, color = Color(0xFFFEF08A))
             }
 
             ThreeDIllustrationType.CALENDAR_HOLIDAYS -> {
@@ -3452,129 +3860,166 @@ fun ThreeDIllustrationBox(
  * - تدرج كحلي/بنفسجي عميق (#1E1B4B إلى #312E81) مع إطار سماوي متوهج (#38BDF8)
  * - أيقونة رادار/نظام 3D متحركة (SYSTEM_BROADCAST_3D) وشارة "إشعار النظام العام".
  */
+/**
+ * مسار القص الموجي الانسيابي بعرض الشاشة بدون أي إطار صندوقي (Seamless Edge-to-Edge Wave Section Shape)
+ */
+private val SeamlessFullWidthWaveShape = GenericShape { size, _ ->
+    val w = size.width
+    val h = size.height
+    moveTo(0f, h * 0.09f)
+    cubicTo(
+        w * 0.28f, 0f,
+        w * 0.72f, h * 0.16f,
+        w, h * 0.05f
+    )
+    lineTo(w, h * 0.91f)
+    cubicTo(
+        w * 0.70f, h,
+        w * 0.30f, h * 0.84f,
+        0f, h * 0.94f
+    )
+    close()
+}
+
+/**
+ * 1) مقطع تنبيه المطور العام المدمج بأمواج انسيابية بعرض الشاشة (Seamless Wave Developer Broadcast Section):
+ * - بدون أي صندوق مستطيل أو RoundedCornerShape أو BorderStroke نهائياً.
+ * - ممتد من الحافة للحافة (Edge-to-Edge) بتموجات مائية ناعمة ومجسم أنيميشن 3D ديناميكي حسب اختيار المطور.
+ */
 @Composable
 fun DeveloperSystemBroadcastBanner(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
     badgeText: String = "إشعار النظام العام",
+    iconKey: OccasionIconKey = OccasionIconKey.BELL,
+    illustrationType: ThreeDIllustrationType = iconKey.toThreeDIllustrationType(),
     onDismiss: (() -> Unit)? = null
 ) {
-    Surface(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 10.dp,
-                shape = RoundedCornerShape(22.dp),
-                ambientColor = Color(0xFF38BDF8).copy(alpha = 0.28f),
-                spotColor = Color(0xFF1E1B4B).copy(alpha = 0.38f)
-            ),
-        shape = RoundedCornerShape(22.dp),
-        color = Color.Transparent,
-        border = BorderStroke(1.5.dp, Color(0xFF38BDF8).copy(alpha = 0.75f))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFF1E1B4B),
-                            Color(0xFF312E81),
-                            Color(0xFF1E3A8A)
-                        )
+            .clip(SeamlessFullWidthWaveShape)
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFFD1FAE5).copy(alpha = 0.92f),
+                        Color(0xFFE0F7EE).copy(alpha = 0.96f),
+                        Color(0xFFA7F3D0).copy(alpha = 0.88f)
                     )
                 )
-                .padding(horizontal = 14.dp, vertical = 12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    ThreeDIllustrationBox(
-                        type = ThreeDIllustrationType.SYSTEM_BROADCAST_3D,
-                        modifier = Modifier.size(58.dp)
+            )
+    ) {
+        // Subtle inner wave ribbon drawn on Canvas (zero box border)
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            val ribbonPath = Path().apply {
+                moveTo(0f, h * 0.65f)
+                cubicTo(
+                    w * 0.35f, h * 0.42f,
+                    w * 0.65f, h * 0.88f,
+                    w, h * 0.58f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = ribbonPath,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFF10B981).copy(alpha = 0.14f),
+                        Color(0xFF059669).copy(alpha = 0.08f),
+                        Color(0xFF34D399).copy(alpha = 0.16f)
                     )
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFF38BDF8).copy(alpha = 0.22f),
-                                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.65f))
-                            ) {
-                                Text(
-                                    text = badgeText,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFBAE6FD),
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFE0F2FE),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                )
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Right side in RTL: Circular dark-emerald action/dismiss icon + vertical emerald bar + text
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF047857))
+                        .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (onDismiss != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "إشعار النظام العام",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
 
-                if (onDismiss != null) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.14f),
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .clickable { onDismiss() }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "إغلاق إشعار النظام العام",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
+                Box(
+                    modifier = Modifier
+                        .width(2.5.dp)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFF059669).copy(alpha = 0.75f))
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF047857),
+                        maxLines = 1
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF065F46),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 12.8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Left side in RTL: Dynamic 3D Animated Illustration selected by Developer
+            ThreeDIllustrationBox(
+                type = illustrationType,
+                modifier = Modifier.size(72.dp)
+            )
         }
     }
 }
 
 /**
- * 2) شريط تنبيه وإعلان إدارة المدرسة (Principal School Announcement Banner):
- * - يظهر بهوية المدرسة التربوية المستقلة (تدرج زمردي/ذهبي دافئ #065F46 إلى #047857)
- * - مع أيقونة جرس/مكبر صوت ذهبي 3D متحرك وشارة "إعلان إدارة المدرسة".
+ * 2) مقطع إعلان إدارة المدرسة المدمج بأمواج انسيابية بعرض الشاشة بدون أي صندوق أو إطار
+ * (Seamless Full-Width Wave Principal Announcement Section - Matches Reference Image Strictly)
  */
 @Composable
 fun ThreeDMegaphoneAnnouncementBanner(
@@ -3588,172 +4033,389 @@ fun ThreeDMegaphoneAnnouncementBanner(
     onStopUrgent: (() -> Unit)? = null,
     onDismissUrgent: (() -> Unit)? = null
 ) {
-    Surface(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 9.dp,
-                shape = RoundedCornerShape(22.dp),
-                ambientColor = Color(0xFF047857).copy(alpha = 0.28f),
-                spotColor = Color(0xFF065F46).copy(alpha = 0.32f)
-            )
-            .clip(RoundedCornerShape(22.dp))
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
-        shape = RoundedCornerShape(22.dp),
-        color = Color.Transparent,
-        border = BorderStroke(1.4.dp, Color(0xFFFBBF24).copy(alpha = 0.65f))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFF065F46),
-                            Color(0xFF047857),
-                            Color(0xFF059669)
-                        )
+            .clip(SeamlessFullWidthWaveShape)
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFFD1FAE5).copy(alpha = 0.90f),
+                        Color(0xFFE0F7EE).copy(alpha = 0.95f),
+                        Color(0xFFA7F3D0).copy(alpha = 0.85f)
                     )
                 )
+            )
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+    ) {
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            val waveOverlay = Path().apply {
+                moveTo(0f, h * 0.62f)
+                cubicTo(
+                    w * 0.30f, h * 0.38f,
+                    w * 0.70f, h * 0.85f,
+                    w, h * 0.55f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = waveOverlay,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFF10B981).copy(alpha = 0.14f),
+                        Color(0xFF34D399).copy(alpha = 0.08f),
+                        Color(0xFF059669).copy(alpha = 0.14f)
+                    )
+                )
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 11.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
+                    // Right circular dark-emerald button with white arrow (matching reference image)
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF047857)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Emerald vertical divider line
+                    Box(
+                        modifier = Modifier
+                            .width(2.5.dp)
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFF059669).copy(alpha = 0.78f))
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 16.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF047857),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Left side (in RTL): 3D Animated Megaphone Illustration
+                ThreeDIllustrationBox(
+                    type = ThreeDIllustrationType.MEGAPHONE,
+                    modifier = Modifier.size(72.dp)
+                )
+            }
+
+            // Compact inline control chips when an urgent school alert is active
+            if (isUrgentActive) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isAdmin && onEditUrgent != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFF047857).copy(alpha = 0.14f),
                             modifier = Modifier
-                                .width(3.dp)
-                                .height(46.dp)
                                 .clip(RoundedCornerShape(50))
-                                .background(Color(0xFFFBBF24))
+                                .clickable { onEditUrgent() }
+                                .testTag("urgent_alert_banner_edit_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Filled.Edit, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(13.dp))
+                                Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
+                            }
+                        }
+                    }
+                    if (isAdmin && onStopUrgent != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFEF4444).copy(alpha = 0.16f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { onStopUrgent() }
+                                .testTag("urgent_alert_banner_delete_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Filled.StopCircle, contentDescription = null, tint = Color(0xFFB91C1C), modifier = Modifier.size(13.dp))
+                                Text("إيقاف البث", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
+                            }
+                        }
+                    }
+                    if (onDismissUrgent != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFF0F172A).copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { onDismissUrgent() }
+                                .testTag("urgent_alert_banner_dismiss_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Filled.DoneAll, contentDescription = null, tint = Color(0xFF0F172A), modifier = Modifier.size(13.dp))
+                                Text("تم الاطلاع", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 3) المقطع المتموج لتكريم المعلم الأعلى تقييماً في الشاشة الرئيسية بدون أي صندوق أو إطار
+ * (Seamless Full-Width Wave Teacher Spotlight Section - Zero Box BorderStroke)
+ */
+@Composable
+fun SeamlessWaveTeacherSpotlightSection(
+    teacherName: String,
+    teacherSubjects: String,
+    averageRating: Float,
+    totalRatingsCount: Int,
+    isAdmin: Boolean = false,
+    onOpenEvaluationSection: () -> Unit,
+    onHideFromHome: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(SeamlessFullWidthWaveShape)
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFF064E3B),
+                        Color(0xFF047857),
+                        Color(0xFF0F3D5E)
+                    )
+                )
+            )
+            .clickable { onOpenEvaluationSection() }
+            .testTag("home_top_teacher_wave_spotlight")
+    ) {
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            val goldenRibbon = Path().apply {
+                moveTo(0f, h * 0.68f)
+                cubicTo(
+                    w * 0.32f, h * 0.42f,
+                    w * 0.68f, h * 0.90f,
+                    w, h * 0.56f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = goldenRibbon,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFFFBBF24).copy(alpha = 0.22f),
+                        Color(0xFF34D399).copy(alpha = 0.14f),
+                        Color(0xFFF59E0B).copy(alpha = 0.24f)
+                    )
+                )
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(54.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
+                                )
+                            )
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFFBBF24).copy(alpha = 0.22f)
+                        ) {
+                            Text(
+                                text = "نجم الكادر التدريسي الأعلى تقييماً ⭐",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFFEF08A),
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "الأستاذ(ة): $teacherName",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 16.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
 
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFFFDE68A).copy(alpha = 0.22f),
-                                border = BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.65f))
-                            ) {
-                                Text(
-                                    text = "إعلان إدارة المدرسة",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFEF08A),
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp)
-                                )
-                            }
                             Text(
-                                text = title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontSize = 15.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
+                                text = teacherSubjects.ifBlank { "الكادر التدريسي المتميز" },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFD1FAE5),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                text = subtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.92f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.16f)
+                            ) {
+                                Text(
+                                    text = String.format(java.util.Locale.US, "⭐ %.1f / 5.0 (%d تقييم)", averageRating, totalRatingsCount),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFFEF08A),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Left side (in RTL): 3D Animated Golden/Emerald Megaphone Illustration
-                    ThreeDIllustrationBox(
-                        type = ThreeDIllustrationType.MEGAPHONE,
-                        modifier = Modifier.size(68.dp)
-                    )
                 }
 
-                // Compact inline control chips when an urgent school alert is active
-                if (isUrgentActive) {
+                Spacer(modifier = Modifier.width(8.dp))
+
+                ThreeDIllustrationBox(
+                    type = ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D,
+                    modifier = Modifier.size(76.dp)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.16f),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onOpenEvaluationSection() }
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        if (isAdmin && onEditUrgent != null) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.18f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable { onEditUrgent() }
-                                    .testTag("urgent_alert_banner_edit_btn")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Filled.Edit, contentDescription = null, tint = Color(0xFFFEF08A), modifier = Modifier.size(13.dp))
-                                    Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                        }
-                        if (isAdmin && onStopUrgent != null) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFFEF4444).copy(alpha = 0.28f),
-                                border = BorderStroke(1.dp, Color(0xFFFCA5A5).copy(alpha = 0.6f)),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable { onStopUrgent() }
-                                    .testTag("urgent_alert_banner_delete_btn")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Filled.StopCircle, contentDescription = null, tint = Color(0xFFFEE2E2), modifier = Modifier.size(13.dp))
-                                    Text("إيقاف البث", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                        }
-                        if (onDismissUrgent != null) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.16f),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable { onDismissUrgent() }
-                                    .testTag("urgent_alert_banner_dismiss_btn")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Filled.DoneAll, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                                    Text("تم الاطلاع", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
+                        Icon(Icons.Filled.Stars, contentDescription = null, tint = Color(0xFFFEF08A), modifier = Modifier.size(14.dp))
+                        Text(
+                            text = "عرض تقييمات الكادر التدريسي",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+                }
+
+                if (isAdmin && onHideFromHome != null) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFFEF4444).copy(alpha = 0.24f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onHideFromHome() }
+                            .testTag("hide_top_teacher_from_home_btn")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Filled.VisibilityOff, contentDescription = null, tint = Color(0xFFFEE2E2), modifier = Modifier.size(13.dp))
+                            Text(
+                                text = "إزالة من الرئيسية",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
                     }
                 }

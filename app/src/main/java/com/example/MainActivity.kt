@@ -925,6 +925,7 @@ fun AuthenticatedMainPlatform(
             if (featureSettings.honorRollEnabled) {
                 add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
             }
+            add(AppSection.TEACHER_EVALUATION to Icons.Filled.Stars)
             if (schoolConfig.schoolType == SchoolType.PRIVATE &&
                 featureSettings.tuitionEnabled &&
                 currentUser?.role != UserRole.TEACHER
@@ -983,6 +984,7 @@ fun AuthenticatedMainPlatform(
                         if (featureSettings.honorRollEnabled) {
                             add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
                         }
+                        add(AppSection.TEACHER_EVALUATION to Icons.Filled.Stars)
                         add(AppSection.REPORTS_CHAT to Icons.Filled.Forum)
                         if (featureSettings.eventsGalleryEnabled) {
                             add(AppSection.EVENTS_NEWS to Icons.Filled.PhotoLibrary)
@@ -1974,6 +1976,7 @@ fun AuthenticatedMainPlatform(
                             AppSection.EXAMS_GRADES -> ExamsAndGradesScreen(viewModel = viewModel)
                             AppSection.STUDENT_ACTIVITIES -> StudentActivitiesScreen(viewModel = viewModel)
                             AppSection.HONOR_ROLL -> HonorRollScreen(viewModel = viewModel)
+                            AppSection.TEACHER_EVALUATION -> TeacherEvaluationScreen(viewModel = viewModel)
                             AppSection.TUITION_FEES -> TuitionFeesScreen(viewModel = viewModel)
                             AppSection.REPORTS_CHAT -> ReportsAndChatScreen(viewModel = viewModel)
                             AppSection.EVENTS_NEWS -> EventsAndNewsScreen(viewModel = viewModel)

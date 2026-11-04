@@ -130,7 +130,7 @@ fun AdminAccountsScreen(
                     rightPillIcon = Icons.Filled.School,
                     leftPillText = "${registeredClasses.size} صفوف مسجلة",
                     leftPillIcon = Icons.Filled.Groups,
-                    illustrationType = ThreeDIllustrationType.SECURITY_SHIELD
+                    illustrationType = ThreeDIllustrationType.USER_MANAGEMENT_AVATARS_3D
                 )
 
                 Card(
@@ -155,7 +155,7 @@ fun AdminAccountsScreen(
                                     showTeacherDialog = true
                                 },
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(0.92f)
                                     .height(46.dp)
                                     .testTag("add_teacher_button"),
                                 shape = RoundedCornerShape(14.dp),
@@ -164,18 +164,18 @@ fun AdminAccountsScreen(
                                     contentColor = Color.White
                                 ),
                                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.PersonAdd,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
-                                Spacer(modifier = Modifier.width(5.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "+ إضافة $staffIndefinite",
-                                    fontSize = 12.sp,
+                                    fontSize = 11.2.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     softWrap = false
@@ -188,7 +188,7 @@ fun AdminAccountsScreen(
                                     showStudentDialog = true
                                 },
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(1.15f)
                                     .height(46.dp)
                                     .testTag("add_student_parent_button"),
                                 shape = RoundedCornerShape(14.dp),
@@ -197,18 +197,18 @@ fun AdminAccountsScreen(
                                     contentColor = Color.White
                                 ),
                                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.GroupAdd,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
-                                Spacer(modifier = Modifier.width(5.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "+ إضافة طالب وولي أمر",
-                                    fontSize = 12.sp,
+                                    fontSize = 11.2.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     softWrap = false

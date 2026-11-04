@@ -1101,7 +1101,23 @@ fun UnifiedLoginScreen(
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = Color(0xFF059669).copy(alpha = 0.14f),
-                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable {
+                                val now = System.currentTimeMillis()
+                                if (now - lastLogoTapTime > 2200L) {
+                                    logoTapCount = 1
+                                } else {
+                                    logoTapCount++
+                                }
+                                lastLogoTapTime = now
+                                if (logoTapCount >= 5) {
+                                    logoTapCount = 0
+                                    showActivationCodeDialog = true
+                                }
+                            }
+                            .testTag("platform_logo_five_taps")
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -1156,7 +1172,7 @@ fun UnifiedLoginScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Seamless 3D Wave Hero Header for Unified Login Screen (Strictly General Platform Identity before login)
+                    // Seamless 3D Wave Hero Header for Unified Login Screen (Exclusive 3D Digital Portal & Key Animation)
                     ThreeDHeroHeaderCard(
                         title = "منصة مدرستي الذكية",
                         subtitle = "بوابة تسجيل الدخول الموحدة والآمنة للهيئة الإدارية والتدريسية والطلبة وأولياء الأمور",
@@ -1164,78 +1180,7 @@ fun UnifiedLoginScreen(
                         rightPillIcon = Icons.Filled.School,
                         leftPillText = "",
                         leftPillIcon = Icons.Filled.VerifiedUser,
-                        illustrationType = ThreeDIllustrationType.SECURITY_SHIELD,
-                        extraBottomContent = {
-                            // General Platform Badge with 5-Tap Logo Gesture for New School Setup
-                            Surface(
-                                shape = RoundedCornerShape(18.dp),
-                                color = Color.White.copy(alpha = 0.16f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color.White,
-                                        border = BorderStroke(2.dp, Color(0xFFA7F3D0)),
-                                        shadowElevation = 6.dp,
-                                        modifier = Modifier
-                                            .size(50.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                val now = System.currentTimeMillis()
-                                                if (now - lastLogoTapTime > 2200L) {
-                                                    logoTapCount = 1
-                                                } else {
-                                                    logoTapCount++
-                                                }
-                                                lastLogoTapTime = now
-                                                if (logoTapCount >= 5) {
-                                                    logoTapCount = 0
-                                                    showActivationCodeDialog = true
-                                                }
-                                            }
-                                            .testTag("platform_logo_five_taps")
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                            Icon(
-                                                imageVector = Icons.Filled.School,
-                                                contentDescription = "منصة مدرستي الذكية",
-                                                tint = Color(0xFF059669),
-                                                modifier = Modifier.size(28.dp)
-                                            )
-                                        }
-                                    }
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                                    ) {
-                                        Text(
-                                            text = "البوابة التعليمية السحابية الموحدة",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "أدخل اسم المستخدم المبدوء بكود مدرستك للتعرف التلقائي على المدرسة",
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White.copy(alpha = 0.90f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        illustrationType = ThreeDIllustrationType.SECURITY_SHIELD
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -1316,7 +1261,7 @@ fun UnifiedLoginScreen(
                                         }
                                     }
                                     Text(
-                                        text = "تنبيه للإدارة والمعلمين والطلبة وأولياء الأمور: يتم استلام بيانات تسجيل الدخول الخاصة بك (اسم المستخدم وكلمة المرور) مباشرة من إدارة مدرستك.",
+                                        text = "ملاحظة: تُستلم بيانات الدخول لجميع الحسابات مباشرةً من إدارة المدرسة.",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.ExtraBold,
@@ -2632,62 +2577,9 @@ fun DeveloperControlPanelScreen(
                             .testTag("dev_occasion_greeting_input")
                     )
 
-                    // 3) لون التدرج (أزرار ألوان ملكية أنيقة)
-                    val royalColorPresets = remember {
-                        listOf(
-                            Triple("الزمردي الملكي", "#064E3B", "#059669"),
-                            Triple("الذهبي الرمضاني", "#064E3B", "#B45309"),
-                            Triple("الكحلي الاحتفالي", "#1E1B4B", "#B45309"),
-                            Triple("الفيروزي السيادي", "#047857", "#0F766E"),
-                            Triple("العنابي الملكي", "#4C0519", "#B45309"),
-                            Triple("البنفسجي الفخم", "#2E1065", "#047857")
-                        )
-                    }
-
+                    // 3) اختيار مجسم الأنيميشن ثلاثي الأبعاد المتحرك للتنبيه (7 مجسمات 3D متحركة)
                     Text(
-                        text = "3. لون التدرج (أزرار ألوان ملكية أنيقة):",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(royalColorPresets) { (presetLabel, pHex, gHex) ->
-                            val isPresetSelected = customPrimaryHex.equals(pHex, ignoreCase = true) &&
-                                customGradientHex.equals(gHex, ignoreCase = true)
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color.Transparent,
-                                border = androidx.compose.foundation.BorderStroke(
-                                    if (isPresetSelected) 2.dp else 1.dp,
-                                    if (isPresetSelected) Color(0xFF059669) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                                ),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        customPrimaryHex = pHex
-                                        customGradientHex = gHex
-                                    }
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(occasionThemeBrush(pHex, gHex))
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = presetLabel,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // 4) قائمة/شبكة أيقونات Vector SVG فخمة (11 أيقونة) + إرفاق صورة مدمجة مع التنبيه
-                    Text(
-                        text = "4. اختيار أيقونة مخصصة للتنبيه / المناسبة (Vector SVG) بضغطة زر:",
+                        text = "3. اختيار مجسم الأنيميشن ثلاثي الأبعاد المتحرك للتنبيه:",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2702,7 +2594,7 @@ fun DeveloperControlPanelScreen(
                     )
 
                     Text(
-                        text = "5. إرفاق/رفع صورة مدمجة تظهر داخل بطاقة التنبيه (من الجهاز أو عبر رابط):",
+                        text = "4. إرفاق/رفع صورة مدمجة تظهر مع التبليغ (من الجهاز أو عبر رابط):",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2755,7 +2647,7 @@ fun DeveloperControlPanelScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         VectorActionButton(
-                            text = "نشر وإظهار شريط المناسبة في المدارس",
+                            text = "نشر التبليغ الآن",
                             icon = Icons.Filled.CheckCircle,
                             containerColor = DeepEmerald,
                             onClick = {
@@ -2773,12 +2665,12 @@ fun DeveloperControlPanelScreen(
                                     isActive = true
                                 )
                             },
-                            modifier = Modifier.weight(1.15f),
+                            modifier = Modifier.weight(1f),
                             testTag = "dev_apply_occasion_theme_btn"
                         )
 
                         VectorActionButton(
-                            text = "إيقاف وإخفاء شريط المناسبة",
+                            text = "إيقاف التبليغ",
                             icon = Icons.Filled.Restore,
                             containerColor = DangerRed,
                             onClick = {
@@ -2787,7 +2679,7 @@ fun DeveloperControlPanelScreen(
                                 customOccasionGreeting = ""
                                 customOccasionIconBase64 = ""
                                 customOccasionIconUrl = ""
-                                selectedOccasionIconKey = OccasionIconKey.CROWN
+                                selectedOccasionIconKey = OccasionIconKey.BELL
                                 customPrimaryHex = OccasionThemeType.OFFICIAL.defaultPrimaryHex
                                 customGradientHex = OccasionThemeType.OFFICIAL.defaultGradientHex
                                 viewModel.resetGlobalOccasionThemeToOfficial()

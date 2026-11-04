@@ -651,57 +651,63 @@ fun OccasionVectorIconSelectorGrid(
 ) {
     FlowRow(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        maxItemsInEachRow = 4
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        maxItemsInEachRow = 2
     ) {
-        OccasionIconKey.entries.forEach { iconKey ->
+        OccasionIconKey.primary3DBroadcastChoices.forEach { iconKey ->
             val isSelected = selectedIconKey == iconKey
             Surface(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .clickable { onSelectIcon(iconKey) }
                     .testTag("select_occasion_vector_icon_${iconKey.name}"),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = if (isSelected) Color(0xFFECFDF5) else Color.White,
                 border = BorderStroke(
-                    width = if (isSelected) 1.5.dp else 1.dp,
+                    width = if (isSelected) 2.dp else 1.dp,
                     color = if (isSelected) Color(0xFF059669) else Color(0xFFD1FAE5)
                 ),
-                shadowElevation = if (isSelected) 2.dp else 0.dp
+                shadowElevation = if (isSelected) 4.dp else 1.dp
             ) {
-                Column(
+                Row(
                     modifier = Modifier
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    DeveloperSelectedIconBox(
-                        iconKey = iconKey,
-                        size = 36.dp
+                    ThreeDIllustrationBox(
+                        type = iconKey.toThreeDIllustrationType(),
+                        modifier = Modifier.size(44.dp)
                     )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = null,
-                                tint = Color(0xFF059669),
-                                modifier = Modifier.size(12.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Filled.CheckCircle,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                            Text(
+                                text = iconKey.arabicLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                color = if (isSelected) Color(0xFF065F46) else Color(0xFF1E293B),
+                                maxLines = 2,
+                                lineHeight = 16.sp
                             )
                         }
-                        Text(
-                            text = iconKey.arabicLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                            color = if (isSelected) Color(0xFF065F46) else Color(0xFF334155),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
                     }
                 }
             }
@@ -1593,100 +1599,33 @@ fun LiveOccasionBannerCard(
     ) {
         mutableStateOf(false)
     }
-    // Hidden by default unless explicitly activated by the developer (or previewed in Dev Panel)
     if ((!config.isActive || isLocallyDismissed) && !forcePreview) return
 
     val titleText = config.effectiveTitle.ifBlank { "تنبيه عام" }
     val bodyText = config.effectiveBannerText
     val resolvedIcon = OccasionIconKey.fromKey(config.selectedIconKey)
 
-    Surface(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .testTag("live_occasion_banner_card"),
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFFF0FDF4),
-        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-        shadowElevation = 1.dp
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // على اليمين: الأيقونة المختارة من قِبل المطور باللون الزمردي الصافي داخل مربع ناعم
-                DeveloperSelectedIconBox(
-                    iconKey = resolvedIcon,
-                    size = 38.dp
-                )
-
-                // في الوسط: العنوان كشارة زمردية رقيقة + نص الرسالة بلون كحلي/رمادي مريح (Color(0xFF1E293B))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFFD1FAE5),
-                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
-                        ) {
-                            Text(
-                                text = titleText,
-                                color = Color(0xFF065F46),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
-                    if (bodyText.isNotBlank()) {
-                        Text(
-                            text = bodyText,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF1E293B),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            lineHeight = 19.sp
-                        )
-                    }
-                }
-
-                // على اليسار: زر إغلاق (X) صغير وأنيق لإخفائه فوراً
-                if (!forcePreview) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFD1FAE5).copy(alpha = 0.7f))
-                            .clickable { isLocallyDismissed = true }
-                            .testTag("dismiss_live_occasion_banner_btn"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "إغلاق",
-                            tint = Color(0xFF065F46),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
+        DeveloperSystemBroadcastBanner(
+            title = titleText,
+            subtitle = bodyText,
+            badgeText = resolvedIcon.arabicLabel,
+            iconKey = resolvedIcon,
+            illustrationType = resolvedIcon.toThreeDIllustrationType(),
+            onDismiss = if (!forcePreview) {
+                { isLocallyDismissed = true }
+            } else {
+                null
             }
+        )
 
-            // الصورة المرفقة مع التنبيه (إن وُجدت) بحواف ناعمة وإمكانية التكبير عند الضغط عليها
-            if (config.customIconBase64.isNotBlank() || config.customIconUrl.isNotBlank()) {
+        if (config.customIconBase64.isNotBlank() || config.customIconUrl.isNotBlank()) {
+            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                 DeveloperAttachedImageBannerSection(
                     imageBase64 = config.customIconBase64,
                     imageUrl = config.customIconUrl

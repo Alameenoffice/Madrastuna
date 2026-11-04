@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +62,10 @@ fun DashboardScreen(
     val dismissedUrgentAlertSig by viewModel.dismissedUrgentAlertSignature.collectAsState()
     val holidaysConfig by viewModel.holidaysConfig.collectAsState()
     val toastAlert by viewModel.toastAlert.collectAsState()
+    val teacherRatings by viewModel.teacherRatings.collectAsState()
+    val topTeacherSummary = remember(accounts, teacherRatings, currentUser) {
+        viewModel.getTopRatedTeacherSummary(accounts, teacherRatings, currentUser)
+    }
 
     val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
     val todayHolidayLabel = remember(holidaysConfig, todayIso) {
@@ -114,16 +119,6 @@ fun DashboardScreen(
         // 2) Principal School Announcement Banner (Warm Emerald/Gold + 3D Megaphone)
         // 3) 3D Royal Welcome Wave Hero Card
         item {
-            val schoolBannerTitle = when {
-                shouldShowUrgentAlertBanner -> activeUrgentAlert.authorName.ifBlank { "تبليغ إداري هام" }
-                todayHolidayLabel != null -> "عطلة رسمية: $todayHolidayLabel"
-                else -> "عام دراسي جديد"
-            }
-            val schoolBannerSubtitle = when {
-                shouldShowUrgentAlertBanner -> activeUrgentAlert.message
-                todayHolidayLabel != null -> "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
-                else -> "مبروك لطلبتنا الأعزاء العام الدراسي الجديد (${schoolConfig.academicYear})"
-            }
             val welcomeSubtitle = when {
                 isParentOrStudent && myStudent != null ->
                     "الطالب: ${myStudent.studentName} • الصف: ${myStudent.gradeClass} (شعبة ${myStudent.sectionName})"
@@ -139,36 +134,84 @@ fun DashboardScreen(
                 }
             }
 
+            val edgeToEdgeWaveModifier = Modifier.layout { measurable, constraints ->
+                val bleedPx = 32.dp.roundToPx()
+                val fullW = (constraints.maxWidth + bleedPx).coerceAtLeast(constraints.minWidth)
+                val placeable = measurable.measure(
+                    constraints.copy(minWidth = fullW, maxWidth = fullW)
+                )
+                layout(placeable.width, placeable.height) {
+                    placeable.place(0, 0)
+                }
+            }
+
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (occasionThemeConfig.isActive) {
+                    val devIconKey = occasionThemeConfig.resolvedIconKey
                     DeveloperSystemBroadcastBanner(
                         title = occasionThemeConfig.effectiveTitle,
                         subtitle = occasionThemeConfig.effectiveBannerText,
-                        badgeText = "إشعار النظام العام"
+                        badgeText = devIconKey.arabicLabel,
+                        iconKey = devIconKey,
+                        illustrationType = devIconKey.toThreeDIllustrationType(),
+                        modifier = edgeToEdgeWaveModifier
                     )
                 }
 
-                ThreeDMegaphoneAnnouncementBanner(
-                    title = schoolBannerTitle,
-                    subtitle = schoolBannerSubtitle,
-                    onClick = when {
-                        isAdmin && todayHolidayLabel != null && !shouldShowUrgentAlertBanner -> {
-                            { viewModel.openHolidaysManagementModal() }
-                        }
-                        isAdmin -> {
-                            { viewModel.openUrgentSchoolAlertModal() }
-                        }
-                        else -> null
-                    },
-                    isUrgentActive = shouldShowUrgentAlertBanner,
-                    isAdmin = isAdmin,
-                    onEditUrgent = { viewModel.openUrgentSchoolAlertModal() },
-                    onStopUrgent = { viewModel.deleteOrStopUrgentSchoolAlert() },
-                    onDismissUrgent = { viewModel.dismissUrgentSchoolAlertLocally() }
-                )
+                // Strictly only show Principal Announcement Banner when an urgent alert is actively published by the Principal OR today is an official holiday
+                if (shouldShowUrgentAlertBanner || todayHolidayLabel != null) {
+                    val schoolBannerTitle = if (shouldShowUrgentAlertBanner) {
+                        activeUrgentAlert.authorName.ifBlank { "تبليغ إداري هام" }
+                    } else {
+                        "عطلة رسمية: $todayHolidayLabel"
+                    }
+                    val schoolBannerSubtitle = if (shouldShowUrgentAlertBanner) {
+                        activeUrgentAlert.message
+                    } else {
+                        "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
+                    }
+
+                    ThreeDMegaphoneAnnouncementBanner(
+                        title = schoolBannerTitle,
+                        subtitle = schoolBannerSubtitle,
+                        modifier = edgeToEdgeWaveModifier,
+                        onClick = when {
+                            isAdmin && todayHolidayLabel != null && !shouldShowUrgentAlertBanner -> {
+                                { viewModel.openHolidaysManagementModal() }
+                            }
+                            isAdmin -> {
+                                { viewModel.openUrgentSchoolAlertModal() }
+                            }
+                            else -> null
+                        },
+                        isUrgentActive = shouldShowUrgentAlertBanner,
+                        isAdmin = isAdmin,
+                        onEditUrgent = { viewModel.openUrgentSchoolAlertModal() },
+                        onStopUrgent = { viewModel.deleteOrStopUrgentSchoolAlert() },
+                        onDismissUrgent = { viewModel.dismissUrgentSchoolAlertLocally() }
+                    )
+                }
+
+                // Seamless Full-Width Wave Teacher Spotlight on Home Screen (Shown when enabled by Principal & at least 1 teacher is rated)
+                if (featureSettings.showTopTeacherOnHome && topTeacherSummary != null) {
+                    SeamlessWaveTeacherSpotlightSection(
+                        teacherName = topTeacherSummary.teacher.fullName,
+                        teacherSubjects = topTeacherSummary.teacher.specialty,
+                        averageRating = topTeacherSummary.averageRating,
+                        totalRatingsCount = topTeacherSummary.totalRatingsCount,
+                        isAdmin = isAdmin,
+                        onOpenEvaluationSection = {
+                            viewModel.navigateToSection(AppSection.TEACHER_EVALUATION)
+                        },
+                        onHideFromHome = {
+                            viewModel.toggleShowTopTeacherOnHome(false)
+                        },
+                        modifier = edgeToEdgeWaveModifier
+                    )
+                }
 
                 ThreeDHeroHeaderCard(
                     title = "مرحباً بك، ${currentUser?.fullName ?: ""}",
@@ -689,6 +732,7 @@ fun DashboardScreen(
                     if (featureSettings.honorRollEnabled) {
                         add(Triple(AppSection.HONOR_ROLL, Icons.Filled.WorkspacePremium, "لوحة الشرف للمتفوقين (عام)"))
                     }
+                    add(Triple(AppSection.TEACHER_EVALUATION, Icons.Filled.Stars, "تقييم وتميّز الكادر التدريسي الموثق"))
                     if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.tuitionEnabled && !isTeacher) {
                         add(Triple(AppSection.TUITION_FEES, Icons.Filled.AccountBalanceWallet, if (isParentOrStudent) "أقساط الطالب ووصولات الدفع" else "الأقساط الدراسية ووصولات الدفع"))
                     }

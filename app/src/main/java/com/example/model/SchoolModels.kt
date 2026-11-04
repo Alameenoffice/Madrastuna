@@ -246,6 +246,7 @@ enum class AppSection(val arabicTitle: String) {
     EXAMS_GRADES("الامتحانات والدرجات"),
     STUDENT_COMPREHENSIVE_ARCHIVE("السجل الأكاديمي والإحصائي الشامل"),
     HONOR_ROLL("لوحة الشرف"),
+    TEACHER_EVALUATION("تقييم الكادر التدريسي"),
     STUDENT_ACTIVITIES("نشاطات الطلبة"),
     TUITION_FEES("الأقساط الدراسية"),
     REPORTS_CHAT("البلاغات والتواصل"),
@@ -1642,7 +1643,9 @@ data class SchoolFeatureSettings(
     val dismissalCallEnabled: Boolean = true,
     val lostAndFoundEnabled: Boolean = true,
     val studentActivitiesEnabled: Boolean = true,
-    val canteenWalletEnabled: Boolean = true
+    val canteenWalletEnabled: Boolean = true,
+    val teacherEvaluationEnabled: Boolean = true,
+    val showTopTeacherOnHome: Boolean = true
 ) {
     fun normalized(): SchoolFeatureSettings {
         val bus = busAlertsEnabled && busTrackingEnabled || (busAlertsEnabled != busTrackingEnabled && busAlertsEnabled)
@@ -1660,7 +1663,9 @@ data class SchoolFeatureSettings(
             lostAndFoundEnabled = lostAndSug,
             suggestionsBoxEnabled = lostAndSug,
             dismissalAndLostFoundEnabled = dismissalCallEnabled || lostAndSug,
-            canteenWalletEnabled = canteenWalletEnabled
+            canteenWalletEnabled = canteenWalletEnabled,
+            teacherEvaluationEnabled = teacherEvaluationEnabled,
+            showTopTeacherOnHome = showTopTeacherOnHome
         )
     }
 }
@@ -1967,21 +1972,31 @@ enum class OccasionIconKey(
     val arabicLabel: String,
     val launcherAliasName: String
 ) {
-    CROWN("تاج", ".MainActivityHonor"),
-    CRESCENT("هلال", ".MainActivityRamadan"),
-    GRADUATION_CAP("قبعة تخرج", ".MainActivityDefault"),
-    TROPHY("كأس", ".MainActivityHonor"),
-    SHIELD("درع", ".MainActivityNational"),
-    FLAG("علم", ".MainActivityNational"),
-    BOOK("كتاب", ".MainActivityDefault"),
-    STAR("نجمة", ".MainActivityNewYear"),
-    CALENDAR("تقويم", ".MainActivityNewYear"),
-    ROSE("وردة", ".MainActivityDefault"),
-    BELL("جرس", ".MainActivityDefault");
+    BELL("مكبر صوت إعلاني", ".MainActivityDefault"),
+    GRADUATION_CAP("تهنئة وعام دراسي", ".MainActivityNewYear"),
+    CRESCENT("مناسبة دينية / هلال", ".MainActivityRamadan"),
+    TROPHY("تفوق وتكريم", ".MainActivityHonor"),
+    CALENDAR("عطلة رسمية / تقويم", ".MainActivityNewYear"),
+    STAR("تحديث وميزة جديدة", ".MainActivityDefault"),
+    SHIELD("تنبيه أمني / هام", ".MainActivityNational"),
+    CROWN("تاج التميز", ".MainActivityHonor"),
+    FLAG("علم وطني", ".MainActivityNational"),
+    BOOK("كتاب أكاديمي", ".MainActivityDefault"),
+    ROSE("إشراقة تربوية", ".MainActivityDefault");
 
     companion object {
+        val primary3DBroadcastChoices: List<OccasionIconKey> = listOf(
+            BELL,
+            GRADUATION_CAP,
+            CRESCENT,
+            TROPHY,
+            CALENDAR,
+            STAR,
+            SHIELD
+        )
+
         fun fromKey(key: String): OccasionIconKey {
-            return entries.firstOrNull { it.name.equals(key.trim(), ignoreCase = true) } ?: CROWN
+            return entries.firstOrNull { it.name.equals(key.trim(), ignoreCase = true) } ?: BELL
         }
     }
 }
@@ -1991,7 +2006,7 @@ data class OccasionThemeConfig(
     val themeType: OccasionThemeType = OccasionThemeType.CUSTOM_MANUAL,
     val customTitle: String = "",
     val customBannerText: String = "",
-    val selectedIconKey: String = OccasionIconKey.CROWN.name,
+    val selectedIconKey: String = OccasionIconKey.BELL.name,
     val customIconBase64: String = "",
     val customIconUrl: String = "",
     val primaryColorHex: String = "#064E3B",
@@ -2216,8 +2231,26 @@ data class DeepLinkNavigationTarget(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+/**
+ * 11. Teacher Evaluation & Excellence System (نظام تقييم وتميّز الكادر التدريسي)
+ */
+data class TeacherRatingRecord(
+    val id: String,
+    val schoolId: String,
+    val teacherId: String,
+    val teacherName: String,
+    val parentId: String,
+    val parentName: String,
+    val stars: Int, // 1..5
+    val praiseTag: String = "",
+    val createdAt: String = ""
+)
 
-
-
-
-
+data class TeacherEvaluationSummary(
+    val teacher: UserAccount,
+    val averageRating: Float,
+    val totalRatingsCount: Int,
+    val starsCountMap: Map<Int, Int>,
+    val topPraiseTags: List<String>,
+    val myParentRating: TeacherRatingRecord?
+)

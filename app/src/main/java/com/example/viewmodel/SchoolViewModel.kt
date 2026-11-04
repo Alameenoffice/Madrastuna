@@ -129,6 +129,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _userProfilesAndSanctions = MutableStateFlow(repo.loadUserProfilesAndSanctions())
     val userProfilesAndSanctions: StateFlow<Map<String, UserActivityProfileAndSanctions>> = _userProfilesAndSanctions.asStateFlow()
 
+    private val _teacherRatings = MutableStateFlow(repo.loadTeacherRatings())
+    val teacherRatings: StateFlow<List<TeacherRatingRecord>> = _teacherRatings.asStateFlow()
+
     private val _showUrgentAlertModal = MutableStateFlow(false)
     val showUrgentAlertModal: StateFlow<Boolean> = _showUrgentAlertModal.asStateFlow()
 
@@ -404,6 +407,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
                     }
+                    if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, "teacher_ratings")) {
+                        FirebaseCloudSync.fetchSubCollectionPayload(sid, "teacher_ratings")?.let {
+                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, "teacher_ratings")) {
+                                repo.saveRawCachedSubCollection(sid, "teacher_ratings", it)
+                                _teacherRatings.value = repo.parseTeacherRatingsJson(it, sid)
+                            }
+                        }
+                    }
                     flushPendingActivityCommentsToCloud()
                 } catch (_: Exception) {
                 }
@@ -563,6 +574,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _studentActivityPosts.value = repo.loadStudentActivityPosts(schoolId)
         _activityViolationReports.value = repo.loadActivityViolationReports(schoolId)
         _userProfilesAndSanctions.value = repo.loadUserProfilesAndSanctions(schoolId)
+        _teacherRatings.value = repo.loadTeacherRatings(schoolId)
         val loadedUrg = _schoolConfig.value.urgentAlert
         if (loadedUrg.isActive && loadedUrg.message.isNotBlank()) {
             val sig = loadedUrg.signatureKey.ifBlank { "${loadedUrg.updatedAt}_${loadedUrg.message.hashCode()}" }
@@ -7806,6 +7818,135 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }.onFailure { err ->
             showToastAlert("تعذر استعادة النسخة الاحتياطية: ${err.message ?: "ملف غير صالح"}", isSuccess = false)
         }
+    }
+
+    // =========================================================================
+    // SECTION 16: TEACHER EVALUATION & EXCELLENCE SYSTEM (تقييم وتميّز الكادر التدريسي)
+    // =========================================================================
+
+    fun toggleTeacherEvaluationEnabled(enabled: Boolean) {
+        val updatedFeatures = _featureSettings.value.copy(teacherEvaluationEnabled = enabled).normalized()
+        _featureSettings.value = updatedFeatures
+        val updatedConfig = _schoolConfig.value.copy(featureSettings = updatedFeatures)
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+        showToastAlert(
+            if (enabled) "تم تفعيل تقييم الكادر التدريسي لأولياء الأمور" else "تم إيقاف تقييم الكادر التدريسي مؤقتاً",
+            isSuccess = true
+        )
+    }
+
+    fun toggleShowTopTeacherOnHome(show: Boolean) {
+        val updatedFeatures = _featureSettings.value.copy(showTopTeacherOnHome = show).normalized()
+        _featureSettings.value = updatedFeatures
+        val updatedConfig = _schoolConfig.value.copy(featureSettings = updatedFeatures)
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+        showToastAlert(
+            if (show) "تم إظهار المعلم الأعلى تقييماً في الشاشة الرئيسية" else "تم إزالة شريط المعلم الأعلى تقييماً من الشاشة الرئيسية",
+            isSuccess = true
+        )
+    }
+
+    fun submitTeacherRatingOnce(
+        teacherId: String,
+        stars: Int,
+        praiseTag: String
+    ): Boolean {
+        val curr = _currentUser.value ?: return false
+        if (!_featureSettings.value.teacherEvaluationEnabled) {
+            showToastAlert("التقييم متوقف حالياً من قِبل إدارة المدرسة", isSuccess = false)
+            return false
+        }
+        val cleanTeacherId = teacherId.trim()
+        val teacherAcc = _accounts.value.firstOrNull { it.id == cleanTeacherId && it.role == UserRole.TEACHER }
+        if (teacherAcc == null) {
+            showToastAlert("لم يتم العثور على بيانات الأستاذ", isSuccess = false)
+            return false
+        }
+        val parentKey = curr.id.ifBlank { curr.username }
+        val alreadyRated = _teacherRatings.value.any {
+            it.teacherId == cleanTeacherId && it.parentId.equals(parentKey, ignoreCase = true)
+        }
+        if (alreadyRated) {
+            showToastAlert("لقد قمت بتقييم هذا الأستاذ مسبقاً — يُسمح بتقييم واحد فقط لكل ولي أمر", isSuccess = false)
+            return false
+        }
+
+        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val activeSid = _schoolConfig.value.schoolId
+        val newRecord = TeacherRatingRecord(
+            id = "tr_${System.currentTimeMillis()}_${parentKey.take(6)}",
+            schoolId = activeSid,
+            teacherId = cleanTeacherId,
+            teacherName = teacherAcc.fullName,
+            parentId = parentKey,
+            parentName = curr.fullName,
+            stars = stars.coerceIn(1, 5),
+            praiseTag = praiseTag.trim(),
+            createdAt = nowStamp
+        )
+        val updatedList = listOf(newRecord) + _teacherRatings.value
+        _teacherRatings.value = updatedList
+        repo.saveTeacherRatings(updatedList, activeSid)
+        showToastAlert("تم اعتماد تقييمك للأستاذ (${teacherAcc.fullName}) بنجاح ⭐", isSuccess = true)
+        return true
+    }
+
+    fun getTeacherEvaluationSummaries(
+        accountsList: List<UserAccount> = _accounts.value,
+        ratingsList: List<TeacherRatingRecord> = _teacherRatings.value,
+        currentUserAccount: UserAccount? = _currentUser.value
+    ): List<TeacherEvaluationSummary> {
+        val teachers = accountsList.filter { it.role == UserRole.TEACHER && it.isActive }
+        val parentKey = currentUserAccount?.id?.ifBlank { currentUserAccount.username }.orEmpty()
+        return teachers.map { teacher ->
+            val tRatings = ratingsList.filter { it.teacherId == teacher.id }
+            val total = tRatings.size
+            val avg = if (total > 0) {
+                tRatings.map { it.stars.coerceIn(1, 5) }.average().toFloat()
+            } else {
+                0f
+            }
+            val starsMap = (1..5).associateWith { starVal ->
+                tRatings.count { it.stars == starVal }
+            }
+            val topTags = tRatings
+                .map { it.praiseTag.trim() }
+                .filter { it.isNotBlank() }
+                .groupingBy { it }
+                .eachCount()
+                .entries
+                .sortedByDescending { it.value }
+                .take(3)
+                .map { it.key }
+            val myRating = if (parentKey.isNotBlank()) {
+                tRatings.firstOrNull { it.parentId.equals(parentKey, ignoreCase = true) }
+            } else {
+                null
+            }
+            TeacherEvaluationSummary(
+                teacher = teacher,
+                averageRating = avg,
+                totalRatingsCount = total,
+                starsCountMap = starsMap,
+                topPraiseTags = topTags,
+                myParentRating = myRating
+            )
+        }.sortedWith(
+            compareByDescending<TeacherEvaluationSummary> { it.averageRating }
+                .thenByDescending { it.totalRatingsCount }
+                .thenBy { it.teacher.fullName }
+        )
+    }
+
+    fun getTopRatedTeacherSummary(
+        accountsList: List<UserAccount> = _accounts.value,
+        ratingsList: List<TeacherRatingRecord> = _teacherRatings.value,
+        currentUserAccount: UserAccount? = _currentUser.value
+    ): TeacherEvaluationSummary? {
+        return getTeacherEvaluationSummaries(accountsList, ratingsList, currentUserAccount)
+            .firstOrNull { it.totalRatingsCount > 0 }
     }
 }
 

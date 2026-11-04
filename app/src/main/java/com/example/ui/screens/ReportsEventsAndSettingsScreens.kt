@@ -1911,7 +1911,7 @@ fun SettingsScreen(
             rightPillIcon = Icons.Filled.School,
             leftPillText = currentUser?.role?.arabicTitle ?: "إعدادات الحساب",
             leftPillIcon = Icons.Filled.VerifiedUser,
-            illustrationType = ThreeDIllustrationType.SECURITY_SHIELD
+            illustrationType = ThreeDIllustrationType.SETTINGS_ROTATING_GEARS_3D
         )
 
         // 2) 3D Categorized Settings Hub Selector Grid (5 Organized Categories)

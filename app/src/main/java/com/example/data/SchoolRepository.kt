@@ -464,6 +464,8 @@ class SchoolRepository(context: Context) {
             put("qrAttendanceEnabled", qr)
             put("studentActivitiesEnabled", f.studentActivitiesEnabled)
             put("canteenWalletEnabled", f.canteenWalletEnabled)
+            put("teacherEvaluationEnabled", f.teacherEvaluationEnabled)
+            put("showTopTeacherOnHome", f.showTopTeacherOnHome)
         }
     }
 
@@ -497,6 +499,8 @@ class SchoolRepository(context: Context) {
         val eventsGallery = boolKey("eventsGalleryEnabled")
         val studentActivities = boolKey("studentActivities", "studentActivitiesEnabled")
         val canteenWallet = boolKey("canteenWalletEnabled", "isCanteenWalletEnabled")
+        val teacherEvaluation = boolKey("teacherEvaluationEnabled", default = true)
+        val showTopTeacherHome = boolKey("showTopTeacherOnHome", default = true)
 
         return SchoolFeatureSettings(
             honorRollEnabled = honor,
@@ -519,7 +523,9 @@ class SchoolRepository(context: Context) {
             dismissalCallEnabled = smartDismissal,
             lostAndFoundEnabled = lostAndSug,
             studentActivitiesEnabled = studentActivities,
-            canteenWalletEnabled = canteenWallet
+            canteenWalletEnabled = canteenWallet,
+            teacherEvaluationEnabled = teacherEvaluation,
+            showTopTeacherOnHome = showTopTeacherHome
         )
     }
 
@@ -3771,6 +3777,66 @@ class SchoolRepository(context: Context) {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    // =========================================================================
+    // 11. Teacher Evaluation & Excellence Ratings (تقييم وتميّز الكادر التدريسي)
+    // =========================================================================
+
+    fun loadTeacherRatings(schoolId: String = getActiveSchoolId()): List<TeacherRatingRecord> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, "teacher_ratings"), null)
+            ?: return emptyList()
+        return parseTeacherRatingsJson(raw, schoolId)
+    }
+
+    fun parseTeacherRatingsJson(raw: String, schoolId: String = getActiveSchoolId()): List<TeacherRatingRecord> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<TeacherRatingRecord>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSchoolId = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSchoolId != schoolId) continue
+                list.add(
+                    TeacherRatingRecord(
+                        id = o.optString("id"),
+                        schoolId = itemSchoolId,
+                        teacherId = o.optString("teacherId"),
+                        teacherName = o.optString("teacherName"),
+                        parentId = o.optString("parentId"),
+                        parentName = o.optString("parentName"),
+                        stars = o.optInt("stars", 5).coerceIn(1, 5),
+                        praiseTag = o.optString("praiseTag", ""),
+                        createdAt = o.optString("createdAt", "")
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveTeacherRatings(ratings: List<TeacherRatingRecord>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        ratings.forEach { r ->
+            arr.put(JSONObject().apply {
+                put("id", r.id)
+                put("schoolId", schoolId)
+                put("teacherId", r.teacherId)
+                put("teacherName", InputSanitizer.sanitize(r.teacherName))
+                put("parentId", r.parentId)
+                put("parentName", InputSanitizer.sanitize(r.parentName))
+                put("stars", r.stars.coerceIn(1, 5))
+                put("praiseTag", InputSanitizer.sanitize(r.praiseTag))
+                put("createdAt", r.createdAt)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, "teacher_ratings"), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, "teacher_ratings", jsonStr)
     }
 }
 
