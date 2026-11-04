@@ -2700,26 +2700,29 @@ fun ExamsAndGradesScreen(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Button(
                 onClick = { selectedTab = 0 },
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = 46.dp)
                     .testTag("tab_detailed_grades"),
                 shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             ) {
-                Icon(Icons.Filled.Assessment, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
+                Icon(Icons.Filled.Assessment, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(5.dp))
                 Text(
-                    text = if (isParentOrStudent) "جدول كشف الدرجات" else "رصد الدرجات حسب المادة",
+                    text = if (isParentOrStudent) "جدول كشف الدرجات" else "الدرجات حسب المادة",
+                    fontWeight = FontWeight.ExtraBold,
                     maxLines = 1,
-                    softWrap = false
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -2727,17 +2730,24 @@ fun ExamsAndGradesScreen(
                 onClick = { selectedTab = 1 },
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = 46.dp)
                     .testTag("tab_exam_schedule"),
                 shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             ) {
-                Icon(Icons.Filled.EventNote, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("مواعيد الامتحانات", maxLines = 1, softWrap = false)
+                Icon(Icons.Filled.EventNote, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = "مواعيد الامتحانات",
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
 
@@ -2888,51 +2898,98 @@ fun ExamsAndGradesScreen(
                                     modifier = Modifier.padding(14.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    // شريط علوي زمردي هادئ يعرض ملخص المادة والسعي والمعدل وحالة المتابعة
+                                    // شريط علوي زمردي هادئ يعرض ملخص المادة والسعي والمعدل في سطرين مريحين بدون أي التفاف عمودي
                                     Surface(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp),
                                         color = DeepEmerald.copy(alpha = 0.09f),
                                         border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.24f))
                                     ) {
-                                        Row(
+                                        Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .padding(horizontal = 12.dp, vertical = 10.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Row(
+                                                modifier = Modifier.fillMaxWidth(),
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                modifier = Modifier.weight(1f)
+                                                horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.MenuBook,
-                                                    contentDescription = null,
-                                                    tint = DeepEmerald,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Column {
-                                                    Text(
-                                                        text = g.subjectName,
-                                                        style = MaterialTheme.typography.titleMedium,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = DeepForestGreen
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.MenuBook,
+                                                        contentDescription = null,
+                                                        tint = DeepEmerald,
+                                                        modifier = Modifier.size(19.dp)
                                                     )
                                                     Text(
-                                                        text = "السعي: ${g.annualEffortScore}/${g.maxScoreScale}  •  المعدل: ${if (g.isAllExamsCompleted) "${g.finalAverage}/${g.maxScoreScale}" else "قيد الرصد"}",
-                                                        style = MaterialTheme.typography.labelMedium,
-                                                        color = DeepEmerald
+                                                        text = "المادة: ${g.subjectName} (الدرجة من ${g.maxScoreScale})",
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        overflow = TextOverflow.Ellipsis
                                                     )
                                                 }
+                                                NoWrapBadge(
+                                                    text = statusText,
+                                                    icon = if (!g.isAllExamsCompleted) Icons.Filled.TrendingUp else Icons.Filled.Stars,
+                                                    containerColor = statusColor.copy(alpha = 0.15f),
+                                                    contentColor = statusColor
+                                                )
                                             }
-                                            NoWrapBadge(
-                                                text = statusText,
-                                                icon = if (!g.isAllExamsCompleted) Icons.Filled.TrendingUp else Icons.Filled.Stars,
-                                                containerColor = statusColor.copy(alpha = 0.15f),
-                                                contentColor = statusColor
-                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color.White,
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "السعي الفصلي: ${g.annualEffortScore} / ${g.maxScoreScale}",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepForestGreen,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color.White,
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "التقدير/الحالة: ${if (g.isAllExamsCompleted) "${g.finalAverage}/${g.maxScoreScale}" else "قيد الرصد"}",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepEmerald,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
 
@@ -3281,7 +3338,8 @@ fun ExamsAndGradesScreen(
                                     modifier = Modifier.padding(16.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    // رأس بطاقة الطالب
+                                    // رأس بطاقة الطالب مع شارة الوسام المصغرة المدمجة تحت دائرة الصورة
+                                    val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -3292,11 +3350,13 @@ fun ExamsAndGradesScreen(
                                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                                             modifier = Modifier.weight(1f)
                                         ) {
-                                            Base64AvatarImage(
+                                            StudentAvatarWithOverlayBadge(
                                                 base64Data = stu.photoBase64,
-                                                fallbackIcon = Icons.Filled.Person,
                                                 contentDescription = stu.studentName,
-                                                size = 44.dp
+                                                badge = stuAutoBadges.firstOrNull(),
+                                                avatarSize = 54.dp,
+                                                boxWidth = 62.dp,
+                                                fallbackIcon = Icons.Filled.Person
                                             )
                                             Column {
                                                 Text(
@@ -3320,21 +3380,21 @@ fun ExamsAndGradesScreen(
                                         )
                                     }
 
-                                    // شريط علوي زمردي هادئ يعرض ملخص الطالب (المادة، السعي، المعدل)
+                                    // شريط علوي زمردي هادئ يعرض ملخص الطالب (المادة، السعي الفصلي، والتقدير/الحالة) في سطرين مريحين بدون أي انكسار عمودي
                                     Surface(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp),
                                         color = DeepEmerald.copy(alpha = 0.09f),
                                         border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.24f))
                                     ) {
-                                        Row(
+                                        Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                                            verticalArrangement = Arrangement.spacedBy(7.dp)
                                         ) {
                                             Row(
+                                                modifier = Modifier.fillMaxWidth(),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
@@ -3345,18 +3405,61 @@ fun ExamsAndGradesScreen(
                                                     modifier = Modifier.size(18.dp)
                                                 )
                                                 Text(
-                                                    text = "المادة: $selectedSubject (من $selectedMaxScale)",
+                                                    text = "المادة: $selectedSubject (الدرجة من $selectedMaxScale)",
                                                     style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = DeepForestGreen
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
-                                            Text(
-                                                text = "السعي: ${previewGrade.annualEffortScore}/$selectedMaxScale  |  المعدل: ${if (previewGrade.isAllExamsCompleted) "${previewGrade.finalAverage}/$selectedMaxScale" else "مستمر"}",
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontWeight = FontWeight.Bold,
-                                                color = DeepEmerald
-                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color.White,
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "السعي الفصلي: ${previewGrade.annualEffortScore} / $selectedMaxScale",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepForestGreen,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color.White,
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "التقدير/الحالة: ${if (previewGrade.isAllExamsCompleted) "${previewGrade.finalAverage}/$selectedMaxScale" else "قيد الرصد"}",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepEmerald,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
 
@@ -3554,11 +3657,6 @@ fun ExamsAndGradesScreen(
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     )
-
-                                    val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
-                                    if (stuAutoBadges.isNotEmpty()) {
-                                        StudentAutoBadgesRow(badges = stuAutoBadges)
-                                    }
 
                                     if (currentUser?.role == UserRole.ADMIN) {
                                         OutlinedButton(

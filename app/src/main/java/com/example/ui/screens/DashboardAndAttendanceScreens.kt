@@ -252,7 +252,7 @@ fun DashboardScreen(
                                 Icon(Icons.Filled.ManageAccounts, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "إدارة الحسابات والمستخدمين (معلمين • أولياء أمور • طلاب)",
+                                    text = "إدارة الحسابات والمستخدمين",
                                     style = MaterialTheme.typography.labelLarge,
                                     maxLines = 1,
                                     softWrap = false,
@@ -442,6 +442,7 @@ fun DashboardScreen(
                             accentColor = when {
                                 todayHolidayLabel != null || myTodayStatus == AttendanceStatus.HOLIDAY -> GoldAccent
                                 myTodayStatus == AttendanceStatus.ABSENT -> DangerRed
+                                myTodayStatus == AttendanceStatus.UNRECORDED -> Color(0xFF64748B)
                                 else -> PrimaryLight
                             },
                             modifier = Modifier.weight(1f),
@@ -524,6 +525,9 @@ fun DashboardScreen(
                 val presentCount = scopedStudents.count {
                     viewModel.getStudentStatusForDate(it, todayIso) == AttendanceStatus.PRESENT
                 }
+                val unrecordedCount = scopedStudents.count {
+                    viewModel.getStudentStatusForDate(it, todayIso) == AttendanceStatus.UNRECORDED
+                }
                 val scopedHomeworks = remember(homeworks, currentUser, isTeacher) {
                     if (isTeacher && currentUser != null) {
                         homeworks.filter { hw ->
@@ -561,7 +565,7 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Prominent Live Operations Radar Banner Card (المتابعة الحية المباشرة للصفوف والبوابة)
+                    // Prominent Daily Attendance & Gate Summary Banner Card (موجز الدوام وحركة البوابة اليومية)
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -598,7 +602,7 @@ fun DashboardScreen(
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Filled.Radar,
+                                            imageVector = Icons.Filled.Assessment,
                                             contentDescription = null,
                                             tint = Color.White,
                                             modifier = Modifier
@@ -607,25 +611,14 @@ fun DashboardScreen(
                                         )
                                     }
                                     Column {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(9.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color(0xFF4ADE80))
-                                            )
-                                            Text(
-                                                text = "المتابعة الحية المباشرة للصفوف والبوابة (Live)",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White
-                                            )
-                                        }
                                         Text(
-                                            text = "مراقبة لحظية لحضور وغياب وإجازات كل صف • من دخل صباحاً • من غادر • ومن بقي داخل المدرسة الآن",
+                                            text = "موجز الدوام وحركة البوابة اليومية",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = "إحصائية اليوم لحضور الطلبة وحركة الدخول والانصراف في الصفوف",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = Color.White.copy(alpha = 0.92f)
                                         )
@@ -637,7 +630,7 @@ fun DashboardScreen(
                                     contentColor = Color(0xFF047857)
                                 ) {
                                     Text(
-                                        text = "فتح الرادار",
+                                        text = "عرض التفاصيل",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.ExtraBold,
                                         maxLines = 1,
@@ -654,9 +647,8 @@ fun DashboardScreen(
                                 listOf(
                                     "حاضرون: $presentCount" to Color.White.copy(alpha = 0.20f),
                                     "غائبون: $absentCount" to Color.White.copy(alpha = 0.20f),
-                                    "دخلوا: $checkedInToday" to Color.White.copy(alpha = 0.20f),
-                                    "غادروا: $checkedOutToday" to Color.White.copy(alpha = 0.20f),
-                                    "داخل المدرسة: $insideSchoolNow" to Color.White.copy(alpha = 0.30f)
+                                    "بانتظار الرصد: $unrecordedCount" to Color.White.copy(alpha = 0.20f),
+                                    "متواجدون: $insideSchoolNow" to Color.White.copy(alpha = 0.30f)
                                 ).forEach { (txt, bg) ->
                                     Surface(
                                         modifier = Modifier.weight(1f),
@@ -698,11 +690,15 @@ fun DashboardScreen(
                         )
                         SmartStatCard(
                             title = "سجل الحضور اليومي",
-                            value = if (todayHolidayLabel != null) "عطلة رسمية" else "$presentCount حاضر",
+                            value = when {
+                                todayHolidayLabel != null -> "عطلة رسمية"
+                                presentCount == 0 && unrecordedCount == scopedStudents.size && scopedStudents.isNotEmpty() -> "بانتظار الرصد"
+                                else -> "$presentCount حاضر"
+                            },
                             subtitle = if (todayHolidayLabel != null) {
                                 todayHolidayLabel
                             } else {
-                                "الغياب: $absentCount • مجاز: $excusedCount${if (lateCount > 0) " • متأخر: $lateCount" else ""}"
+                                "الغياب: $absentCount • مجاز: $excusedCount • بانتظار الرصد: $unrecordedCount"
                             },
                             icon = Icons.Filled.FactCheck,
                             accentColor = if (todayHolidayLabel != null) GoldAccent else InfoBlue,
@@ -2659,6 +2655,38 @@ fun DailyAttendanceScreen(
                                 }
                             }
                         } else {
+                            if (currentStatus == AttendanceStatus.UNRECORDED) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF1F5F9),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Schedule,
+                                            contentDescription = null,
+                                            tint = Color(0xFF64748B),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = "حالة الحضور ليوم ($cleanSelDate): لم يُرصد بعد (بانتظار الرصد)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF475569),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2671,6 +2699,7 @@ fun DailyAttendanceScreen(
                                         AttendanceStatus.LATE -> WarningAmber
                                         AttendanceStatus.EXCUSED -> InfoBlue
                                         AttendanceStatus.HOLIDAY -> GoldAccent
+                                        AttendanceStatus.UNRECORDED -> Color(0xFF64748B)
                                     }
                                     val statusIcon = when (st) {
                                         AttendanceStatus.PRESENT -> Icons.Filled.CheckCircle
@@ -2678,6 +2707,7 @@ fun DailyAttendanceScreen(
                                         AttendanceStatus.LATE -> Icons.Filled.Schedule
                                         AttendanceStatus.EXCUSED -> Icons.Filled.AssignmentLate
                                         AttendanceStatus.HOLIDAY -> Icons.Filled.EventAvailable
+                                        AttendanceStatus.UNRECORDED -> Icons.Filled.Schedule
                                     }
 
                                     Surface(
@@ -6221,13 +6251,14 @@ fun StudentComprehensiveArchiveScreen(
 
 private enum class LiveRadarDrillFilter(val arabicTitle: String) {
     ALL("الكل"),
-    INSIDE_NOW("متبقون داخل المدرسة الآن"),
-    CHECKED_IN("دخلوا صباحاً (Check-In)"),
-    CHECKED_OUT("غادروا المدرسة (Check-Out)"),
-    PRESENT("الحاضرون اليوم"),
-    ABSENT("الغائبون اليوم"),
-    EXCUSED("المجازون اليوم"),
-    LATE("المتأخرون اليوم")
+    INSIDE_NOW("متواجدون بالمدرسة"),
+    CHECKED_IN("سجلوا الدخول"),
+    CHECKED_OUT("غادروا المدرسة"),
+    PRESENT("الحاضرون"),
+    ABSENT("الغائبون"),
+    EXCUSED("المجازون"),
+    UNRECORDED("بانتظار الرصد"),
+    LATE("المتأخرون")
 }
 
 private data class LiveClassroomCardSummary(
@@ -6237,6 +6268,7 @@ private data class LiveClassroomCardSummary(
     val presentCount: Int,
     val absentCount: Int,
     val excusedCount: Int,
+    val unrecordedCount: Int,
     val lateCount: Int,
     val checkedInCount: Int,
     val checkedOutCount: Int,
@@ -6251,10 +6283,10 @@ private data class LiveRadarDrillTarget(
 )
 
 /**
- * Deliverable 1: غرفة المتابعة الحية المباشرة للصفوف والبوابة (Live Operations Radar)
- * - 1) شريط المؤشرات الحية الشامل للمدرسة (Top Live School Radar + Smart Gate Live Radar)
- * - 2) شبكة بطاقات الصفوف والشعب الحية (Live Classrooms Cards)
- * - 3) كشف الأسماء التفصيلي الفوري عند الضغط (Drill-Down Student List Modal)
+ * موجز الدوام وحركة البوابة اليومية
+ * - 1) إحصائية اليوم لحضور الطلبة وحركة بوابة المدرسة
+ * - 2) شبكة بطاقات الصفوف والشعب
+ * - 3) كشف الأسماء التفصيلي الفوري عند الضغط
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -6313,8 +6345,8 @@ fun LiveOperationsRadarScreen(
     val excusedTodayCount = remember(activeScopedStudents, attendance, selectedDateIso, holidaysConfig) {
         activeScopedStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.EXCUSED }
     }
-    val lateTodayCount = remember(activeScopedStudents, attendance, selectedDateIso, holidaysConfig) {
-        activeScopedStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.LATE }
+    val unrecordedTodayCount = remember(activeScopedStudents, attendance, selectedDateIso, holidaysConfig) {
+        activeScopedStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.UNRECORDED }
     }
     val checkedInTodayCount = remember(activeScopedStudents, selectedDateIso) {
         activeScopedStudents.count { isStudentCheckedIn(it, selectedDateIso) }
@@ -6356,6 +6388,7 @@ fun LiveOperationsRadarScreen(
                             presentCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.PRESENT },
                             absentCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.ABSENT },
                             excusedCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.EXCUSED },
+                            unrecordedCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.UNRECORDED },
                             lateCount = classStudents.count { isStudentPresentOnDate(it, selectedDateIso) == AttendanceStatus.LATE },
                             checkedInCount = classStudents.count { isStudentCheckedIn(it, selectedDateIso) },
                             checkedOutCount = classStudents.count { isStudentCheckedOut(it, selectedDateIso) },
@@ -6375,7 +6408,7 @@ fun LiveOperationsRadarScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // 1) شريط المؤشرات الحية الشامل للمدرسة (Top Live School Radar + Smart Gate Live Radar)
+        // 1) بطاقة موجز الدوام وحركة البوابة اليومية
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -6404,7 +6437,7 @@ fun LiveOperationsRadarScreen(
                                 border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.4f))
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Radar,
+                                    imageVector = Icons.Filled.Assessment,
                                     contentDescription = null,
                                     tint = DeepEmerald,
                                     modifier = Modifier
@@ -6413,29 +6446,14 @@ fun LiveOperationsRadarScreen(
                                 )
                             }
                             Column {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(9.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF10B981))
-                                    )
-                                    Text(
-                                        text = "غرفة المتابعة الحية المباشرة للصفوف والبوابة",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = DeepForestGreen
-                                    )
-                                }
                                 Text(
-                                    text = if (isTeacher) {
-                                        "مراقبة حية فورية لصفوفك المسندة • اضغط على أي مؤشر أو صف لعرض كشف الأسماء والتوقيتات"
-                                    } else {
-                                        "رادار مركزي شامل للمدرسة ($selectedDateIso) • اضغط على أي مؤشر أو صف لعرض كشف الأسماء والتوقيتات"
-                                    },
+                                    text = "موجز الدوام وحركة البوابة اليومية",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = "إحصائية اليوم لحضور الطلبة وحركة الدخول والانصراف في الصفوف ($selectedDateIso)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextMutedGreen,
                                     fontWeight = FontWeight.SemiBold
@@ -6444,9 +6462,9 @@ fun LiveOperationsRadarScreen(
                         }
                     }
 
-                    // Live Attendance Radar Row (إجمالي الطلبة | الحاضرون اليوم | الغائبون | المجازون)
+                    // إحصائية الحضور والغياب اليوم (إجمالي الطلبة | الحاضرون | الغائبون | المجازون | بانتظار الرصد)
                     Text(
-                        text = "أولاً: المؤشرات الحية للحضور والغياب والإجازات اليوم (اضغط لعرض الأسماء):",
+                        text = "أولاً: إحصائية الحضور والغياب والإجازات اليوم (اضغط لعرض الأسماء):",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold,
                         color = DeepForestGreen
@@ -6457,9 +6475,10 @@ fun LiveOperationsRadarScreen(
                     ) {
                         listOf(
                             Triple("إجمالي الطلبة", "$totalStudentsCount", DeepEmerald to LiveRadarDrillFilter.ALL),
-                            Triple("الحاضرون اليوم", "$presentTodayCount", SuccessGreen to LiveRadarDrillFilter.PRESENT),
+                            Triple("الحاضرون", "$presentTodayCount", SuccessGreen to LiveRadarDrillFilter.PRESENT),
                             Triple("الغائبون", "$absentTodayCount", DangerRed to LiveRadarDrillFilter.ABSENT),
-                            Triple("المجازون", "$excusedTodayCount", InfoBlue to LiveRadarDrillFilter.EXCUSED)
+                            Triple("المجازون", "$excusedTodayCount", InfoBlue to LiveRadarDrillFilter.EXCUSED),
+                            Triple("بانتظار الرصد", "$unrecordedTodayCount", Color(0xFF64748B) to LiveRadarDrillFilter.UNRECORDED)
                         ).forEach { (lbl, valTxt, pair) ->
                             val (col, filterType) = pair
                             Surface(
@@ -6478,36 +6497,44 @@ fun LiveOperationsRadarScreen(
                                 border = androidx.compose.foundation.BorderStroke(1.2.dp, col.copy(alpha = 0.38f))
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
                                         text = valTxt,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = col
+                                        color = col,
+                                        maxLines = 1
                                     )
                                     Text(
                                         text = lbl,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Smart Gate Live Radar Row (دخلوا صباحاً | غادروا المدرسة | متبقون داخل المدرسة الآن)
+                    // بطاقة حركة بوابة المدرسة اليوم (Compact wrapContentHeight <= 130.dp بدون أي فراغ عمودي)
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = Color(0xFF059669),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                            .heightIn(max = 130.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -6525,10 +6552,12 @@ fun LiveOperationsRadarScreen(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = "رادار البوابة الذكية الحي (Smart Gate Live Radar)",
+                                        text = "حركة بوابة المدرسة اليوم",
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                                 Surface(
@@ -6540,10 +6569,14 @@ fun LiveOperationsRadarScreen(
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -6552,7 +6585,7 @@ fun LiveOperationsRadarScreen(
                                 listOf(
                                     Triple("دخلوا صباحاً", "$checkedInTodayCount طالب", LiveRadarDrillFilter.CHECKED_IN),
                                     Triple("غادروا المدرسة", "$checkedOutTodayCount طالب", LiveRadarDrillFilter.CHECKED_OUT),
-                                    Triple("متبقون بالمدرسة الآن", "$insideNowTodayCount طالب", LiveRadarDrillFilter.INSIDE_NOW)
+                                    Triple("متواجدون حالياً", "$insideNowTodayCount طالب", LiveRadarDrillFilter.INSIDE_NOW)
                                 ).forEach { (lbl, valTxt, filterType) ->
                                     val isInsideCard = filterType == LiveRadarDrillFilter.INSIDE_NOW
                                     Surface(
@@ -6574,7 +6607,7 @@ fun LiveOperationsRadarScreen(
                                         )
                                     ) {
                                         Column(
-                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
                                             Text(
@@ -6582,14 +6615,16 @@ fun LiveOperationsRadarScreen(
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = if (isInsideCard) Color(0xFF047857) else Color.White,
-                                                maxLines = 1
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                             Text(
                                                 text = lbl,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = if (isInsideCard) DeepForestGreen else Color.White.copy(alpha = 0.95f),
-                                                maxLines = 1
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
@@ -6633,7 +6668,7 @@ fun LiveOperationsRadarScreen(
             }
         }
 
-        // 2) شبكة بطاقات الصفوف والشعب الحية (Live Classrooms Cards)
+        // 2) شبكة بطاقات الصفوف والشعب
         items(classroomCards, key = { "${it.gradeClass}_${it.sectionName}" }) { card ->
             Card(
                 modifier = Modifier
@@ -6702,7 +6737,7 @@ fun LiveOperationsRadarScreen(
                         )
                     }
 
-                    // Attendance Breakdown Row (حاضر • غائب • مجاز • متأخر)
+                    // Attendance Breakdown Row (حاضر • غائب • مجاز • بانتظار الرصد)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -6711,7 +6746,7 @@ fun LiveOperationsRadarScreen(
                             Triple("حاضر", "${card.presentCount}", SuccessGreen to LiveRadarDrillFilter.PRESENT),
                             Triple("غائب", "${card.absentCount}", DangerRed to LiveRadarDrillFilter.ABSENT),
                             Triple("مجاز", "${card.excusedCount}", InfoBlue to LiveRadarDrillFilter.EXCUSED),
-                            Triple("متأخر", "${card.lateCount}", WarningAmber to LiveRadarDrillFilter.LATE)
+                            Triple("بانتظار الرصد", "${card.unrecordedCount}", Color(0xFF64748B) to LiveRadarDrillFilter.UNRECORDED)
                         ).forEach { (lbl, valTxt, pair) ->
                             val (col, filterType) = pair
                             Surface(
@@ -6745,14 +6780,16 @@ fun LiveOperationsRadarScreen(
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = DeepForestGreen,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Smart Gate Live Breakdown for this Classroom (دخلوا بداية الدوام • غادروا • متبقون داخل المدرسة الآن)
+                    // حركة بوابة المدرسة لهذا الصف اليوم (دخلوا صباحاً • غادروا المدرسة • متواجدون حالياً)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color(0xFFF0FDF4),
@@ -6764,7 +6801,7 @@ fun LiveOperationsRadarScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "حركة البوابة الذكية لهذا الصف اليوم:",
+                                text = "حركة بوابة المدرسة لهذا الصف اليوم:",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = DeepForestGreen
@@ -6774,9 +6811,9 @@ fun LiveOperationsRadarScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 listOf(
-                                    Triple("دخلوا بداية الدوام", "${card.checkedInCount}", LiveRadarDrillFilter.CHECKED_IN),
+                                    Triple("دخلوا صباحاً", "${card.checkedInCount}", LiveRadarDrillFilter.CHECKED_IN),
                                     Triple("غادروا المدرسة", "${card.checkedOutCount}", LiveRadarDrillFilter.CHECKED_OUT),
-                                    Triple("متبقون بالمدرسة الآن", "${card.insideNowCount}", LiveRadarDrillFilter.INSIDE_NOW)
+                                    Triple("متواجدون حالياً", "${card.insideNowCount}", LiveRadarDrillFilter.INSIDE_NOW)
                                 ).forEach { (lbl, valTxt, filterType) ->
                                     val isStay = filterType == LiveRadarDrillFilter.INSIDE_NOW
                                     Surface(
@@ -6810,7 +6847,8 @@ fun LiveOperationsRadarScreen(
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (isStay) Color.White else DeepForestGreen,
-                                                maxLines = 1
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
@@ -6876,6 +6914,7 @@ fun LiveOperationsRadarScreen(
                     LiveRadarDrillFilter.PRESENT -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.PRESENT
                     LiveRadarDrillFilter.ABSENT -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.ABSENT
                     LiveRadarDrillFilter.EXCUSED -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.EXCUSED
+                    LiveRadarDrillFilter.UNRECORDED -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.UNRECORDED
                     LiveRadarDrillFilter.LATE -> isStudentPresentOnDate(stu, selectedDateIso) == AttendanceStatus.LATE
                 }
                 val matchesQuery = q.isEmpty() ||
@@ -6924,7 +6963,7 @@ fun LiveOperationsRadarScreen(
                                 border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Radar,
+                                    imageVector = Icons.Filled.Assessment,
                                     contentDescription = null,
                                     tint = DeepEmerald,
                                     modifier = Modifier
@@ -7018,9 +7057,13 @@ fun LiveOperationsRadarScreen(
                                 val gateLog = stu.getGateLogForDate(selectedDateIso)
                                 val isInside = isStudentInsideNow(stu, selectedDateIso)
                                 val isDeparted = isStudentCheckedOut(stu, selectedDateIso)
-                                val stuLeave = leaveRequests.firstOrNull {
-                                    it.studentId == stu.id && it.leaveDate == selectedDateIso
-                                } ?: leaveRequests.firstOrNull { it.studentId == stu.id }
+                                val stuLeaveForDate = remember(leaveRequests, stu.id, selectedDateIso) {
+                                    leaveRequests.firstOrNull { req ->
+                                        req.studentId.trim() == stu.id.trim() &&
+                                            viewModel.isDateCoveredByLeaveRequest(req, selectedDateIso)
+                                    }
+                                }
+                                val validLeaveReason = stuLeaveForDate?.reason?.trim().orEmpty()
                                 val stuBadges = remember(attendance, grades, stu.id) {
                                     viewModel.getStudentAutoBadges(stu.id)
                                 }
@@ -7072,18 +7115,19 @@ fun LiveOperationsRadarScreen(
                                             }
                                             NoWrapBadge(
                                                 text = attStatus.arabicLabel,
-                                                icon = Icons.Filled.FactCheck,
+                                                icon = if (attStatus == AttendanceStatus.UNRECORDED) Icons.Filled.Schedule else Icons.Filled.FactCheck,
                                                 containerColor = when (attStatus) {
                                                     AttendanceStatus.PRESENT -> SuccessGreen
                                                     AttendanceStatus.ABSENT -> DangerRed
                                                     AttendanceStatus.EXCUSED -> InfoBlue
+                                                    AttendanceStatus.UNRECORDED -> Color(0xFF64748B)
                                                     else -> WarningAmber
                                                 },
                                                 contentColor = Color.White
                                             )
                                         }
 
-                                        // Smart Gate Timestamps Box
+                                        // مربع تفاصيل حركة البوابة (الشارة في سطر أفقي مستقل بالأعلى + أوقات الدخول والمغادرة في سطر أفقي مريح بالأسفل)
                                         Surface(
                                             shape = RoundedCornerShape(10.dp),
                                             color = Color(0xFFECFDF5),
@@ -7091,19 +7135,21 @@ fun LiveOperationsRadarScreen(
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Column(
-                                                modifier = Modifier.padding(8.dp),
-                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
                                                 ) {
                                                     Text(
-                                                        text = "وقت الدخول: ${gateLog?.checkInTime?.ifBlank { "لم يسجل" } ?: "لم يسجل"}  |  وقت المغادرة: ${gateLog?.checkOutTime?.ifBlank { "لم يغادر بعد" } ?: "لم يغادر بعد"}",
+                                                        text = "حالة البوابة اليوم:",
                                                         style = MaterialTheme.typography.labelSmall,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = DeepForestGreen
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = DeepEmerald
                                                     )
                                                     Surface(
                                                         shape = RoundedCornerShape(50),
@@ -7115,21 +7161,34 @@ fun LiveOperationsRadarScreen(
                                                     ) {
                                                         Text(
                                                             text = when {
-                                                                isInside -> "متواجد بالمدرسة الآن"
+                                                                isInside -> "متواجد بالمدرسة حالياً"
                                                                 isDeparted -> "غادر المدرسة"
-                                                                else -> "خارج البوابة"
+                                                                else -> "لم يسجل دخول"
                                                             },
                                                             style = MaterialTheme.typography.labelSmall,
                                                             fontWeight = FontWeight.ExtraBold,
                                                             color = Color.White,
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                                                         )
                                                     }
                                                 }
 
-                                                if (attStatus == AttendanceStatus.EXCUSED || stuLeave != null) {
+                                                Text(
+                                                    text = "وقت الدخول: ${gateLog?.checkInTime?.ifBlank { "لم يسجل" } ?: "لم يسجل"}  |  وقت المغادرة: ${gateLog?.checkOutTime?.ifBlank { "لم يغادر بعد" } ?: "لم يغادر بعد"}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+
+                                                if (attStatus == AttendanceStatus.EXCUSED && validLeaveReason.length >= 2) {
                                                     Text(
-                                                        text = "سبب الإجازة: ${stuLeave?.reason?.ifBlank { "إجازة رسمية معتمدة" } ?: "إجازة رسمية معتمدة"}",
+                                                        text = "سبب الإجازة: $validLeaveReason",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontWeight = FontWeight.Bold,
                                                         color = InfoBlue

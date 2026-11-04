@@ -209,7 +209,8 @@ enum class AttendanceStatus(val arabicLabel: String) {
     ABSENT("غائب"),
     LATE("متأخر"),
     EXCUSED("مجاز"),
-    HOLIDAY("عطلة رسمية");
+    HOLIDAY("عطلة رسمية"),
+    UNRECORDED("بانتظار الرصد");
 
     companion object {
         val manualSelectableStatuses: List<AttendanceStatus> = listOf(
@@ -239,7 +240,7 @@ enum class NotificationType(val arabicLabel: String) {
 
 enum class AppSection(val arabicTitle: String) {
     DASHBOARD("الرئيسية"),
-    LIVE_OPERATIONS_RADAR("المتابعة الحية المباشرة (Live)"),
+    LIVE_OPERATIONS_RADAR("موجز الدوام اليومي"),
     ATTENDANCE("الحضور والغياب"),
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     EXAMS_GRADES("الامتحانات والدرجات"),
@@ -1125,8 +1126,8 @@ data class StudentRecord(
 }
 
 enum class GateScanMode(val arabicTitle: String, val shortLabel: String) {
-    CHECK_IN("تسجيل دخول (حضور - Check-In)", "تسجيل دخول (حضور)"),
-    CHECK_OUT("تسجيل مغادرة (انصراف - Check-Out)", "تسجيل مغادرة (انصراف)")
+    CHECK_IN("تسجيل دخول البوابة (حضور)", "تسجيل دخول (حضور)"),
+    CHECK_OUT("تسجيل مغادرة البوابة (انصراف)", "تسجيل مغادرة (انصراف)")
 }
 
 data class DailyGateLogEntry(

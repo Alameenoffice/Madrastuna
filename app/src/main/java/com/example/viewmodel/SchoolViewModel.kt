@@ -2086,7 +2086,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     anyStudentModified = true
                     stu.copy(
                         dailyAttendance = filteredDaily,
-                        todayStatus = if (todayWasStaleHoliday) AttendanceStatus.PRESENT.name else stu.todayStatus
+                        todayStatus = if (todayWasStaleHoliday) AttendanceStatus.UNRECORDED.name else stu.todayStatus
                     )
                 } else stu
             } else stu
@@ -4456,7 +4456,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
      * used across AttendanceScreen, Admin/Teacher Dashboard, and Parent/Student Dashboard.
      */
     fun getStudentStatusForDate(student: StudentRecord?, dateStr: String? = null): AttendanceStatus {
-        if (student == null) return AttendanceStatus.PRESENT
+        if (student == null) return AttendanceStatus.UNRECORDED
         val targetDate = ArabicTextNormalizer.normalizeDateIso(
             dateStr?.takeIf { it.isNotBlank() } ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         )
@@ -4471,20 +4471,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }?.value
         if (!directFromMap.isNullOrBlank()) {
             val parsed = runCatching { AttendanceStatus.valueOf(directFromMap.trim().uppercase()) }.getOrNull()
-            if (parsed != null && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
+            if (parsed != null && parsed != AttendanceStatus.UNRECORDED && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
                 return parsed
             }
         }
         val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate)
         if (cleanTodayDate == targetDate && student.todayStatus.isNotBlank()) {
             val parsed = runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()
-            if (parsed != null && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
-                return parsed
-            }
-        }
-        if (dateStr.isNullOrBlank() && student.todayStatus.isNotBlank()) {
-            val parsed = runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()
-            if (parsed != null && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
+            if (parsed != null && parsed != AttendanceStatus.UNRECORDED && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
                 return parsed
             }
         }
@@ -4492,7 +4486,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             it.studentId.trim() == student.id.trim() &&
                 ArabicTextNormalizer.normalizeDateIso(it.date) == targetDate
         }?.status
-        if (fromAttList != null && (fromAttList != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
+        if (fromAttList != null && fromAttList != AttendanceStatus.UNRECORDED && (fromAttList != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(targetDate) != null)) {
             return fromAttList
         }
 
@@ -4504,7 +4498,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         if (approvedLeave) return AttendanceStatus.EXCUSED
 
-        return AttendanceStatus.PRESENT
+        // If student scanned gate Check-In on targetDate, count as PRESENT
+        val gateLog = student.getGateLogForDate(targetDate)
+        if (gateLog != null && gateLog.checkInTime.isNotBlank()) {
+            return AttendanceStatus.PRESENT
+        }
+
+        return AttendanceStatus.UNRECORDED
     }
 
     /**
@@ -4521,7 +4521,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             val cleanDate = ArabicTextNormalizer.normalizeDateIso(rawDate.trim())
             if (cleanDate.isNotEmpty()) {
                 val parsed = runCatching { AttendanceStatus.valueOf(rawStatus.trim().uppercase()) }.getOrNull()
-                if (parsed != null && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanDate) != null)) {
+                if (parsed != null && parsed != AttendanceStatus.UNRECORDED && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanDate) != null)) {
                     map[cleanDate] = parsed
                 }
             }
@@ -4530,7 +4530,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             val cleanTodayDate = ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate)
             if (cleanTodayDate.isNotEmpty() && student.todayStatus.isNotBlank() && !map.containsKey(cleanTodayDate)) {
                 runCatching { AttendanceStatus.valueOf(student.todayStatus.trim().uppercase()) }.getOrNull()?.let { parsed ->
-                    if (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanTodayDate) != null) {
+                    if (parsed != AttendanceStatus.UNRECORDED && (parsed != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanTodayDate) != null)) {
                         map[cleanTodayDate] = parsed
                     }
                 }
@@ -4543,7 +4543,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             .asReversed()
             .forEach { entry ->
                 val cleanDate = ArabicTextNormalizer.normalizeDateIso(entry.date.trim())
-                if (cleanDate.isNotEmpty() && (entry.status != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanDate) != null)) {
+                if (cleanDate.isNotEmpty() && entry.status != AttendanceStatus.UNRECORDED && (entry.status != AttendanceStatus.HOLIDAY || getHolidayLabelForDate(cleanDate) != null)) {
                     map[cleanDate] = entry.status
                 }
             }
@@ -4565,7 +4565,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return getStudentStatusForDate(student, cleanDate)
         }
         val map = getStudentAttendanceMap(studentId)
-        return map[cleanDate] ?: AttendanceStatus.PRESENT
+        return map[cleanDate] ?: AttendanceStatus.UNRECORDED
     }
 
     /**
@@ -7654,7 +7654,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         archivedYearlySummaries = (listOf(archivedItem) + stu.archivedYearlySummaries).take(10),
                         dailyAttendance = emptyMap(),
                         dailyGateLog = emptyMap(),
-                        todayStatus = "PRESENT",
+                        todayStatus = AttendanceStatus.UNRECORDED.name,
                         todayStatusDate = "",
                         absenceDays = 0,
                         excusedDays = 0,

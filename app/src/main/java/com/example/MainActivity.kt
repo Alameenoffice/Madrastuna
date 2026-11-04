@@ -939,7 +939,7 @@ fun AuthenticatedMainPlatform(
         buildList {
             add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
             if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
-                add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.Radar)
+                add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
             }
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
             add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
@@ -993,7 +993,7 @@ fun AuthenticatedMainPlatform(
                     buildList {
                         add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
                         if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
-                            add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.Radar)
+                            add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
                         }
                         add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
                         add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
@@ -1159,7 +1159,7 @@ fun AuthenticatedMainPlatform(
                                                 title = section.arabicTitle,
                                                 subtitle = when (section) {
                                                     AppSection.LIVE_OPERATIONS_RADAR ->
-                                                        "رادار البث المباشر للصفوف وحركة البوابة الآن"
+                                                        "إحصائية اليوم لحضور الطلبة وحركة بوابة المدرسة"
                                                     AppSection.STUDENT_COMPREHENSIVE_ARCHIVE ->
                                                         "تقارير الأداء، المواظبة، والنتائج الشهرية والسنوية"
                                                     else -> null
@@ -1167,7 +1167,7 @@ fun AuthenticatedMainPlatform(
                                                 icon = icon,
                                                 selected = activeSection == section,
                                                 isDarkMode = isDarkMode,
-                                                statusDotColor = if (section == AppSection.LIVE_OPERATIONS_RADAR) Color(0xFF10B981) else null,
+                                                statusDotColor = null,
                                                 testTag = "drawer_nav_${section.name}",
                                                 onClick = {
                                                     viewModel.navigateToSection(section)
@@ -1480,16 +1480,18 @@ fun AuthenticatedMainPlatform(
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
-                                    softWrap = false
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${currentUser?.role?.arabicTitle ?: ""} • ${schoolConfig.schoolName}",
+                                    text = schoolConfig.schoolName,
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 10.5.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
                                     maxLines = 1,
-                                    softWrap = false
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -1666,18 +1668,6 @@ fun AuthenticatedMainPlatform(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    if (section == AppSection.LIVE_OPERATIONS_RADAR) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(
-                                                    if (selected) Color.White.copy(alpha = liveDotAlpha)
-                                                    else Color(0xFF10B981).copy(alpha = liveDotAlpha)
-                                                )
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                    }
                                     Icon(
                                         imageVector = icon,
                                         contentDescription = section.arabicTitle,

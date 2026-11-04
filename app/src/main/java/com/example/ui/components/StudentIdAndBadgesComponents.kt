@@ -189,11 +189,12 @@ fun DigitalStudentIdCardView(
         val raw = student.dailyAttendance[todayIso]
             ?: if (com.example.model.ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate) == todayIso) student.todayStatus else ""
         when (raw.trim().uppercase()) {
+            "PRESENT" -> "حاضر"
             "ABSENT" -> "غائب"
             "EXCUSED" -> "مجاز رسمياً"
             "LATE" -> "متأخر"
             "HOLIDAY" -> "عطلة رسمية"
-            else -> "حاضر"
+            else -> if (student.getGateLogForDate(todayIso)?.checkInTime?.isNotBlank() == true) "حاضر" else "بانتظار الرصد"
         }
     }
     val activeQrString = if (isWalletPassMode) student.walletBarcode else student.qrCodeValue
@@ -1068,9 +1069,9 @@ fun QrAttendanceScannerDialog(
                                 )
                                 Text(
                                     text = if (activeScanMode == GateScanMode.CHECK_IN) {
-                                        "وضع الدخول (Check-In): يوثق وقت وصول الطالب ويسجله (حاضر) ليوم $selectedDate"
+                                        "وضع تسجيل الدخول: يوثق وقت وصول الطالب ويسجله (حاضر) ليوم $selectedDate"
                                     } else {
-                                        "وضع المغادرة (Check-Out): يوثق وقت انصراف الطالب من بوابة المدرسة ليوم $selectedDate"
+                                        "وضع تسجيل المغادرة: يوثق وقت انصراف الطالب من بوابة المدرسة ليوم $selectedDate"
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextMutedGreen
