@@ -833,7 +833,7 @@ fun Base64AvatarImage(
     fallbackIcon: ImageVector,
     contentDescription: String,
     size: Dp = 52.dp,
-    tint: Color = MaterialTheme.colorScheme.primary
+    tint: Color = Color.White
 ) {
     val safeData = base64Data.orEmpty()
     val bitmap = remember(safeData) {
@@ -843,8 +843,26 @@ fun Base64AvatarImage(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(tint.copy(alpha = 0.14f))
-            .border(1.5.dp, tint.copy(alpha = 0.4f), CircleShape)
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF065F46),
+                        Color(0xFF042F2E)
+                    )
+                )
+            )
+            .border(
+                width = 1.5.dp,
+                brush = Brush.sweepGradient(
+                    colors = listOf(
+                        Color(0xFFFBBF24),
+                        Color(0xFF34D399),
+                        Color(0xFFF59E0B),
+                        Color(0xFFFBBF24)
+                    )
+                ),
+                shape = CircleShape
+            )
             .then(
                 if (bitmap != null && safeData.isNotBlank()) {
                     Modifier.clickable {
@@ -867,7 +885,7 @@ fun Base64AvatarImage(
             Icon(
                 imageVector = fallbackIcon,
                 contentDescription = contentDescription,
-                tint = tint,
+                tint = Color.White,
                 modifier = Modifier.size(size * 0.54f)
             )
         }
@@ -2703,93 +2721,275 @@ fun ThreeDIllustrationBox(
             }
 
             ThreeDIllustrationType.SOCIAL_COMMUNITY_3D -> {
-                // 3D Student Social Community & Interactive Hub (Overlapping 3D Chat Bubbles + Heart/Like, Star & Share Badges)
+                // Unique 3D Social Community & Connection Network Animation:
+                // 1) Ambient 3D Emerald & Cyan Space Aura
                 drawCircle(
                     brush = Brush.radialGradient(
-                        listOf(Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.18f).coerceAtMost(0.78f)), Color.Transparent),
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.22f).coerceAtMost(0.82f)),
+                            Color(0xFF06B6D4).copy(alpha = glowPulseAlpha * 0.45f),
+                            Color.Transparent
+                        ),
                         center = Offset(cx, cy),
-                        radius = w * 0.52f
+                        radius = w * 0.54f
                     ),
-                    radius = w * 0.52f,
+                    radius = w * 0.54f,
                     center = Offset(cx, cy)
                 )
 
-                // Back 3D Royal Blue/Emerald Community Card Bubble
-                drawRoundRect(
-                    brush = Brush.linearGradient(listOf(Color(0xFF0EA5E9), Color(0xFF059669))),
-                    topLeft = Offset(w * 0.12f, h * 0.14f),
-                    size = Size(w * 0.54f, h * 0.40f),
-                    cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx())
-                )
-                // Student avatar silhouette inside community bubble
-                drawCircle(color = Color.White, radius = w * 0.065f, center = Offset(w * 0.26f, h * 0.28f))
-                drawRoundRect(
-                    color = Color.White.copy(alpha = 0.9f),
-                    topLeft = Offset(w * 0.36f, h * 0.24f),
-                    size = Size(w * 0.22f, h * 0.045f),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                )
-                drawRoundRect(
-                    color = Color.White.copy(alpha = 0.7f),
-                    topLeft = Offset(w * 0.36f, h * 0.32f),
-                    size = Size(w * 0.16f, h * 0.04f),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                )
-
-                // Front 3D White Interactive Post Bubble
-                drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFF1F5F9))),
-                    topLeft = Offset(w * 0.28f, h * 0.38f),
-                    size = Size(w * 0.60f, h * 0.42f),
-                    cornerRadius = CornerRadius(15.dp.toPx(), 15.dp.toPx())
-                )
-                drawRoundRect(
-                    color = Color(0xFF10B981).copy(alpha = 0.45f),
-                    topLeft = Offset(w * 0.28f, h * 0.38f),
-                    size = Size(w * 0.60f, h * 0.42f),
-                    cornerRadius = CornerRadius(15.dp.toPx(), 15.dp.toPx()),
-                    style = Stroke(width = 1.6.dp.toPx())
-                )
-                drawRoundRect(
-                    color = Color(0xFF047857),
-                    topLeft = Offset(w * 0.36f, h * 0.48f),
-                    size = Size(w * 0.44f, h * 0.05f),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                )
-                drawRoundRect(
-                    color = Color(0xFF64748B).copy(alpha = 0.6f),
-                    topLeft = Offset(w * 0.36f, h * 0.57f),
-                    size = Size(w * 0.32f, h * 0.042f),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                )
-
-                // Floating 3D Coral-Rose Heart/Like Sphere on Top-Right
-                drawCircle(
-                    brush = Brush.radialGradient(listOf(Color(0xFFFDA4AF), Color(0xFFF43F5E), Color(0xFFBE123C))),
-                    radius = w * 0.13f,
-                    center = Offset(w * 0.78f, h * 0.24f)
-                )
-                // White heart icon inside sphere
-                val heart = Path().apply {
-                    val hx = w * 0.78f
-                    val hy = h * 0.25f
-                    moveTo(hx, hy + w * 0.055f)
-                    cubicTo(hx - w * 0.08f, hy + w * 0.01f, hx - w * 0.07f, hy - w * 0.06f, hx, hy - w * 0.02f)
-                    cubicTo(hx + w * 0.07f, hy - w * 0.06f, hx + w * 0.08f, hy + w * 0.01f, hx, hy + w * 0.055f)
-                    close()
+                // 2) 3 Tilted 3D Gyroscopic Orbital Rings rotating smoothly in 3D space
+                rotate(degrees = -26f + continuousRotation * 0.35f, pivot = Offset(cx, cy)) {
+                    drawOval(
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                Color(0xFF34D399).copy(alpha = 0.85f),
+                                Color(0xFFFEF08A).copy(alpha = 0.35f),
+                                Color(0xFF06B6D4).copy(alpha = 0.85f),
+                                Color(0xFF34D399).copy(alpha = 0.85f)
+                            ),
+                            center = Offset(cx, cy)
+                        ),
+                        topLeft = Offset(w * 0.05f, h * 0.32f),
+                        size = Size(w * 0.90f, h * 0.36f),
+                        style = Stroke(width = 2.2.dp.toPx())
+                    )
                 }
-                drawPath(heart, color = Color.White)
 
-                // Floating 3D Golden Star / Talent Badge on Bottom-Left
-                drawCircle(
-                    brush = Brush.radialGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))),
-                    radius = w * 0.13f,
-                    center = Offset(w * 0.22f, h * 0.72f)
+                rotate(degrees = 34f - continuousRotation * 0.45f, pivot = Offset(cx, cy)) {
+                    drawOval(
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                Color(0xFFFBBF24).copy(alpha = 0.85f),
+                                Color(0xFF10B981).copy(alpha = 0.30f),
+                                Color(0xFFFEF08A).copy(alpha = 0.90f),
+                                Color(0xFFFBBF24).copy(alpha = 0.85f)
+                            ),
+                            center = Offset(cx, cy)
+                        ),
+                        topLeft = Offset(w * 0.08f, h * 0.34f),
+                        size = Size(w * 0.84f, h * 0.32f),
+                        style = Stroke(width = 1.9.dp.toPx())
+                    )
+                }
+
+                rotate(degrees = 82f + continuousRotation * 0.25f, pivot = Offset(cx, cy)) {
+                    drawOval(
+                        color = Color(0xFFA7F3D0).copy(alpha = 0.50f),
+                        topLeft = Offset(w * 0.14f, h * 0.36f),
+                        size = Size(w * 0.72f, h * 0.28f),
+                        style = Stroke(width = 1.4.dp.toPx())
+                    )
+                }
+
+                // 3) Orbiting 3D Social Connection Nodes & Pulsing Laser Connection Lines
+                val orbitRadBase = Math.toRadians(continuousRotation.toDouble())
+                val nodePositions = listOf(
+                    Offset(
+                        x = cx + (w * 0.41f * kotlin.math.cos(orbitRadBase)).toFloat(),
+                        y = cy + (h * 0.22f * kotlin.math.sin(orbitRadBase)).toFloat()
+                    ),
+                    Offset(
+                        x = cx + (w * 0.38f * kotlin.math.cos(orbitRadBase + 2.1)).toFloat(),
+                        y = cy - (h * 0.28f * kotlin.math.sin(orbitRadBase + 2.1)).toFloat()
+                    ),
+                    Offset(
+                        x = cx + (w * 0.36f * kotlin.math.cos(orbitRadBase + 4.2)).toFloat(),
+                        y = cy + (h * 0.32f * kotlin.math.sin(orbitRadBase + 4.2)).toFloat()
+                    ),
+                    Offset(
+                        x = w * 0.18f,
+                        y = h * 0.24f + floatOffsetY * 0.6f
+                    ),
+                    Offset(
+                        x = w * 0.82f,
+                        y = h * 0.76f - floatOffsetY * 0.6f
+                    )
                 )
+
+                // Pulsing network connection lines between nodes and central sphere
+                val linePulseAlpha = (glowPulseAlpha + 0.30f).coerceIn(0.35f, 0.92f)
+                nodePositions.forEachIndexed { idx, nodeOffset ->
+                    drawLine(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFFEF08A).copy(alpha = linePulseAlpha),
+                                Color(0xFF34D399).copy(alpha = linePulseAlpha * 0.7f)
+                            ),
+                            start = Offset(cx, cy),
+                            end = nodeOffset
+                        ),
+                        start = Offset(cx, cy),
+                        end = nodeOffset,
+                        strokeWidth = 1.8.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    // Travelling energy photon dot along the connection line
+                    val pulseProgress = ((continuousRotation / 360f) * 3f + idx * 0.2f) % 1f
+                    val photonPos = Offset(
+                        x = cx + (nodeOffset.x - cx) * pulseProgress,
+                        y = cy + (nodeOffset.y - cy) * pulseProgress
+                    )
+                    drawCircle(
+                        color = Color(0xFFFEF08A),
+                        radius = w * 0.024f,
+                        center = photonPos
+                    )
+                }
+
+                // Cross-node mesh lines
+                drawLine(
+                    color = Color(0xFF6EE7B7).copy(alpha = 0.45f),
+                    start = nodePositions[0],
+                    end = nodePositions[1],
+                    strokeWidth = 1.2.dp.toPx()
+                )
+                drawLine(
+                    color = Color(0xFF6EE7B7).copy(alpha = 0.45f),
+                    start = nodePositions[1],
+                    end = nodePositions[2],
+                    strokeWidth = 1.2.dp.toPx()
+                )
+
+                // 4) Central 3D Glowing Social Core Sphere
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFA7F3D0),
+                            Color(0xFF10B981),
+                            Color(0xFF047857),
+                            Color(0xFF064E3B)
+                        ),
+                        center = Offset(cx - w * 0.06f, cy - h * 0.06f),
+                        radius = w * 0.26f
+                    ),
+                    radius = w * 0.22f,
+                    center = Offset(cx, cy)
+                )
+                // Golden 3D Equatorial Ring around the Core Sphere
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFF34D399))
+                    ),
+                    radius = w * 0.225f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 2.dp.toPx())
+                )
+                // 3D Specular Glass Highlight on Core Sphere
+                drawOval(
+                    brush = Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.72f), Color.Transparent)
+                    ),
+                    topLeft = Offset(cx - w * 0.13f, cy - h * 0.18f),
+                    size = Size(w * 0.18f, h * 0.10f)
+                )
+                // Crisp Pure White Connected Community Hub Icon inside Core Sphere
                 drawCircle(
                     color = Color.White,
-                    radius = w * 0.048f,
-                    center = Offset(w * 0.22f, h * 0.72f)
+                    radius = w * 0.042f,
+                    center = Offset(cx, cy - h * 0.045f)
+                )
+                val centerShoulders = Path().apply {
+                    moveTo(cx - w * 0.085f, cy + h * 0.075f)
+                    cubicTo(
+                        cx - w * 0.085f, cy + h * 0.01f,
+                        cx + w * 0.085f, cy + h * 0.01f,
+                        cx + w * 0.085f, cy + h * 0.075f
+                    )
+                    close()
+                }
+                drawPath(path = centerShoulders, color = Color.White)
+
+                // 5) Render the 3D Orbiting Social Nodes (Gold, Cyan, Emerald, Coral)
+                val nodePalettes = listOf(
+                    listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309)),
+                    listOf(Color(0xFFBAE6FD), Color(0xFF0EA5E9), Color(0xFF0369A1)),
+                    listOf(Color(0xFFA7F3D0), Color(0xFF10B981), Color(0xFF065F46)),
+                    listOf(Color(0xFFFDE68A), Color(0xFFD97706), Color(0xFF92400E)),
+                    listOf(Color(0xFF99F6E4), Color(0xFF14B8A6), Color(0xFF0F766E))
+                )
+                nodePositions.forEachIndexed { idx, pos ->
+                    val palette = nodePalettes[idx % nodePalettes.size]
+                    val nodeRadius = if (idx < 3) w * 0.072f else w * 0.062f
+                    // Outer node halo
+                    drawCircle(
+                        color = palette[0].copy(alpha = 0.35f),
+                        radius = nodeRadius * 1.45f,
+                        center = pos
+                    )
+                    // 3D Node Sphere
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = palette,
+                            center = Offset(pos.x - nodeRadius * 0.3f, pos.y - nodeRadius * 0.3f),
+                            radius = nodeRadius * 1.3f
+                        ),
+                        radius = nodeRadius,
+                        center = pos
+                    )
+                    // Pure white mini node core
+                    drawCircle(
+                        color = Color.White,
+                        radius = nodeRadius * 0.36f,
+                        center = pos
+                    )
+                }
+
+                // 6) Sculpted 3D Paper Plane / Interactive Share Icon soaring in 3D orbit (Top-Right)
+                val planeCx = w * 0.78f
+                val planeCy = h * 0.21f + floatOffsetY * 0.45f
+                // Glowing swoosh trail behind the 3D paper plane
+                val swooshPath = Path().apply {
+                    moveTo(w * 0.46f, h * 0.36f)
+                    cubicTo(
+                        w * 0.58f, h * 0.34f,
+                        w * 0.68f, h * 0.28f,
+                        planeCx - w * 0.04f, planeCy + h * 0.04f
+                    )
+                }
+                drawPath(
+                    path = swooshPath,
+                    brush = Brush.horizontalGradient(
+                        listOf(Color.Transparent, Color(0xFFFEF08A).copy(alpha = 0.85f))
+                    ),
+                    style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // Paper plane left/top bright wing
+                val topWing = Path().apply {
+                    moveTo(planeCx + w * 0.13f, planeCy - h * 0.09f) // Nose tip
+                    lineTo(planeCx - w * 0.11f, planeCy - h * 0.01f) // Left wingtip
+                    lineTo(planeCx - w * 0.02f, planeCy + h * 0.03f) // Inner fold
+                    close()
+                }
+                drawPath(
+                    path = topWing,
+                    brush = Brush.linearGradient(
+                        listOf(Color.White, Color(0xFFFEF08A))
+                    )
+                )
+                // Paper plane center deep shadow fold
+                val centerFold = Path().apply {
+                    moveTo(planeCx + w * 0.13f, planeCy - h * 0.09f) // Nose tip
+                    lineTo(planeCx - w * 0.02f, planeCy + h * 0.03f) // Inner fold
+                    lineTo(planeCx - w * 0.01f, planeCy + h * 0.10f) // Bottom tail
+                    close()
+                }
+                drawPath(
+                    path = centerFold,
+                    color = Color(0xFFD97706)
+                )
+                // Paper plane right/lower golden-white wing
+                val rightWing = Path().apply {
+                    moveTo(planeCx + w * 0.13f, planeCy - h * 0.09f) // Nose tip
+                    lineTo(planeCx - w * 0.02f, planeCy + h * 0.03f) // Inner fold
+                    lineTo(planeCx + w * 0.06f, planeCy + h * 0.09f) // Right wingtip
+                    close()
+                }
+                drawPath(
+                    path = rightWing,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
+                    )
                 )
             }
 
@@ -5477,6 +5677,123 @@ fun SectionWaveQuickCard3D(
         }
     }
 }
+
+/**
+ * سطح ترويسة متموج ثلاثي الأبعاد متعدد الطبقات (WaveLayeredHeaderSurface)
+ * يمنح ترويسة موحدة فاخرة بتدرج زمردي ملكي مع أمواج مائية وشبكة نقاط مضيئة
+ * لاحتواء العنوان والمجسم الثلاثي الأبعاد وأزرار التبويبات الفرعية بسلاسة تامة.
+ */
+@Composable
+fun WaveLayeredHeaderSurface(
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 26.dp,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Card(
+        modifier = modifier
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(cornerRadius),
+                ambientColor = Color(0xFF047857).copy(alpha = 0.28f),
+                spotColor = Color(0xFF047857).copy(alpha = 0.34f)
+            )
+            .clip(RoundedCornerShape(cornerRadius)),
+        shape = RoundedCornerShape(cornerRadius),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF047857)),
+        border = BorderStroke(1.2.dp, Color(0xFF34D399).copy(alpha = 0.45f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF059669),
+                            Color(0xFF047857),
+                            Color(0xFF065F46),
+                            Color(0xFF0F3D5E)
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(900f, 700f)
+                    )
+                )
+        ) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val w = size.width
+                val h = size.height
+
+                // Ambient emerald-gold glow
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = 0.25f),
+                            Color.Transparent
+                        ),
+                        center = Offset(w * 0.22f, h * 0.28f),
+                        radius = w * 0.55f
+                    ),
+                    radius = w * 0.55f,
+                    center = Offset(w * 0.22f, h * 0.28f)
+                )
+
+                // Subtle 3D dot matrix on top right & left corners
+                val step = 16.dp.toPx()
+                for (row in 0..5) {
+                    for (col in 0..6) {
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.08f),
+                            radius = 1.6.dp.toPx(),
+                            center = Offset(w - 18.dp.toPx() - col * step, 18.dp.toPx() + row * step)
+                        )
+                    }
+                }
+
+                // Multi-layer flowing wave ribbons along the bottom
+                val waveBack = Path().apply {
+                    moveTo(0f, h * 0.68f)
+                    cubicTo(
+                        w * 0.32f, h * 0.56f,
+                        w * 0.68f, h * 0.82f,
+                        w, h * 0.64f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(
+                    path = waveBack,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF10B981).copy(alpha = 0.20f),
+                            Color(0xFF042F2E).copy(alpha = 0.42f)
+                        ),
+                        startY = h * 0.56f,
+                        endY = h
+                    )
+                )
+
+                val waveFront = Path().apply {
+                    moveTo(0f, h * 0.80f)
+                    cubicTo(
+                        w * 0.38f, h * 0.92f,
+                        w * 0.72f, h * 0.70f,
+                        w, h * 0.84f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(
+                    path = waveFront,
+                    color = Color.White.copy(alpha = 0.07f)
+                )
+            }
+
+            content()
+        }
+    }
+}
+
 
 
 

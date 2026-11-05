@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.border
 import com.example.model.*
 import com.example.ui.components.Base64AvatarImage
 import com.example.ui.components.CompressedPhotoPickerButton
@@ -50,7 +51,9 @@ import com.example.ui.components.GlobalImageLightboxController
 import com.example.ui.components.HonorHeartReactionButton
 import com.example.ui.components.StudentActivitiesVectorIcon
 import com.example.ui.components.ThreeDHeroHeaderCard
+import com.example.ui.components.ThreeDIllustrationBox
 import com.example.ui.components.ThreeDIllustrationType
+import com.example.ui.components.WaveLayeredHeaderSurface
 import com.example.ui.theme.*
 import com.example.util.ImageCompressor
 import com.example.viewmodel.SchoolViewModel
@@ -59,6 +62,65 @@ private val SoftMintBg = Color(0xFFD1FAE5)
 private val CardBorderColor = Color(0xFFA7F3D0).copy(alpha = 0.55f)
 private val TextPrimaryColor = Color(0xFF0F172A)
 private val TextSecondaryColor = Color(0xFF475569)
+
+/**
+ * صورة المستخدم الدائرية الفاخرة بتدرج زمردي ملكي عميق (#065F46 إلى #042F2E)
+ * محاطة بحلقة ذهبية/زمردية رفيعة (1.5.dp) وبداخلها أيقونة المستخدم باللون الأبيض الناصع حصراً
+ */
+@Composable
+fun RoyalUserAvatarCircle(
+    photoBase64: String?,
+    userName: String,
+    size: Dp = 48.dp,
+    modifier: Modifier = Modifier
+) {
+    val safeData = photoBase64.orEmpty()
+    val bitmap = remember(safeData) {
+        ImageCompressor.decodeBase64ToImageBitmap(safeData, maxDimension = 240)
+    }
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF065F46),
+                        Color(0xFF042F2E)
+                    )
+                )
+            )
+            .border(
+                width = 1.5.dp,
+                brush = Brush.sweepGradient(
+                    colors = listOf(
+                        Color(0xFFFBBF24),
+                        Color(0xFF34D399),
+                        Color(0xFFF59E0B),
+                        Color(0xFFFBBF24)
+                    )
+                ),
+                shape = CircleShape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = userName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.Person,
+                contentDescription = userName,
+                tint = Color.White,
+                modifier = Modifier.size(size * 0.54f)
+            )
+        }
+    }
+}
 
 fun formatActivityAuthorRoleLabel(
     role: UserRole,
@@ -326,163 +388,174 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 3D Wave Hero Header + Unclipped Action & Sub-Tab Controls inside unified LazyColumn
+        // Single Unified 3D Wave Hero Header with integrated Profile Pill, 3 Sub-Tabs & Publish Button (Zero duplicate green box!)
         item(key = "student_activities_header_card") {
-            Column(
+            WaveLayeredHeaderSurface(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                cornerRadius = 26.dp
             ) {
-                ThreeDHeroHeaderCard(
-                    title = "مجتمع ونشاطات الطلبة",
-                    subtitle = "منصة الإبداع العلمي، الفنون، والمشاريع الطلابية بإشراف تربوي",
-                    rightPillText = "إبداعات الطلبة: ${approvedPosts.size}",
-                    rightPillIcon = Icons.Filled.EmojiEvents,
-                    leftPillText = "إشراف تربوي معتمد",
-                    leftPillIcon = Icons.Filled.VerifiedUser,
-                    illustrationType = ThreeDIllustrationType.SOCIAL_COMMUNITY_3D
-                )
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = DeepEmerald),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(DeepEmerald, EmeraldAccent, DeepForestGreen)
-                                )
-                            )
-                            .padding(14.dp)
+                    // 1) Top Glassmorphic Pills Row: "إشراف تربوي معتمد" & "ملفي الإبداعي"
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Top Profile & Status Strip
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.16f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.38f))
                         ) {
                             Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.White.copy(alpha = 0.18f),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
-                                    modifier = Modifier.size(34.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        StudentActivitiesVectorIcon(tint = Color.White, size = 18.dp)
-                                    }
-                                }
+                                Icon(
+                                    imageVector = Icons.Filled.VerifiedUser,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFEF08A),
+                                    modifier = Modifier.size(15.dp)
+                                )
                                 Text(
-                                    text = "أقسام ساحة النشاطات والإشراف",
-                                    style = MaterialTheme.typography.labelLarge,
+                                    text = "إشراف تربوي معتمد • ${approvedPosts.size} مشاركة",
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    softWrap = false
                                 )
                             }
+                        }
 
-                            if (currentUser != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.18f),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.40f)),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable {
-                                            selectedProfileUser = ProfileModalTarget(
-                                                userId = currentUser!!.id,
-                                                userName = currentUser!!.fullName,
-                                                userRole = currentUser!!.role,
-                                                userGrade = if (currentUser!!.role == UserRole.STUDENT) currentUser!!.gradeClass else "",
-                                                userPhotoBase64 = currentUser!!.photoBase64
-                                            )
-                                        }
-                                        .testTag("my_creative_profile_btn")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Person,
-                                            contentDescription = "ملفي الإبداعي",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Text(
-                                            text = "ملفي الإبداعي",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            softWrap = false
+                        if (currentUser != null) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.20f),
+                                border = BorderStroke(1.2.dp, Color(0xFFFEF08A).copy(alpha = 0.65f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable {
+                                        selectedProfileUser = ProfileModalTarget(
+                                            userId = currentUser!!.id,
+                                            userName = currentUser!!.fullName,
+                                            userRole = currentUser!!.role,
+                                            userGrade = if (currentUser!!.role == UserRole.STUDENT) currentUser!!.gradeClass else "",
+                                            userPhotoBase64 = currentUser!!.photoBase64
                                         )
                                     }
+                                    .testTag("my_creative_profile_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = "ملفي الإبداعي",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = "ملفي الإبداعي",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                             }
                         }
+                    }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Main Tabs Row: Unclipped 3D Tabs ("ساحة الإبداع" | "المراجعة" | "صندوق البلاغات")
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    // 2) Main Hero Title & Exclusive 3D Gyroscopic Social Sphere & Paper Plane Animation
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            ActivityHeaderTabChip(
-                                title = "ساحة الإبداع (${approvedPosts.size})",
-                                selected = selectedMainTab == 0,
-                                onClick = { selectedMainTab = 0 },
-                                modifier = Modifier.weight(1f)
+                            Text(
+                                text = "مجتمع ونشاطات الطلبة",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontSize = 21.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
                             )
-
-                            val pendingLabel = if (canModerate) {
-                                "المراجعة (${pendingPosts.size})"
-                            } else {
-                                "قيد المراجعة (${pendingPosts.size})"
-                            }
-                            if (canModerate || pendingPosts.isNotEmpty()) {
-                                ActivityHeaderTabChip(
-                                    title = pendingLabel,
-                                    selected = selectedMainTab == 1,
-                                    badgeHighlight = canModerate && pendingPosts.isNotEmpty(),
-                                    onClick = { selectedMainTab = 1 },
-                                    modifier = Modifier.weight(0.95f)
-                                )
-                            }
-
-                            if (isAdmin) {
-                                ActivityHeaderTabChip(
-                                    title = "صندوق البلاغات ($unresolvedReportsCount)",
-                                    selected = selectedMainTab == 2,
-                                    badgeHighlight = unresolvedReportsCount > 0,
-                                    onClick = { selectedMainTab = 2 },
-                                    modifier = Modifier.weight(1.12f)
-                                )
-                            }
+                            Text(
+                                text = "منصة الإبداع العلمي، الفنون، والمشاريع الطلابية التفاعلية بإشراف تربوي",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White.copy(alpha = 0.92f),
+                                lineHeight = 18.sp
+                            )
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        ThreeDIllustrationBox(
+                            type = ThreeDIllustrationType.SOCIAL_COMMUNITY_3D,
+                            modifier = Modifier.size(98.dp)
+                        )
+                    }
 
-                    // Sanction Warning Banner if current user is muted
+                    // 3) Seamless Integrated 3-Tab Switcher ("ساحة الإبداع" | "المراجعة" | "صندوق البلاغات")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ActivityHeaderTabChip(
+                            title = "ساحة الإبداع (${approvedPosts.size})",
+                            selected = selectedMainTab == 0,
+                            onClick = { selectedMainTab = 0 },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        val pendingLabel = if (canModerate) {
+                            "المراجعة (${pendingPosts.size})"
+                        } else {
+                            "قيد المراجعة (${pendingPosts.size})"
+                        }
+                        if (canModerate || pendingPosts.isNotEmpty()) {
+                            ActivityHeaderTabChip(
+                                title = pendingLabel,
+                                selected = selectedMainTab == 1,
+                                badgeHighlight = canModerate && pendingPosts.isNotEmpty(),
+                                onClick = { selectedMainTab = 1 },
+                                modifier = Modifier.weight(0.95f)
+                            )
+                        }
+
+                        if (isAdmin) {
+                            ActivityHeaderTabChip(
+                                title = "صندوق البلاغات ($unresolvedReportsCount)",
+                                selected = selectedMainTab == 2,
+                                badgeHighlight = unresolvedReportsCount > 0,
+                                onClick = { selectedMainTab = 2 },
+                                modifier = Modifier.weight(1.12f)
+                            )
+                        }
+                    }
+
+                    // 4) Sanction Warning Banner if current user is muted
                     if (myProfile.isPostingMuted() || myProfile.isInteractionMuted()) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = DangerRed.copy(alpha = 0.22f),
                             border = BorderStroke(1.dp, Color(0xFFFFB4AB)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 modifier = Modifier.padding(10.dp),
@@ -516,12 +589,12 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         }
                     }
 
-                    // Publish New Activity Button (Soft Royal Emerald & Gold Luxury Capsule)
+                    // 5) Publish New Activity Button integrated inside the bottom of the Wave Header
                     val isMuted = myProfile.isPostingMuted()
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .height(46.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .clickable(enabled = !isMuted) {
                                 editingPost = null
@@ -532,7 +605,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         color = Color.Transparent,
                         border = BorderStroke(
                             1.2.dp,
-                            if (isMuted) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.65f)
+                            if (isMuted) Color.White.copy(alpha = 0.25f) else Color(0xFFFEF08A).copy(alpha = 0.70f)
                         )
                     ) {
                         Box(
@@ -550,8 +623,8 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                         Brush.horizontalGradient(
                                             listOf(
                                                 Color(0xFF043D2E),
-                                                Color(0xFF0D6B4E),
-                                                Color(0xFF157A58)
+                                                Color(0xFF065F46),
+                                                Color(0xFF047857)
                                             )
                                         )
                                     }
@@ -566,14 +639,14 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                 Surface(
                                     shape = CircleShape,
                                     color = Color.White.copy(alpha = 0.20f),
-                                    modifier = Modifier.size(28.dp)
+                                    modifier = Modifier.size(26.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             Icons.Default.AddCircleOutline,
                                             contentDescription = null,
-                                            tint = if (isMuted) Color.White.copy(alpha = 0.6f) else Color.White,
-                                            modifier = Modifier.size(17.dp)
+                                            tint = if (isMuted) Color.White.copy(alpha = 0.6f) else Color(0xFFFEF08A),
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
                                 }
@@ -585,7 +658,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                         "+ نشر نشاط أو إبداع طلابي جديد"
                                     },
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 13.5.sp,
+                                    fontSize = 13.sp,
                                     color = if (isMuted) Color.White.copy(alpha = 0.65f) else Color.White,
                                     maxLines = 1,
                                     softWrap = false
@@ -594,7 +667,6 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         }
                     }
                 }
-            }
             }
         }
 
@@ -1112,16 +1184,16 @@ fun StudentActivityPostCard(
     var editingReplyValue by remember { mutableStateOf("") }
 
     val schoolConfig by viewModel.schoolConfig.collectAsState()
-    val formattedAuthorSubtitle = remember(post.authorRole, post.authorGradeClass, post.authorUserId, accounts, post.createdAt, schoolConfig.schoolStage) {
-        val rolePart = formatActivityAuthorRoleLabel(
+    val authorRoleOnlyLabel = remember(post.authorRole, post.authorGradeClass, post.authorUserId, accounts, schoolConfig.schoolStage) {
+        formatActivityAuthorRoleLabel(
             role = post.authorRole,
             gradeClass = post.authorGradeClass,
             authorUserId = post.authorUserId,
             accounts = accounts,
             schoolStage = schoolConfig.schoolStage
         )
-        "$rolePart • ${post.createdAt}"
     }
+    var showPostActionsMenu by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
@@ -1136,7 +1208,7 @@ fun StudentActivityPostCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Top Author Row + Follow + Category
+            // 1) الصف العلوي للمنشور (يميناً: صورة المستخدم 48.dp | وسطاً: الاسم + الصفة والصف + التاريخ في 3 أسطر مستقلة | يساراً: زر + متابعة منفصل تماماً)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1144,7 +1216,7 @@ fun StudentActivityPostCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
@@ -1159,93 +1231,114 @@ fun StudentActivityPostCard(
                             )
                         }
                 ) {
-                    // Glowing 3D Ring around Author Avatar
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.sweepGradient(
-                                    listOf(
-                                        Color(0xFF059669),
-                                        Color(0xFFFBBF24),
-                                        Color(0xFF10B981),
-                                        Color(0xFF059669)
-                                    )
-                                )
-                            )
-                            .padding(2.5.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Base64AvatarImage(
-                            base64Data = post.authorPhotoBase64,
-                            fallbackIcon = Icons.Filled.Person,
-                            contentDescription = post.authorName,
-                            size = 44.dp
-                        )
-                    }
+                    // يميناً: صورة المستخدم الدائرية (48.dp) بتدرج زمردي ملكي عميق وأيقونة بيضاء ناصعة
+                    RoyalUserAvatarCircle(
+                        photoBase64 = post.authorPhotoBase64,
+                        userName = post.authorName,
+                        size = 48.dp
+                    )
 
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = post.authorName,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            // Follow Button (if not current user)
-                            if (myUserId.isNotBlank() && post.authorUserId != myUserId) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = if (isAuthorFollowed) SoftMintBg else DeepEmerald,
-                                    border = BorderStroke(1.dp, DeepEmerald),
-                                    modifier = Modifier.clickable {
-                                        viewModel.toggleFollowUser(post.authorUserId)
-                                    }
-                                ) {
-                                    Text(
-                                        text = if (isAuthorFollowed) "متابَع" else "+ متابعة",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isAuthorFollowed) DeepEmerald else Color.White,
-                                        fontSize = 10.sp,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
+                    // وسطاً: Column يأخذ Modifier.weight(1f) بـ 3 أسطر واضحة ومستقلة تماماً بدون أي تداخل
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        // السطر الأول: اسم الناشر فقط
                         Text(
-                            text = formattedAuthorSubtitle,
+                            text = post.authorName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        // السطر الثاني: الصفة والصف
+                        Text(
+                            text = authorRoleOnlyLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = DeepEmerald,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        // السطر الثالث: التاريخ والوقت
+                        Text(
+                            text = post.createdAt,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp
+                            fontSize = 10.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                // Category Badge
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = SoftMintBg.copy(alpha = 0.65f),
-                    border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.35f))
-                ) {
-                    Text(
-                        text = post.category,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = DeepEmerald,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                // يساراً (أقصى يسار الصف العلوي): زر + متابعة / متابَع منفصل تماماً
+                if (myUserId.isNotBlank() && post.authorUserId != myUserId) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (isAuthorFollowed) SoftMintBg else DeepEmerald,
+                        border = BorderStroke(1.dp, DeepEmerald),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable {
+                                viewModel.toggleFollowUser(post.authorUserId)
+                            }
+                            .testTag("follow_author_btn_${post.id}")
+                    ) {
+                        Text(
+                            text = if (isAuthorFollowed) "متابَع ✓" else "+ متابعة",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isAuthorFollowed) DeepEmerald else Color.White,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 2) شارة التصنيف (ابتكار ومشاريع علمية...) في سطر مستقل فوق عنوان المنشور مباشرةً
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = SoftMintBg.copy(alpha = 0.70f),
+                    border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.40f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesomeMotion,
+                            contentDescription = null,
+                            tint = DeepEmerald,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = post.category,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepEmerald,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Post Title & Content
             if (post.title.isNotBlank()) {
@@ -1294,12 +1387,11 @@ fun StudentActivityPostCard(
             HorizontalDivider(color = CardBorderColor.copy(alpha = 0.6f))
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Interaction & Moderation Bar
-            @OptIn(ExperimentalLayoutApi::class)
-            FlowRow(
+            // 3) السطر السفلي الموحد (Single Row): يميناً (الإعجاب والتعليقات) ويساراً (إجراءات رقابية / قائمة خيارات منبثقة)
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1346,7 +1438,7 @@ fun StudentActivityPostCard(
                                 Icons.Default.ChatBubbleOutline,
                                 contentDescription = "التعليقات",
                                 tint = DeepEmerald,
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Text(
                                 text = "التعليقات (${post.totalCommentsAndRepliesCount})",
@@ -1360,101 +1452,146 @@ fun StudentActivityPostCard(
                     }
                 }
 
-                // Right Side: Edit (Owner ONLY) / Delete (Owner or Admin) / Report / Admin Sanction Capsule
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (canEditPost) {
-                        IconButton(
-                            onClick = onEditPost,
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription = "تعديل المنشور",
-                                tint = DeepEmerald,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                    if (canDeletePost) {
-                        IconButton(
-                            onClick = { viewModel.deleteStudentActivityPost(post.id) },
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.DeleteOutline,
-                                contentDescription = "حذف المنشور",
-                                tint = DangerRed,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    if (!isOwner) {
-                        // Report Violation Button
-                        IconButton(
-                            onClick = {
-                                onReportTarget(
-                                    ReportModalTarget(
-                                        postId = post.id,
-                                        targetType = ViolationTargetType.POST,
-                                        violatorId = post.authorUserId,
-                                        violatorStudentId = post.authorStudentId,
-                                        violatorName = post.authorName,
-                                        violatorRole = post.authorRole,
-                                        contentPreview = "${post.title} - ${post.content}".take(120)
-                                    )
-                                )
-                            },
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            VectorFlagReportIcon(tint = GoldDeep, size = 17.dp)
-                        }
-                    }
-
-                    if (isAdmin && !isOwner) {
-                        // Admin Direct Sanction Horizontal Capsule Button
+                // يساراً: زر موحد يفتح القائمة المنبثقة للإجراءات الرقابية أو التعديل/الحذف/الإبلاغ
+                if (canEditPost || canDeletePost || !isOwner) {
+                    Box {
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFECFDF5),
-                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                            shape = RoundedCornerShape(50),
+                            color = if (isAdmin && !isOwner) Color(0xFFECFDF5) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isAdmin && !isOwner) Color(0xFFA7F3D0) else CardBorderColor
+                            ),
                             modifier = Modifier
-                                .wrapContentWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    onOpenAdminSanction(
-                                        SanctionModalTarget(
-                                            userId = post.authorUserId,
-                                            studentId = post.authorStudentId,
-                                            userName = post.authorName,
-                                            userRole = post.authorRole
-                                        )
-                                    )
-                                }
-                                .testTag("admin_sanction_post_btn_${post.id}")
+                                .clip(RoundedCornerShape(50))
+                                .clickable { showPostActionsMenu = true }
+                                .testTag(if (isAdmin && !isOwner) "admin_sanction_post_btn_${post.id}" else "post_options_menu_btn_${post.id}")
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .wrapContentWidth()
-                                    .padding(PaddingValues(horizontal = 12.dp, vertical = 6.dp)),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Shield,
-                                    contentDescription = "إجراءات رقابية",
+                                    imageVector = if (isAdmin && !isOwner) Icons.Default.Shield else Icons.Default.MoreVert,
+                                    contentDescription = "إجراءات المنشور",
                                     tint = Color(0xFF059669),
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = "إجراءات رقابية",
+                                    text = if (isAdmin && !isOwner) "إجراءات رقابية" else "خيارات",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color(0xFF065F46),
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     softWrap = false
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showPostActionsMenu,
+                            onDismissRequest = { showPostActionsMenu = false }
+                        ) {
+                            if (isAdmin && !isOwner) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "إجراءات رقابية وتنبيه الناشر",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepEmerald
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Shield,
+                                            contentDescription = null,
+                                            tint = DeepEmerald
+                                        )
+                                    },
+                                    onClick = {
+                                        showPostActionsMenu = false
+                                        onOpenAdminSanction(
+                                            SanctionModalTarget(
+                                                userId = post.authorUserId,
+                                                studentId = post.authorStudentId,
+                                                userName = post.authorName,
+                                                userRole = post.authorRole
+                                            )
+                                        )
+                                    }
+                                )
+                            }
+                            if (canEditPost) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "تعديل المنشور",
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepEmerald
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = null,
+                                            tint = DeepEmerald
+                                        )
+                                    },
+                                    onClick = {
+                                        showPostActionsMenu = false
+                                        onEditPost()
+                                    }
+                                )
+                            }
+                            if (!isOwner) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "الإبلاغ عن مخالفة في المنشور",
+                                            fontWeight = FontWeight.Bold,
+                                            color = GoldDeep
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        VectorFlagReportIcon(tint = GoldDeep, size = 18.dp)
+                                    },
+                                    onClick = {
+                                        showPostActionsMenu = false
+                                        onReportTarget(
+                                            ReportModalTarget(
+                                                postId = post.id,
+                                                targetType = ViolationTargetType.POST,
+                                                violatorId = post.authorUserId,
+                                                violatorStudentId = post.authorStudentId,
+                                                violatorName = post.authorName,
+                                                violatorRole = post.authorRole,
+                                                contentPreview = "${post.title} - ${post.content}".take(120)
+                                            )
+                                        )
+                                    }
+                                )
+                            }
+                            if (canDeletePost) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "حذف المنشور نهائياً",
+                                            fontWeight = FontWeight.Bold,
+                                            color = DangerRed
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = null,
+                                            tint = DangerRed
+                                        )
+                                    },
+                                    onClick = {
+                                        showPostActionsMenu = false
+                                        viewModel.deleteStudentActivityPost(post.id)
+                                    }
                                 )
                             }
                         }
