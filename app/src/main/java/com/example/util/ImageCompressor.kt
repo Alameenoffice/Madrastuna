@@ -151,5 +151,53 @@ object ImageCompressor {
             null
         }
     }
+
+    fun compressBitmapToBase64Jpeg(
+        originalBitmap: Bitmap,
+        maxDimension: Int = MAX_GENERAL_DIMENSION
+    ): String? {
+        return try {
+            val maxSide = maxOf(originalBitmap.width, originalBitmap.height)
+            val targetWidth: Int
+            val targetHeight: Int
+            if (maxSide > maxDimension) {
+                val ratio = maxDimension.toFloat() / maxSide.toFloat()
+                targetWidth = (originalBitmap.width * ratio).roundToInt().coerceAtLeast(1)
+                targetHeight = (originalBitmap.height * ratio).roundToInt().coerceAtLeast(1)
+            } else {
+                targetWidth = originalBitmap.width.coerceAtLeast(1)
+                targetHeight = originalBitmap.height.coerceAtLeast(1)
+            }
+
+            val canvasBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(canvasBitmap)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            canvas.drawBitmap(
+                originalBitmap,
+                Rect(0, 0, originalBitmap.width, originalBitmap.height),
+                Rect(0, 0, targetWidth, targetHeight),
+                paint
+            )
+
+            var quality = JPEG_QUALITY
+            val outputStream = ByteArrayOutputStream()
+            canvasBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+            var jpegBytes = outputStream.toByteArray()
+            while (jpegBytes.size > 95 * 1024 && quality > 45) {
+                quality -= 10
+                outputStream.reset()
+                canvasBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+                jpegBytes = outputStream.toByteArray()
+            }
+            outputStream.close()
+            canvasBitmap.recycle()
+
+            val encoded = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
+            "data:image/jpeg;base64,$encoded"
+        } catch (t: Throwable) {
+            null
+        }
+    }
 }
 

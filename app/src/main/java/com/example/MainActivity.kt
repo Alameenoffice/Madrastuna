@@ -925,7 +925,7 @@ fun AuthenticatedMainPlatform(
             if (featureSettings.honorRollEnabled) {
                 add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
             }
-            add(AppSection.TEACHER_EVALUATION to Icons.Filled.Stars)
+            add(AppSection.TEACHER_EVALUATION to Icons.Filled.Star)
             if (schoolConfig.schoolType == SchoolType.PRIVATE &&
                 featureSettings.tuitionEnabled &&
                 currentUser?.role != UserRole.TEACHER
@@ -984,7 +984,7 @@ fun AuthenticatedMainPlatform(
                         if (featureSettings.honorRollEnabled) {
                             add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
                         }
-                        add(AppSection.TEACHER_EVALUATION to Icons.Filled.Stars)
+                        add(AppSection.TEACHER_EVALUATION to Icons.Filled.Star)
                         add(AppSection.REPORTS_CHAT to Icons.Filled.Forum)
                         if (featureSettings.eventsGalleryEnabled) {
                             add(AppSection.EVENTS_NEWS to Icons.Filled.PhotoLibrary)

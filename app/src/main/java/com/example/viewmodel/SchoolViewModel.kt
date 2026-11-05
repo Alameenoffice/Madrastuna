@@ -1964,12 +1964,47 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun normalizeCanonicalDateKey(rawDate: String): String {
+        val ascii = ArabicTextNormalizer.normalizeDigitsToAscii(rawDate.trim())
+        if (ascii.isBlank()) return ""
+        val parts = ascii.split("-", "/", ".").map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.size == 3) {
+            val p0 = parts[0]
+            val p1 = parts[1]
+            val p2 = parts[2]
+            if (p0.length == 4) {
+                return "${p0}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}"
+            } else if (p2.length == 4) {
+                return "${p2}-${p1.padStart(2, '0')}-${p0.padStart(2, '0')}"
+            }
+        }
+        val digits = ascii.filter { it.isDigit() }
+        if (digits.length == 8) {
+            val first4 = digits.substring(0, 4).toIntOrNull() ?: 0
+            return if (first4 in 1900..2100) {
+                "${digits.substring(0, 4)}-${digits.substring(4, 6)}-${digits.substring(6, 8)}"
+            } else {
+                "${digits.substring(4, 8)}-${digits.substring(2, 4)}-${digits.substring(0, 2)}"
+            }
+        }
+        return ArabicTextNormalizer.normalizeDateIso(ascii)
+    }
+
+    fun areDatesEquivalent(dateA: String, dateB: String): Boolean {
+        val normA = normalizeCanonicalDateKey(dateA)
+        val normB = normalizeCanonicalDateKey(dateB)
+        if (normA.isNotEmpty() && normB.isNotEmpty() && normA == normB) return true
+        val digitsA = ArabicTextNormalizer.normalizeDigitsToAscii(dateA).filter { it.isDigit() }
+        val digitsB = ArabicTextNormalizer.normalizeDigitsToAscii(dateB).filter { it.isDigit() }
+        return digitsA.length >= 6 && digitsA == digitsB
+    }
+
     fun getHolidayLabelForDate(dateIso: String): String? {
-        val cleanDate = ArabicTextNormalizer.normalizeDigitsToAscii(dateIso.trim())
+        val cleanDate = normalizeCanonicalDateKey(dateIso)
         if (cleanDate.isBlank()) return null
         val cfg = _holidaysConfig.value
         val official = cfg.officialHolidays.firstOrNull {
-            ArabicTextNormalizer.normalizeDigitsToAscii(it.dateIso.trim()) == cleanDate
+            areDatesEquivalent(it.dateIso, cleanDate)
         }
         if (official != null) {
             return official.title.ifBlank { "عطلة رسمية" }
@@ -3602,6 +3637,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _students.value = updatedStudents
         repo.saveStudents(updatedStudents, sid)
 
+        if (status == AttendanceStatus.PRESENT || status == AttendanceStatus.LATE || status == AttendanceStatus.ABSENT || status == AttendanceStatus.EXCUSED) {
+            if (repo.getFirstAttendanceTimestampForDate(cleanDate, sid) == 0L) {
+                repo.setFirstAttendanceTimestampForDate(cleanDate, System.currentTimeMillis(), sid)
+            }
+        }
+
         showToastAlert("تم حفظ حالة (${status.arabicLabel}) للطالب ${student.studentName}", isSuccess = true)
 
         if (status == AttendanceStatus.ABSENT || status == AttendanceStatus.LATE) {
@@ -3615,6 +3656,116 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 targetItemId = deterministicId
             )
         }
+    }
+
+    fun getFirstAttendanceTimestamp(dateIso: String): Long {
+        val sid = _schoolConfig.value.schoolId
+        val cleanDate = normalizeCanonicalDateKey(dateIso)
+        if (sid.isBlank() || cleanDate.isBlank()) return 0L
+        return repo.getFirstAttendanceTimestampForDate(cleanDate, sid)
+    }
+
+    fun toggleAutoAbsenceEnabled(enabled: Boolean) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val updatedFeatures = _featureSettings.value.copy(autoAbsenceEnabled = enabled).normalized()
+        _featureSettings.value = updatedFeatures
+        val updatedConfig = _schoolConfig.value.copy(featureSettings = updatedFeatures)
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+        showToastAlert(
+            if (enabled) "تم تفعيل الاحتساب التلقائي للغياب بعد بدء الرصد الصباحي"
+            else "تم إيقاف الاحتساب التلقائي للغياب",
+            isSuccess = true
+        )
+    }
+
+    fun updateAutoAbsenceDelayMinutes(minutes: Int) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val coerced = minutes.coerceIn(15, 720)
+        val updatedFeatures = _featureSettings.value.copy(autoAbsenceDelayMinutes = coerced).normalized()
+        _featureSettings.value = updatedFeatures
+        val updatedConfig = _schoolConfig.value.copy(featureSettings = updatedFeatures)
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+        val hoursLabel = if (coerced % 60 == 0) "${coerced / 60} ساعة" else "$coerced دقيقة"
+        showToastAlert("تم ضبط مهلة الاحتساب التلقائي للغياب إلى ($hoursLabel) من أول تحضير", isSuccess = true)
+    }
+
+    fun checkAndRunAutoAbsenceForDate(dateIso: String, forceNow: Boolean = false): Int {
+        val sid = _schoolConfig.value.schoolId
+        if (sid.isBlank()) return 0
+        val cleanDate = normalizeCanonicalDateKey(dateIso)
+        if (cleanDate.isBlank()) return 0
+        if (isDateHoliday(cleanDate)) return 0
+        val feat = _featureSettings.value
+        if (!feat.autoAbsenceEnabled && !forceNow) return 0
+
+        val firstTs = repo.getFirstAttendanceTimestampForDate(cleanDate, sid)
+        if (firstTs <= 0L && !forceNow) return 0
+        val delayMs = feat.autoAbsenceDelayMinutes.coerceIn(15, 720) * 60_000L
+        val now = System.currentTimeMillis()
+        if (!forceNow && (now - firstTs) < delayMs) return 0
+
+        val activeStudents = _students.value.filter {
+            (it.schoolId.isEmpty() || it.schoolId == sid) &&
+                it.isActive &&
+                !it.isAttendanceBlockedByEnrollmentStatus(cleanDate)
+        }
+        val unrecordedStudents = activeStudents.filter { stu ->
+            getStudentStatusForDate(stu, cleanDate) == AttendanceStatus.UNRECORDED
+        }
+        if (unrecordedStudents.isEmpty()) return 0
+
+        val newEntries = unrecordedStudents.map { stu ->
+            val stuId = stu.id.trim()
+            AttendanceEntry(
+                id = "attendance_${cleanDate}_$stuId",
+                studentId = stuId,
+                studentName = stu.studentName,
+                gradeClass = stu.gradeClass,
+                sectionName = stu.sectionName,
+                date = cleanDate,
+                status = AttendanceStatus.ABSENT,
+                note = "احتساب غياب تلقائي بعد انتهاء مهلة الحضور الصباحي",
+                schoolId = sid
+            )
+        }
+        val unrecordedIds = unrecordedStudents.map { it.id.trim() }.toSet()
+        val remainingAtt = _attendance.value.filterNot {
+            it.studentId.trim() in unrecordedIds &&
+                normalizeCanonicalDateKey(it.date) == cleanDate
+        }
+        val mergedAtt = newEntries + remainingAtt
+        _attendance.value = mergedAtt
+        repo.saveAttendance(mergedAtt, sid)
+
+        val updatedStudents = _students.value.map { stu ->
+            if (stu.id.trim() in unrecordedIds) {
+                val updatedDaily = linkedMapOf<String, String>()
+                stu.dailyAttendance.forEach { (k, v) ->
+                    val nk = normalizeCanonicalDateKey(k)
+                    if (nk.isNotEmpty() && v.isNotBlank()) updatedDaily[nk] = v.trim().uppercase()
+                }
+                updatedDaily[cleanDate] = AttendanceStatus.ABSENT.name
+                val newAbsenceDays = updatedDaily.count { (dKey, stVal) ->
+                    stVal == AttendanceStatus.ABSENT.name && getHolidayLabelForDate(dKey) == null
+                }
+                stu.copy(
+                    dailyAttendance = updatedDaily,
+                    todayStatus = AttendanceStatus.ABSENT.name,
+                    todayStatusDate = cleanDate,
+                    absenceDays = newAbsenceDays
+                )
+            } else stu
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+
+        showToastAlert(
+            "تم احتساب الغياب التلقائي لـ (${unrecordedStudents.size}) طالب لم يُسجّل حضورهم بعد انتهاء المهلة الصباحية",
+            isSuccess = true
+        )
+        return unrecordedStudents.size
     }
 
     /**
@@ -3754,6 +3905,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
             _students.value = updatedStudents
             repo.saveStudents(updatedStudents, sid)
+
+            if (repo.getFirstAttendanceTimestampForDate(cleanDate, sid) == 0L) {
+                repo.setFirstAttendanceTimestampForDate(cleanDate, System.currentTimeMillis(), sid)
+            }
 
             val arrivalMsg = "تسجيل دخول للمدرسة: وصل الطالب ${matchedStudent.fullNameWithFather} إلى المدرسة بأمان في تمام الساعة $timeNow."
             showToastAlert("تم تسجيل دخول الطالب (${matchedStudent.fullNameWithFather}) الساعة $timeNow وإبلاغ ولي أمره فوراً", isSuccess = true)
@@ -4700,7 +4855,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         teacherName: String,
         dailyPreparation: String,
         homeworkDetails: String,
-        dueDate: String
+        dueDate: String,
+        attachmentImageBase64: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val cleanPrep = InputSanitizer.sanitize(dailyPreparation)
@@ -4709,6 +4865,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val sid = _schoolConfig.value.schoolId
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val hw = HomeworkItem(
             id = "hw_${UUID.randomUUID().toString().take(6)}",
             gradeClass = gradeClass,
@@ -4718,7 +4875,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             dailyPreparation = cleanPrep,
             homeworkDetails = InputSanitizer.sanitize(homeworkDetails),
             dueDate = InputSanitizer.sanitize(dueDate),
-            createdAt = "اليوم",
+            createdAt = todayIso,
+            attachmentImageBase64 = attachmentImageBase64.trim(),
             schoolId = sid
         )
         val updated = listOf(hw) + _homeworks.value
@@ -4747,7 +4905,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         teacherName: String,
         dailyPreparation: String,
         homeworkDetails: String,
-        dueDate: String
+        dueDate: String,
+        attachmentImageBase64: String? = null
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val cleanPrep = InputSanitizer.sanitize(dailyPreparation)
@@ -4765,7 +4924,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     teacherName = InputSanitizer.sanitize(teacherName),
                     dailyPreparation = cleanPrep,
                     homeworkDetails = InputSanitizer.sanitize(homeworkDetails),
-                    dueDate = InputSanitizer.sanitize(dueDate)
+                    dueDate = InputSanitizer.sanitize(dueDate),
+                    attachmentImageBase64 = attachmentImageBase64?.trim() ?: hw.attachmentImageBase64
                 )
             } else hw
         }
@@ -5132,6 +5292,28 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert("تم حذف البلاغ الرسمي نهائياً", isSuccess = true)
     }
 
+    fun markReportsAsReadByParent(reportIds: Set<String>) {
+        if (reportIds.isEmpty()) return
+        val user = _currentUser.value ?: return
+        if (user.role != UserRole.PARENT && user.role != UserRole.STUDENT) return
+        val sid = _schoolConfig.value.schoolId
+        val nowLabel = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        var anyUpdated = false
+        val updated = _reports.value.map { rep ->
+            if (rep.id in reportIds && !rep.isReadByParent) {
+                anyUpdated = true
+                rep.copy(
+                    isReadByParent = true,
+                    readAtTimestamp = nowLabel
+                )
+            } else rep
+        }
+        if (anyUpdated) {
+            _reports.value = updated
+            repo.saveReports(updated, sid)
+        }
+    }
+
     fun sendDirectChatMessage(
         contact: ChatContactItem,
         messageText: String,
@@ -5439,11 +5621,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         student: StudentRecord,
         behaviorType: DailyBehaviorType,
         subjectName: String = "المتابعة اليومية",
-        customNote: String = ""
+        customNote: String = "",
+        targetDateIso: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val effectiveDate = normalizeCanonicalDateKey(targetDateIso.ifBlank { _selectedAttendanceDate.value.ifBlank { today } }).ifBlank { today }
+        val holidayReason = getHolidayLabelForDate(effectiveDate)
+        if (holidayReason != null) {
+            showToastAlert("يوم عطلة رسمية معتمدة ($holidayReason) — جميع إجراءات الرصد والسلوك مقفلة في هذا التاريخ", isSuccess = false)
+            return
+        }
         val teacherName = _currentUser.value?.fullName ?: "كادر المدرسة"
         val finalNote = InputSanitizer.sanitize(customNote).ifBlank { behaviorType.arabicLabel }
 
@@ -5457,7 +5646,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             behaviorType = behaviorType,
             note = finalNote,
             teacherName = teacherName,
-            date = today,
+            date = effectiveDate,
             schoolId = sid
         )
         val updated = listOf(item) + _dailyBehaviors.value
@@ -7851,7 +8040,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun submitTeacherRatingOnce(
         teacherId: String,
         stars: Int,
-        praiseTag: String
+        praiseTag: String,
+        note: String = ""
     ): Boolean {
         val curr = _currentUser.value ?: return false
         if (!_featureSettings.value.teacherEvaluationEnabled) {
@@ -7875,6 +8065,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
         val activeSid = _schoolConfig.value.schoolId
+        val cleanNote = InputSanitizer.sanitize(note.trim())
         val newRecord = TeacherRatingRecord(
             id = "tr_${System.currentTimeMillis()}_${parentKey.take(6)}",
             schoolId = activeSid,
@@ -7884,12 +8075,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             parentName = curr.fullName,
             stars = stars.coerceIn(1, 5),
             praiseTag = praiseTag.trim(),
+            note = cleanNote,
             createdAt = nowStamp
         )
         val updatedList = listOf(newRecord) + _teacherRatings.value
         _teacherRatings.value = updatedList
         repo.saveTeacherRatings(updatedList, activeSid)
-        showToastAlert("تم اعتماد تقييمك للأستاذ (${teacherAcc.fullName}) بنجاح ⭐", isSuccess = true)
+        showToastAlert("تم اعتماد تقييمك للأستاذ (${teacherAcc.fullName}) بنجاح ★", isSuccess = true)
         return true
     }
 
@@ -7920,6 +8112,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 .sortedByDescending { it.value }
                 .take(3)
                 .map { it.key }
+            val recentNotes = tRatings
+                .filter { it.note.isNotBlank() }
+                .take(5)
+                .map { (it.parentName.ifBlank { "ولي أمر" }) to it.note.trim() }
             val myRating = if (parentKey.isNotBlank()) {
                 tRatings.firstOrNull { it.parentId.equals(parentKey, ignoreCase = true) }
             } else {
@@ -7931,6 +8127,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 totalRatingsCount = total,
                 starsCountMap = starsMap,
                 topPraiseTags = topTags,
+                recentParentNotes = recentNotes,
                 myParentRating = myRating
             )
         }.sortedWith(
@@ -7947,6 +8144,17 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     ): TeacherEvaluationSummary? {
         return getTeacherEvaluationSummaries(accountsList, ratingsList, currentUserAccount)
             .firstOrNull { it.totalRatingsCount > 0 }
+    }
+
+    fun getTopRatedTeacherSummaries(
+        limit: Int = 3,
+        accountsList: List<UserAccount> = _accounts.value,
+        ratingsList: List<TeacherRatingRecord> = _teacherRatings.value,
+        currentUserAccount: UserAccount? = _currentUser.value
+    ): List<TeacherEvaluationSummary> {
+        return getTeacherEvaluationSummaries(accountsList, ratingsList, currentUserAccount)
+            .filter { it.totalRatingsCount > 0 }
+            .take(limit)
     }
 }
 

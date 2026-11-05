@@ -1,7 +1,25 @@
 package com.example.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -11,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,7 +40,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -121,13 +143,34 @@ fun ScheduleAndHomeworkScreen(
                 currentUser?.canTeacherAccessSubject(hw.subjectName) == true
             } else true
             clsMatch && subjMatch
+        }.sortedByDescending { it.createdAt.ifBlank { it.dueDate } }
+    }
+    var selectedHomeworkDateFilter by remember(selectedClass, selectedSection) {
+        mutableStateOf("الكل")
+    }
+    val homeworkDatesIndex = remember(filteredHomeworks) {
+        filteredHomeworks
+            .groupBy { hw -> hw.createdAt.trim().ifBlank { hw.dueDate.trim() } }
+            .entries
+            .filter { it.key.isNotBlank() }
+            .sortedByDescending { it.key }
+            .map { it.key to it.value.size }
+    }
+    val dateScopedHomeworks = remember(filteredHomeworks, selectedHomeworkDateFilter) {
+        if (selectedHomeworkDateFilter == "الكل") {
+            filteredHomeworks
+        } else {
+            filteredHomeworks.filter { hw ->
+                val dateKey = hw.createdAt.trim().ifBlank { hw.dueDate.trim() }
+                dateKey == selectedHomeworkDateFilter
+            }
         }
     }
-    var homeworksVisibleCount by remember(selectedClass, selectedSection, filteredHomeworks.size) {
-        mutableStateOf(6)
+    var homeworksVisibleCount by remember(selectedClass, selectedSection, selectedHomeworkDateFilter, dateScopedHomeworks.size) {
+        mutableStateOf(8)
     }
-    val displayedHomeworks = remember(filteredHomeworks, homeworksVisibleCount) {
-        filteredHomeworks.take(homeworksVisibleCount)
+    val displayedHomeworks = remember(dateScopedHomeworks, homeworksVisibleCount) {
+        dateScopedHomeworks.take(homeworksVisibleCount)
     }
 
     val classScopedQuickQuizzes = remember(quickQuizzes, selectedClass, selectedSection, currentUser) {
@@ -822,7 +865,7 @@ fun ScheduleAndHomeworkScreen(
                                     }
                                     NoWrapBadge(
                                         text = "الدرجة: ${quiz.points}",
-                                        icon = Icons.Filled.Stars,
+                                        icon = Icons.Filled.Star,
                                         containerColor = DeepEmerald.copy(alpha = 0.14f),
                                         contentColor = DeepEmerald
                                     )
@@ -1113,7 +1156,191 @@ fun ScheduleAndHomeworkScreen(
                     }
                 }
 
-                if (filteredHomeworks.isEmpty()) {
+                // فهرس الواجبات الذكي حسب التاريخ مع شارة تنبيه نابضة بالواجبات الجديدة (Interactive 3D Homework Date Index)
+                if (filteredHomeworks.isNotEmpty()) {
+                    item(key = "homework_smart_date_index_bar") {
+                        val pulseTransition = rememberInfiniteTransition(label = "hw_date_badge_pulse")
+                        val badgePulseScale by pulseTransition.animateFloat(
+                            initialValue = 1.0f,
+                            targetValue = 1.18f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "hw_badge_scale"
+                        )
+                        val badgePulseAlpha by pulseTransition.animateFloat(
+                            initialValue = 0.72f,
+                            targetValue = 1.0f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "hw_badge_alpha"
+                        )
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.28f)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.EventNote,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = "فهرس الواجبات الذكي حسب التاريخ",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f))
+                                    ) {
+                                        Text(
+                                            text = "إجمالي الواجبات: ${filteredHomeworks.size}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF047857),
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    item(key = "hw_date_all") {
+                                        val isAllSelected = selectedHomeworkDateFilter == "الكل"
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = if (isAllSelected) Color(0xFF059669) else Color(0xFFF8FAFC),
+                                            border = BorderStroke(
+                                                1.2.dp,
+                                                if (isAllSelected) Color(0xFFA7F3D0) else Color(0xFFCBD5E1)
+                                            ),
+                                            shadowElevation = if (isAllSelected) 4.dp else 1.dp,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .clickable { selectedHomeworkDateFilter = "الكل" }
+                                                .testTag("hw_date_filter_all")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.CalendarMonth,
+                                                    contentDescription = null,
+                                                    tint = if (isAllSelected) Color.White else Color(0xFF059669),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Text(
+                                                    text = "كل التواريخ (${filteredHomeworks.size})",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (isAllSelected) Color.White else Color(0xFF0F172A),
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    items(homeworkDatesIndex, key = { "hw_date_${it.first}" }) { (dateKey, count) ->
+                                        val isDateSelected = selectedHomeworkDateFilter == dateKey
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = if (isDateSelected) Color(0xFF059669) else Color.White,
+                                            border = BorderStroke(
+                                                1.2.dp,
+                                                if (isDateSelected) Color(0xFFFEF08A) else Color(0xFF10B981).copy(alpha = 0.45f)
+                                            ),
+                                            shadowElevation = if (isDateSelected) 5.dp else 2.dp,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .clickable { selectedHomeworkDateFilter = dateKey }
+                                                .testTag("hw_date_filter_$dateKey")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                // شارة إشعار نابضة وملفتة بلطف تدل على وجود واجبات في هذا التاريخ
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(9.dp)
+                                                        .graphicsLayer {
+                                                            scaleX = badgePulseScale
+                                                            scaleY = badgePulseScale
+                                                            alpha = badgePulseAlpha
+                                                        }
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            if (isDateSelected) Color(0xFFFEF08A) else Color(0xFFF59E0B)
+                                                        )
+                                                )
+                                                Text(
+                                                    text = dateKey,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (isDateSelected) Color.White else DeepForestGreen,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = if (isDateSelected) {
+                                                        Color(0xFFFEF08A).copy(alpha = 0.24f)
+                                                    } else {
+                                                        Color(0xFFECFDF5)
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = "($count واجب جديد)",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (isDateSelected) Color(0xFFFEF08A) else Color(0xFF047857),
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (dateScopedHomeworks.isEmpty()) {
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -1147,17 +1374,59 @@ fun ScheduleAndHomeworkScreen(
                         }
                         var pendingPhotoBase64 by remember(hw.id) { mutableStateOf("") }
                         var pendingStudentNote by remember(hw.id) { mutableStateOf("") }
+                        val hwAttachmentBitmap = remember(hw.attachmentImageBase64) {
+                            ImageCompressor.decodeBase64ToImageBitmap(hw.attachmentImageBase64)
+                        }
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
                             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                // شريط فهرس التاريخ أعلى بطاقة الواجب (Date Index Header Strip)
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.30f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.CalendarToday,
+                                                contentDescription = null,
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = "تاريخ النشر: ${hw.createdAt.ifBlank { hw.dueDate }}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                        }
+                                        Text(
+                                            text = "موعد التسليم: ${hw.dueDate}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF047857)
+                                        )
+                                    }
+                                }
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1203,6 +1472,69 @@ fun ScheduleAndHomeworkScreen(
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
+                                    }
+                                }
+
+                                // عرض الصورة التوضيحية المرفقة مع الواجب من قِبل الأستاذ (إن وُجدت) مع إمكانية التكبير
+                                if (hwAttachmentBitmap != null) {
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color(0xFFF0FDF4),
+                                        border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.40f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .clickable {
+                                                GlobalImageLightboxController.open(
+                                                    hw.attachmentImageBase64,
+                                                    "صورة توضيحية للواجب • مادة ${hw.subjectName}"
+                                                )
+                                            }
+                                            .testTag("hw_attachment_preview_${hw.id}")
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Image,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF059669),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Text(
+                                                        text = "صورة توضيحية مرفقة من $staffTitleSingular المادة",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "اضغط للتكبير",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF059669)
+                                                )
+                                            }
+                                            Image(
+                                                bitmap = hwAttachmentBitmap,
+                                                contentDescription = "صورة توضيحية للواجب",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(175.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                            )
+                                        }
                                     }
                                 }
 
@@ -1685,15 +2017,15 @@ fun ScheduleAndHomeworkScreen(
                             }
                         }
                     }
-                    if (displayedHomeworks.size < filteredHomeworks.size) {
+                    if (displayedHomeworks.size < dateScopedHomeworks.size) {
                         item {
                             ProgressiveInfiniteScrollFooter(
                                 visibleCount = displayedHomeworks.size,
-                                totalCount = filteredHomeworks.size,
+                                totalCount = dateScopedHomeworks.size,
                                 step = 6,
                                 itemLabel = "واجب",
                                 onLoadMore = {
-                                    homeworksVisibleCount = (homeworksVisibleCount + 6).coerceAtMost(filteredHomeworks.size)
+                                    homeworksVisibleCount = (homeworksVisibleCount + 6).coerceAtMost(dateScopedHomeworks.size)
                                 }
                             )
                         }
@@ -2164,19 +2496,29 @@ fun ScheduleAndHomeworkScreen(
         )
     }
 
-    // Publish Homework Modal with Dynamic Registered Subject Selector
+    // Publish Homework Modal with Dynamic Registered Subject Selector & Camera/Gallery Illustrative Photo Picker
     if (showPublishHomeworkDialog) {
         var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }
         var subjExpanded by remember { mutableStateOf(false) }
         var prep by remember { mutableStateOf("") }
         var hwDetails by remember { mutableStateOf("") }
-        var dueDate by remember { mutableStateOf("2026-10-31") }
+        var dueDate by remember { mutableStateOf("2026-11-06") }
+        var attachmentImageBase64 by remember { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showPublishHomeworkDialog = false },
-            title = { Text("نشر التحضير لـ ($selectedClass - $selectedSection)") },
+            title = {
+                Text(
+                    text = "نشر التحضير والواجب لـ ($selectedClass - $selectedSection)",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepForestGreen
+                )
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     ExposedDropdownMenuBox(
                         expanded = subjExpanded,
                         onExpandedChange = { subjExpanded = !subjExpanded }
@@ -2223,6 +2565,11 @@ fun ScheduleAndHomeworkScreen(
                         label = "تاريخ التسليم",
                         onDateSelected = { selectedIso, _ -> dueDate = selectedIso }
                     )
+
+                    HomeworkIllustrativePhotoPickerSection(
+                        attachmentBase64 = attachmentImageBase64,
+                        onAttachmentChanged = { attachmentImageBase64 = it }
+                    )
                 }
             },
             confirmButton = {
@@ -2238,7 +2585,8 @@ fun ScheduleAndHomeworkScreen(
                                 teacherName = currentUser?.fullName ?: "معلم المادة",
                                 dailyPreparation = prep,
                                 homeworkDetails = hwDetails.ifBlank { "مراجعة الدرس وحل أسئلة الفصل" },
-                                dueDate = dueDate
+                                dueDate = dueDate,
+                                attachmentImageBase64 = attachmentImageBase64
                             )
                             showPublishHomeworkDialog = false
                         }
@@ -2258,6 +2606,7 @@ fun ScheduleAndHomeworkScreen(
         var editPrep by remember(hwTarget.id) { mutableStateOf(hwTarget.dailyPreparation) }
         var editHwDetails by remember(hwTarget.id) { mutableStateOf(hwTarget.homeworkDetails) }
         var editDueDate by remember(hwTarget.id) { mutableStateOf(hwTarget.dueDate) }
+        var editAttachmentBase64 by remember(hwTarget.id) { mutableStateOf(hwTarget.attachmentImageBase64) }
 
         AlertDialog(
             onDismissRequest = { editingHomework = null },
@@ -2269,7 +2618,10 @@ fun ScheduleAndHomeworkScreen(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     ExposedDropdownMenuBox(
                         expanded = editSubjExpanded,
                         onExpandedChange = { editSubjExpanded = !editSubjExpanded }
@@ -2316,6 +2668,11 @@ fun ScheduleAndHomeworkScreen(
                         label = "تاريخ التسليم",
                         onDateSelected = { selectedIso, _ -> editDueDate = selectedIso }
                     )
+
+                    HomeworkIllustrativePhotoPickerSection(
+                        attachmentBase64 = editAttachmentBase64,
+                        onAttachmentChanged = { editAttachmentBase64 = it }
+                    )
                 }
             },
             confirmButton = {
@@ -2332,7 +2689,8 @@ fun ScheduleAndHomeworkScreen(
                                 teacherName = hwTarget.teacherName,
                                 dailyPreparation = editPrep,
                                 homeworkDetails = editHwDetails.ifBlank { "مراجعة الدرس وحل أسئلة الفصل" },
-                                dueDate = editDueDate
+                                dueDate = editDueDate,
+                                attachmentImageBase64 = editAttachmentBase64
                             )
                             editingHomework = null
                         }
@@ -3033,7 +3391,7 @@ fun ExamsAndGradesScreen(
                                                 }
                                                 NoWrapBadge(
                                                     text = statusText,
-                                                    icon = if (!g.isAllExamsCompleted) Icons.Filled.TrendingUp else Icons.Filled.Stars,
+                                                    icon = if (!g.isAllExamsCompleted) Icons.Filled.TrendingUp else Icons.Filled.Star,
                                                     containerColor = statusColor.copy(alpha = 0.15f),
                                                     contentColor = statusColor
                                                 )
@@ -4565,5 +4923,314 @@ fun QuickQuizParticipantsModal(
         }
     )
 }
+
+/**
+ * مكون إرفاق صورة توضيحية للواجب من الكاميرا أو الاستوديو مع أنيميشن اختيار المصدر ومعاينة مصغرة
+ * (Animated Camera / Gallery Illustrative Photo Picker for Homework Publishing)
+ */
+@Composable
+fun HomeworkIllustrativePhotoPickerSection(
+    attachmentBase64: String,
+    onAttachmentChanged: (String) -> Unit
+) {
+    val context = LocalContext.current
+    var showSourceOptions by remember { mutableStateOf(false) }
+
+    val cameraPreviewLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            val encoded = ImageCompressor.compressBitmapToBase64Jpeg(bitmap)
+            if (!encoded.isNullOrBlank()) {
+                onAttachmentChanged(encoded)
+                showSourceOptions = false
+            }
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            cameraPreviewLauncher.launch(null)
+        }
+    }
+
+    val galleryPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val encoded = ImageCompressor.compressUriToBase64Jpeg(context, uri)
+            if (!encoded.isNullOrBlank()) {
+                onAttachmentChanged(encoded)
+                showSourceOptions = false
+            }
+        }
+    }
+
+    val previewBitmap = remember(attachmentBase64) {
+        ImageCompressor.decodeBase64ToImageBitmap(attachmentBase64)
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = if (attachmentBase64.isNotBlank()) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+            border = BorderStroke(
+                1.2.dp,
+                if (attachmentBase64.isNotBlank()) Color(0xFF059669) else Color(0xFF10B981).copy(alpha = 0.45f)
+            ),
+            shadowElevation = 2.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable { showSourceOptions = !showSourceOptions }
+                .testTag("toggle_hw_photo_picker_btn")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF059669).copy(alpha = 0.14f),
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (attachmentBase64.isNotBlank()) Icons.Filled.CheckCircle else Icons.Filled.AddAPhoto,
+                                contentDescription = null,
+                                tint = Color(0xFF059669),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Column {
+                        Text(
+                            text = if (attachmentBase64.isNotBlank()) {
+                                "تم إرفاق صورة توضيحية للواجب ✓ (اضغط لتغييرها)"
+                            } else {
+                                "+ إرفاق صورة توضيحية للواجب"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        Text(
+                            text = "صورة السبورة، صفحة الكتاب، أو مخطط توضيحي للدرس",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF475569)
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = if (showSourceOptions) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = Color(0xFF059669)
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showSourceOptions,
+            enter = expandVertically(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + fadeIn(tween(220)),
+            exit = shrinkVertically(tween(180)) + fadeOut(tween(150))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // خيار 1: التقاط بالكاميرا
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.45f)),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            val hasPerm = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.CAMERA
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPerm) {
+                                cameraPreviewLauncher.launch(null)
+                            } else {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        }
+                        .testTag("hw_pick_camera_option")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFECFDF5), Color.White)
+                                )
+                            )
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF059669),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.PhotoCamera,
+                                    contentDescription = "التقاط بالكاميرا",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "التقاط بالكاميرا",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                // خيار 2: اختيار من الاستوديو
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.2.dp, Color(0xFF0284C7).copy(alpha = 0.45f)),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            galleryPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                        .testTag("hw_pick_gallery_option")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFF0F9FF), Color.White)
+                                )
+                            )
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF0284C7),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.PhotoLibrary,
+                                    contentDescription = "اختيار من الاستوديو",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "اختيار من الاستوديو",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0C4A6E),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+        }
+
+        if (previewBitmap != null) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "معاينة الصورة التوضيحية المرفقة:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        TextButton(
+                            onClick = { onAttachmentChanged("") },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteOutline,
+                                contentDescription = "حذف الصورة",
+                                tint = DangerRed,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "إزالة الصورة",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = DangerRed
+                            )
+                        }
+                    }
+                    Image(
+                        bitmap = previewBitmap,
+                        contentDescription = "معاينة مرفق الواجب",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                GlobalImageLightboxController.open(
+                                    attachmentBase64,
+                                    "معاينة الصورة التوضيحية للواجب"
+                                )
+                            }
+                    )
+                }
+            }
+        }
+    }
+}
+
 
 

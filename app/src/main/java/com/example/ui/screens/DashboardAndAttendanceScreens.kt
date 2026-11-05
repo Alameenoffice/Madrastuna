@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,6 +66,9 @@ fun DashboardScreen(
     val teacherRatings by viewModel.teacherRatings.collectAsState()
     val topTeacherSummary = remember(accounts, teacherRatings, currentUser) {
         viewModel.getTopRatedTeacherSummary(accounts, teacherRatings, currentUser)
+    }
+    val topRatedTeachers = remember(accounts, teacherRatings, currentUser) {
+        viewModel.getTopRatedTeacherSummaries(limit = 3, accountsList = accounts, ratingsList = teacherRatings, currentUserAccount = currentUser)
     }
 
     val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
@@ -112,12 +116,12 @@ fun DashboardScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
+        contentPadding = PaddingValues(top = 0.dp, bottom = 28.dp)
     ) {
-        // Complete Architectural & Visual Separation:
-        // 1) Developer System Broadcast Banner (Royal Deep Navy/Indigo + Cyan Border)
-        // 2) Principal School Announcement Banner (Warm Emerald/Gold + 3D Megaphone)
-        // 3) 3D Royal Welcome Wave Hero Card
+        // Zero-Gap Seamless Full-Bleed Wave Stack:
+        // 1) FIRST at the very top: 3D Royal Welcome Wave Hero ("مرحباً بك، ...")
+        // 2) SECOND (0.dp gap): Developer System Broadcast + Principal School Announcement
+        // 3) THIRD (0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
         item {
             val welcomeSubtitle = when {
                 isParentOrStudent && myStudent != null ->
@@ -147,8 +151,27 @@ fun DashboardScreen(
 
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
+                // 1) FIRST: Welcome Hero Section ("مرحباً بك، ...") edge-to-edge
+                ThreeDHeroHeaderCard(
+                    title = "مرحباً بك، ${currentUser?.fullName ?: ""}",
+                    subtitle = "$welcomeSubtitle • ${schoolConfig.ministryAffiliation} (${schoolConfig.schoolGenderType})",
+                    rightPillText = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel}",
+                    rightPillIcon = Icons.Filled.School,
+                    leftPillText = currentUser?.role?.arabicTitle ?: "مستخدم",
+                    leftPillIcon = Icons.Filled.VerifiedUser,
+                    illustrationType = ThreeDIllustrationType.BOOKS_GRADUATION_CAP,
+                    bottomActionText = if (isAdmin) "إدارة الحسابات والمستخدمين" else null,
+                    bottomActionIcon = Icons.Filled.ManageAccounts,
+                    bottomActionTestTag = "dashboard_admin_accounts_btn",
+                    onBottomActionClick = if (isAdmin) {
+                        { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) }
+                    } else null,
+                    modifier = edgeToEdgeWaveModifier
+                )
+
+                // 2) SECOND (Directly under Welcome Hero with 0.dp gap): Developer Broadcast + Principal Announcement
                 if (occasionThemeConfig.isActive) {
                     val devIconKey = occasionThemeConfig.resolvedIconKey
                     DeveloperSystemBroadcastBanner(
@@ -161,7 +184,6 @@ fun DashboardScreen(
                     )
                 }
 
-                // Strictly only show Principal Announcement Banner when an urgent alert is actively published by the Principal OR today is an official holiday
                 if (shouldShowUrgentAlertBanner || todayHolidayLabel != null) {
                     val schoolBannerTitle = if (shouldShowUrgentAlertBanner) {
                         activeUrgentAlert.authorName.ifBlank { "تبليغ إداري هام" }
@@ -195,13 +217,14 @@ fun DashboardScreen(
                     )
                 }
 
-                // Seamless Full-Width Wave Teacher Spotlight on Home Screen (Shown when enabled by Principal & at least 1 teacher is rated)
-                if (featureSettings.showTopTeacherOnHome && topTeacherSummary != null) {
+                // 3) THIRD (Directly under Announcements with 0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
+                if (featureSettings.showTopTeacherOnHome && topRatedTeachers.isNotEmpty() && topTeacherSummary != null) {
                     SeamlessWaveTeacherSpotlightSection(
                         teacherName = topTeacherSummary.teacher.fullName,
                         teacherSubjects = topTeacherSummary.teacher.specialty,
                         averageRating = topTeacherSummary.averageRating,
                         totalRatingsCount = topTeacherSummary.totalRatingsCount,
+                        topTeachers = topRatedTeachers,
                         isAdmin = isAdmin,
                         onOpenEvaluationSection = {
                             viewModel.navigateToSection(AppSection.TEACHER_EVALUATION)
@@ -212,22 +235,6 @@ fun DashboardScreen(
                         modifier = edgeToEdgeWaveModifier
                     )
                 }
-
-                ThreeDHeroHeaderCard(
-                    title = "مرحباً بك، ${currentUser?.fullName ?: ""}",
-                    subtitle = "$welcomeSubtitle • ${schoolConfig.ministryAffiliation} (${schoolConfig.schoolGenderType})",
-                    rightPillText = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel}",
-                    rightPillIcon = Icons.Filled.School,
-                    leftPillText = currentUser?.role?.arabicTitle ?: "مستخدم",
-                    leftPillIcon = Icons.Filled.VerifiedUser,
-                    illustrationType = ThreeDIllustrationType.BOOKS_GRADUATION_CAP,
-                    bottomActionText = if (isAdmin) "إدارة الحسابات والمستخدمين" else null,
-                    bottomActionIcon = Icons.Filled.ManageAccounts,
-                    bottomActionTestTag = "dashboard_admin_accounts_btn",
-                    onBottomActionClick = if (isAdmin) {
-                        { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) }
-                    } else null
-                )
             }
         }
 
@@ -732,7 +739,7 @@ fun DashboardScreen(
                     if (featureSettings.honorRollEnabled) {
                         add(Triple(AppSection.HONOR_ROLL, Icons.Filled.WorkspacePremium, "لوحة الشرف للمتفوقين (عام)"))
                     }
-                    add(Triple(AppSection.TEACHER_EVALUATION, Icons.Filled.Stars, "تقييم وتميّز الكادر التدريسي الموثق"))
+                    add(Triple(AppSection.TEACHER_EVALUATION, Icons.Filled.Star, "تقييم وتميّز الكادر التدريسي الموثق"))
                     if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.tuitionEnabled && !isTeacher) {
                         add(Triple(AppSection.TUITION_FEES, Icons.Filled.AccountBalanceWallet, if (isParentOrStudent) "أقساط الطالب ووصولات الدفع" else "الأقساط الدراسية ووصولات الدفع"))
                     }
@@ -1094,6 +1101,23 @@ fun DailyAttendanceScreen(
     var adminLeaveRequestsVisibleCount by remember { mutableStateOf(3) }
     var studentAttendanceRecordsVisibleCount by remember(selectedParentChildId) { mutableStateOf(6) }
     var teacherStudentsVisibleCount by remember(selectedClass, selectedSection, searchName) { mutableStateOf(6) }
+    var selectedParentAttendanceSubTab by remember(selectedParentChildId) { mutableIntStateOf(0) }
+    var selectedAttendanceSubTab by remember { mutableIntStateOf(0) }
+
+    // Smart Auto-Absence Countdown Ticker & Automatic Trigger after 2 Hours (or configured delay) from First Attendance
+    val firstAttendanceTs = remember(attendance, students, selectedDate, holidaysConfig) {
+        viewModel.getFirstAttendanceTimestamp(selectedDate)
+    }
+    var autoAbsenceNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(firstAttendanceTs, featureSettings.autoAbsenceEnabled, featureSettings.autoAbsenceDelayMinutes, selectedDate, selectedDateHolidayLabel) {
+        if (featureSettings.autoAbsenceEnabled && selectedDateHolidayLabel == null && firstAttendanceTs > 0L) {
+            while (true) {
+                autoAbsenceNowMs = System.currentTimeMillis()
+                viewModel.checkAndRunAutoAbsenceForDate(selectedDate, forceNow = false)
+                kotlinx.coroutines.delay(15_000L)
+            }
+        }
+    }
 
     LaunchedEffect(featureSettings) {
         if (!featureSettings.qrAttendanceEnabled) {
@@ -1474,19 +1498,88 @@ fun DailyAttendanceScreen(
                     }
                 }
 
-                // Daily Behavior & Classroom Follow-Up Log for Student/Parent (Compact top 3 + Full Log Modal)
-                if (featureSettings.dailyBehaviorEnabled && myBehaviors.isNotEmpty()) {
-                    item {
-                        CompactDailyBehaviorCard(
-                            title = "دفتر المتابعة اليومي والسلوك الصفي (${myBehaviors.size}):",
-                            studentName = myStu.fullNameWithFather,
-                            behaviors = myBehaviors,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                // 3-Tab Organized Sub-Navigation for Parent & Student:
+                // 0: سجل الدوام اليومي | 1: دفتر المتابعة والسلوك | 2: طلبات الإجازة
+                item {
+                    val parentSubTabs = listOf(
+                        Triple(0, "سجل الدوام اليومي (${myRecords.size})", Icons.Filled.FactCheck),
+                        Triple(1, "دفتر المتابعة والسلوك (${myBehaviors.size})", Icons.Filled.AssignmentTurnedIn),
+                        Triple(2, "طلبات الإجازة (${myLeaveRequests.size})", Icons.Filled.EventNote)
+                    )
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(parentSubTabs, key = { it.first }) { (tabIdx, tabLabel, tabIcon) ->
+                            val isSelected = selectedParentAttendanceSubTab == tabIdx
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (isSelected) Color(0xFF059669) else Color.White,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.2.dp,
+                                    if (isSelected) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)
+                                ),
+                                shadowElevation = if (isSelected) 6.dp else 2.dp,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { selectedParentAttendanceSubTab = tabIdx }
+                                    .testTag("parent_attendance_subtab_$tabIdx")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = tabIcon,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color.White else Color(0xFF047857),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = tabLabel,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (featureSettings.leaveRequestsEnabled && myLeaveRequests.isNotEmpty()) {
+                // Tab 1: Daily Behavior & Classroom Follow-Up Log for Student/Parent
+                if (selectedParentAttendanceSubTab == 1 && featureSettings.dailyBehaviorEnabled) {
+                    item {
+                        if (myBehaviors.isEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "لا توجد ملاحظات سلوكية أو تقييمات متابعة يومية مسجلة حالياً.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF64748B),
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
+                        } else {
+                            CompactDailyBehaviorCard(
+                                title = "دفتر المتابعة اليومي والسلوك الصفي (${myBehaviors.size}):",
+                                studentName = myStu.fullNameWithFather,
+                                behaviors = myBehaviors,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+
+                // Tab 2: Leave Requests for Student/Parent
+                if (selectedParentAttendanceSubTab == 2 && featureSettings.leaveRequestsEnabled) {
                     item {
                         Text(
                             text = "سجل طلبات الإجازة الإلكترونية (${myLeaveRequests.size}):",
@@ -1494,86 +1587,118 @@ fun DailyAttendanceScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    val visibleMyLeaves = myLeaveRequests.take(studentLeaveRequestsVisibleCount)
-                    items(visibleMyLeaves, key = { it.id }) { req ->
-                        LeaveRequestCardItem(
-                            req = req,
-                            isAdmin = false,
-                            onApprove = {},
-                            onReject = {}
-                        )
-                    }
-                    if (myLeaveRequests.size > 3) {
-                        item(key = "student_leaves_load_more") {
-                            ProgressiveInfiniteScrollFooter(
-                                visibleCount = visibleMyLeaves.size,
-                                totalCount = myLeaveRequests.size,
-                                step = 3,
-                                itemLabel = "طلب إجازة",
-                                onLoadMore = {
-                                    studentLeaveRequestsVisibleCount = (studentLeaveRequestsVisibleCount + 3).coerceAtMost(myLeaveRequests.size)
-                                }
+                    if (myLeaveRequests.isEmpty()) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "لا توجد طلبات إجازة مرسلة بعد.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF64748B),
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        val visibleMyLeaves = myLeaveRequests.take(studentLeaveRequestsVisibleCount)
+                        items(visibleMyLeaves, key = { it.id }) { req ->
+                            LeaveRequestCardItem(
+                                req = req,
+                                isAdmin = false,
+                                onApprove = {},
+                                onReject = {}
                             )
+                        }
+                        if (myLeaveRequests.size > 3) {
+                            item(key = "student_leaves_load_more") {
+                                ProgressiveInfiniteScrollFooter(
+                                    visibleCount = visibleMyLeaves.size,
+                                    totalCount = myLeaveRequests.size,
+                                    step = 3,
+                                    itemLabel = "طلب إجازة",
+                                    onLoadMore = {
+                                        studentLeaveRequestsVisibleCount = (studentLeaveRequestsVisibleCount + 3).coerceAtMost(myLeaveRequests.size)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
 
-                val visibleMyRecords = myRecords.take(studentAttendanceRecordsVisibleCount)
-                items(visibleMyRecords, key = { it.id }) { rec ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                // Tab 0: Daily Attendance Log (Cleaned of duplicate holiday text)
+                if (selectedParentAttendanceSubTab == 0) {
+                    val visibleMyRecords = myRecords.take(studentAttendanceRecordsVisibleCount)
+                    items(visibleMyRecords, key = { it.id }) { rec ->
+                        val recordHolidayLabel = viewModel.getHolidayLabelForDate(rec.date)
+                        val effectiveStatus = if (recordHolidayLabel != null) AttendanceStatus.HOLIDAY else rec.status
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("التاريخ: ${rec.date}", style = MaterialTheme.typography.titleSmall)
-                                if (rec.note.isNotBlank()) {
-                                    Text(rec.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("التاريخ: ${rec.date}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold)
+                                    val cleanSubNote = when {
+                                        effectiveStatus == AttendanceStatus.HOLIDAY ->
+                                            recordHolidayLabel ?: "عطلة رسمية معتمدة في التقويم"
+                                        rec.note.isNotBlank() && rec.note != effectiveStatus.arabicLabel ->
+                                            rec.note
+                                        else -> ""
+                                    }
+                                    if (cleanSubNote.isNotBlank()) {
+                                        Text(
+                                            text = cleanSubNote,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
+                                NoWrapBadge(
+                                    text = if (effectiveStatus == AttendanceStatus.HOLIDAY) {
+                                        "يوم عطلة رسمية"
+                                    } else {
+                                        effectiveStatus.arabicLabel
+                                    },
+                                    icon = if (effectiveStatus == AttendanceStatus.HOLIDAY) Icons.Filled.EventAvailable else Icons.Filled.FactCheck,
+                                    containerColor = when (effectiveStatus) {
+                                        AttendanceStatus.HOLIDAY -> GoldFoil.copy(alpha = 0.18f)
+                                        AttendanceStatus.ABSENT -> DangerRed.copy(alpha = 0.15f)
+                                        AttendanceStatus.EXCUSED -> InfoBlue.copy(alpha = 0.15f)
+                                        else -> SuccessGreen.copy(alpha = 0.15f)
+                                    },
+                                    contentColor = when (effectiveStatus) {
+                                        AttendanceStatus.HOLIDAY -> DeepForestGreen
+                                        AttendanceStatus.ABSENT -> DangerRed
+                                        AttendanceStatus.EXCUSED -> InfoBlue
+                                        else -> SuccessGreen
+                                    }
+                                )
                             }
-                            val recordHolidayLabel = viewModel.getHolidayLabelForDate(rec.date)
-                            val effectiveStatus = if (recordHolidayLabel != null) AttendanceStatus.HOLIDAY else rec.status
-                            NoWrapBadge(
-                                text = if (effectiveStatus == AttendanceStatus.HOLIDAY) {
-                                    "يوم عطلة رسمية (موثق في السجل)"
-                                } else {
-                                    effectiveStatus.arabicLabel
-                                },
-                                icon = if (effectiveStatus == AttendanceStatus.HOLIDAY) Icons.Filled.EventAvailable else Icons.Filled.FactCheck,
-                                containerColor = when (effectiveStatus) {
-                                    AttendanceStatus.HOLIDAY -> GoldFoil.copy(alpha = 0.18f)
-                                    AttendanceStatus.ABSENT -> DangerRed.copy(alpha = 0.15f)
-                                    AttendanceStatus.EXCUSED -> InfoBlue.copy(alpha = 0.15f)
-                                    else -> SuccessGreen.copy(alpha = 0.15f)
-                                },
-                                contentColor = when (effectiveStatus) {
-                                    AttendanceStatus.HOLIDAY -> DeepForestGreen
-                                    AttendanceStatus.ABSENT -> DangerRed
-                                    AttendanceStatus.EXCUSED -> InfoBlue
-                                    else -> SuccessGreen
+                        }
+                    }
+                    if (visibleMyRecords.size < myRecords.size) {
+                        item {
+                            ProgressiveInfiniteScrollFooter(
+                                visibleCount = visibleMyRecords.size,
+                                totalCount = myRecords.size,
+                                step = 6,
+                                itemLabel = "سجل حضور",
+                                onLoadMore = {
+                                    studentAttendanceRecordsVisibleCount = (studentAttendanceRecordsVisibleCount + 6).coerceAtMost(myRecords.size)
                                 }
                             )
                         }
-                    }
-                }
-                if (visibleMyRecords.size < myRecords.size) {
-                    item {
-                        ProgressiveInfiniteScrollFooter(
-                            visibleCount = visibleMyRecords.size,
-                            totalCount = myRecords.size,
-                            step = 6,
-                            itemLabel = "سجل حضور",
-                            onLoadMore = {
-                                studentAttendanceRecordsVisibleCount = (studentAttendanceRecordsVisibleCount + 6).coerceAtMost(myRecords.size)
-                            }
-                        )
                     }
                 }
             }
@@ -1589,12 +1714,11 @@ fun DailyAttendanceScreen(
             val activeDismissalCalls = dismissalCalls.filter { !it.isAcknowledged }
 
             item {
-                var selectedAttendanceSubTab by remember { mutableIntStateOf(0) }
                 val subTabs = listOf(
-                    Triple(0, "رصد الدوام اليومي", Icons.Filled.HowToReg),
+                    Triple(0, "رصد الدوام والسلوك", Icons.Filled.HowToReg),
                     Triple(1, "البوابة الذكية (الباركود)", Icons.Filled.QrCodeScanner),
-                    Triple(2, if (pendingLeavesCount > 0) "طلبات الإجازات ($pendingLeavesCount)" else "طلبات الإجازات", Icons.Filled.EventNote),
-                    Triple(3, "العطل الرسمية والمفقودات", Icons.Filled.EventAvailable)
+                    Triple(2, if (pendingLeavesCount > 0) "طلبات الإجازات الواردة ($pendingLeavesCount)" else "طلبات الإجازات الواردة", Icons.Filled.EventNote),
+                    Triple(3, "إدارة العطل الرسمية", Icons.Filled.EventAvailable)
                 )
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1924,18 +2048,135 @@ fun DailyAttendanceScreen(
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "اليوم عطلة رسمية معتمدة - لا يُحتسب غياب على الطلبة",
+                                                text = "يوم عطلة رسمية معتمدة — جميع إجراءات الرصد والسلوك مقفلة في هذا التاريخ",
                                                 style = MaterialTheme.typography.labelLarge,
                                                 fontSize = 12.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = Color.White
                                             )
                                             Text(
-                                                text = "المناسبة: $selectedDateHolidayLabel • أزرار التحضير مقفولة تلقائياً لحماية سجل الطلبة",
+                                                text = "المناسبة: $selectedDateHolidayLabel • لا يُحتسب غياب على الطلبة",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 11.sp,
                                                 color = Color.White.copy(alpha = 0.92f)
                                             )
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Smart Auto-Absence Countdown Banner & Principal Controls (after 2 hours default from first attendance)
+                                val delayMins = featureSettings.autoAbsenceDelayMinutes.coerceIn(15, 720)
+                                val unrecordedInSchoolCount = allTeacherAssignedStudents.count {
+                                    viewModel.getStudentStatusForDate(it, selectedDate) == AttendanceStatus.UNRECORDED
+                                }
+                                val remainingMs = if (firstAttendanceTs > 0L) {
+                                    ((firstAttendanceTs + delayMins * 60_000L) - autoAbsenceNowMs).coerceAtLeast(0L)
+                                } else -1L
+                                val remHours = if (remainingMs > 0L) remainingMs / 3_600_000L else 0L
+                                val remMins = if (remainingMs > 0L) (remainingMs % 3_600_000L) / 60_000L else 0L
+
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("smart_auto_absence_control_card")
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Timer,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "الاحتساب التلقائي للغياب بعد بدء الرصد الصباحي",
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFF064E3B)
+                                                    )
+                                                    val timerSubtitle = when {
+                                                        !featureSettings.autoAbsenceEnabled ->
+                                                            "الاحتساب التلقائي متوقف حالياً بأمر المدير"
+                                                        firstAttendanceTs <= 0L ->
+                                                            "يبدأ المؤقت تلقائياً (${delayMins / 60} ساعة) فور تسجيل أول طالب حاضر اليوم"
+                                                        remainingMs > 0L && unrecordedInSchoolCount > 0 ->
+                                                            "متبقي (${remHours} ساعة و ${remMins} دقيقة) لاحتساب الغياب تلقائياً لـ ($unrecordedInSchoolCount) طالب بانتظار الرصد"
+                                                        unrecordedInSchoolCount == 0 ->
+                                                            "اكتمل رصد جميع الطلاب لهذا اليوم بالكامل ✓"
+                                                        else ->
+                                                            "انتهت المهلة الصباحية — يتم تثبيت الغياب للطلبة غير المرصودين"
+                                                    }
+                                                    Text(
+                                                        text = timerSubtitle,
+                                                        fontSize = 10.8.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Color(0xFF475569)
+                                                    )
+                                                }
+                                            }
+                                            if (isAdmin) {
+                                                Switch(
+                                                    checked = featureSettings.autoAbsenceEnabled,
+                                                    onCheckedChange = { viewModel.toggleAutoAbsenceEnabled(it) },
+                                                    modifier = Modifier.testTag("auto_absence_toggle_switch")
+                                                )
+                                            }
+                                        }
+
+                                        if (isAdmin && featureSettings.autoAbsenceEnabled) {
+                                            val delayOptions = listOf(
+                                                60 to "ساعة واحدة",
+                                                120 to "ساعتان",
+                                                180 to "3 ساعات",
+                                                240 to "4 ساعات"
+                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                delayOptions.forEach { (mins, label) ->
+                                                    val isSel = delayMins == mins
+                                                    Surface(
+                                                        shape = RoundedCornerShape(50),
+                                                        color = if (isSel) Color(0xFF059669) else Color.White,
+                                                        border = androidx.compose.foundation.BorderStroke(
+                                                            1.dp,
+                                                            if (isSel) Color(0xFF059669) else Color(0xFFCBD5E1)
+                                                        ),
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .clip(RoundedCornerShape(50))
+                                                            .clickable { viewModel.updateAutoAbsenceDelayMinutes(mins) }
+                                                    ) {
+                                                        Text(
+                                                            text = label,
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = if (isSel) Color.White else Color(0xFF334155),
+                                                            textAlign = TextAlign.Center,
+                                                            maxLines = 1,
+                                                            modifier = Modifier.padding(vertical = 5.dp, horizontal = 4.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -2713,9 +2954,6 @@ fun DailyAttendanceScreen(
                                 }
                             }
                         } else if (selectedDateHolidayLabel != null || currentStatus == AttendanceStatus.HOLIDAY) {
-                            val holidayNoteText = selectedDateHolidayLabel
-                                ?: currentEntry?.note?.takeIf { it.isNotBlank() }
-                                ?: "عطلة رسمية"
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2739,11 +2977,11 @@ fun DailyAttendanceScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "يوم عطلة رسمية (موثق في السجل) • $holidayNoteText",
+                                        text = "يوم عطلة رسمية معتمدة — جميع إجراءات الرصد والسلوك مقفلة في هذا التاريخ",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen,
-                                        maxLines = 1,
+                                        maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
@@ -2878,8 +3116,8 @@ fun DailyAttendanceScreen(
                             }
                         }
 
-                        // 3. خط فاصل ناعم وأنيق + 4. أزرار تقييم المتابعة والسلوك الصفي الفوري في صفين متوازيين (2×2) بأيقونات Vector نظيفة
-                        if (canEdit && featureSettings.dailyBehaviorEnabled) {
+                        // 3. خط فاصل ناعم وأنيق + 4. أزرار تقييم المتابعة والسلوك الصفي الفوري (تُقفل وتُخفى تلقائياً في أيام العطل الرسمية والأسبوعية!)
+                        if (canEdit && featureSettings.dailyBehaviorEnabled && selectedDateHolidayLabel == null && currentStatus != AttendanceStatus.HOLIDAY) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(vertical = 4.dp),
                                 thickness = 1.dp,

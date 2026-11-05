@@ -466,6 +466,8 @@ class SchoolRepository(context: Context) {
             put("canteenWalletEnabled", f.canteenWalletEnabled)
             put("teacherEvaluationEnabled", f.teacherEvaluationEnabled)
             put("showTopTeacherOnHome", f.showTopTeacherOnHome)
+            put("autoAbsenceEnabled", f.autoAbsenceEnabled)
+            put("autoAbsenceDelayMinutes", f.autoAbsenceDelayMinutes)
         }
     }
 
@@ -501,6 +503,12 @@ class SchoolRepository(context: Context) {
         val canteenWallet = boolKey("canteenWalletEnabled", "isCanteenWalletEnabled")
         val teacherEvaluation = boolKey("teacherEvaluationEnabled", default = true)
         val showTopTeacherHome = boolKey("showTopTeacherOnHome", default = true)
+        val autoAbsence = boolKey("autoAbsenceEnabled", default = true)
+        val autoAbsenceDelay = when {
+            o.has("autoAbsenceDelayMinutes") -> o.optInt("autoAbsenceDelayMinutes", 120)
+            rawObj.has("autoAbsenceDelayMinutes") -> rawObj.optInt("autoAbsenceDelayMinutes", 120)
+            else -> 120
+        }.coerceIn(15, 720)
 
         return SchoolFeatureSettings(
             honorRollEnabled = honor,
@@ -525,7 +533,9 @@ class SchoolRepository(context: Context) {
             studentActivitiesEnabled = studentActivities,
             canteenWalletEnabled = canteenWallet,
             teacherEvaluationEnabled = teacherEvaluation,
-            showTopTeacherOnHome = showTopTeacherHome
+            showTopTeacherOnHome = showTopTeacherHome,
+            autoAbsenceEnabled = autoAbsence,
+            autoAbsenceDelayMinutes = autoAbsenceDelay
         )
     }
 
@@ -1283,6 +1293,7 @@ class SchoolRepository(context: Context) {
                         homeworkDetails = o.optString("homeworkDetails"),
                         dueDate = o.optString("dueDate"),
                         createdAt = o.optString("createdAt"),
+                        attachmentImageBase64 = o.optString("attachmentImageBase64", ""),
                         schoolId = itemSid
                     )
                 )
@@ -1307,6 +1318,7 @@ class SchoolRepository(context: Context) {
                 put("homeworkDetails", InputSanitizer.sanitize(h.homeworkDetails))
                 put("dueDate", InputSanitizer.sanitize(h.dueDate))
                 put("createdAt", InputSanitizer.sanitize(h.createdAt))
+                put("attachmentImageBase64", h.attachmentImageBase64)
                 put("schoolId", schoolId)
             })
         }
@@ -1581,6 +1593,8 @@ class SchoolRepository(context: Context) {
                         details = o.optString("details"),
                         senderName = o.optString("senderName"),
                         createdAt = o.optString("createdAt"),
+                        isReadByParent = o.optBoolean("isReadByParent", false),
+                        readAtTimestamp = o.optString("readAtTimestamp", ""),
                         schoolId = itemSid
                     )
                 )
@@ -1607,6 +1621,8 @@ class SchoolRepository(context: Context) {
                 put("details", InputSanitizer.sanitize(r.details))
                 put("senderName", InputSanitizer.sanitize(r.senderName))
                 put("createdAt", InputSanitizer.sanitize(r.createdAt))
+                put("isReadByParent", r.isReadByParent)
+                put("readAtTimestamp", InputSanitizer.sanitize(r.readAtTimestamp))
                 put("schoolId", schoolId)
             })
         }
@@ -3808,6 +3824,7 @@ class SchoolRepository(context: Context) {
                         parentName = o.optString("parentName"),
                         stars = o.optInt("stars", 5).coerceIn(1, 5),
                         praiseTag = o.optString("praiseTag", ""),
+                        note = o.optString("note", ""),
                         createdAt = o.optString("createdAt", "")
                     )
                 )
@@ -3831,12 +3848,23 @@ class SchoolRepository(context: Context) {
                 put("parentName", InputSanitizer.sanitize(r.parentName))
                 put("stars", r.stars.coerceIn(1, 5))
                 put("praiseTag", InputSanitizer.sanitize(r.praiseTag))
+                put("note", InputSanitizer.sanitize(r.note))
                 put("createdAt", r.createdAt)
             })
         }
         val jsonStr = arr.toString()
         prefs.edit().putString(scopedKey(schoolId, "teacher_ratings"), jsonStr).apply()
         FirebaseCloudSync.pushSubCollectionAsync(schoolId, "teacher_ratings", jsonStr)
+    }
+
+    fun getFirstAttendanceTimestampForDate(dateIso: String, schoolId: String = getActiveSchoolId()): Long {
+        if (schoolId.isBlank() || dateIso.isBlank()) return 0L
+        return prefs.getLong(scopedKey(schoolId, "first_attendance_ts_$dateIso"), 0L)
+    }
+
+    fun setFirstAttendanceTimestampForDate(dateIso: String, timestampMs: Long, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank() || dateIso.isBlank()) return
+        prefs.edit().putLong(scopedKey(schoolId, "first_attendance_ts_$dateIso"), timestampMs).apply()
     }
 }
 

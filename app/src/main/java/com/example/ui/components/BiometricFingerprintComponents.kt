@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.model.BiometricSavedCredentials
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepEmerald
@@ -577,10 +578,10 @@ fun BiometricQuickLoginButton(
                 Text(
                     text = "الدخول السريع ببصمة الإصبع",
                     style = MaterialTheme.typography.titleSmall,
+                    fontSize = 13.5.sp,
                     color = Color(0xFF065F46),
                     fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 2
                 )
                 Text(
                     text = "الدخول كـ: ${savedCredentials.fullName} (${savedCredentials.username})",

@@ -1179,7 +1179,8 @@ data class HomeworkItem(
     val homeworkDetails: String,
     val dueDate: String,
     val createdAt: String,
-    val schoolId: String = ""
+    val schoolId: String = "",
+    val attachmentImageBase64: String = ""
 )
 
 data class ExamScheduleItem(
@@ -1332,7 +1333,9 @@ data class ParentReport(
     val details: String,
     val senderName: String,
     val createdAt: String,
-    val schoolId: String = ""
+    val schoolId: String = "",
+    val isReadByParent: Boolean = false,
+    val readAtTimestamp: String = ""
 )
 
 data class ChatContactItem(
@@ -1645,7 +1648,9 @@ data class SchoolFeatureSettings(
     val studentActivitiesEnabled: Boolean = true,
     val canteenWalletEnabled: Boolean = true,
     val teacherEvaluationEnabled: Boolean = true,
-    val showTopTeacherOnHome: Boolean = true
+    val showTopTeacherOnHome: Boolean = true,
+    val autoAbsenceEnabled: Boolean = true,
+    val autoAbsenceDelayMinutes: Int = 120
 ) {
     fun normalized(): SchoolFeatureSettings {
         val bus = busAlertsEnabled && busTrackingEnabled || (busAlertsEnabled != busTrackingEnabled && busAlertsEnabled)
@@ -1665,7 +1670,9 @@ data class SchoolFeatureSettings(
             dismissalAndLostFoundEnabled = dismissalCallEnabled || lostAndSug,
             canteenWalletEnabled = canteenWalletEnabled,
             teacherEvaluationEnabled = teacherEvaluationEnabled,
-            showTopTeacherOnHome = showTopTeacherOnHome
+            showTopTeacherOnHome = showTopTeacherOnHome,
+            autoAbsenceEnabled = autoAbsenceEnabled,
+            autoAbsenceDelayMinutes = autoAbsenceDelayMinutes.coerceIn(15, 480)
         )
     }
 }
@@ -2243,6 +2250,7 @@ data class TeacherRatingRecord(
     val parentName: String,
     val stars: Int, // 1..5
     val praiseTag: String = "",
+    val note: String = "",
     val createdAt: String = ""
 )
 
@@ -2252,5 +2260,6 @@ data class TeacherEvaluationSummary(
     val totalRatingsCount: Int,
     val starsCountMap: Map<Int, Int>,
     val topPraiseTags: List<String>,
-    val myParentRating: TeacherRatingRecord?
+    val myParentRating: TeacherRatingRecord?,
+    val recentParentNotes: List<Pair<String, String>> = emptyList()
 )

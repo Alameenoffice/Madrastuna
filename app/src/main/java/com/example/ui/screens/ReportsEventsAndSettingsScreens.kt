@@ -96,6 +96,42 @@ fun ReportsAndChatScreen(
     val visibleReports = remember(reports, scopedStudents) {
         val allowedIds = scopedStudents.map { it.id }.toSet()
         reports.filter { it.studentId in allowedIds }
+            .sortedByDescending { it.createdAt }
+    }
+
+    // التحديث التلقائي لحالة القراءة فور فتح ولي الأمر أو الطالب لقسم البلاغات
+    LaunchedEffect(visibleReports, isParentOrStudent, selectedTab) {
+        if (isParentOrStudent && selectedTab == 0) {
+            val unreadIds = visibleReports.filter { !it.isReadByParent }.map { it.id }.toSet()
+            if (unreadIds.isNotEmpty()) {
+                viewModel.markReportsAsReadByParent(unreadIds)
+            }
+        }
+    }
+
+    var reportSearchQuery by remember { mutableStateOf("") }
+    var reportIndexMode by remember { mutableIntStateOf(0) } // 0 = مفهرس حسب التاريخ, 1 = مفهرس حسب الطالب, 2 = غير المقروءة بعد, 3 = تمت قراءتها
+
+    val filteredAndIndexedReports = remember(visibleReports, reportSearchQuery, reportIndexMode) {
+        val q = reportSearchQuery.trim()
+        val matching = visibleReports.filter { rep ->
+            val matchesQuery = q.isEmpty() ||
+                rep.studentName.contains(q, ignoreCase = true) ||
+                rep.gradeClass.contains(q, ignoreCase = true) ||
+                rep.title.contains(q, ignoreCase = true) ||
+                rep.details.contains(q, ignoreCase = true) ||
+                rep.parentName.contains(q, ignoreCase = true)
+            val matchesReadFilter = when (reportIndexMode) {
+                2 -> !rep.isReadByParent
+                3 -> rep.isReadByParent
+                else -> true
+            }
+            matchesQuery && matchesReadFilter
+        }
+        when (reportIndexMode) {
+            1 -> matching.sortedWith(compareBy<ParentReport> { it.studentName }.thenByDescending { it.createdAt })
+            else -> matching.sortedByDescending { it.createdAt }
+        }
     }
 
     // Role-based contacts directory for Direct Messaging
@@ -610,9 +646,9 @@ fun ReportsAndChatScreen(
     }
 
     var reportBeingEdited by remember { mutableStateOf<ParentReport?>(null) }
-    var reportsVisibleCount by remember(visibleReports.size) { mutableStateOf(6) }
-    val displayedReports = remember(visibleReports, reportsVisibleCount) {
-        visibleReports.take(reportsVisibleCount)
+    var reportsVisibleCount by remember(filteredAndIndexedReports.size, reportIndexMode, reportSearchQuery) { mutableStateOf(8) }
+    val displayedReports = remember(filteredAndIndexedReports, reportsVisibleCount) {
+        filteredAndIndexedReports.take(reportsVisibleCount)
     }
     var contactsVisibleCount by remember(chatSearchQuery, selectedRoleFilter, selectedClassFilter) {
         mutableStateOf(6)
@@ -754,6 +790,145 @@ fun ReportsAndChatScreen(
                     }
                 }
 
+                // شريط الفهرسة والبحث الذكي للبلاغات (Search & 4 Indexing/Read-Status Chips)
+                item(key = "reports_smart_indexing_and_search_bar") {
+                    val unreadCount = remember(visibleReports) { visibleReports.count { !it.isReadByParent } }
+                    val readCount = remember(visibleReports) { visibleReports.count { it.isReadByParent } }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.28f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = reportSearchQuery,
+                                onValueChange = { reportSearchQuery = it },
+                                placeholder = {
+                                    Text(
+                                        text = "ابحث باسم الطالب، الصف، أو عنوان ومحتوى البلاغ...",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = 12.sp
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Search,
+                                        contentDescription = "بحث في البلاغات",
+                                        tint = Color(0xFF059669)
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (reportSearchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { reportSearchQuery = "" }) {
+                                            Icon(Icons.Filled.Clear, contentDescription = "مسح البحث")
+                                        }
+                                    }
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("reports_search_input"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color(0xFF059669),
+                                    unfocusedBorderColor = Color(0xFF059669).copy(alpha = 0.30f)
+                                )
+                            )
+
+                            val indexTabs = listOf(
+                                Triple(0, "مفهرس حسب التاريخ", Icons.Filled.CalendarMonth),
+                                Triple(1, "مفهرس حسب الطالب", Icons.Filled.PersonSearch),
+                                Triple(2, "غير المقروءة بعد ($unreadCount)", Icons.Filled.Schedule),
+                                Triple(3, "تمت قراءتها ($readCount)", Icons.Filled.DoneAll)
+                            )
+
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(indexTabs, key = { it.first }) { (modeIdx, label, iconVec) ->
+                                    val isSelected = reportIndexMode == modeIdx
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) Color(0xFF059669) else Color(0xFFF8FAFC),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) Color(0xFFA7F3D0) else Color(0xFFCBD5E1)
+                                        ),
+                                        shadowElevation = if (isSelected) 4.dp else 1.dp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { reportIndexMode = modeIdx }
+                                            .testTag("reports_index_chip_$modeIdx")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = iconVec,
+                                                contentDescription = null,
+                                                tint = if (isSelected) Color.White else Color(0xFF059669),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (displayedReports.isEmpty()) {
+                    item(key = "empty_filtered_reports") {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.20f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Campaign,
+                                    contentDescription = null,
+                                    tint = DeepEmerald.copy(alpha = 0.55f),
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Text(
+                                    text = "لا توجد بلاغات مطابقة للفلتر أو البحث الحالي",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                            }
+                        }
+                    }
+                }
+
                 items(displayedReports, key = { it.id }) { rep ->
                     val badgeColor = when (rep.reportType) {
                         ReportType.APPRECIATION -> SuccessGreen
@@ -767,8 +942,11 @@ fun ReportsAndChatScreen(
                         ReportType.BEHAVIOR_ALERT -> Icons.Filled.Warning
                         ReportType.PARENT_SUMMONS -> Icons.Filled.NotificationImportant
                     }
+                    val studentReportsCount = remember(visibleReports, rep.studentId) {
+                        visibleReports.count { it.studentId == rep.studentId }
+                    }
 
-                    // بطاقة البلاغ الرسمي بخلفية بيضاء نقية وإطار زمردي رفيع
+                    // بطاقة البلاغ الرسمي المفهرسة مع شارة تأكيد قراءة ولي الأمر
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
@@ -780,6 +958,51 @@ fun ReportsAndChatScreen(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            // شريط الفهرس العلوي (حسب التاريخ أو حسب الطالب)
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.30f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (reportIndexMode == 1) Icons.Filled.Person else Icons.Filled.EventNote,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = if (reportIndexMode == 1) {
+                                                "فهرس الطالب: ${rep.studentName} • (${rep.gradeClass}) • ($studentReportsCount بلاغ)"
+                                            } else {
+                                                "فهرس تاريخ البلاغ: ${rep.createdAt}"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = "المرسل: ${rep.senderName}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF047857)
+                                    )
+                                }
+                            }
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -807,6 +1030,60 @@ fun ReportsAndChatScreen(
                                         fontWeight = FontWeight.Bold,
                                         color = DeepEmerald
                                     )
+                                }
+                            }
+
+                            // شارة تأكيد استلام وقراءة ولي الأمر للبلاغ (Parent Read Receipt Status Badge)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (rep.isReadByParent) {
+                                    Color(0xFFECFDF5)
+                                } else {
+                                    Color(0xFFFFFBEB)
+                                },
+                                border = BorderStroke(
+                                    1.2.dp,
+                                    if (rep.isReadByParent) Color(0xFF10B981).copy(alpha = 0.55f) else Color(0xFFF59E0B).copy(alpha = 0.55f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("report_read_receipt_${rep.id}")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (rep.isReadByParent) Icons.Filled.DoneAll else Icons.Filled.HourglassTop,
+                                            contentDescription = null,
+                                            tint = if (rep.isReadByParent) Color(0xFF059669) else Color(0xFFD97706),
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Text(
+                                            text = if (rep.isReadByParent) {
+                                                "تمت القراءة من ولي الأمر ✓✓"
+                                            } else {
+                                                "بانتظار قراءة ولي الأمر ⏳"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (rep.isReadByParent) Color(0xFF065F46) else Color(0xFF92400E)
+                                        )
+                                    }
+                                    if (rep.isReadByParent && rep.readAtTimestamp.isNotBlank()) {
+                                        Text(
+                                            text = "وقت الاطلاع: ${rep.readAtTimestamp}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF047857)
+                                        )
+                                    }
                                 }
                             }
 
@@ -914,15 +1191,15 @@ fun ReportsAndChatScreen(
                         }
                     }
                 }
-                if (displayedReports.size < visibleReports.size) {
+                if (displayedReports.size < filteredAndIndexedReports.size) {
                     item {
                         ProgressiveInfiniteScrollFooter(
                             visibleCount = displayedReports.size,
-                            totalCount = visibleReports.size,
+                            totalCount = filteredAndIndexedReports.size,
                             step = 6,
                             itemLabel = "بلاغ",
                             onLoadMore = {
-                                reportsVisibleCount = (reportsVisibleCount + 6).coerceAtMost(visibleReports.size)
+                                reportsVisibleCount = (reportsVisibleCount + 6).coerceAtMost(filteredAndIndexedReports.size)
                             }
                         )
                     }

@@ -3,7 +3,13 @@ package com.example.ui.components
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -20,6 +26,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import com.example.model.OccasionIconKey
+import com.example.model.TeacherEvaluationSummary
+import kotlinx.coroutines.delay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -3617,94 +3625,163 @@ fun ThreeDIllustrationBox(
             }
 
             ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D -> {
-                // Exclusive 3D Teacher Evaluation & Excellence Illustration:
-                // 3D Royal Golden Crown & Emerald Crystal Shield surrounded by Orbiting 3D Golden Stars
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(
-                            Color(0xFFFBBF24).copy(alpha = (glowPulseAlpha + 0.22f).coerceAtMost(0.85f)),
-                            Color(0xFF10B981).copy(alpha = 0.25f),
-                            Color.Transparent
-                        ),
-                        center = Offset(cx, cy),
-                        radius = w * 0.54f
-                    ),
-                    radius = w * 0.54f,
-                    center = Offset(cx, cy)
-                )
-
-                // 1) Orbiting 3D Golden Stars Ring
-                rotate(degrees = continuousRotation, pivot = Offset(cx, cy)) {
-                    drawOval(
-                        brush = Brush.sweepGradient(
-                            listOf(
-                                Color(0xFFFDE68A).copy(alpha = 0.85f),
-                                Color(0xFF34D399).copy(alpha = 0.55f),
-                                Color(0xFFF59E0B).copy(alpha = 0.90f),
-                                Color(0xFFFDE68A).copy(alpha = 0.85f)
-                            )
-                        ),
-                        topLeft = Offset(w * 0.06f, h * 0.34f),
-                        size = Size(w * 0.88f, h * 0.36f),
-                        style = Stroke(width = 2.2.dp.toPx())
-                    )
-                    val starPositions = listOf(
-                        Offset(w * 0.10f, h * 0.52f),
-                        Offset(w * 0.90f, h * 0.52f),
-                        Offset(w * 0.50f, h * 0.14f)
-                    )
-                    starPositions.forEach { pos ->
-                        drawCircle(
-                            brush = Brush.radialGradient(listOf(Color.White, Color(0xFFFBBF24))),
-                            radius = w * 0.052f,
-                            center = pos
-                        )
+                // Luxury 3D Academic Excellence Podium & Golden Star Award:
+                // Multi-tiered crystal & polished emerald podium topped with an illuminated 3D open book
+                // and an engraved 5-pointed golden star award, surrounded by 5 orbiting 3D 5-pointed golden stars.
+                fun buildFivePointStarPath(centerX: Float, centerY: Float, outerR: Float, innerR: Float): Path {
+                    return Path().apply {
+                        for (i in 0 until 10) {
+                            val r = if (i % 2 == 0) outerR else innerR
+                            val angleRad = Math.toRadians((i * 36.0) - 90.0)
+                            val px = centerX + (r * cos(angleRad)).toFloat()
+                            val py = centerY + (r * sin(angleRad)).toFloat()
+                            if (i == 0) moveTo(px, py) else lineTo(px, py)
+                        }
+                        close()
                     }
                 }
 
-                // 2) 3D Emerald & Gold Pedestal Shield
-                val shieldPath = Path().apply {
-                    moveTo(w * 0.50f, h * 0.28f)
-                    lineTo(w * 0.78f, h * 0.38f)
-                    lineTo(w * 0.72f, h * 0.68f)
-                    quadraticBezierTo(w * 0.50f, h * 0.88f, w * 0.50f, h * 0.88f)
-                    quadraticBezierTo(w * 0.50f, h * 0.88f, w * 0.28f, h * 0.68f)
-                    lineTo(w * 0.22f, h * 0.38f)
-                    close()
-                }
-                drawPath(
-                    path = shieldPath,
-                    brush = Brush.verticalGradient(
-                        listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF064E3B))
-                    )
-                )
-                drawPath(
-                    path = shieldPath,
-                    brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))),
-                    style = Stroke(width = 3.dp.toPx())
+                // 1) Radiant Golden & Emerald Ambient Halo
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(
+                            Color(0xFFFBBF24).copy(alpha = (glowPulseAlpha + 0.25f).coerceAtMost(0.88f)),
+                            Color(0xFF10B981).copy(alpha = 0.28f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy * 0.92f),
+                        radius = w * 0.54f
+                    ),
+                    radius = w * 0.54f,
+                    center = Offset(cx, cy * 0.92f)
                 )
 
-                // 3) 3D Royal Golden Crown atop the Shield
-                val crownPath = Path().apply {
-                    moveTo(w * 0.26f, h * 0.44f)
-                    lineTo(w * 0.22f, h * 0.22f)
-                    lineTo(w * 0.38f, h * 0.33f)
-                    lineTo(w * 0.50f, h * 0.16f)
-                    lineTo(w * 0.62f, h * 0.33f)
-                    lineTo(w * 0.78f, h * 0.22f)
-                    lineTo(w * 0.74f, h * 0.44f)
+                // 2) Multi-Tiered 3D Crystal & Polished Emerald Podium Base
+                // Lower wide crystal step
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xFF34D399), Color(0xFF059669), Color(0xFF064E3B))
+                    ),
+                    topLeft = Offset(w * 0.16f, h * 0.78f),
+                    size = Size(w * 0.68f, h * 0.11f),
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                )
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFFEF08A))
+                    ),
+                    topLeft = Offset(w * 0.16f, h * 0.78f),
+                    size = Size(w * 0.68f, h * 0.11f),
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx()),
+                    style = Stroke(width = 1.6.dp.toPx())
+                )
+                // Upper polished emerald & gold pedestal step
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xFF6EE7B7), Color(0xFF10B981), Color(0xFF047857))
+                    ),
+                    topLeft = Offset(w * 0.25f, h * 0.67f),
+                    size = Size(w * 0.50f, h * 0.12f),
+                    cornerRadius = CornerRadius(7.dp.toPx(), 7.dp.toPx())
+                )
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFFFDE68A), Color(0xFFD97706))
+                    ),
+                    topLeft = Offset(w * 0.25f, h * 0.67f),
+                    size = Size(w * 0.50f, h * 0.12f),
+                    cornerRadius = CornerRadius(7.dp.toPx(), 7.dp.toPx()),
+                    style = Stroke(width = 1.4.dp.toPx())
+                )
+
+                // 3) Illuminated 3D Open Book resting on the Podium
+                val leftPagePath = Path().apply {
+                    moveTo(w * 0.50f, h * 0.66f)
+                    quadraticBezierTo(w * 0.36f, h * 0.62f, w * 0.22f, h * 0.65f)
+                    lineTo(w * 0.25f, h * 0.50f)
+                    quadraticBezierTo(w * 0.38f, h * 0.48f, w * 0.50f, h * 0.53f)
+                    close()
+                }
+                val rightPagePath = Path().apply {
+                    moveTo(w * 0.50f, h * 0.66f)
+                    quadraticBezierTo(w * 0.64f, h * 0.62f, w * 0.78f, h * 0.65f)
+                    lineTo(w * 0.75f, h * 0.50f)
+                    quadraticBezierTo(w * 0.62f, h * 0.48f, w * 0.50f, h * 0.53f)
                     close()
                 }
                 drawPath(
-                    path = crownPath,
-                    brush = Brush.verticalGradient(
-                        listOf(Color(0xFFFEF08A), Color(0xFFFBBF24), Color(0xFFD97706))
+                    path = leftPagePath,
+                    brush = Brush.linearGradient(listOf(Color.White, Color(0xFFFEF9C3), Color(0xFFFDE68A)))
+                )
+                drawPath(
+                    path = rightPagePath,
+                    brush = Brush.linearGradient(listOf(Color(0xFFFEF9C3), Color.White, Color(0xFFFDE68A)))
+                )
+                drawPath(
+                    path = leftPagePath,
+                    color = Color(0xFFD97706),
+                    style = Stroke(width = 1.4.dp.toPx())
+                )
+                drawPath(
+                    path = rightPagePath,
+                    color = Color(0xFFD97706),
+                    style = Stroke(width = 1.4.dp.toPx())
+                )
+
+                // 4) Central 3D Engraved Golden 5-Pointed Star Award rising above the Open Book
+                val centralStarOuter = w * 0.21f
+                val centralStarInner = w * 0.095f
+                val centralStarCy = h * 0.34f
+                val centralStarShadowPath = buildFivePointStarPath(cx, centralStarCy + 3.dp.toPx(), centralStarOuter, centralStarInner)
+                drawPath(
+                    path = centralStarShadowPath,
+                    color = Color(0xFF92400E).copy(alpha = 0.55f)
+                )
+                val centralStarPath = buildFivePointStarPath(cx, centralStarCy, centralStarOuter, centralStarInner)
+                drawPath(
+                    path = centralStarPath,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFFFFBEB), Color(0xFFFDE047), Color(0xFFF59E0B), Color(0xFFB45309))
                     )
                 )
-                // Crown jewels
-                drawCircle(color = Color.White, radius = w * 0.032f, center = Offset(w * 0.50f, h * 0.16f))
-                drawCircle(color = Color(0xFF34D399), radius = w * 0.028f, center = Offset(w * 0.22f, h * 0.22f))
-                drawCircle(color = Color(0xFF34D399), radius = w * 0.028f, center = Offset(w * 0.78f, h * 0.22f))
+                drawPath(
+                    path = centralStarPath,
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+                // Inner engraved star core
+                val innerCoreStar = buildFivePointStarPath(cx, centralStarCy, centralStarOuter * 0.52f, centralStarInner * 0.52f)
+                drawPath(
+                    path = innerCoreStar,
+                    brush = Brush.radialGradient(
+                        listOf(Color.White, Color(0xFFFEF08A), Color(0xFFD97706)),
+                        center = Offset(cx, centralStarCy),
+                        radius = centralStarOuter * 0.55f
+                    )
+                )
+
+                // 5) 5 Orbiting & Sparkling 3D 5-Pointed Golden Stars around the Podium
+                for (starIdx in 0 until 5) {
+                    val baseAngleDeg = (starIdx * 72f) + (continuousRotation * 0.65f)
+                    val rad = Math.toRadians(baseAngleDeg.toDouble())
+                    val orbitX = cx + (w * 0.39f * cos(rad)).toFloat()
+                    val orbitY = (h * 0.42f) + (h * 0.24f * sin(rad)).toFloat()
+                    val miniStarScale = 0.85f + 0.20f * sin(rad + Math.toRadians(continuousRotation.toDouble())).toFloat()
+                    val miniOuter = w * 0.068f * miniStarScale
+                    val miniInner = miniOuter * 0.44f
+                    val miniStarPath = buildFivePointStarPath(orbitX, orbitY, miniOuter, miniInner)
+                    drawCircle(
+                        color = Color(0xFFFEF08A).copy(alpha = 0.38f),
+                        radius = miniOuter * 1.35f,
+                        center = Offset(orbitX, orbitY)
+                    )
+                    drawPath(
+                        path = miniStarPath,
+                        brush = Brush.verticalGradient(
+                            listOf(Color.White, Color(0xFFFDE047), Color(0xFFF59E0B))
+                        )
+                    )
+                }
             }
 
             ThreeDIllustrationType.CRESCENT_LANTERN_3D -> {
@@ -3866,17 +3943,13 @@ fun ThreeDIllustrationBox(
 private val SeamlessFullWidthWaveShape = GenericShape { size, _ ->
     val w = size.width
     val h = size.height
-    moveTo(0f, h * 0.09f)
+    moveTo(0f, 0f)
+    lineTo(w, 0f)
+    lineTo(w, h * 0.94f)
     cubicTo(
-        w * 0.28f, 0f,
-        w * 0.72f, h * 0.16f,
-        w, h * 0.05f
-    )
-    lineTo(w, h * 0.91f)
-    cubicTo(
-        w * 0.70f, h,
-        w * 0.30f, h * 0.84f,
-        0f, h * 0.94f
+        w * 0.68f, h,
+        w * 0.32f, h * 0.88f,
+        0f, h * 0.96f
     )
     close()
 }
@@ -4220,20 +4293,78 @@ fun ThreeDMegaphoneAnnouncementBanner(
 }
 
 /**
- * 3) المقطع المتموج لتكريم المعلم الأعلى تقييماً في الشاشة الرئيسية بدون أي صندوق أو إطار
- * (Seamless Full-Width Wave Teacher Spotlight Section - Zero Box BorderStroke)
+ * 3) المقطع المتموج لتكريم أفضل 3 أساتذة تقييماً بالتناوب التلقائي في الشاشة الرئيسية بدون أي صندوق أو إطار
+ * (Top 3 Auto-Rotating Rated Teachers Seamless Full-Width Wave Spotlight Section - Zero Box BorderStroke)
  */
 @Composable
 fun SeamlessWaveTeacherSpotlightSection(
-    teacherName: String,
-    teacherSubjects: String,
-    averageRating: Float,
-    totalRatingsCount: Int,
+    teacherName: String = "",
+    teacherSubjects: String = "",
+    averageRating: Float = 0f,
+    totalRatingsCount: Int = 0,
+    topTeachers: List<TeacherEvaluationSummary> = emptyList(),
     isAdmin: Boolean = false,
     onOpenEvaluationSection: () -> Unit,
     onHideFromHome: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    data class SpotlightSlide(
+        val rankIndex: Int,
+        val rankLabel: String,
+        val fullName: String,
+        val subjects: String,
+        val avgRating: Float,
+        val count: Int
+    )
+
+    val slides = remember(topTeachers, teacherName, teacherSubjects, averageRating, totalRatingsCount) {
+        if (topTeachers.isNotEmpty()) {
+            topTeachers.take(3).mapIndexed { index, summary ->
+                val rankTitle = when (index) {
+                    0 -> "المتصدر الأول #1 ★"
+                    1 -> "المركز الثاني #2 ★"
+                    else -> "المركز الثالث #3 ★"
+                }
+                SpotlightSlide(
+                    rankIndex = index,
+                    rankLabel = rankTitle,
+                    fullName = summary.teacher.fullName,
+                    subjects = summary.teacher.specialty.ifBlank {
+                        summary.teacher.teacherSubjectsList.joinToString(" • ").ifBlank { "الكادر التدريسي المتميز" }
+                    },
+                    avgRating = summary.averageRating,
+                    count = summary.totalRatingsCount
+                )
+            }
+        } else if (teacherName.isNotBlank()) {
+            listOf(
+                SpotlightSlide(
+                    rankIndex = 0,
+                    rankLabel = "المتصدر الأول #1 ★",
+                    fullName = teacherName,
+                    subjects = teacherSubjects.ifBlank { "الكادر التدريسي المتميز" },
+                    avgRating = averageRating,
+                    count = totalRatingsCount
+                )
+            )
+        } else {
+            emptyList()
+        }
+    }
+
+    if (slides.isEmpty()) return
+
+    var activeIndex by remember(slides.size) { mutableIntStateOf(0) }
+    LaunchedEffect(slides.size) {
+        if (slides.size > 1) {
+            while (true) {
+                delay(4000L)
+                activeIndex = (activeIndex + 1) % slides.size
+            }
+        }
+    }
+    val currentSlide = slides[activeIndex.coerceIn(0, slides.lastIndex)]
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -4254,11 +4385,11 @@ fun SeamlessWaveTeacherSpotlightSection(
             val w = size.width
             val h = size.height
             val goldenRibbon = Path().apply {
-                moveTo(0f, h * 0.68f)
+                moveTo(0f, h * 0.66f)
                 cubicTo(
-                    w * 0.32f, h * 0.42f,
+                    w * 0.32f, h * 0.40f,
                     w * 0.68f, h * 0.90f,
-                    w, h * 0.56f
+                    w, h * 0.54f
                 )
                 lineTo(w, h)
                 lineTo(0f, h)
@@ -4287,74 +4418,102 @@ fun SeamlessWaveTeacherSpotlightSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                AnimatedContent(
+                    targetState = currentSlide,
+                    transitionSpec = {
+                        (slideInHorizontally { fullWidth -> fullWidth / 3 } + fadeIn(tween(380))) togetherWith
+                            (slideOutHorizontally { fullWidth -> -fullWidth / 3 } + fadeOut(tween(280)))
+                    },
+                    label = "top_3_teachers_spotlight_anim",
                     modifier = Modifier.weight(1f)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
-                                )
-                            )
-                    )
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) { slide ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFFFBBF24).copy(alpha = 0.22f)
-                        ) {
-                            Text(
-                                text = "نجم الكادر التدريسي الأعلى تقييماً ⭐",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFFEF08A),
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                            )
-                        }
-
-                        Text(
-                            text = "الأستاذ(ة): $teacherName",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontSize = 16.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(58.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
+                                    )
+                                )
                         )
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0xFFFBBF24).copy(alpha = 0.24f)
+                                ) {
+                                    Text(
+                                        text = slide.rankLabel,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFEF08A),
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "نخبة الكادر التدريسي",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFA7F3D0),
+                                    maxLines = 1
+                                )
+                            }
+
                             Text(
-                                text = teacherSubjects.ifBlank { "الكادر التدريسي المتميز" },
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFD1FAE5),
+                                text = "الأستاذ(ة): ${slide.fullName}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontSize = 16.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.16f)
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = String.format(java.util.Locale.US, "⭐ %.1f / 5.0 (%d تقييم)", averageRating, totalRatingsCount),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFEF08A),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    text = slide.subjects,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFD1FAE5),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.18f)
+                                ) {
+                                    Text(
+                                        text = String.format(
+                                            java.util.Locale.US,
+                                            "%.1f / 5.0 ★ (%d تقييم)",
+                                            slide.avgRating,
+                                            slide.count
+                                        ),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFEF08A),
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -4364,7 +4523,7 @@ fun SeamlessWaveTeacherSpotlightSection(
 
                 ThreeDIllustrationBox(
                     type = ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D,
-                    modifier = Modifier.size(76.dp)
+                    modifier = Modifier.size(78.dp)
                 )
             }
 
@@ -4373,25 +4532,52 @@ fun SeamlessWaveTeacherSpotlightSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.16f),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .clickable { onOpenEvaluationSection() }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.16f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onOpenEvaluationSection() }
                     ) {
-                        Icon(Icons.Filled.Stars, contentDescription = null, tint = Color(0xFFFEF08A), modifier = Modifier.size(14.dp))
-                        Text(
-                            text = "عرض تقييمات الكادر التدريسي",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Filled.Star, contentDescription = null, tint = Color(0xFFFEF08A), modifier = Modifier.size(14.dp))
+                            Text(
+                                text = "عرض تقييمات الكادر التدريسي",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // 3 Glowing Indicator Dots for the Top 3 Teachers
+                    if (slides.size > 1) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            slides.forEachIndexed { idx, _ ->
+                                val isSelected = idx == activeIndex
+                                Box(
+                                    modifier = Modifier
+                                        .height(6.dp)
+                                        .width(if (isSelected) 18.dp else 6.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            if (isSelected) Color(0xFFFEF08A) else Color.White.copy(alpha = 0.35f)
+                                        )
+                                        .clickable { activeIndex = idx }
+                                )
+                            }
+                        }
                     }
                 }
 

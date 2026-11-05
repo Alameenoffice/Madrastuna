@@ -1231,136 +1231,112 @@ fun UnifiedLoginScreen(
                                 )
                             }
 
-                            // Mandatory Prominent Emerald Notice Banner for Students, Parents & Teachers
-                            Surface(
-                                color = Color(0xFFECFDF5),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.55f)),
-                                shadowElevation = 2.dp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("login_school_admin_credentials_notice")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color(0xFF059669),
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Campaign,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = "ملاحظة: تُستلم بيانات الدخول لجميع الحسابات مباشرةً من إدارة المدرسة.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF065F46),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                            }
+                            // Smart Frameless Animated Transition between Credentials Notice (State 1)
+                            // and Verified School Logo + Official Name + Ministry Affiliation & Gender (State 2)
+                            val showRecognizedSchoolHeader = isSchoolVerified ||
+                                (schoolConfig.isSetupCompleted && schoolConfig.schoolName.isNotBlank() &&
+                                    (extractedSchoolCode == schoolConfig.schoolId ||
+                                        (biometricCredentials != null && biometricCredentials.isValid && username.isBlank())))
 
-                            // Single Verified School Identity Card (Revealed smoothly ONLY after typing a valid school code prefix)
-                            AnimatedVisibility(visible = isSchoolVerified) {
-                                val matchedLocalConfig = schoolConfig.isSetupCompleted &&
-                                    schoolConfig.schoolId.isNotBlank() &&
-                                    extractedSchoolCode == schoolConfig.schoolId
-                                Surface(
-                                    color = Color(0xFFECFDF5),
-                                    shape = RoundedCornerShape(16.dp),
-                                    border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.65f)),
-                                    shadowElevation = 3.dp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("verified_school_identity_card")
-                                ) {
+                            androidx.compose.animation.AnimatedContent(
+                                targetState = showRecognizedSchoolHeader,
+                                label = "frameless_login_school_identity_transition"
+                            ) { recognized ->
+                                if (!recognized) {
+                                    // State 1: Clean Frameless Credentials Notice (Zero Box Border, Zero Rounded Container)
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                            .padding(vertical = 4.dp)
+                                            .testTag("login_school_admin_credentials_notice"),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = Color.White,
-                                            border = BorderStroke(1.5.dp, Color(0xFF10B981)),
-                                            modifier = Modifier.size(44.dp)
+                                        Icon(
+                                            imageVector = Icons.Filled.Campaign,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Text(
+                                            text = "ملاحظة: تُستلم بيانات الدخول لجميع الحسابات مباشرةً من إدارة المدرسة.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDarkMode) Color(0xFF6EE7B7) else Color(0xFF065F46),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                } else {
+                                    // State 2: Clean Frameless School Identity (52.dp Logo + Official Name + Ministry Affiliation, Type & Gender)
+                                    val resolvedSchoolTitle = discoveredSchoolName?.takeIf { it.isNotBlank() }
+                                        ?: schoolConfig.schoolName.ifBlank { "المدرسة المعتمدة" }
+                                    val matchedLocalConfig = schoolConfig.isSetupCompleted &&
+                                        schoolConfig.schoolId.isNotBlank() &&
+                                        (extractedSchoolCode == null || extractedSchoolCode == schoolConfig.schoolId)
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                            .testTag("verified_school_identity_card"),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(52.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFFECFDF5)),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                                if (matchedLocalConfig && schoolConfig.logoBase64.isNotBlank()) {
-                                                    Base64AvatarImage(
-                                                        base64Data = schoolConfig.logoBase64,
-                                                        fallbackIcon = Icons.Filled.Verified,
-                                                        contentDescription = discoveredSchoolName.orEmpty(),
-                                                        size = 38.dp,
-                                                        tint = Color(0xFF059669)
-                                                    )
-                                                } else {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Verified,
-                                                        contentDescription = null,
-                                                        tint = Color(0xFF059669),
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
+                                            if (matchedLocalConfig && schoolConfig.logoBase64.isNotBlank()) {
+                                                Base64AvatarImage(
+                                                    base64Data = schoolConfig.logoBase64,
+                                                    fallbackIcon = Icons.Filled.School,
+                                                    contentDescription = resolvedSchoolTitle,
+                                                    size = 52.dp,
+                                                    tint = Color(0xFF059669)
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Filled.School,
+                                                    contentDescription = resolvedSchoolTitle,
+                                                    tint = Color(0xFF059669),
+                                                    modifier = Modifier.size(28.dp)
+                                                )
                                             }
                                         }
+
                                         Column(
                                             modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            verticalArrangement = Arrangement.spacedBy(3.dp)
                                         ) {
                                             Text(
-                                                text = discoveredSchoolName.orEmpty(),
-                                                style = MaterialTheme.typography.titleSmall,
+                                                text = resolvedSchoolTitle,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontSize = 15.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFF065F46),
+                                                color = if (isDarkMode) Color(0xFF6EE7B7) else Color(0xFF065F46),
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(50),
-                                                    color = Color(0xFFD1FAE5)
-                                                ) {
-                                                    Text(
-                                                        text = "كود المدرسة: ${extractedSchoolCode.orEmpty()}",
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = Color(0xFF047857),
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                                if (matchedLocalConfig) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(50),
-                                                        color = Color(0xFFFEF3C7)
-                                                    ) {
-                                                        Text(
-                                                            text = "${schoolConfig.ministryAffiliation} • ${schoolConfig.schoolGenderType} • ${schoolConfig.schoolStage.arabicLabel}",
-                                                            fontSize = 9.5.sp,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            color = Color(0xFF92400E),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                }
+                                            if (matchedLocalConfig) {
+                                                Text(
+                                                    text = "تتبع لـ: ${schoolConfig.ministryAffiliation} • ${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolGenderType} (${schoolConfig.schoolStage.arabicLabel})",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF334155),
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            } else if (!extractedSchoolCode.isNullOrBlank()) {
+                                                Text(
+                                                    text = "كود المدرسة المعرّف: $extractedSchoolCode",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF047857)
+                                                )
                                             }
                                         }
                                     }

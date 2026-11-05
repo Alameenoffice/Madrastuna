@@ -49,6 +49,8 @@ import com.example.ui.components.CompressedPhotoPickerButton
 import com.example.ui.components.GlobalImageLightboxController
 import com.example.ui.components.HonorHeartReactionButton
 import com.example.ui.components.StudentActivitiesVectorIcon
+import com.example.ui.components.ThreeDHeroHeaderCard
+import com.example.ui.components.ThreeDIllustrationType
 import com.example.ui.theme.*
 import com.example.util.ImageCompressor
 import com.example.viewmodel.SchoolViewModel
@@ -324,141 +326,153 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Luxury Emerald Header Banner inside unified LazyColumn
+        // 3D Wave Hero Header + Unclipped Action & Sub-Tab Controls inside unified LazyColumn
         item(key = "student_activities_header_card") {
-            Card(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = DeepEmerald),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(DeepEmerald, EmeraldAccent, DeepForestGreen)
-                            )
-                        )
-                        .padding(18.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color.White.copy(alpha = 0.15f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    StudentActivitiesVectorIcon(tint = Color.White, size = 26.dp)
-                                }
-                            }
-                            Column {
-                                Text(
-                                    text = "مجتمع ونشاطات الطلبة",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "منصة الإبداع العلمي، الفنون، والمشاريع الطلابية بإشراف تربوي",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.88f)
-                                )
-                            }
-                        }
+                ThreeDHeroHeaderCard(
+                    title = "مجتمع ونشاطات الطلبة",
+                    subtitle = "منصة الإبداع العلمي، الفنون، والمشاريع الطلابية بإشراف تربوي",
+                    rightPillText = "إبداعات الطلبة: ${approvedPosts.size}",
+                    rightPillIcon = Icons.Filled.EmojiEvents,
+                    leftPillText = "إشراف تربوي معتمد",
+                    leftPillIcon = Icons.Filled.VerifiedUser,
+                    illustrationType = ThreeDIllustrationType.SOCIAL_COMMUNITY_3D
+                )
 
-                        // My Creative Profile Button
-                        if (currentUser != null) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.16f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-                                modifier = Modifier
-                                    .clickable {
-                                        selectedProfileUser = ProfileModalTarget(
-                                            userId = currentUser!!.id,
-                                            userName = currentUser!!.fullName,
-                                            userRole = currentUser!!.role,
-                                            userGrade = if (currentUser!!.role == UserRole.STUDENT) currentUser!!.gradeClass else "",
-                                            userPhotoBase64 = currentUser!!.photoBase64
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = DeepEmerald),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(DeepEmerald, EmeraldAccent, DeepForestGreen)
+                                )
+                            )
+                            .padding(14.dp)
+                    ) {
+                        // Top Profile & Status Strip
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White.copy(alpha = 0.18f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        StudentActivitiesVectorIcon(tint = Color.White, size = 18.dp)
+                                    }
+                                }
+                                Text(
+                                    text = "أقسام ساحة النشاطات والإشراف",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            if (currentUser != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.18f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.40f)),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable {
+                                            selectedProfileUser = ProfileModalTarget(
+                                                userId = currentUser!!.id,
+                                                userName = currentUser!!.fullName,
+                                                userRole = currentUser!!.role,
+                                                userGrade = if (currentUser!!.role == UserRole.STUDENT) currentUser!!.gradeClass else "",
+                                                userPhotoBase64 = currentUser!!.photoBase64
+                                            )
+                                        }
+                                        .testTag("my_creative_profile_btn")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = "ملفي الإبداعي",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = "ملفي الإبداعي",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
-                                    .testTag("my_creative_profile_btn")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Person,
-                                        contentDescription = "ملفي الإبداعي",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = "ملفي الإبداعي",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
                                 }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    // Main Tabs Row (Full-width balanced tabs so "صندوق البلاغات" never clips at the edge)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ActivityHeaderTabChip(
-                            title = "ساحة الإبداع (${approvedPosts.size})",
-                            selected = selectedMainTab == 0,
-                            onClick = { selectedMainTab = 0 },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        val pendingLabel = if (canModerate) {
-                            "المراجعة (${pendingPosts.size})"
-                        } else {
-                            "قيد المراجعة (${pendingPosts.size})"
-                        }
-                        if (canModerate || pendingPosts.isNotEmpty()) {
+                        // Main Tabs Row: Unclipped 3D Tabs ("ساحة الإبداع" | "المراجعة" | "صندوق البلاغات")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             ActivityHeaderTabChip(
-                                title = pendingLabel,
-                                selected = selectedMainTab == 1,
-                                badgeHighlight = canModerate && pendingPosts.isNotEmpty(),
-                                onClick = { selectedMainTab = 1 },
+                                title = "ساحة الإبداع (${approvedPosts.size})",
+                                selected = selectedMainTab == 0,
+                                onClick = { selectedMainTab = 0 },
                                 modifier = Modifier.weight(1f)
                             )
+
+                            val pendingLabel = if (canModerate) {
+                                "المراجعة (${pendingPosts.size})"
+                            } else {
+                                "قيد المراجعة (${pendingPosts.size})"
+                            }
+                            if (canModerate || pendingPosts.isNotEmpty()) {
+                                ActivityHeaderTabChip(
+                                    title = pendingLabel,
+                                    selected = selectedMainTab == 1,
+                                    badgeHighlight = canModerate && pendingPosts.isNotEmpty(),
+                                    onClick = { selectedMainTab = 1 },
+                                    modifier = Modifier.weight(0.95f)
+                                )
+                            }
+
+                            if (isAdmin) {
+                                ActivityHeaderTabChip(
+                                    title = "صندوق البلاغات ($unresolvedReportsCount)",
+                                    selected = selectedMainTab == 2,
+                                    badgeHighlight = unresolvedReportsCount > 0,
+                                    onClick = { selectedMainTab = 2 },
+                                    modifier = Modifier.weight(1.12f)
+                                )
+                            }
                         }
 
-                        if (isAdmin) {
-                            ActivityHeaderTabChip(
-                                title = "صندوق البلاغات ($unresolvedReportsCount)",
-                                selected = selectedMainTab == 2,
-                                badgeHighlight = unresolvedReportsCount > 0,
-                                onClick = { selectedMainTab = 2 },
-                                modifier = Modifier.weight(1.1f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                     // Sanction Warning Banner if current user is muted
                     if (myProfile.isPostingMuted() || myProfile.isInteractionMuted()) {
@@ -580,6 +594,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         }
                     }
                 }
+            }
             }
         }
 
@@ -988,20 +1003,22 @@ private fun ActivityHeaderTabChip(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         color = if (selected) Color.White else Color.White.copy(alpha = 0.16f),
         border = BorderStroke(
-            1.dp,
-            if (badgeHighlight && !selected) GoldAccent else Color.White.copy(alpha = 0.35f)
+            1.2.dp,
+            if (badgeHighlight && !selected) GoldAccent else Color.White.copy(alpha = 0.40f)
         ),
+        shadowElevation = if (selected) 4.dp else 0.dp,
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .heightIn(min = 42.dp)
+            .clip(RoundedCornerShape(14.dp))
             .clickable { onClick() }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 8.dp),
+                .padding(horizontal = 4.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -1012,15 +1029,16 @@ private fun ActivityHeaderTabChip(
                         .clip(CircleShape)
                         .background(if (selected) DangerRed else GoldAccent)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(3.dp))
             }
             Text(
                 text = title,
-                fontSize = 11.sp,
+                fontSize = 10.5.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (selected) DeepEmerald else Color.White,
                 maxLines = 1,
-                softWrap = false
+                softWrap = false,
+                overflow = TextOverflow.Visible
             )
         }
     }
@@ -1141,12 +1159,31 @@ fun StudentActivityPostCard(
                             )
                         }
                 ) {
-                    Base64AvatarImage(
-                        base64Data = post.authorPhotoBase64,
-                        fallbackIcon = Icons.Filled.Person,
-                        contentDescription = post.authorName,
-                        size = 44.dp
-                    )
+                    // Glowing 3D Ring around Author Avatar
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.sweepGradient(
+                                    listOf(
+                                        Color(0xFF059669),
+                                        Color(0xFFFBBF24),
+                                        Color(0xFF10B981),
+                                        Color(0xFF059669)
+                                    )
+                                )
+                            )
+                            .padding(2.5.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Base64AvatarImage(
+                            base64Data = post.authorPhotoBase64,
+                            fallbackIcon = Icons.Filled.Person,
+                            contentDescription = post.authorName,
+                            size = 44.dp
+                        )
+                    }
 
                     Column {
                         Row(
@@ -1268,17 +1305,24 @@ fun StudentActivityPostCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Heart Button identical to Honor Roll & Events Gallery (HonorHeartReactionButton)
-                    HonorHeartReactionButton(
-                        heartCount = post.heartCount,
-                        isLikedByMe = isLikedByMe,
-                        onReact = {
-                            if (!isInteractionMuted) {
-                                viewModel.toggleStudentActivityHeart(post.id)
-                            }
-                        },
-                        testTag = "like_post_${post.id}"
-                    )
+                    // Heart Button with bouncy 3D pulse scale animation
+                    Box(
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = heartScale
+                            scaleY = heartScale
+                        }
+                    ) {
+                        HonorHeartReactionButton(
+                            heartCount = post.heartCount,
+                            isLikedByMe = isLikedByMe,
+                            onReact = {
+                                if (!isInteractionMuted) {
+                                    viewModel.toggleStudentActivityHeart(post.id)
+                                }
+                            },
+                            testTag = "like_post_${post.id}"
+                        )
+                    }
 
                     // Comments Toggle Button
                     Surface(
