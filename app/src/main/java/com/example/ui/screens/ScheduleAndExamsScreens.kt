@@ -1512,7 +1512,7 @@ fun ScheduleAndHomeworkScreen(
                                                         modifier = Modifier.size(16.dp)
                                                     )
                                                     Text(
-                                                        text = "صورة توضيحية مرفقة من $staffTitleSingular المادة",
+                                                        text = "صورة الواجب المرفقة",
                                                         style = MaterialTheme.typography.labelMedium,
                                                         fontWeight = FontWeight.ExtraBold,
                                                         color = DeepForestGreen
@@ -4977,21 +4977,21 @@ fun HomeworkIllustrativePhotoPickerSection(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = if (attachmentBase64.isNotBlank()) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+            shape = RoundedCornerShape(50),
+            color = if (attachmentBase64.isNotBlank()) Color(0xFFECFDF5) else Color(0xFFF0FDF4),
             border = BorderStroke(
-                1.2.dp,
-                if (attachmentBase64.isNotBlank()) Color(0xFF059669) else Color(0xFF10B981).copy(alpha = 0.45f)
+                1.3.dp,
+                if (attachmentBase64.isNotBlank()) Color(0xFF059669) else Color(0xFF10B981).copy(alpha = 0.55f)
             ),
-            shadowElevation = 2.dp,
+            shadowElevation = 4.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(50))
                 .clickable { showSourceOptions = !showSourceOptions }
                 .testTag("toggle_hw_photo_picker_btn")
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -5002,35 +5002,30 @@ fun HomeworkIllustrativePhotoPickerSection(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = Color(0xFF059669).copy(alpha = 0.14f),
-                        modifier = Modifier.size(34.dp)
+                        color = Color(0xFF059669),
+                        modifier = Modifier.size(30.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = if (attachmentBase64.isNotBlank()) Icons.Filled.CheckCircle else Icons.Filled.AddAPhoto,
                                 contentDescription = null,
-                                tint = Color(0xFF059669),
-                                modifier = Modifier.size(18.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
-                    Column {
-                        Text(
-                            text = if (attachmentBase64.isNotBlank()) {
-                                "تم إرفاق صورة توضيحية للواجب ✓ (اضغط لتغييرها)"
-                            } else {
-                                "+ إرفاق صورة توضيحية للواجب"
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = DeepForestGreen
-                        )
-                        Text(
-                            text = "صورة السبورة، صفحة الكتاب، أو مخطط توضيحي للدرس",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF475569)
-                        )
-                    }
+                    Text(
+                        text = if (attachmentBase64.isNotBlank()) {
+                            "تم إرفاق صورة للواجب ✓ (اضغط لتغييرها)"
+                        } else {
+                            "+ إرفاق صورة للواجب (كاميرا / استوديو)"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 Icon(
                     imageVector = if (showSourceOptions) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,

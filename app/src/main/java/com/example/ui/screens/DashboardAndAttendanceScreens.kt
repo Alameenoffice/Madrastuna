@@ -30,8 +30,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
@@ -149,11 +151,24 @@ fun DashboardScreen(
                 }
             }
 
+            fun Modifier.seamlessWaveOverlap(overlapDp: Dp): Modifier = this.layout { measurable, constraints ->
+                val bleedPx = 32.dp.roundToPx()
+                val overlapPx = overlapDp.roundToPx()
+                val fullW = (constraints.maxWidth + bleedPx).coerceAtLeast(constraints.minWidth)
+                val placeable = measurable.measure(
+                    constraints.copy(minWidth = fullW, maxWidth = fullW)
+                )
+                val effectiveHeight = (placeable.height - overlapPx).coerceAtLeast(0)
+                layout(placeable.width, effectiveHeight) {
+                    placeable.place(0, -overlapPx)
+                }
+            }
+
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
+                verticalArrangement = Arrangement.Top
             ) {
-                // 1) FIRST: Welcome Hero Section ("مرحباً بك، ...") edge-to-edge
+                // 1) FIRST: Welcome Hero Section ("مرحباً بك، ...") edge-to-edge on top layer
                 ThreeDHeroHeaderCard(
                     title = "مرحباً بك، ${currentUser?.fullName ?: ""}",
                     subtitle = "$welcomeSubtitle • ${schoolConfig.ministryAffiliation} (${schoolConfig.schoolGenderType})",
@@ -168,10 +183,10 @@ fun DashboardScreen(
                     onBottomActionClick = if (isAdmin) {
                         { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) }
                     } else null,
-                    modifier = edgeToEdgeWaveModifier
+                    modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 
-                // 2) SECOND (Directly under Welcome Hero with 0.dp gap): Developer Broadcast + Principal Announcement
+                // 2) SECOND (Tucked seamlessly under Welcome Hero wave with 0.dp gap): Developer Broadcast + Principal Announcement
                 if (occasionThemeConfig.isActive) {
                     val devIconKey = occasionThemeConfig.resolvedIconKey
                     DeveloperSystemBroadcastBanner(
@@ -180,7 +195,10 @@ fun DashboardScreen(
                         badgeText = devIconKey.arabicLabel,
                         iconKey = devIconKey,
                         illustrationType = devIconKey.toThreeDIllustrationType(),
-                        modifier = edgeToEdgeWaveModifier
+                        topOverlapPadding = 22.dp,
+                        modifier = Modifier
+                            .seamlessWaveOverlap(26.dp)
+                            .zIndex(3f)
                     )
                 }
 
@@ -195,11 +213,15 @@ fun DashboardScreen(
                     } else {
                         "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
                     }
+                    val overlapWithAbove = if (occasionThemeConfig.isActive) 18.dp else 26.dp
 
                     ThreeDMegaphoneAnnouncementBanner(
                         title = schoolBannerTitle,
                         subtitle = schoolBannerSubtitle,
-                        modifier = edgeToEdgeWaveModifier,
+                        topOverlapPadding = overlapWithAbove - 4.dp,
+                        modifier = Modifier
+                            .seamlessWaveOverlap(overlapWithAbove)
+                            .zIndex(2f),
                         onClick = when {
                             isAdmin && todayHolidayLabel != null && !shouldShowUrgentAlertBanner -> {
                                 { viewModel.openHolidaysManagementModal() }
@@ -217,8 +239,10 @@ fun DashboardScreen(
                     )
                 }
 
-                // 3) THIRD (Directly under Announcements with 0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
+                // 3) THIRD (Tucked seamlessly under Announcements/Welcome with 0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
                 if (featureSettings.showTopTeacherOnHome && topRatedTeachers.isNotEmpty() && topTeacherSummary != null) {
+                    val hasBannerAbove = occasionThemeConfig.isActive || shouldShowUrgentAlertBanner || todayHolidayLabel != null
+                    val spotlightOverlap = if (hasBannerAbove) 18.dp else 26.dp
                     SeamlessWaveTeacherSpotlightSection(
                         teacherName = topTeacherSummary.teacher.fullName,
                         teacherSubjects = topTeacherSummary.teacher.specialty,
@@ -226,13 +250,16 @@ fun DashboardScreen(
                         totalRatingsCount = topTeacherSummary.totalRatingsCount,
                         topTeachers = topRatedTeachers,
                         isAdmin = isAdmin,
+                        topOverlapPadding = spotlightOverlap - 4.dp,
                         onOpenEvaluationSection = {
                             viewModel.navigateToSection(AppSection.TEACHER_EVALUATION)
                         },
                         onHideFromHome = {
                             viewModel.toggleShowTopTeacherOnHome(false)
                         },
-                        modifier = edgeToEdgeWaveModifier
+                        modifier = Modifier
+                            .seamlessWaveOverlap(spotlightOverlap)
+                            .zIndex(1f)
                     )
                 }
             }

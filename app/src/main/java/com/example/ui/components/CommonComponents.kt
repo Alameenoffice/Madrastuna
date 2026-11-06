@@ -2023,6 +2023,7 @@ enum class ThreeDIllustrationType {
     MEGAPHONE,
     DIRECT_CHAT_ENVELOPE_3D,
     SOCIAL_COMMUNITY_3D,
+    STUDENT_CREATIVITY_SHOWCASE_3D,
     SYSTEM_BROADCAST_3D,
     GLOWING_CHART_SPHERE,
     ATTENDANCE_GATE_CLOCK,
@@ -2721,275 +2722,333 @@ fun ThreeDIllustrationBox(
             }
 
             ThreeDIllustrationType.SOCIAL_COMMUNITY_3D -> {
-                // Unique 3D Social Community & Connection Network Animation:
-                // 1) Ambient 3D Emerald & Cyan Space Aura
+                // Original Elegant 3D Onboarding Communication & School Community Illustration (preserved for Onboarding / Intro Screen)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.2f).coerceAtMost(0.78f)), Color.Transparent),
+                        center = Offset(cx, cy),
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = Offset(cx, cy)
+                )
+
+                // Back 3D Glassmorphic Card / Bubble (Royal Emerald)
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF10B981), Color(0xFF047857))
+                    ),
+                    topLeft = Offset(w * 0.10f, h * 0.18f),
+                    size = Size(w * 0.58f, h * 0.42f),
+                    cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.45f),
+                    topLeft = Offset(w * 0.10f, h * 0.18f),
+                    size = Size(w * 0.58f, h * 0.42f),
+                    cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx()),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+                drawLine(
+                    color = Color.White.copy(alpha = 0.85f),
+                    start = Offset(w * 0.20f, h * 0.32f),
+                    end = Offset(w * 0.56f, h * 0.32f),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFFA7F3D0),
+                    start = Offset(w * 0.20f, h * 0.43f),
+                    end = Offset(w * 0.46f, h * 0.43f),
+                    strokeWidth = 2.6.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // Front 3D Golden-White Glassmorphic Card / Bubble
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        listOf(Color.White, Color(0xFFFEF9C3), Color(0xFFFDE68A))
+                    ),
+                    topLeft = Offset(w * 0.32f, h * 0.42f),
+                    size = Size(w * 0.58f, h * 0.42f),
+                    cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFFF59E0B).copy(alpha = 0.65f),
+                    topLeft = Offset(w * 0.32f, h * 0.42f),
+                    size = Size(w * 0.58f, h * 0.42f),
+                    cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx()),
+                    style = Stroke(width = 1.6.dp.toPx())
+                )
+                // Golden Star Badge inside front card
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFFFBBF24), Color(0xFFD97706))
+                    ),
+                    radius = w * 0.08f,
+                    center = Offset(w * 0.46f, h * 0.63f)
+                )
+                drawLine(
+                    color = Color(0xFF065F46),
+                    start = Offset(w * 0.58f, h * 0.57f),
+                    end = Offset(w * 0.80f, h * 0.57f),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFF059669),
+                    start = Offset(w * 0.58f, h * 0.68f),
+                    end = Offset(w * 0.74f, h * 0.68f),
+                    strokeWidth = 2.5.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+
+            ThreeDIllustrationType.STUDENT_CREATIVITY_SHOWCASE_3D -> {
+                // منصة إبداع ومواهب ثلاثية الأبعاد (3D Student Creativity & Innovation Showcase)
+                // 1) Soft Emerald & Golden Ambient Aura + Pedestal Base Ring
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.22f).coerceAtMost(0.82f)),
-                            Color(0xFF06B6D4).copy(alpha = glowPulseAlpha * 0.45f),
+                            Color(0xFFFEF08A).copy(alpha = (glowPulseAlpha + 0.18f).coerceAtMost(0.75f)),
+                            Color(0xFF34D399).copy(alpha = glowPulseAlpha * 0.50f),
                             Color.Transparent
                         ),
-                        center = Offset(cx, cy),
+                        center = Offset(cx, cy * 0.92f),
                         radius = w * 0.54f
                     ),
                     radius = w * 0.54f,
-                    center = Offset(cx, cy)
+                    center = Offset(cx, cy * 0.92f)
                 )
 
-                // 2) 3 Tilted 3D Gyroscopic Orbital Rings rotating smoothly in 3D space
-                rotate(degrees = -26f + continuousRotation * 0.35f, pivot = Offset(cx, cy)) {
-                    drawOval(
-                        brush = Brush.sweepGradient(
-                            colors = listOf(
-                                Color(0xFF34D399).copy(alpha = 0.85f),
-                                Color(0xFFFEF08A).copy(alpha = 0.35f),
-                                Color(0xFF06B6D4).copy(alpha = 0.85f),
-                                Color(0xFF34D399).copy(alpha = 0.85f)
-                            ),
-                            center = Offset(cx, cy)
-                        ),
-                        topLeft = Offset(w * 0.05f, h * 0.32f),
-                        size = Size(w * 0.90f, h * 0.36f),
-                        style = Stroke(width = 2.2.dp.toPx())
-                    )
-                }
-
-                rotate(degrees = 34f - continuousRotation * 0.45f, pivot = Offset(cx, cy)) {
-                    drawOval(
-                        brush = Brush.sweepGradient(
-                            colors = listOf(
-                                Color(0xFFFBBF24).copy(alpha = 0.85f),
-                                Color(0xFF10B981).copy(alpha = 0.30f),
-                                Color(0xFFFEF08A).copy(alpha = 0.90f),
-                                Color(0xFFFBBF24).copy(alpha = 0.85f)
-                            ),
-                            center = Offset(cx, cy)
-                        ),
-                        topLeft = Offset(w * 0.08f, h * 0.34f),
-                        size = Size(w * 0.84f, h * 0.32f),
-                        style = Stroke(width = 1.9.dp.toPx())
-                    )
-                }
-
-                rotate(degrees = 82f + continuousRotation * 0.25f, pivot = Offset(cx, cy)) {
-                    drawOval(
-                        color = Color(0xFFA7F3D0).copy(alpha = 0.50f),
-                        topLeft = Offset(w * 0.14f, h * 0.36f),
-                        size = Size(w * 0.72f, h * 0.28f),
-                        style = Stroke(width = 1.4.dp.toPx())
-                    )
-                }
-
-                // 3) Orbiting 3D Social Connection Nodes & Pulsing Laser Connection Lines
-                val orbitRadBase = Math.toRadians(continuousRotation.toDouble())
-                val nodePositions = listOf(
-                    Offset(
-                        x = cx + (w * 0.41f * kotlin.math.cos(orbitRadBase)).toFloat(),
-                        y = cy + (h * 0.22f * kotlin.math.sin(orbitRadBase)).toFloat()
+                // 3D Glowing Base Pedestal Oval
+                drawOval(
+                    color = Color(0xFF042F2E).copy(alpha = 0.42f),
+                    topLeft = Offset(w * 0.14f, h * 0.78f),
+                    size = Size(w * 0.72f, h * 0.13f)
+                )
+                drawOval(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF34D399), Color(0xFFFEF08A), Color(0xFF10B981))
                     ),
-                    Offset(
-                        x = cx + (w * 0.38f * kotlin.math.cos(orbitRadBase + 2.1)).toFloat(),
-                        y = cy - (h * 0.28f * kotlin.math.sin(orbitRadBase + 2.1)).toFloat()
-                    ),
-                    Offset(
-                        x = cx + (w * 0.36f * kotlin.math.cos(orbitRadBase + 4.2)).toFloat(),
-                        y = cy + (h * 0.32f * kotlin.math.sin(orbitRadBase + 4.2)).toFloat()
-                    ),
-                    Offset(
-                        x = w * 0.18f,
-                        y = h * 0.24f + floatOffsetY * 0.6f
-                    ),
-                    Offset(
-                        x = w * 0.82f,
-                        y = h * 0.76f - floatOffsetY * 0.6f
-                    )
+                    topLeft = Offset(w * 0.10f, h * 0.75f),
+                    size = Size(w * 0.80f, h * 0.16f),
+                    style = Stroke(width = 2.2.dp.toPx())
                 )
 
-                // Pulsing network connection lines between nodes and central sphere
-                val linePulseAlpha = (glowPulseAlpha + 0.30f).coerceIn(0.35f, 0.92f)
-                nodePositions.forEachIndexed { idx, nodeOffset ->
-                    drawLine(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFFFEF08A).copy(alpha = linePulseAlpha),
-                                Color(0xFF34D399).copy(alpha = linePulseAlpha * 0.7f)
-                            ),
-                            start = Offset(cx, cy),
-                            end = nodeOffset
-                        ),
-                        start = Offset(cx, cy),
-                        end = nodeOffset,
-                        strokeWidth = 1.8.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                    // Travelling energy photon dot along the connection line
-                    val pulseProgress = ((continuousRotation / 360f) * 3f + idx * 0.2f) % 1f
-                    val photonPos = Offset(
-                        x = cx + (nodeOffset.x - cx) * pulseProgress,
-                        y = cy + (nodeOffset.y - cy) * pulseProgress
-                    )
-                    drawCircle(
-                        color = Color(0xFFFEF08A),
-                        radius = w * 0.024f,
-                        center = photonPos
-                    )
+                // 2) Tilted 3D Glassmorphic Art & Science Showcase Board (لوحة فنون ومشاريع علمية زجاجية مائلة)
+                val boardShadow = Path().apply {
+                    moveTo(w * 0.18f, h * 0.36f)
+                    lineTo(w * 0.76f, h * 0.28f)
+                    lineTo(w * 0.84f, h * 0.74f)
+                    lineTo(w * 0.24f, h * 0.81f)
+                    close()
                 }
+                drawPath(
+                    path = boardShadow,
+                    color = Color(0xFF042F2E).copy(alpha = 0.38f)
+                )
 
-                // Cross-node mesh lines
-                drawLine(
-                    color = Color(0xFF6EE7B7).copy(alpha = 0.45f),
-                    start = nodePositions[0],
-                    end = nodePositions[1],
-                    strokeWidth = 1.2.dp.toPx()
+                val showcaseBoard = Path().apply {
+                    moveTo(w * 0.15f, h * 0.33f)
+                    lineTo(w * 0.74f, h * 0.25f)
+                    lineTo(w * 0.82f, h * 0.71f)
+                    lineTo(w * 0.21f, h * 0.78f)
+                    close()
+                }
+                drawPath(
+                    path = showcaseBoard,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFECFDF5).copy(alpha = 0.95f),
+                            Color(0xFFD1FAE5).copy(alpha = 0.92f),
+                            Color(0xFFA7F3D0).copy(alpha = 0.88f)
+                        ),
+                        start = Offset(w * 0.15f, h * 0.25f),
+                        end = Offset(w * 0.82f, h * 0.78f)
+                    )
+                )
+                drawPath(
+                    path = showcaseBoard,
+                    brush = Brush.linearGradient(
+                        listOf(Color.White, Color(0xFFFEF08A), Color(0xFF34D399))
+                    ),
+                    style = Stroke(width = 2.2.dp.toPx(), join = StrokeJoin.Round)
+                )
+
+                // Artistic & Scientific Graphics inside the 3D Showcase Board (Palette + Project Bars)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF10B981), Color(0xFF047857))
+                    ),
+                    radius = w * 0.085f,
+                    center = Offset(w * 0.34f, h * 0.52f)
+                )
+                drawCircle(
+                    color = Color(0xFFFBBF24),
+                    radius = w * 0.032f,
+                    center = Offset(w * 0.34f, h * 0.52f)
                 )
                 drawLine(
-                    color = Color(0xFF6EE7B7).copy(alpha = 0.45f),
-                    start = nodePositions[1],
-                    end = nodePositions[2],
-                    strokeWidth = 1.2.dp.toPx()
+                    color = Color(0xFF047857),
+                    start = Offset(w * 0.47f, h * 0.46f),
+                    end = Offset(w * 0.69f, h * 0.43f),
+                    strokeWidth = 3.2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFF059669).copy(alpha = 0.75f),
+                    start = Offset(w * 0.48f, h * 0.55f),
+                    end = Offset(w * 0.66f, h * 0.52f),
+                    strokeWidth = 2.6.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFFD97706),
+                    start = Offset(w * 0.49f, h * 0.64f),
+                    end = Offset(w * 0.62f, h * 0.62f),
+                    strokeWidth = 2.6.dp.toPx(),
+                    cap = StrokeCap.Round
                 )
 
-                // 4) Central 3D Glowing Social Core Sphere
+                // 3) Floating 3D Glowing Idea Bulb above the board (مصباح ابتكار ثلاثي الأبعاد متوهج بالذهب والزمرد)
+                val bulbCx = w * 0.46f
+                val bulbCy = h * 0.22f + floatOffsetY * 0.55f
+
+                // Outer pulsing golden light halo around the bulb
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFFA7F3D0),
-                            Color(0xFF10B981),
-                            Color(0xFF047857),
-                            Color(0xFF064E3B)
+                            Color(0xFFFEF08A).copy(alpha = (glowPulseAlpha + 0.32f).coerceAtMost(0.95f)),
+                            Color(0xFFF59E0B).copy(alpha = glowPulseAlpha * 0.45f),
+                            Color.Transparent
                         ),
-                        center = Offset(cx - w * 0.06f, cy - h * 0.06f),
-                        radius = w * 0.26f
+                        center = Offset(bulbCx, bulbCy),
+                        radius = w * 0.24f
                     ),
-                    radius = w * 0.22f,
-                    center = Offset(cx, cy)
+                    radius = w * 0.24f,
+                    center = Offset(bulbCx, bulbCy)
                 )
-                // Golden 3D Equatorial Ring around the Core Sphere
-                drawCircle(
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFF34D399))
-                    ),
-                    radius = w * 0.225f,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = 2.dp.toPx())
-                )
-                // 3D Specular Glass Highlight on Core Sphere
-                drawOval(
-                    brush = Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.72f), Color.Transparent)
-                    ),
-                    topLeft = Offset(cx - w * 0.13f, cy - h * 0.18f),
-                    size = Size(w * 0.18f, h * 0.10f)
-                )
-                // Crisp Pure White Connected Community Hub Icon inside Core Sphere
-                drawCircle(
-                    color = Color.White,
-                    radius = w * 0.042f,
-                    center = Offset(cx, cy - h * 0.045f)
-                )
-                val centerShoulders = Path().apply {
-                    moveTo(cx - w * 0.085f, cy + h * 0.075f)
-                    cubicTo(
-                        cx - w * 0.085f, cy + h * 0.01f,
-                        cx + w * 0.085f, cy + h * 0.01f,
-                        cx + w * 0.085f, cy + h * 0.075f
-                    )
-                    close()
-                }
-                drawPath(path = centerShoulders, color = Color.White)
 
-                // 5) Render the 3D Orbiting Social Nodes (Gold, Cyan, Emerald, Coral)
-                val nodePalettes = listOf(
-                    listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309)),
-                    listOf(Color(0xFFBAE6FD), Color(0xFF0EA5E9), Color(0xFF0369A1)),
-                    listOf(Color(0xFFA7F3D0), Color(0xFF10B981), Color(0xFF065F46)),
-                    listOf(Color(0xFFFDE68A), Color(0xFFD97706), Color(0xFF92400E)),
-                    listOf(Color(0xFF99F6E4), Color(0xFF14B8A6), Color(0xFF0F766E))
-                )
-                nodePositions.forEachIndexed { idx, pos ->
-                    val palette = nodePalettes[idx % nodePalettes.size]
-                    val nodeRadius = if (idx < 3) w * 0.072f else w * 0.062f
-                    // Outer node halo
-                    drawCircle(
-                        color = palette[0].copy(alpha = 0.35f),
-                        radius = nodeRadius * 1.45f,
-                        center = pos
-                    )
-                    // 3D Node Sphere
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = palette,
-                            center = Offset(pos.x - nodeRadius * 0.3f, pos.y - nodeRadius * 0.3f),
-                            radius = nodeRadius * 1.3f
+                // 3D Glass Idea Bulb Globe
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.White,
+                            Color(0xFFFEF08A),
+                            Color(0xFFFBBF24),
+                            Color(0xFFD97706)
                         ),
-                        radius = nodeRadius,
-                        center = pos
-                    )
-                    // Pure white mini node core
-                    drawCircle(
-                        color = Color.White,
-                        radius = nodeRadius * 0.36f,
-                        center = pos
-                    )
-                }
-
-                // 6) Sculpted 3D Paper Plane / Interactive Share Icon soaring in 3D orbit (Top-Right)
-                val planeCx = w * 0.78f
-                val planeCy = h * 0.21f + floatOffsetY * 0.45f
-                // Glowing swoosh trail behind the 3D paper plane
-                val swooshPath = Path().apply {
-                    moveTo(w * 0.46f, h * 0.36f)
-                    cubicTo(
-                        w * 0.58f, h * 0.34f,
-                        w * 0.68f, h * 0.28f,
-                        planeCx - w * 0.04f, planeCy + h * 0.04f
-                    )
-                }
-                drawPath(
-                    path = swooshPath,
+                        center = Offset(bulbCx - w * 0.04f, bulbCy - h * 0.04f),
+                        radius = w * 0.16f
+                    ),
+                    radius = w * 0.135f,
+                    center = Offset(bulbCx, bulbCy)
+                )
+                // Bulb lower neck & metallic screw base
+                drawRoundRect(
                     brush = Brush.horizontalGradient(
-                        listOf(Color.Transparent, Color(0xFFFEF08A).copy(alpha = 0.85f))
+                        listOf(Color(0xFFFDE68A), Color(0xFFD97706), Color(0xFF92400E))
                     ),
-                    style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+                    topLeft = Offset(bulbCx - w * 0.065f, bulbCy + h * 0.10f),
+                    size = Size(w * 0.13f, h * 0.065f),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFF064E3B),
+                    topLeft = Offset(bulbCx - w * 0.045f, bulbCy + h * 0.155f),
+                    size = Size(w * 0.09f, h * 0.03f),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                )
+                // Specular highlight on bulb
+                drawOval(
+                    color = Color.White.copy(alpha = 0.85f),
+                    topLeft = Offset(bulbCx - w * 0.085f, bulbCy - h * 0.095f),
+                    size = Size(w * 0.07f, h * 0.045f)
                 )
 
-                // Paper plane left/top bright wing
-                val topWing = Path().apply {
-                    moveTo(planeCx + w * 0.13f, planeCy - h * 0.09f) // Nose tip
-                    lineTo(planeCx - w * 0.11f, planeCy - h * 0.01f) // Left wingtip
-                    lineTo(planeCx - w * 0.02f, planeCy + h * 0.03f) // Inner fold
+                // 4) 3D Creativity Brush / Feather on the Left (ريشة إبداع فنية ثلاثية الأبعاد)
+                rotate(degrees = -28f, pivot = Offset(w * 0.22f, h * 0.58f)) {
+                    // Brush handle (Royal Emerald & Gold)
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            listOf(Color(0xFF10B981), Color(0xFF065F46))
+                        ),
+                        topLeft = Offset(w * 0.17f, h * 0.44f),
+                        size = Size(w * 0.065f, h * 0.32f),
+                        cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+                    )
+                    // Golden ferrule ring
+                    drawRoundRect(
+                        color = Color(0xFFFBBF24),
+                        topLeft = Offset(w * 0.165f, h * 0.39f),
+                        size = Size(w * 0.075f, h * 0.055f),
+                        cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                    )
+                    // Sculpted golden-white brush tip
+                    val brushTip = Path().apply {
+                        moveTo(w * 0.168f, h * 0.39f)
+                        cubicTo(
+                            w * 0.15f, h * 0.29f,
+                            w * 0.19f, h * 0.24f,
+                            w * 0.205f, h * 0.21f
+                        )
+                        cubicTo(
+                            w * 0.24f, h * 0.26f,
+                            w * 0.25f, h * 0.32f,
+                            w * 0.238f, h * 0.39f
+                        )
+                        close()
+                    }
+                    drawPath(
+                        path = brushTip,
+                        brush = Brush.verticalGradient(
+                            listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
+                        )
+                    )
+                }
+
+                // 5) 3D Student Excellence Trophy Cup on the Right (كأس تفوق طلابي ثلاثي الأبعاد)
+                val cupCx = w * 0.77f
+                val cupCy = h * 0.60f - floatOffsetY * 0.35f
+                // Trophy handles
+                drawOval(
+                    color = Color(0xFFFBBF24),
+                    topLeft = Offset(cupCx - w * 0.13f, cupCy - h * 0.08f),
+                    size = Size(w * 0.26f, h * 0.12f),
+                    style = Stroke(width = 2.4.dp.toPx())
+                )
+                // Trophy cup bowl
+                val cupBowl = Path().apply {
+                    moveTo(cupCx - w * 0.095f, cupCy - h * 0.10f)
+                    lineTo(cupCx + w * 0.095f, cupCy - h * 0.10f)
+                    cubicTo(
+                        cupCx + w * 0.085f, cupCy + h * 0.05f,
+                        cupCx - w * 0.085f, cupCy + h * 0.05f,
+                        cupCx - w * 0.095f, cupCy - h * 0.10f
+                    )
                     close()
                 }
                 drawPath(
-                    path = topWing,
-                    brush = Brush.linearGradient(
-                        listOf(Color.White, Color(0xFFFEF08A))
+                    path = cupBowl,
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))
                     )
                 )
-                // Paper plane center deep shadow fold
-                val centerFold = Path().apply {
-                    moveTo(planeCx + w * 0.13f, planeCy - h * 0.09f) // Nose tip
-                    lineTo(planeCx - w * 0.02f, planeCy + h * 0.03f) // Inner fold
-                    lineTo(planeCx - w * 0.01f, planeCy + h * 0.10f) // Bottom tail
-                    close()
-                }
-                drawPath(
-                    path = centerFold,
-                    color = Color(0xFFD97706)
+                // Trophy stem & base
+                drawRoundRect(
+                    color = Color(0xFFD97706),
+                    topLeft = Offset(cupCx - w * 0.022f, cupCy + h * 0.02f),
+                    size = Size(w * 0.044f, h * 0.08f),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
                 )
-                // Paper plane right/lower golden-white wing
-                val rightWing = Path().apply {
-                    moveTo(planeCx + w * 0.13f, planeCy - h * 0.09f) // Nose tip
-                    lineTo(planeCx - w * 0.02f, planeCy + h * 0.03f) // Inner fold
-                    lineTo(planeCx + w * 0.06f, planeCy + h * 0.09f) // Right wingtip
-                    close()
-                }
-                drawPath(
-                    path = rightWing,
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
-                    )
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFF065F46), Color(0xFF042F2E))
+                    ),
+                    topLeft = Offset(cupCx - w * 0.08f, cupCy + h * 0.095f),
+                    size = Size(w * 0.16f, h * 0.045f),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                 )
             }
 
@@ -4167,6 +4226,7 @@ fun DeveloperSystemBroadcastBanner(
     badgeText: String = "إشعار النظام العام",
     iconKey: OccasionIconKey = OccasionIconKey.BELL,
     illustrationType: ThreeDIllustrationType = iconKey.toThreeDIllustrationType(),
+    topOverlapPadding: Dp = 0.dp,
     onDismiss: (() -> Unit)? = null
 ) {
     Box(
@@ -4176,9 +4236,9 @@ fun DeveloperSystemBroadcastBanner(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0xFFD1FAE5).copy(alpha = 0.92f),
-                        Color(0xFFE0F7EE).copy(alpha = 0.96f),
-                        Color(0xFFA7F3D0).copy(alpha = 0.88f)
+                        Color(0xFFD1FAE5),
+                        Color(0xFFE0F7EE),
+                        Color(0xFFA7F3D0)
                     )
                 )
             )
@@ -4213,7 +4273,12 @@ fun DeveloperSystemBroadcastBanner(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .padding(
+                    start = 18.dp,
+                    end = 18.dp,
+                    top = 18.dp + topOverlapPadding,
+                    bottom = 18.dp
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -4299,6 +4364,7 @@ fun ThreeDMegaphoneAnnouncementBanner(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
+    topOverlapPadding: Dp = 0.dp,
     onClick: (() -> Unit)? = null,
     isUrgentActive: Boolean = false,
     isAdmin: Boolean = false,
@@ -4313,9 +4379,9 @@ fun ThreeDMegaphoneAnnouncementBanner(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0xFFD1FAE5).copy(alpha = 0.90f),
-                        Color(0xFFE0F7EE).copy(alpha = 0.95f),
-                        Color(0xFFA7F3D0).copy(alpha = 0.85f)
+                        Color(0xFFD1FAE5),
+                        Color(0xFFE0F7EE),
+                        Color(0xFFA7F3D0)
                     )
                 )
             )
@@ -4350,7 +4416,12 @@ fun ThreeDMegaphoneAnnouncementBanner(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
+                .padding(
+                    start = 18.dp,
+                    end = 18.dp,
+                    top = 16.dp + topOverlapPadding,
+                    bottom = 16.dp
+                ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -4504,6 +4575,7 @@ fun SeamlessWaveTeacherSpotlightSection(
     totalRatingsCount: Int = 0,
     topTeachers: List<TeacherEvaluationSummary> = emptyList(),
     isAdmin: Boolean = false,
+    topOverlapPadding: Dp = 0.dp,
     onOpenEvaluationSection: () -> Unit,
     onHideFromHome: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -4610,7 +4682,12 @@ fun SeamlessWaveTeacherSpotlightSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .padding(
+                    start = 18.dp,
+                    end = 18.dp,
+                    top = 18.dp + topOverlapPadding,
+                    bottom = 18.dp
+                ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(

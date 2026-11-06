@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -1033,43 +1034,55 @@ fun ReportsAndChatScreen(
                                 }
                             }
 
-                            // شارة تأكيد استلام وقراءة ولي الأمر للبلاغ (Parent Read Receipt Status Badge)
+                            // شارة زجاجية موحدة ونظيفة لحالة اطلاع ولي الأمر (بدون أيقونة الساعة الرملية وبدون تكرار)
+                            val pulseTransition = rememberInfiniteTransition(label = "parent_read_pulse_${rep.id}")
+                            val dotAlpha by pulseTransition.animateFloat(
+                                initialValue = 0.35f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(950, easing = FastOutSlowInEasing),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "amber_dot_alpha"
+                            )
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(50),
                                 color = if (rep.isReadByParent) {
                                     Color(0xFFECFDF5)
                                 } else {
                                     Color(0xFFFFFBEB)
                                 },
                                 border = BorderStroke(
-                                    1.2.dp,
-                                    if (rep.isReadByParent) Color(0xFF10B981).copy(alpha = 0.55f) else Color(0xFFF59E0B).copy(alpha = 0.55f)
+                                    1.dp,
+                                    if (rep.isReadByParent) Color(0xFF10B981).copy(alpha = 0.50f) else Color(0xFFF59E0B).copy(alpha = 0.48f)
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("report_read_receipt_${rep.id}")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(
-                                            imageVector = if (rep.isReadByParent) Icons.Filled.DoneAll else Icons.Filled.HourglassTop,
-                                            contentDescription = null,
-                                            tint = if (rep.isReadByParent) Color(0xFF059669) else Color(0xFFD97706),
-                                            modifier = Modifier.size(17.dp)
-                                        )
+                                        if (!rep.isReadByParent) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(9.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFFF59E0B).copy(alpha = dotAlpha))
+                                            )
+                                        }
                                         Text(
                                             text = if (rep.isReadByParent) {
                                                 "تمت القراءة من ولي الأمر ✓✓"
                                             } else {
-                                                "بانتظار قراءة ولي الأمر ⏳"
+                                                "بانتظار اطلاع ولي الأمر"
                                             },
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.ExtraBold,
@@ -1078,7 +1091,7 @@ fun ReportsAndChatScreen(
                                     }
                                     if (rep.isReadByParent && rep.readAtTimestamp.isNotBlank()) {
                                         Text(
-                                            text = "وقت الاطلاع: ${rep.readAtTimestamp}",
+                                            text = rep.readAtTimestamp,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFF047857)

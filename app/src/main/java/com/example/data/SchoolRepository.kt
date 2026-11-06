@@ -161,6 +161,11 @@ class SchoolRepository(context: Context) {
                 loadHolidaysConfig(resolvedSchoolId)
             }
 
+            val embeddedRatingsArr = obj.optJSONArray("teacherRatings")
+            if (embeddedRatingsArr != null && embeddedRatingsArr.length() > 0 && resolvedSchoolId.isNotBlank()) {
+                mergeEmbeddedTeacherRatingsIntoLocalCache(embeddedRatingsArr.toString(), resolvedSchoolId)
+            }
+
             SchoolConfig(
                 schoolId = resolvedSchoolId,
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
@@ -352,6 +357,7 @@ class SchoolRepository(context: Context) {
         val featJson = featureSettingsToJsonObject(config.featureSettings)
         val urgentAlertJson = urgentSchoolAlertToJsonObject(config.urgentAlert, sid)
         val holidaysJson = holidaysConfigToJsonObject(config.holidaysConfig, sid)
+        val currentRatingsArr = teacherRatingsToJsonArray(loadTeacherRatingsDirectOnly(sid), sid)
         val obj = JSONObject().apply {
             put("schoolId", sid)
             put("isSetupCompleted", config.isSetupCompleted)
@@ -374,6 +380,7 @@ class SchoolRepository(context: Context) {
             put("enabledFeatures", featJson)
             put("urgentAlert", urgentAlertJson)
             put("holidaysConfig", holidaysJson)
+            put("teacherRatings", currentRatingsArr)
             put("isCanteenWalletEnabled", config.isCanteenWalletEnabled)
         }
         val jsonStr = obj.toString()
@@ -652,6 +659,11 @@ class SchoolRepository(context: Context) {
                     o.optString("sectionName", "أ")
                 )
 
+                val accTeacherRatings = o.optJSONArray("teacherRatings")
+                if (accTeacherRatings != null && accTeacherRatings.length() > 0 && itemSchoolId.isNotBlank()) {
+                    mergeEmbeddedTeacherRatingsIntoLocalCache(accTeacherRatings.toString(), itemSchoolId)
+                }
+
                 list.add(
                     UserAccount(
                         id = o.optString("id"),
@@ -682,6 +694,7 @@ class SchoolRepository(context: Context) {
 
     fun saveAccounts(accounts: List<UserAccount>, schoolId: String = getActiveSchoolId()) {
         if (schoolId.isBlank()) return
+        val existingRatings = loadTeacherRatingsDirectOnly(schoolId)
         val arr = JSONArray()
         accounts.forEach { acc ->
             val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
@@ -719,6 +732,13 @@ class SchoolRepository(context: Context) {
                 put("schoolId", schoolId)
                 put("canModerateActivities", acc.canModerateActivities)
                 put("canManageCanteen", acc.canManageCanteen)
+                if (acc.role == UserRole.TEACHER) {
+                    val teacherSpecificRatings = existingRatings.filter {
+                        it.teacherId == acc.id ||
+                            (it.teacherName.isNotBlank() && it.teacherName.trim() == acc.fullName.trim())
+                    }
+                    put("teacherRatings", teacherRatingsToJsonArray(teacherSpecificRatings, schoolId))
+                }
             })
         }
         val jsonStr = arr.toString()
@@ -2554,8 +2574,16 @@ class SchoolRepository(context: Context) {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_HOLIDAYS), it)
             }
         }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_TEACHER_RATINGS)?.let {
+            if (it.isNotBlank() && it != "[]") {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_TEACHER_RATINGS), it)
+            }
+        }
 
         editor.apply()
+        // Parse settings and accounts once so any teacherRatings embedded in settings or users are also merged into local cache
+        loadSchoolConfig(cleanSid)
+        loadAccounts(cleanSid)
         return foundAny
     }
 
@@ -3691,7 +3719,8 @@ class SchoolRepository(context: Context) {
             FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS,
             FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
             FirebaseConfigConstants.COL_USER_PROFILES,
-            FirebaseConfigConstants.COL_HOLIDAYS
+            FirebaseConfigConstants.COL_HOLIDAYS,
+            FirebaseConfigConstants.COL_TEACHER_RATINGS
         )
 
         val schoolsList = loadRegisteredSchools()
@@ -3799,11 +3828,90 @@ class SchoolRepository(context: Context) {
     // 11. Teacher Evaluation & Excellence Ratings (تقييم وتميّز الكادر التدريسي)
     // =========================================================================
 
-    fun loadTeacherRatings(schoolId: String = getActiveSchoolId()): List<TeacherRatingRecord> {
+    private fun loadTeacherRatingsDirectOnly(schoolId: String = getActiveSchoolId()): List<TeacherRatingRecord> {
         if (schoolId.isBlank()) return emptyList()
-        val raw = prefs.getString(scopedKey(schoolId, "teacher_ratings"), null)
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_TEACHER_RATINGS), null)
             ?: return emptyList()
         return parseTeacherRatingsJson(raw, schoolId)
+    }
+
+    private fun teacherRatingsToJsonArray(
+        ratings: List<TeacherRatingRecord>,
+        schoolId: String
+    ): JSONArray {
+        val arr = JSONArray()
+        ratings.forEach { r ->
+            arr.put(JSONObject().apply {
+                put("id", r.id)
+                put("schoolId", schoolId)
+                put("teacherId", r.teacherId)
+                put("teacherName", InputSanitizer.sanitize(r.teacherName))
+                put("parentId", r.parentId)
+                put("parentName", InputSanitizer.sanitize(r.parentName))
+                put("stars", r.stars.coerceIn(1, 5))
+                put("praiseTag", InputSanitizer.sanitize(r.praiseTag))
+                put("note", InputSanitizer.sanitize(r.note))
+                put("createdAt", r.createdAt)
+            })
+        }
+        return arr
+    }
+
+    private fun mergeTeacherRatingsLists(
+        primary: List<TeacherRatingRecord>,
+        secondary: List<TeacherRatingRecord>
+    ): List<TeacherRatingRecord> {
+        if (secondary.isEmpty()) return primary
+        if (primary.isEmpty()) return secondary
+        val combined = (primary + secondary)
+            .distinctBy { r ->
+                if (r.id.isNotBlank()) r.id else "${r.teacherId}_${r.parentId.lowercase()}"
+            }
+        return combined
+    }
+
+    fun mergeEmbeddedTeacherRatingsIntoLocalCache(rawJsonArrayStr: String, schoolId: String) {
+        if (schoolId.isBlank() || rawJsonArrayStr.isBlank()) return
+        val incoming = parseTeacherRatingsJson(rawJsonArrayStr, schoolId)
+        if (incoming.isEmpty()) return
+        val current = loadTeacherRatingsDirectOnly(schoolId)
+        val merged = mergeTeacherRatingsLists(current, incoming)
+        if (merged.size != current.size || current.isEmpty()) {
+            val arrStr = teacherRatingsToJsonArray(merged, schoolId).toString()
+            prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_TEACHER_RATINGS), arrStr).apply()
+        }
+    }
+
+    fun loadTeacherRatings(schoolId: String = getActiveSchoolId()): List<TeacherRatingRecord> {
+        if (schoolId.isBlank()) return emptyList()
+        var merged = loadTeacherRatingsDirectOnly(schoolId)
+
+        // Also check embedded teacherRatings in settings JSON if present
+        prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_SETTINGS), null)?.let { settingsRaw ->
+            runCatching {
+                val obj = JSONObject(settingsRaw)
+                val arr = obj.optJSONArray("teacherRatings")
+                if (arr != null && arr.length() > 0) {
+                    merged = mergeTeacherRatingsLists(merged, parseTeacherRatingsJson(arr.toString(), schoolId))
+                }
+            }
+        }
+
+        // Also check embedded teacherRatings in users JSON if present
+        prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_USERS), null)?.let { usersRaw ->
+            runCatching {
+                val arr = JSONArray(usersRaw)
+                for (i in 0 until arr.length()) {
+                    val uObj = arr.optJSONObject(i) ?: continue
+                    val tArr = uObj.optJSONArray("teacherRatings")
+                    if (tArr != null && tArr.length() > 0) {
+                        merged = mergeTeacherRatingsLists(merged, parseTeacherRatingsJson(tArr.toString(), schoolId))
+                    }
+                }
+            }
+        }
+
+        return merged
     }
 
     fun parseTeacherRatingsJson(raw: String, schoolId: String = getActiveSchoolId()): List<TeacherRatingRecord> {
@@ -3837,24 +3945,21 @@ class SchoolRepository(context: Context) {
 
     fun saveTeacherRatings(ratings: List<TeacherRatingRecord>, schoolId: String = getActiveSchoolId()) {
         if (schoolId.isBlank()) return
-        val arr = JSONArray()
-        ratings.forEach { r ->
-            arr.put(JSONObject().apply {
-                put("id", r.id)
-                put("schoolId", schoolId)
-                put("teacherId", r.teacherId)
-                put("teacherName", InputSanitizer.sanitize(r.teacherName))
-                put("parentId", r.parentId)
-                put("parentName", InputSanitizer.sanitize(r.parentName))
-                put("stars", r.stars.coerceIn(1, 5))
-                put("praiseTag", InputSanitizer.sanitize(r.praiseTag))
-                put("note", InputSanitizer.sanitize(r.note))
-                put("createdAt", r.createdAt)
-            })
-        }
+        val mergedRatings = mergeTeacherRatingsLists(ratings, loadTeacherRatingsDirectOnly(schoolId))
+        val arr = teacherRatingsToJsonArray(mergedRatings, schoolId)
         val jsonStr = arr.toString()
-        prefs.edit().putString(scopedKey(schoolId, "teacher_ratings"), jsonStr).apply()
-        FirebaseCloudSync.pushSubCollectionAsync(schoolId, "teacher_ratings", jsonStr)
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_TEACHER_RATINGS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_TEACHER_RATINGS, jsonStr)
+
+        // Also persist inside schools/{schoolId}/settings and schools/{schoolId}/users in Cloud so ratings never get lost on reinstall
+        val currentCfg = loadSchoolConfig(schoolId)
+        if (currentCfg.schoolId.isNotBlank() || schoolId.isNotBlank()) {
+            saveSchoolConfig(currentCfg.copy(schoolId = schoolId))
+        }
+        val currentAccs = loadAccounts(schoolId)
+        if (currentAccs.isNotEmpty()) {
+            saveAccounts(currentAccs, schoolId)
+        }
     }
 
     fun getFirstAttendanceTimestampForDate(dateIso: String, schoolId: String = getActiveSchoolId()): Long {

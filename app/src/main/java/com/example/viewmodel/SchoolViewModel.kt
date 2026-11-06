@@ -393,6 +393,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                             _currentUser.value = refreshedUser
                                         }
                                     }
+                                    _teacherRatings.value = repo.loadTeacherRatings(sid)
                                 }
                             }
                         }
@@ -407,11 +408,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
                     }
-                    if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, "teacher_ratings")) {
-                        FirebaseCloudSync.fetchSubCollectionPayload(sid, "teacher_ratings")?.let {
-                            if (it.isNotBlank() && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, "teacher_ratings")) {
-                                repo.saveRawCachedSubCollection(sid, "teacher_ratings", it)
-                                _teacherRatings.value = repo.parseTeacherRatingsJson(it, sid)
+                    if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_TEACHER_RATINGS)) {
+                        FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_TEACHER_RATINGS)?.let {
+                            if (it.isNotBlank() && it != "[]" && !FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_TEACHER_RATINGS)) {
+                                repo.mergeEmbeddedTeacherRatingsIntoLocalCache(it, sid)
+                                _teacherRatings.value = repo.loadTeacherRatings(sid)
                             }
                         }
                     }
@@ -1020,6 +1021,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                             _currentUser.value = refreshedUser
                                         }
                                     }
+                                    _teacherRatings.value = repo.loadTeacherRatings(sid)
                                 }
                             }
                         }
@@ -1052,6 +1054,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 _schoolConfig.value = parsedCfg
                                 _featureSettings.value = parsedCfg.featureSettings
                                 _holidaysConfig.value = parsedCfg.holidaysConfig
+                                _teacherRatings.value = repo.loadTeacherRatings(sid)
                                 enforceActiveSectionFeatureVisibility(parsedCfg.featureSettings)
                             }
                         }
@@ -1445,6 +1448,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             ) {
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_USER_PROFILES, remoteProfRaw)
                                 _userProfilesAndSanctions.value = repo.parseUserProfilesAndSanctionsJson(remoteProfRaw, sid)
+                            }
+                        }
+
+                        if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_TEACHER_RATINGS)) {
+                            val remoteRatingsRaw = FirebaseCloudSync.fetchSubCollectionPayload(sid, FirebaseConfigConstants.COL_TEACHER_RATINGS)
+                            if (!remoteRatingsRaw.isNullOrBlank() && remoteRatingsRaw != "[]") {
+                                repo.mergeEmbeddedTeacherRatingsIntoLocalCache(remoteRatingsRaw, sid)
+                                _teacherRatings.value = repo.loadTeacherRatings(sid)
                             }
                         }
 
@@ -8093,7 +8104,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val teachers = accountsList.filter { it.role == UserRole.TEACHER && it.isActive }
         val parentKey = currentUserAccount?.id?.ifBlank { currentUserAccount.username }.orEmpty()
         return teachers.map { teacher ->
-            val tRatings = ratingsList.filter { it.teacherId == teacher.id }
+            val tRatings = ratingsList.filter {
+                it.teacherId == teacher.id ||
+                    (it.teacherName.isNotBlank() && it.teacherName.trim() == teacher.fullName.trim())
+            }
             val total = tRatings.size
             val avg = if (total > 0) {
                 tRatings.map { it.stars.coerceIn(1, 5) }.average().toFloat()

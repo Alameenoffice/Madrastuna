@@ -289,6 +289,29 @@ object FirebaseCloudSync {
                     }.toString()
                     executeHttpWrite(holidaysRtdbUrl, "PUT", holidaysRtdbBody)
                 }
+
+                // 5. When saving teacher_ratings, also persist under schools/{schoolId}/teacherRatings and schools/{schoolId}/settings/teacher_ratings
+                if (subCollection == FirebaseConfigConstants.COL_TEACHER_RATINGS || subCollection == "teacherRatings") {
+                    val ratingsFirestoreUrl =
+                        "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/settings/teacher_ratings?key=${FirebaseConfigConstants.API_KEY}"
+                    val ratingsFirestoreBody = JSONObject().apply {
+                        put("fields", JSONObject().apply {
+                            put("schoolId", JSONObject().put("stringValue", cleanSchoolId))
+                            put("updatedAt", JSONObject().put("integerValue", nowTs.toString()))
+                            put("payloadJson", JSONObject().put("stringValue", jsonPayload))
+                        })
+                    }.toString()
+                    executeHttpWrite(ratingsFirestoreUrl, "PATCH", ratingsFirestoreBody)
+
+                    val ratingsRtdbCamelUrl =
+                        "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/teacherRatings.json"
+                    val ratingsRtdbBody = JSONObject().apply {
+                        put("schoolId", cleanSchoolId)
+                        put("updatedAt", nowTs)
+                        put("payloadJson", jsonPayload)
+                    }.toString()
+                    executeHttpWrite(ratingsRtdbCamelUrl, "PUT", ratingsRtdbBody)
+                }
             } catch (_: Exception) {
                 // Offline-tolerant: local school-scoped persistence remains intact
             } finally {
@@ -397,6 +420,33 @@ object FirebaseCloudSync {
                 val response = executeHttpGet(holidaysUrl)
                 if (!response.isNullOrBlank()) {
                     val root = JSONObject(response)
+                    val fields = root.optJSONObject("fields")
+                    val payloadStr = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
+                    if (payloadStr.isNotBlank()) return@withContext payloadStr
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        // If fetching teacher_ratings, also check schools/{schoolId}/teacherRatings and schools/{schoolId}/settings/teacher_ratings
+        if (subCollection == FirebaseConfigConstants.COL_TEACHER_RATINGS || subCollection == "teacherRatings") {
+            try {
+                val camelRtdbUrl =
+                    "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/teacherRatings.json"
+                val rtdbResp = executeHttpGet(camelRtdbUrl)
+                if (!rtdbResp.isNullOrBlank() && rtdbResp != "null") {
+                    val root = JSONObject(rtdbResp)
+                    val payloadStr = root.optString("payloadJson", "")
+                    if (payloadStr.isNotBlank()) return@withContext payloadStr
+                }
+            } catch (_: Exception) {
+            }
+            try {
+                val fsSettingsRatingsUrl =
+                    "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/settings/teacher_ratings?key=${FirebaseConfigConstants.API_KEY}"
+                val fsResp = executeHttpGet(fsSettingsRatingsUrl)
+                if (!fsResp.isNullOrBlank()) {
+                    val root = JSONObject(fsResp)
                     val fields = root.optJSONObject("fields")
                     val payloadStr = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
                     if (payloadStr.isNotBlank()) return@withContext payloadStr
@@ -585,7 +635,8 @@ object FirebaseCloudSync {
             FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS,
             FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
             FirebaseConfigConstants.COL_USER_PROFILES,
-            FirebaseConfigConstants.COL_HOLIDAYS
+            FirebaseConfigConstants.COL_HOLIDAYS,
+            FirebaseConfigConstants.COL_TEACHER_RATINGS
         )
 
         subCols.forEach { sub ->

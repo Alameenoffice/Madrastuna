@@ -400,7 +400,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         .padding(horizontal = 16.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // 1) Top Glassmorphic Pills Row: "إشراف تربوي معتمد" & "ملفي الإبداعي"
+                    // 1) Top Glassmorphic Pills Row: "إشراف تربوي معتمد" & "ملفي الإبداعي" (Zero text clipping!)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -409,7 +409,8 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         Surface(
                             shape = RoundedCornerShape(50),
                             color = Color.White.copy(alpha = 0.16f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.38f))
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.38f)),
+                            modifier = Modifier.weight(1f, fill = false)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -423,22 +424,25 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Text(
-                                    text = "إشراف تربوي معتمد • ${approvedPosts.size} مشاركة",
+                                    text = "إشراف تربوي • ${approvedPosts.size} مشاركة",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
                                     maxLines = 1,
-                                    softWrap = false
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
+                        Spacer(modifier = Modifier.width(8.dp))
+
                         if (currentUser != null) {
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.20f),
-                                border = BorderStroke(1.2.dp, Color(0xFFFEF08A).copy(alpha = 0.65f)),
+                                color = Color.White.copy(alpha = 0.22f),
+                                border = BorderStroke(1.2.dp, Color(0xFFFEF08A).copy(alpha = 0.72f)),
                                 modifier = Modifier
+                                    .wrapContentWidth()
                                     .clip(RoundedCornerShape(50))
                                     .clickable {
                                         selectedProfileUser = ProfileModalTarget(
@@ -452,9 +456,9 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                     .testTag("my_creative_profile_btn")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Person,
@@ -464,7 +468,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                     )
                                     Text(
                                         text = "ملفي الإبداعي",
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color.White,
                                         maxLines = 1,
@@ -475,7 +479,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         }
                     }
 
-                    // 2) Main Hero Title & Exclusive 3D Gyroscopic Social Sphere & Paper Plane Animation
+                    // 2) Main Hero Title & Exclusive 3D Student Creativity & Innovation Showcase Animation
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -505,8 +509,8 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                         }
 
                         ThreeDIllustrationBox(
-                            type = ThreeDIllustrationType.SOCIAL_COMMUNITY_3D,
-                            modifier = Modifier.size(98.dp)
+                            type = ThreeDIllustrationType.STUDENT_CREATIVITY_SHOWCASE_3D,
+                            modifier = Modifier.size(100.dp)
                         )
                     }
 

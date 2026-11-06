@@ -45,6 +45,7 @@ object FirebaseConfigConstants {
     const val COL_ACTIVITY_REPORTS = "activity_reports"
     const val COL_USER_PROFILES = "user_profiles"
     const val COL_HOLIDAYS = "holidays"
+    const val COL_TEACHER_RATINGS = "teacher_ratings"
 
     // Root collections for Developer Super-Admin Panel
     const val COL_SCHOOL_LICENSES = "school_licenses"
