@@ -1377,7 +1377,7 @@ object DocumentAndIdExporter {
         canvas.drawRoundRect(leftBox, 8f, 8f, boxBorderPaint)
         val cleanPrincipal = principalName.ifBlank { "إدارة المدرسة" }
         drawFittedCenterText(canvas, "مصادقة مدير المدرسة: $cleanPrincipal", leftBox.centerX(), boxTop + 18f, leftBox.width() - 12f, headerTextPaint)
-        canvas.drawText("التوقيع الرسمي: ✓ مصادق", leftBox.centerX(), boxTop + 44f, subTextPaint)
+        canvas.drawText("التوقيع الرسمي: مصادق ومعتمد", leftBox.centerX(), boxTop + 44f, subTextPaint)
 
         // Bottom Page Numbering & School Address Bar
         val pageNumPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

@@ -259,6 +259,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _loginConnectingMessage = MutableStateFlow<String?>(null)
     val loginConnectingMessage: StateFlow<String?> = _loginConnectingMessage.asStateFlow()
 
+    private val _isBackgroundSyncing = MutableStateFlow(false)
+    val isBackgroundSyncing: StateFlow<Boolean> = _isBackgroundSyncing.asStateFlow()
+
     // Persistent Attendance Selection States (never reset on tab/section navigation)
     private val _selectedAttendanceDate = MutableStateFlow(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
     val selectedAttendanceDate: StateFlow<String> = _selectedAttendanceDate.asStateFlow()
@@ -1667,13 +1670,80 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun getDefaultMaxScoreForClassAndSubject(gradeClass: String, subjectName: String): Int {
+        val cleanSub = subjectName.trim()
+        val existingGradeScale = _grades.value.firstOrNull {
+            ArabicTextNormalizer.matchesClass(it.gradeClass, gradeClass) &&
+                it.subjectName.equals(cleanSub, ignoreCase = true)
+        }?.maxScoreScale
+        if (existingGradeScale == 10 || existingGradeScale == 100) {
+            return existingGradeScale
+        }
+        val subjCfg = _schoolConfig.value.subjectConfigs.firstOrNull {
+            it.name.equals(cleanSub, ignoreCase = true) &&
+                (it.assignedClasses.isEmpty() || it.assignedClasses.any { c -> ArabicTextNormalizer.matchesClass(c, gradeClass) })
+        } ?: _schoolConfig.value.subjectConfigs.firstOrNull {
+            it.name.equals(cleanSub, ignoreCase = true)
+        }
+        if (subjCfg != null && (subjCfg.defaultMaxScore == 10 || subjCfg.defaultMaxScore == 100)) {
+            return subjCfg.defaultMaxScore
+        }
         if (gradeClass.trim() in GradingRules.tenPointPrimaryClasses) {
             return 10
         }
-        val subjCfg = _schoolConfig.value.subjectConfigs.firstOrNull {
-            it.name.equals(subjectName.trim(), ignoreCase = true)
+        return GradingRules.defaultMaxScoreForClass(gradeClass)
+    }
+
+    /**
+     * Persists the chosen max score scale (10 or 100) for a given class and subject in both
+     * SubjectConfigItem and any existing SubjectGrade records so all screens stay synchronized.
+     */
+    fun updateClassSubjectMaxScoreScale(
+        gradeClass: String,
+        sectionName: String,
+        subjectName: String,
+        newScale: Int
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val validScale = if (newScale == 10) 10 else 100
+        val cleanSub = InputSanitizer.sanitize(subjectName.trim())
+        if (cleanSub.isBlank()) return
+        val sid = _schoolConfig.value.schoolId
+
+        // 1. Update SubjectConfigItem in schoolConfig
+        val currentConfigs = _schoolConfig.value.subjectConfigs.toMutableList()
+        val cfgIdx = currentConfigs.indexOfFirst { it.name.equals(cleanSub, ignoreCase = true) }
+        if (cfgIdx >= 0) {
+            currentConfigs[cfgIdx] = currentConfigs[cfgIdx].copy(defaultMaxScore = validScale)
+        } else {
+            currentConfigs.add(
+                SubjectConfigItem(
+                    id = "sub_${UUID.randomUUID().toString().take(6)}",
+                    name = cleanSub,
+                    assignedClasses = if (gradeClass.isNotBlank()) listOf(gradeClass.trim()) else emptyList(),
+                    defaultMaxScore = validScale
+                )
+            )
         }
-        return subjCfg?.defaultMaxScore ?: GradingRules.defaultMaxScoreForClass(gradeClass)
+        val updatedConfig = _schoolConfig.value.copy(subjectConfigs = currentConfigs)
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+
+        // 2. Update any existing SubjectGrade records for this class and subject
+        var changedGrades = false
+        val updatedGrades = _grades.value.map { g ->
+            if (g.subjectName.equals(cleanSub, ignoreCase = true) &&
+                (gradeClass.isBlank() || ArabicTextNormalizer.matchesClass(g.gradeClass, gradeClass))
+            ) {
+                changedGrades = true
+                g.copy(maxScoreScale = validScale)
+            } else {
+                g
+            }
+        }
+        if (changedGrades) {
+            _grades.value = updatedGrades
+            repo.saveGrades(updatedGrades, sid)
+        }
     }
 
     /**
@@ -2819,28 +2889,32 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             if (localAccountsForSchool.isNotEmpty() && _schoolConfig.value.schoolId != extractedPrefix) {
                 reloadSchoolDataIntoMemory(extractedPrefix)
             } else if (localAccountsForSchool.isEmpty()) {
-                // Attempt immediate cloud fetch for cross-device login (e.g. logging into 105-1 on a new phone)
+                // Fast-path lightweight authentication (< 1s): fetch only settings, accounts, and subjects first
                 val initialConnectingText = if (!knownSchoolName.isNullOrBlank()) {
-                    "جاري الاتصال بـ $knownSchoolName..."
+                    "جاري الدخول السريع إلى $knownSchoolName..."
                 } else {
-                    "جاري الاتصال بالمدرسة وجلب البيانات..."
+                    "جاري التحقق السريع من الحساب..."
                 }
                 _loginConnectingMessage.value = initialConnectingText
 
                 viewModelScope.launch {
-                    val cloudSchoolName = repo.fetchSchoolNameFromSettings(extractedPrefix) ?: knownSchoolName
-                    val displaySchoolName = cloudSchoolName?.takeIf { it.isNotBlank() } ?: "منصة المدرسة"
-                    _discoveredSchoolName.value = cloudSchoolName
-                    val liveMessage = "جاري الاتصال بـ $displaySchoolName..."
-                    _loginConnectingMessage.value = liveMessage
-                    showToastAlert(liveMessage, isSuccess = true)
-
-                    refreshDeveloperCloudData()
-                    val pulled = repo.syncFullSchoolFromCloud(extractedPrefix)
+                    val essentialPulled = repo.syncEssentialAuthFromCloud(extractedPrefix)
                     _loginConnectingMessage.value = null
-                    if (pulled) {
+                    if (essentialPulled) {
                         reloadSchoolDataIntoMemory(extractedPrefix)
-                        completeMemberLogin(cleanUser, cleanPass, extractedPrefix)
+                        val loginRes = completeMemberLogin(cleanUser, cleanPass, extractedPrefix)
+                        if (loginRes.isSuccess) {
+                            // Launch non-blocking background lazy sync for remaining collections
+                            _isBackgroundSyncing.value = true
+                            try {
+                                refreshDeveloperCloudData()
+                                repo.syncRemainingSchoolCollectionsInBackground(extractedPrefix)
+                                reloadSchoolDataIntoMemory(extractedPrefix)
+                            } catch (_: Exception) {
+                            } finally {
+                                _isBackgroundSyncing.value = false
+                            }
+                        }
                     } else {
                         registerFailedLoginAttempt()
                         showToastAlert("بيانات الدخول غير صحيحة أو لم يتم العثور على المدرسة المطلوبة", isSuccess = false)
@@ -3871,7 +3945,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val holidayReason = getHolidayLabelForDate(cleanDate)
         if (holidayReason != null) {
             showToastAlert(
-                "🔒 نظام البوابة ومسح الباركود مغلق اليوم ($holidayReason) — لا يمكن تسجيل دخول أو مغادرة",
+                "نظام البوابة ومسح الباركود مغلق اليوم ($holidayReason) — لا يمكن تسجيل دخول أو مغادرة",
                 isSuccess = false
             )
             return null
@@ -3991,7 +4065,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val holidayReason = getHolidayLabelForDate(cleanDate)
         if (holidayReason != null) {
             showToastAlert(
-                "🔒 نظام البوابة ومسح الباركود مغلق اليوم ($holidayReason) — لا يمكن تسجيل دخول أو مغادرة",
+                "نظام البوابة ومسح الباركود مغلق اليوم ($holidayReason) — لا يمكن تسجيل دخول أو مغادرة",
                 isSuccess = false
             )
             return null
@@ -5090,7 +5164,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         month2Score: Int,
         midYearScore: Int,
         finalExamScore: Int,
-        maxScoreScale: Int = GradingRules.defaultMaxScoreForClass(student.gradeClass),
+        maxScoreScale: Int = getDefaultMaxScoreForClassAndSubject(student.gradeClass, subjectName),
         extraDailyScores: List<Int> = emptyList(),
         extraMonthlyScores: List<Int> = emptyList()
     ): Boolean {
@@ -5111,16 +5185,68 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         val existingGrade = if (existingIdx >= 0) _grades.value[existingIdx] else null
 
-        // Enforce Principal Approval Lock for Teachers
-        val isLockedForTeacher = existingGrade?.isApprovedByPrincipal == true ||
-            isClassSubjectApprovedByPrincipal(student.gradeClass, student.sectionName, subjectName)
-        if (_currentUser.value?.role == UserRole.TEACHER && isLockedForTeacher) {
+        // Determine per-period locks for Teachers
+        val isTeacher = _currentUser.value?.role == UserRole.TEACHER
+        val lockedPeriodsForStudent: Set<String> = GradeAssessmentPeriod.entries
+            .filter { p ->
+                existingGrade?.isPeriodApproved(p) == true ||
+                    isClassSubjectPeriodApproved(student.gradeClass, student.sectionName, subjectName, p)
+            }
+            .map { it.key }
+            .toSet()
+
+        if (isTeacher && lockedPeriodsForStudent.size == GradeAssessmentPeriod.entries.size) {
             showToastAlert(
-                "🔒 تمت مصادقة الدرجات من قِبل إدارة المدرسة (التعديل متاح للمدير فقط)",
+                "تمت مصادقة جميع فترات هذه المادة من قِبل إدارة المدرسة (التعديل متاح للمدير فقط)",
                 isSuccess = false
             )
             return false
         }
+
+        val resolvedDaily = if (isTeacher && GradeAssessmentPeriod.DAILY.key in lockedPeriodsForStudent) {
+            existingGrade?.dailyScore ?: 0
+        } else {
+            dailyScore.coerceIn(0, validScale)
+        }
+        val resolvedMonth1 = if (isTeacher && GradeAssessmentPeriod.MONTH_1.key in lockedPeriodsForStudent) {
+            existingGrade?.month1Score ?: 0
+        } else {
+            month1Score.coerceIn(0, validScale)
+        }
+        val resolvedMonth2 = if (isTeacher && GradeAssessmentPeriod.MONTH_2.key in lockedPeriodsForStudent) {
+            existingGrade?.month2Score ?: 0
+        } else {
+            month2Score.coerceIn(0, validScale)
+        }
+        val resolvedMidYear = if (isTeacher && GradeAssessmentPeriod.MID_YEAR.key in lockedPeriodsForStudent) {
+            existingGrade?.midYearScore ?: 0
+        } else {
+            midYearScore.coerceIn(0, validScale)
+        }
+        val resolvedFinalExam = if (isTeacher && GradeAssessmentPeriod.FINAL_EXAM.key in lockedPeriodsForStudent) {
+            existingGrade?.finalExamScore ?: 0
+        } else {
+            finalExamScore.coerceIn(0, validScale)
+        }
+
+        val sanitizedExtraMonthly = extraMonthlyScores.map { it.coerceIn(0, validScale) }.toMutableList()
+        if (isTeacher && GradeAssessmentPeriod.MONTH_3.key in lockedPeriodsForStudent) {
+            val oldM3 = existingGrade?.extraMonthlyScores?.getOrNull(0) ?: 0
+            if (sanitizedExtraMonthly.isEmpty()) sanitizedExtraMonthly.add(oldM3) else sanitizedExtraMonthly[0] = oldM3
+        }
+        if (isTeacher && GradeAssessmentPeriod.MONTH_4.key in lockedPeriodsForStudent) {
+            val oldM4 = existingGrade?.extraMonthlyScores?.getOrNull(1) ?: 0
+            while (sanitizedExtraMonthly.size < 2) sanitizedExtraMonthly.add(0)
+            sanitizedExtraMonthly[1] = oldM4
+        }
+
+        val resolvedExtraDaily = if (isTeacher && GradeAssessmentPeriod.DAILY.key in lockedPeriodsForStudent) {
+            existingGrade?.extraDailyScores ?: emptyList()
+        } else {
+            extraDailyScores.map { it.coerceIn(0, validScale) }
+        }
+
+        val mergedApprovedPeriods = (existingGrade?.approvedPeriods ?: emptySet()) + lockedPeriodsForStudent
 
         val grade = SubjectGrade(
             id = existingGrade?.id ?: "grd_${UUID.randomUUID().toString().take(6)}",
@@ -5128,15 +5254,16 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             studentName = student.studentName,
             gradeClass = student.gradeClass,
             subjectName = InputSanitizer.sanitize(subjectName),
-            dailyScore = dailyScore.coerceIn(0, validScale),
-            month1Score = month1Score.coerceIn(0, validScale),
-            month2Score = month2Score.coerceIn(0, validScale),
-            midYearScore = midYearScore.coerceIn(0, validScale),
-            finalExamScore = finalExamScore.coerceIn(0, validScale),
+            dailyScore = resolvedDaily,
+            month1Score = resolvedMonth1,
+            month2Score = resolvedMonth2,
+            midYearScore = resolvedMidYear,
+            finalExamScore = resolvedFinalExam,
             maxScoreScale = validScale,
-            extraDailyScores = extraDailyScores.map { it.coerceIn(0, validScale) },
-            extraMonthlyScores = extraMonthlyScores.map { it.coerceIn(0, validScale) },
-            isApprovedByPrincipal = existingGrade?.isApprovedByPrincipal ?: isLockedForTeacher,
+            extraDailyScores = resolvedExtraDaily,
+            extraMonthlyScores = sanitizedExtraMonthly,
+            isApprovedByPrincipal = mergedApprovedPeriods.isNotEmpty(),
+            approvedPeriods = mergedApprovedPeriods,
             schoolId = sid
         )
 
@@ -5156,7 +5283,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         pushNotification(
             title = "رصد درجات مادة $subjectName",
-            body = "تم تحديث درجات الطالب ${student.studentName} في مادة $subjectName (السعي: ${grade.annualEffortScore}/$validScale | المعدل: ${grade.finalAverage}/$validScale - ${grade.ratingLabel}).",
+            body = "تم تحديث درجات الطالب ${student.studentName} في مادة $subjectName (السعي: ${grade.annualEffortScore} / $validScale | المعدل: ${grade.finalAverage} / $validScale - ${grade.ratingLabel}).",
             type = NotificationType.GRADES,
             targetStudentId = student.id,
             targetSection = AppSection.EXAMS_GRADES.name,
@@ -5167,22 +5294,39 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Checks if a specific student's subject grade is approved and locked by the Principal.
+     * Checks if a specific student's subject period is approved by the Principal.
      */
-    fun isStudentSubjectGradeApproved(studentId: String, subjectName: String): Boolean {
+    fun isStudentSubjectPeriodApproved(
+        studentId: String,
+        subjectName: String,
+        period: GradeAssessmentPeriod
+    ): Boolean {
         val cleanSub = subjectName.trim()
-        return _grades.value.firstOrNull {
+        val g = _grades.value.firstOrNull {
             it.studentId == studentId && it.subjectName.equals(cleanSub, ignoreCase = true)
-        }?.isApprovedByPrincipal == true
+        } ?: return false
+        return g.isPeriodApproved(period)
     }
 
     /**
-     * Checks if the grades for a given class, section, and subject have been officially approved by the Principal.
+     * Checks if a specific student's subject has at least one approved & recorded period.
      */
-    fun isClassSubjectApprovedByPrincipal(
+    fun isStudentSubjectGradeApproved(studentId: String, subjectName: String): Boolean {
+        val cleanSub = subjectName.trim()
+        val g = _grades.value.firstOrNull {
+            it.studentId == studentId && it.subjectName.equals(cleanSub, ignoreCase = true)
+        } ?: return false
+        return g.approvedAndRecordedPeriods.isNotEmpty()
+    }
+
+    /**
+     * Checks if a specific period for a given class, section, and subject is officially approved by the Principal.
+     */
+    fun isClassSubjectPeriodApproved(
         gradeClass: String,
         sectionName: String,
-        subjectName: String
+        subjectName: String,
+        period: GradeAssessmentPeriod
     ): Boolean {
         val sid = _schoolConfig.value.schoolId
         val cleanSub = subjectName.trim()
@@ -5198,17 +5342,71 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             g.subjectName.equals(cleanSub, ignoreCase = true) &&
                 (if (studentIds.isNotEmpty()) g.studentId in studentIds else ArabicTextNormalizer.matchesClass(g.gradeClass, gradeClass))
         }
-        return matchingGrades.isNotEmpty() && matchingGrades.all { it.isApprovedByPrincipal }
+        return matchingGrades.isNotEmpty() && matchingGrades.any { it.isPeriodApproved(period) }
     }
 
     /**
-     * Principal (UserRole.ADMIN) approves & locks (or unlocks) all grades for a class/section/subject.
-     * Once approved, teachers cannot modify the grades; only the Principal can edit or unlock them.
+     * Computes the student completion summary for a specific class, section, subject, and assessment period.
      */
-    fun setClassSubjectGradesApproval(
+    fun getPeriodCompletionSummary(
         gradeClass: String,
         sectionName: String,
         subjectName: String,
+        period: GradeAssessmentPeriod
+    ): PeriodCompletionSummary {
+        val sid = _schoolConfig.value.schoolId
+        val cleanSub = subjectName.trim()
+        val classStudents = _students.value.filter { stu ->
+            stu.isActive &&
+                (stu.schoolId.isEmpty() || stu.schoolId == sid) &&
+                ArabicTextNormalizer.matchesClass(stu.gradeClass, gradeClass) &&
+                (sectionName.isBlank() || ArabicTextNormalizer.matchesSection(stu.sectionName, sectionName))
+        }
+        val unrecordedNames = mutableListOf<String>()
+        var recordedCount = 0
+        classStudents.forEach { stu ->
+            val g = _grades.value.firstOrNull {
+                it.studentId == stu.id && it.subjectName.equals(cleanSub, ignoreCase = true)
+            }
+            val score = g?.getScoreForPeriod(period) ?: 0
+            if (score > 0) {
+                recordedCount++
+            } else {
+                unrecordedNames.add(stu.fullNameWithFather)
+            }
+        }
+        val approved = isClassSubjectPeriodApproved(gradeClass, sectionName, cleanSub, period)
+        return PeriodCompletionSummary(
+            period = period,
+            totalStudentsCount = classStudents.size,
+            recordedStudentsCount = recordedCount,
+            unrecordedStudentNames = unrecordedNames,
+            isPeriodApproved = approved
+        )
+    }
+
+    /**
+     * Checks if the grades for a given class, section, and subject have any approved period by the Principal.
+     */
+    fun isClassSubjectApprovedByPrincipal(
+        gradeClass: String,
+        sectionName: String,
+        subjectName: String
+    ): Boolean {
+        return GradeAssessmentPeriod.entries.any { period ->
+            isClassSubjectPeriodApproved(gradeClass, sectionName, subjectName, period)
+        }
+    }
+
+    /**
+     * Principal (UserRole.ADMIN) approves & locks (or unlocks) a specific assessment period
+     * for a class/section/subject without locking other assessment periods.
+     */
+    fun setClassSubjectPeriodApproval(
+        gradeClass: String,
+        sectionName: String,
+        subjectName: String,
+        period: GradeAssessmentPeriod,
         approved: Boolean
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
@@ -5223,7 +5421,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 (sectionName.isBlank() || ArabicTextNormalizer.matchesSection(stu.sectionName, sectionName))
         }
         val updated = _grades.value.toMutableList()
-        val scale = GradingRules.defaultMaxScoreForClass(gradeClass)
+        val scale = getDefaultMaxScoreForClassAndSubject(gradeClass, cleanSub)
 
         if (classStudents.isNotEmpty()) {
             classStudents.forEach { stu ->
@@ -5231,8 +5429,14 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     it.studentId == stu.id && it.subjectName.equals(cleanSub, ignoreCase = true)
                 }
                 if (idx >= 0) {
-                    updated[idx] = updated[idx].copy(isApprovedByPrincipal = approved)
-                } else {
+                    val currentPeriods = updated[idx].approvedPeriods.toMutableSet()
+                    if (approved) currentPeriods.add(period.key) else currentPeriods.remove(period.key)
+                    updated[idx] = updated[idx].copy(
+                        approvedPeriods = currentPeriods,
+                        isApprovedByPrincipal = currentPeriods.isNotEmpty()
+                    )
+                } else if (approved) {
+                    val newPeriods = setOf(period.key)
                     updated.add(
                         SubjectGrade(
                             id = "grd_${UUID.randomUUID().toString().take(6)}",
@@ -5246,7 +5450,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             midYearScore = 0,
                             finalExamScore = 0,
                             maxScoreScale = scale,
-                            isApprovedByPrincipal = approved,
+                            isApprovedByPrincipal = true,
+                            approvedPeriods = newPeriods,
                             schoolId = sid
                         )
                     )
@@ -5258,7 +5463,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 if (g.subjectName.equals(cleanSub, ignoreCase = true) &&
                     ArabicTextNormalizer.matchesClass(g.gradeClass, gradeClass)
                 ) {
-                    updated[i] = g.copy(isApprovedByPrincipal = approved)
+                    val currentPeriods = g.approvedPeriods.toMutableSet()
+                    if (approved) currentPeriods.add(period.key) else currentPeriods.remove(period.key)
+                    updated[i] = g.copy(
+                        approvedPeriods = currentPeriods,
+                        isApprovedByPrincipal = currentPeriods.isNotEmpty()
+                    )
                 }
             }
         }
@@ -5267,12 +5477,26 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveGrades(updated, sid)
         showToastAlert(
             if (approved) {
-                "🛡️ تمت مصادقة واعتماد درجات مادة ($cleanSub) رسمياً وقفل التعديل على المعلمين"
+                "تمت مصادقة واعتماد درجات (${period.arabicTitle}) لمادة ($cleanSub) رسمياً وقفل تعديل هذه الفترة على المعلمين"
             } else {
-                "🔓 تم إلغاء المصادقة وفتح قفل تعديل الدرجات لمادة ($cleanSub)"
+                "تم إلغاء المصادقة وفتح قفل التعديل لفترة (${period.arabicTitle}) في مادة ($cleanSub)"
             },
             isSuccess = true
         )
+    }
+
+    /**
+     * Legacy whole-subject wrapper delegating to all periods if ever called.
+     */
+    fun setClassSubjectGradesApproval(
+        gradeClass: String,
+        sectionName: String,
+        subjectName: String,
+        approved: Boolean
+    ) {
+        GradeAssessmentPeriod.entries.forEach { p ->
+            setClassSubjectPeriodApproval(gradeClass, sectionName, subjectName, p, approved)
+        }
     }
 
     /**
@@ -5280,8 +5504,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
      * Automatic Pass/Fail rule:
      *  - In 100-point system: score < 50 is failing in that subject.
      *  - In 10-point system: score < 5 is failing in that subject.
-     *  - Passing all subjects = Overall Pass (ناجح 🏆).
-     *  - Failing 1 or more subjects = Overall Fail / Needs Support (مكمل / راسب ⚠️).
+     *  - Passing all subjects = Overall Pass (ناجح).
+     *  - Failing 1 or more subjects = Overall Fail / Needs Support (مكمل / راسب).
      */
     fun buildStudentReportCardPreview(
         student: StudentRecord,
@@ -5295,12 +5519,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             .filter { it.isNotEmpty() }
             .distinctBy { ArabicTextNormalizer.normalizeText(it) }
 
-        val defaultScale = GradingRules.defaultMaxScoreForClass(student.gradeClass)
         val subjectItems = allSubjectNames.map { subName ->
             val g = studentGrades.firstOrNull {
                 ArabicTextNormalizer.normalizeText(it.subjectName) == ArabicTextNormalizer.normalizeText(subName)
             }
-            val scale = g?.maxScoreScale ?: defaultScale
+            val scale = g?.maxScoreScale ?: getDefaultMaxScoreForClassAndSubject(student.gradeClass, subName)
             val scoreForPeriod = when (periodType) {
                 ReportCardPeriodType.MONTH_1 -> g?.month1Score ?: 0
                 ReportCardPeriodType.MONTH_2 -> g?.month2Score ?: 0
@@ -5357,6 +5580,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             principalName = principalName,
             schoolName = _schoolConfig.value.schoolName,
             isViewedByParent = false,
+            isDismissedFromHome = false,
             schoolId = sid
         )
     }
@@ -5371,6 +5595,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val sid = _schoolConfig.value.schoolId
         val card = buildStudentReportCardPreview(student, periodType)
+        repo.clearReportCardDismissedLocally(card.id, sid)
         val updated = _issuedReportCards.value.toMutableList()
         val existingIdx = updated.indexOfFirst { it.id == card.id }
         if (existingIdx >= 0) {
@@ -5382,13 +5607,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveIssuedReportCards(updated, sid)
 
         val statusSummary = if (card.isOverallPassed) {
-            "ناجح بتفوق 🏆 (المعدل: ${card.averagePercent}%)"
+            "ناجح بتفوق (المعدل: ${card.averagePercent}%)"
         } else {
             "بحاجة إلى متابعة ودعم في ${card.failedSubjectsCount} مواد (المعدل: ${card.averagePercent}%)"
         }
         pushNotification(
-            title = "🎉 وصل الآن الكارت المدرسي الرسمي للطالب (${student.studentName})",
-            body = "أصدرت إدارة المدرسة (${periodType.arabicTitle}) للطالب ${student.fullNameWithFather} — النتيجة: $statusSummary. اضغط لفتح الكارت!",
+            title = "وصل الآن الكارت المدرسي الرسمي للطالب (${student.studentName})",
+            body = "أصدرت إدارة المدرسة (${periodType.arabicTitle}) للطالب ${student.fullNameWithFather} — النتيجة: $statusSummary. اضغط لفتح الكارت.",
             type = NotificationType.GRADES,
             targetStudentId = student.id,
             targetSection = AppSection.EXAMS_GRADES.name,
@@ -5396,7 +5621,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             targetItemId = card.id
         )
         showToastAlert(
-            "📩 تم إصدار وإرسال (${periodType.arabicTitle}) لولي أمر الطالب ${student.studentName} بنجاح",
+            "تم إصدار وإرسال (${periodType.arabicTitle}) لولي أمر الطالب ${student.studentName} بنجاح",
             isSuccess = true
         )
         return card
@@ -5426,6 +5651,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val updated = _issuedReportCards.value.toMutableList()
         targetStudents.forEach { stu ->
             val card = buildStudentReportCardPreview(stu, periodType)
+            repo.clearReportCardDismissedLocally(card.id, sid)
             val existingIdx = updated.indexOfFirst { it.id == card.id }
             if (existingIdx >= 0) {
                 updated[existingIdx] = card
@@ -5433,13 +5659,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 updated.add(0, card)
             }
             val statusSummary = if (card.isOverallPassed) {
-                "ناجح 🏆 (${card.averagePercent}%)"
+                "ناجح (${card.averagePercent}%)"
             } else {
                 "مكمل في ${card.failedSubjectsCount} مواد (${card.averagePercent}%)"
             }
             pushNotification(
-                title = "🎉 وصل الآن الكارت المدرسي الرسمي للطالب (${stu.studentName})",
-                body = "أصدرت إدارة المدرسة (${periodType.arabicTitle}) للطالب ${stu.fullNameWithFather} — النتيجة: $statusSummary. اضغط لفتح النتيجة!",
+                title = "وصل الآن الكارت المدرسي الرسمي للطالب (${stu.studentName})",
+                body = "أصدرت إدارة المدرسة (${periodType.arabicTitle}) للطالب ${stu.fullNameWithFather} — النتيجة: $statusSummary. اضغط لفتح النتيجة.",
                 type = NotificationType.GRADES,
                 targetStudentId = stu.id,
                 targetSection = AppSection.EXAMS_GRADES.name,
@@ -5450,7 +5676,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _issuedReportCards.value = updated
         repo.saveIssuedReportCards(updated, sid)
         showToastAlert(
-            "🚀 تم إصدار وإرسال (${periodType.arabicTitle}) لجميع طلاب $gradeClass ($sectionName) (${targetStudents.size} طالب) دفعة واحدة!",
+            "تم إصدار وإرسال (${periodType.arabicTitle}) لجميع طلاب $gradeClass ($sectionName) (${targetStudents.size} طالب) دفعة واحدة",
             isSuccess = true
         )
         return targetStudents.size
@@ -5462,6 +5688,37 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         return _issuedReportCards.value.firstOrNull {
             it.studentId == studentId && (it.schoolId.isEmpty() || it.schoolId == sid)
         }
+    }
+
+    /**
+     * Returns the latest issued report card for the student ONLY if it has not been dismissed from the Home screen.
+     */
+    fun getLatestHomeBannerReportCardForStudent(studentId: String): IssuedStudentReportCard? {
+        if (studentId.isBlank()) return null
+        val sid = _schoolConfig.value.schoolId
+        val localDismissed = repo.loadDismissedReportCardIds(sid)
+        return _issuedReportCards.value.firstOrNull {
+            it.studentId == studentId &&
+                (it.schoolId.isEmpty() || it.schoolId == sid) &&
+                !it.isDismissedFromHome &&
+                it.id !in localDismissed
+        }
+    }
+
+    /**
+     * Permanently dismisses/hides the issued report card banner from the Home screen (both locally and in Firebase Cloud),
+     * while keeping the report card accessible inside the Exams & Grades section.
+     */
+    fun dismissIssuedReportCardFromHome(cardId: String) {
+        if (cardId.isBlank()) return
+        val sid = _schoolConfig.value.schoolId
+        repo.markReportCardDismissedLocally(cardId, sid)
+        val updated = _issuedReportCards.value.map { c ->
+            if (c.id == cardId) c.copy(isDismissedFromHome = true, isViewedByParent = true) else c
+        }
+        _issuedReportCards.value = updated
+        repo.saveIssuedReportCards(updated, sid)
+        showToastAlert("تم إخفاء إشعار الكارت المدرسي من الشاشة الرئيسية (يبقى متاحاً في قسم الامتحانات والدرجات)", isSuccess = true)
     }
 
     fun markIssuedReportCardViewed(cardId: String) {
@@ -8458,7 +8715,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val updatedList = listOf(newRecord) + _teacherRatings.value
         _teacherRatings.value = updatedList
         repo.saveTeacherRatings(updatedList, activeSid)
-        showToastAlert("تم اعتماد تقييمك للأستاذ (${teacherAcc.fullName}) بنجاح ★", isSuccess = true)
+        showToastAlert("تم اعتماد تقييمك للأستاذ (${teacherAcc.fullName}) بنجاح", isSuccess = true)
         return true
     }
 

@@ -1215,6 +1215,46 @@ object GradingRules {
     }
 }
 
+enum class GradeAssessmentPeriod(
+    val key: String,
+    val arabicTitle: String,
+    val shortLabel: String
+) {
+    DAILY("daily", "التقييم اليومي", "اليومي"),
+    MONTH_1("month1", "الشهر الأول", "شهر 1"),
+    MONTH_2("month2", "الشهر الثاني", "شهر 2"),
+    MID_YEAR("midYear", "نصف السنة", "نصف السنة"),
+    MONTH_3("month3", "الشهر الثالث", "شهر 3"),
+    MONTH_4("month4", "الشهر الرابع", "شهر 4"),
+    FINAL_EXAM("finalExam", "الامتحان النهائي", "النهائي");
+
+    companion object {
+        fun fromKey(rawKey: String): GradeAssessmentPeriod? {
+            val clean = rawKey.trim()
+            return entries.firstOrNull {
+                it.key.equals(clean, ignoreCase = true) || it.name.equals(clean, ignoreCase = true)
+            }
+        }
+    }
+}
+
+data class PeriodCompletionSummary(
+    val period: GradeAssessmentPeriod,
+    val totalStudentsCount: Int,
+    val recordedStudentsCount: Int,
+    val unrecordedStudentNames: List<String>,
+    val isPeriodApproved: Boolean
+) {
+    val unrecordedCount: Int
+        get() = unrecordedStudentNames.size
+
+    val isFullyCompleted: Boolean
+        get() = totalStudentsCount > 0 && unrecordedStudentNames.isEmpty()
+
+    val isFullyRecorded: Boolean
+        get() = isFullyCompleted
+}
+
 data class SubjectGrade(
     val id: String,
     val studentId: String,
@@ -1230,8 +1270,32 @@ data class SubjectGrade(
     val extraDailyScores: List<Int> = emptyList(),
     val extraMonthlyScores: List<Int> = emptyList(),
     val isApprovedByPrincipal: Boolean = false,
+    val approvedPeriods: Set<String> = emptySet(),
     val schoolId: String = ""
 ) {
+    fun isPeriodApproved(period: GradeAssessmentPeriod): Boolean {
+        return period.key in approvedPeriods || period.name in approvedPeriods
+    }
+
+    fun getScoreForPeriod(period: GradeAssessmentPeriod): Int {
+        return when (period) {
+            GradeAssessmentPeriod.DAILY -> dailyScore
+            GradeAssessmentPeriod.MONTH_1 -> month1Score
+            GradeAssessmentPeriod.MONTH_2 -> month2Score
+            GradeAssessmentPeriod.MID_YEAR -> midYearScore
+            GradeAssessmentPeriod.MONTH_3 -> extraMonthlyScores.getOrNull(0) ?: 0
+            GradeAssessmentPeriod.MONTH_4 -> extraMonthlyScores.getOrNull(1) ?: 0
+            GradeAssessmentPeriod.FINAL_EXAM -> finalExamScore
+        }
+    }
+
+    fun isPeriodApprovedAndRecorded(period: GradeAssessmentPeriod): Boolean {
+        return isPeriodApproved(period) && getScoreForPeriod(period) > 0
+    }
+
+    val approvedAndRecordedPeriods: List<GradeAssessmentPeriod>
+        get() = GradeAssessmentPeriod.entries.filter { isPeriodApprovedAndRecorded(it) }
+
     // هل اكتملت جميع الامتحانات (شهر 1، شهر 2، والأشهر الإضافية، نصف السنة، النهائي)؟
     val isAllExamsCompleted: Boolean
         get() = month1Score > 0 &&
@@ -2309,6 +2373,7 @@ data class IssuedStudentReportCard(
     val principalName: String = "إدارة المدرسة",
     val schoolName: String = "",
     val isViewedByParent: Boolean = false,
+    val isDismissedFromHome: Boolean = false,
     val schoolId: String = ""
 )
 

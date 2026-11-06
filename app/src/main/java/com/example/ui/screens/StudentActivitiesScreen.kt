@@ -1293,7 +1293,7 @@ fun StudentActivityPostCard(
                             .testTag("follow_author_btn_${post.id}")
                     ) {
                         Text(
-                            text = if (isAuthorFollowed) "متابَع ✓" else "+ متابعة",
+                            text = if (isAuthorFollowed) "متابَع" else "+ متابعة",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isAuthorFollowed) DeepEmerald else Color.White,

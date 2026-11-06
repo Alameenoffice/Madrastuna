@@ -1073,16 +1073,13 @@ fun QrAttendanceScannerDialog(
                                     fontWeight = FontWeight.ExtraBold
                                 )
                                 Text(
-                                    text = if (isGateLockedForHoliday) {
-                                        "البوابة مقفلة ليوم $selectedDate (${holidayLabel ?: "عطلة رسمية / أسبوعية"})"
-                                    } else if (activeScanMode == GateScanMode.CHECK_IN) {
-                                        "وضع تسجيل الدخول: يوثق وقت وصول الطالب ويسجله (حاضر) ليوم $selectedDate"
+                                    text = if (activeScanMode == GateScanMode.CHECK_IN) {
+                                        "توثيق وقت وصول الطالب وتسجيل الحضور ليوم $selectedDate"
                                     } else {
-                                        "وضع تسجيل المغادرة: يوثق وقت انصراف الطالب من بوابة المدرسة ليوم $selectedDate"
+                                        "توثيق وقت انصراف الطالب من بوابة المدرسة ليوم $selectedDate"
                                     },
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (isGateLockedForHoliday) DangerRed else TextMutedGreen,
-                                    fontWeight = if (isGateLockedForHoliday) FontWeight.Bold else FontWeight.Normal
+                                    color = TextMutedGreen
                                 )
                             }
                         }
@@ -1096,7 +1093,7 @@ fun QrAttendanceScannerDialog(
                     }
                 }
 
-                // Holiday Lock Banner inside QR Scanner Modal
+                // Single Unified Glassmorphic Holiday Lock Banner inside QR Scanner Modal
                 if (isGateLockedForHoliday) {
                     item {
                         Surface(
@@ -1130,19 +1127,11 @@ fun QrAttendanceScannerDialog(
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "🔒 نظام البوابة ومسح الباركود مغلق اليوم (عطلة رسمية / أسبوعية) — لا يمكن تسجيل دخول أو مغادرة",
+                                        text = "نظام البوابة ومسح الباركود مغلق اليوم (${holidayLabel ?: "عطلة رسمية / أسبوعية"}) — لا يمكن تسجيل دخول أو مغادرة",
                                         style = MaterialTheme.typography.labelLarge,
                                         color = DangerRed,
                                         fontWeight = FontWeight.ExtraBold
                                     )
-                                    if (!holidayLabel.isNullOrBlank()) {
-                                        Text(
-                                            text = "مسمى العطلة المعتمدة: $holidayLabel ($selectedDate)",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF991B1B),
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -1209,86 +1198,68 @@ fun QrAttendanceScannerDialog(
                     }
                 }
 
-                // Live Camera QR Scanner Header & Full-Width Toggle Button (locked on holidays)
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (isGateLockedForHoliday) Color(0xFFF1F5F9) else Color(0xFFF0FDF4),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isGateLockedForHoliday) Color(0xFFCBD5E1) else DeepEmerald.copy(alpha = 0.25f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                // Live Camera QR Scanner Header & Full-Width Toggle Button (only shown on working days)
+                if (!isGateLockedForHoliday) {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFF0FDF4),
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f))
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isGateLockedForHoliday) Icons.Default.Lock else Icons.Default.QrCodeScanner,
-                                    contentDescription = null,
-                                    tint = if (isGateLockedForHoliday) Color(0xFF64748B) else DeepEmerald,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = when {
-                                        isGateLockedForHoliday -> "الماسح الضوئي والكاميرا مقفلة اليوم بسبب العطلة المعتمدة"
-                                        showLiveCamera -> "الكاميرا الحية نشطة — وجّه العدسة لباركود هوية الطالب"
-                                        else -> "الكاميرا متوقفة مؤقتاً — اضغط لتشغيل الماسح الضوئي"
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (isGateLockedForHoliday) Color(0xFF475569) else DeepForestGreen,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Button(
-                                onClick = {
-                                    if (!isGateLockedForHoliday) {
-                                        showLiveCamera = !showLiveCamera
-                                    }
-                                },
-                                enabled = !isGateLockedForHoliday,
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(46.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (showLiveCamera && !isGateLockedForHoliday) DangerRed else DeepEmerald,
-                                    contentColor = Color.White,
-                                    disabledContainerColor = Color(0xFFCBD5E1),
-                                    disabledContentColor = Color(0xFF475569)
-                                )
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = when {
-                                        isGateLockedForHoliday -> Icons.Default.Lock
-                                        showLiveCamera -> Icons.Default.Close
-                                        else -> Icons.Default.QrCodeScanner
-                                    },
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = when {
-                                        isGateLockedForHoliday -> "🔒 البوابة مغلقة (يوم عطلة)"
-                                        showLiveCamera -> "إغلاق الكاميرا"
-                                        else -> "مسح باركود البوابة بالكاميرا"
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.QrCodeScanner,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = if (showLiveCamera) {
+                                            "الكاميرا الحية نشطة — وجّه العدسة لباركود هوية الطالب"
+                                        } else {
+                                            "الكاميرا متوقفة مؤقتاً — اضغط لتشغيل الماسح الضوئي"
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = DeepForestGreen,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                                Button(
+                                    onClick = { showLiveCamera = !showLiveCamera },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (showLiveCamera) DangerRed else DeepEmerald,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = if (showLiveCamera) Icons.Default.Close else Icons.Default.QrCodeScanner,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (showLiveCamera) "إغلاق الكاميرا" else "مسح باركود البوابة بالكاميرا",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
                             }
                         }
                     }
@@ -1384,75 +1355,65 @@ fun QrAttendanceScannerDialog(
                     }
                 }
 
-                // Direct QR code scanner / reader input (disabled on holidays)
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = qrInput,
-                            onValueChange = { if (!isGateLockedForHoliday) qrInput = it },
-                            enabled = !isGateLockedForHoliday,
-                            readOnly = isGateLockedForHoliday,
-                            label = {
-                                Text(
-                                    if (isGateLockedForHoliday) {
-                                        "البوابة مقفلة اليوم (عطلة رسمية / أسبوعية)"
-                                    } else {
-                                        "قارئ الباركود أو كود الهوية (MADRASATI|...)"
-                                    }
-                                )
-                            },
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qr_attendance_input"),
-                            leadingIcon = {
-                                Icon(
-                                    if (isGateLockedForHoliday) Icons.Default.Lock else Icons.Default.QrCode2,
-                                    contentDescription = null,
-                                    tint = if (isGateLockedForHoliday) Color(0xFF64748B) else DeepEmerald
-                                )
-                            },
-                            shape = RoundedCornerShape(14.dp)
-                        )
-
-                        Button(
-                            onClick = {
-                                if (!isGateLockedForHoliday && qrInput.isNotBlank()) {
-                                    handleQrDetected(qrInput.trim())
-                                    qrInput = ""
-                                }
-                            },
-                            enabled = !isGateLockedForHoliday && qrInput.isNotBlank(),
-                            modifier = Modifier
-                                .height(54.dp)
-                                .testTag("confirm_qr_scan_button"),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = DeepEmerald,
-                                contentColor = Color.White,
-                                disabledContainerColor = Color(0xFFCBD5E1),
-                                disabledContentColor = Color(0xFF475569)
-                            )
+                // Direct QR code scanner / reader input (shown on working days)
+                if (!isGateLockedForHoliday) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                if (isGateLockedForHoliday) Icons.Default.Lock else Icons.Default.CheckCircle,
-                                contentDescription = null
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = when {
-                                    isGateLockedForHoliday -> "مغلق"
-                                    activeScanMode == GateScanMode.CHECK_OUT -> "مغادرة"
-                                    else -> "دخول"
+                            OutlinedTextField(
+                                value = qrInput,
+                                onValueChange = { qrInput = it },
+                                label = {
+                                    Text("قارئ الباركود أو كود الهوية (MADRASATI|...)")
                                 },
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                softWrap = false
+                                singleLine = true,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qr_attendance_input"),
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.QrCode2,
+                                        contentDescription = null,
+                                        tint = DeepEmerald
+                                    )
+                                },
+                                shape = RoundedCornerShape(14.dp)
                             )
+
+                            Button(
+                                onClick = {
+                                    if (qrInput.isNotBlank()) {
+                                        handleQrDetected(qrInput.trim())
+                                        qrInput = ""
+                                    }
+                                },
+                                enabled = qrInput.isNotBlank(),
+                                modifier = Modifier
+                                    .height(54.dp)
+                                    .testTag("confirm_qr_scan_button"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = DeepEmerald,
+                                    contentColor = Color.White,
+                                    disabledContainerColor = Color(0xFFCBD5E1),
+                                    disabledContentColor = Color(0xFF475569)
+                                )
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (activeScanMode == GateScanMode.CHECK_OUT) "مغادرة" else "دخول",
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
@@ -1462,12 +1423,12 @@ fun QrAttendanceScannerDialog(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = when {
-                            isGateLockedForHoliday -> "قائمة طلاب المدرسة (تسجيل الدخول والمغادرة مقفل اليوم بسبب العطلة):"
+                            isGateLockedForHoliday -> "قائمة طلاب المدرسة:"
                             activeScanMode == GateScanMode.CHECK_OUT -> "المسح السريع لتسجيل مغادرة الطلاب عند البوابة:"
                             else -> "المسح السريع لتسجيل دخول الطلاب عند البوابة:"
                         },
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (isGateLockedForHoliday) DangerRed else DeepForestGreen,
+                        color = DeepForestGreen,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))

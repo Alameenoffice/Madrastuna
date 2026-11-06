@@ -4638,9 +4638,9 @@ fun SeamlessWaveTeacherSpotlightSection(
         if (topTeachers.isNotEmpty()) {
             topTeachers.take(3).mapIndexed { index, summary ->
                 val rankTitle = when (index) {
-                    0 -> "المتصدر الأول #1 ★"
-                    1 -> "المركز الثاني #2 ★"
-                    else -> "المركز الثالث #3 ★"
+                    0 -> "المتصدر الأول #1"
+                    1 -> "المركز الثاني #2"
+                    else -> "المركز الثالث #3"
                 }
                 SpotlightSlide(
                     rankIndex = index,
@@ -4657,7 +4657,7 @@ fun SeamlessWaveTeacherSpotlightSection(
             listOf(
                 SpotlightSlide(
                     rankIndex = 0,
-                    rankLabel = "المتصدر الأول #1 ★",
+                    rankLabel = "المتصدر الأول #1",
                     fullName = teacherName,
                     subjects = teacherSubjects.ifBlank { "الكادر التدريسي المتميز" },
                     avgRating = averageRating,
@@ -4826,7 +4826,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                                     Text(
                                         text = String.format(
                                             java.util.Locale.US,
-                                            "%.1f / 5.0 ★ (%d تقييم)",
+                                            "%.1f / 5.0 (%d تقييم)",
                                             slide.avgRating,
                                             slide.count
                                         ),

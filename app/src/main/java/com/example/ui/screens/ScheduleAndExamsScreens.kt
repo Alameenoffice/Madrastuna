@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -3107,13 +3108,15 @@ fun ExamsAndGradesScreen(
     var selectedSubject by remember(currentUser?.id, selectedClass, allowedSubjects) {
         mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات")
     }
-    var selectedMaxScale by remember(selectedClass) {
-        mutableIntStateOf(GradingRules.defaultMaxScoreForClass(selectedClass))
+    var selectedMaxScale by remember(selectedClass, selectedSubject, schoolConfig, grades) {
+        mutableIntStateOf(viewModel.getDefaultMaxScoreForClassAndSubject(selectedClass, selectedSubject))
     }
 
     var searchStudentName by remember { mutableStateOf("") }
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = رصد/كشف الدرجات, 1 = مواعيد الامتحانات, 2 = إصدار الكارتات والنتائج
     var selectedReportCardPeriod by remember { mutableStateOf(ReportCardPeriodType.COMPREHENSIVE_ALL) }
+    var selectedApprovalPeriod by remember { mutableStateOf(GradeAssessmentPeriod.MONTH_1) }
+    var pendingOverrideApprovalSummary by remember { mutableStateOf<PeriodCompletionSummary?>(null) }
     var showAddExamDialog by remember { mutableStateOf(false) }
     var editingExamSchedule by remember { mutableStateOf<ExamScheduleItem?>(null) }
 
@@ -3132,6 +3135,149 @@ fun ExamsAndGradesScreen(
             }
             viewModel.clearDeepLinkTarget()
         }
+    }
+
+    // Principal Override Warning Modal when some students do not have recorded grades for the selected period
+    pendingOverrideApprovalSummary?.let { summary ->
+        AlertDialog(
+            onDismissRequest = { pendingOverrideApprovalSummary = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.WarningAmber,
+                    contentDescription = null,
+                    tint = Color(0xFFD97706),
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "تنبيه عدم اكتمال رصد درجات (${summary.period.arabicTitle})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF92400E),
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFFFFBEB),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "اكتمال الرصد الحالي: ${summary.recordedStudentsCount} من ${summary.totalStudentsCount} طالب",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                color = Color(0xFF78350F)
+                            )
+                            Text(
+                                text = "يوجد (${summary.unrecordedCount}) من الطلبة في ($selectedClass - شعبة $selectedSection) لم يقم المعلم برصد درجاتهم في مادة ($selectedSubject) لفترة (${summary.period.arabicTitle}):",
+                                fontSize = 12.sp,
+                                color = Color(0xFF92400E)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "الطلبة غير المرصودة درجاتهم:",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp,
+                                color = Color(0xFF991B1B)
+                            )
+                            summary.unrecordedStudentNames.forEachIndexed { idx, stuName ->
+                                Text(
+                                    text = "${idx + 1}. $stuName",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFB91C1C)
+                                )
+                            }
+                        }
+                    }
+
+                    // Two explicit options for the Principal
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { pendingOverrideApprovalSummary = null },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF047857),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("btn_cancel_approval_wait_teacher")
+                        ) {
+                            Icon(Icons.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "إلغاء والعودة لحين استكمال المعلم لرصد جميع الطلبة",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.setClassSubjectPeriodApproval(
+                                    gradeClass = selectedClass,
+                                    sectionName = selectedSection,
+                                    subjectName = selectedSubject,
+                                    period = summary.period,
+                                    approved = true
+                                )
+                                pendingOverrideApprovalSummary = null
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.4.dp, Color(0xFFD97706)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB45309)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("btn_override_approval_by_principal")
+                        ) {
+                            Icon(Icons.Filled.GppGood, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "تجاوز التحذير والمصادقة الاستثنائية بأمر المدير",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {}
+        )
     }
 
     // Active Celebration / Report Card Preview Modal
@@ -3158,31 +3304,25 @@ fun ExamsAndGradesScreen(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
-        // Parent/Student Royal Notification Banner if an Issued Report Card has arrived
-        if (isParentOrStudent) {
-            val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
-            val myLatestCard = remember(issuedReportCards, myStu?.id) {
-                myStu?.id?.let { viewModel.getLatestIssuedReportCardForStudent(it) }
-            }
-            if (myLatestCard != null) {
-                ParentIssuedReportCardArrivalBanner(
-                    reportCard = myLatestCard,
-                    onClick = { viewModel.openCelebrationReportCardModal(myLatestCard) }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-        }
-
-        // Unclipped 3D Tab Switcher for Exams, Grades & Smart Report Cards Hub (3 Main Tabs)
+    // Unified Scrollable Top Banner + 3-Tab Switcher Header rendered inside each LazyColumn so nothing gets cut off or squeezed
+    val renderTopTabsHeader: @Composable () -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (isParentOrStudent) {
+                val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
+                val myLatestCard = remember(issuedReportCards, myStu?.id) {
+                    myStu?.id?.let { viewModel.getLatestIssuedReportCardForStudent(it) }
+                }
+                if (myLatestCard != null) {
+                    ParentIssuedReportCardArrivalBanner(
+                        reportCard = myLatestCard,
+                        onClick = { viewModel.openCelebrationReportCardModal(myLatestCard) }
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3264,7 +3404,7 @@ fun ExamsAndGradesScreen(
                 }
             }
 
-            // 3rd Main Tab: 🎓 إصدار الكارتات والنتائج
+            // 3rd Main Tab: إصدار الكارتات والنتائج
             val isReportCardsTab = selectedTab == 2
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -3296,7 +3436,7 @@ fun ExamsAndGradesScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "🎓 إصدار الكارتات والنتائج",
+                        text = "إصدار الكارتات والنتائج",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = if (isReportCardsTab) Color.White else Color(0xFF78350F),
@@ -3306,9 +3446,13 @@ fun ExamsAndGradesScreen(
                 }
             }
         }
+    }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
         if (selectedTab == 0) {
             if (isParentOrStudent) {
                 // =============================================================
@@ -3319,8 +3463,8 @@ fun ExamsAndGradesScreen(
                     val myGrades = grades.filter { it.studentId == myStu.id }
                     val myBadges = viewModel.getStudentAutoBadges(myStu.id)
                     val studentSubjects = viewModel.getSubjectsForClass(myStu.gradeClass, null)
-                    val defaultScaleForStu = GradingRules.defaultMaxScoreForClass(myStu.gradeClass)
                     val allSubjectsReport = studentSubjects.map { subjName ->
+                        val dynamicScale = viewModel.getDefaultMaxScoreForClassAndSubject(myStu.gradeClass, subjName)
                         myGrades.firstOrNull { it.subjectName == subjName } ?: SubjectGrade(
                             id = "temp_$subjName",
                             schoolId = schoolConfig.schoolId,
@@ -3328,7 +3472,7 @@ fun ExamsAndGradesScreen(
                             studentName = myStu.studentName,
                             gradeClass = myStu.gradeClass,
                             subjectName = subjName,
-                            maxScoreScale = defaultScaleForStu,
+                            maxScoreScale = dynamicScale,
                             dailyScore = 0,
                             month1Score = 0,
                             month2Score = 0,
@@ -3361,6 +3505,9 @@ fun ExamsAndGradesScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 110.dp)
                     ) {
+                        item(key = "exams_top_tabs_parent_0") {
+                            renderTopTabsHeader()
+                        }
                         item(key = "student_report_card_header_${myStu.id}") {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -3536,7 +3683,7 @@ fun ExamsAndGradesScreen(
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Text(
-                                                            text = "التقدير/الحالة: ${if (g.isAllExamsCompleted) "${g.finalAverage}/${g.maxScoreScale}" else "قيد الرصد"}",
+                                                            text = "التقدير/الحالة: ${if (g.isAllExamsCompleted) "${g.finalAverage} / ${g.maxScoreScale}" else "قيد الرصد"}",
                                                             style = MaterialTheme.typography.labelSmall,
                                                             fontWeight = FontWeight.ExtraBold,
                                                             color = DeepEmerald,
@@ -3558,9 +3705,9 @@ fun ExamsAndGradesScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            ScoreCell("يومي 1", g.dailyScore, Modifier.weight(1f))
-                                            ScoreCell("شهر 1", g.month1Score, Modifier.weight(1f))
-                                            ScoreCell("شهر 2", g.month2Score, Modifier.weight(1f))
+                                            ScoreCell("يومي 1", g.dailyScore, Modifier.weight(1f), maxScale = g.maxScoreScale)
+                                            ScoreCell("شهر 1", g.month1Score, Modifier.weight(1f), maxScale = g.maxScoreScale)
+                                            ScoreCell("شهر 2", g.month2Score, Modifier.weight(1f), maxScale = g.maxScoreScale)
                                         }
                                         if (g.extraDailyScores.isNotEmpty() || g.extraMonthlyScores.isNotEmpty()) {
                                             LazyRow(
@@ -3571,14 +3718,16 @@ fun ExamsAndGradesScreen(
                                                     ScoreCell(
                                                         label = "يومي ${idx + 2}",
                                                         score = g.extraDailyScores[idx],
-                                                        modifier = Modifier.width(96.dp)
+                                                        modifier = Modifier.width(96.dp),
+                                                        maxScale = g.maxScoreScale
                                                     )
                                                 }
                                                 items(g.extraMonthlyScores.size) { idx ->
                                                     ScoreCell(
                                                         label = "شهر ${idx + 3}",
                                                         score = g.extraMonthlyScores[idx],
-                                                        modifier = Modifier.width(96.dp)
+                                                        modifier = Modifier.width(96.dp),
+                                                        maxScale = g.maxScoreScale
                                                     )
                                                 }
                                             }
@@ -3587,9 +3736,9 @@ fun ExamsAndGradesScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            ScoreCell("نصف السنة", g.midYearScore, Modifier.weight(1f))
-                                            ScoreCell("النهائي", g.finalExamScore, Modifier.weight(1f))
-                                            ScoreCell("السعي النهائي", g.annualEffortScore, Modifier.weight(1f), highlight = true)
+                                            ScoreCell("نصف السنة", g.midYearScore, Modifier.weight(1f), maxScale = g.maxScoreScale)
+                                            ScoreCell("النهائي", g.finalExamScore, Modifier.weight(1f), maxScale = g.maxScoreScale)
+                                            ScoreCell("السعي النهائي", g.annualEffortScore, Modifier.weight(1f), highlight = true, maxScale = g.maxScoreScale)
                                         }
                                     }
                                 }
@@ -3620,6 +3769,10 @@ fun ExamsAndGradesScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 110.dp)
                 ) {
+                    item(key = "exams_top_tabs_staff_0") {
+                        renderTopTabsHeader()
+                    }
+
                     // 3D Wave Hero Header for Grades & Exams
                     item {
                         ThreeDHeroHeaderCard(
@@ -3731,7 +3884,7 @@ fun ExamsAndGradesScreen(
                                     }
                                 }
 
-                                // 3.B Flexible Grading Scale Toggle (نظام الدرجة: من 10 / من 100) — Comfortable horizontal layout with zero vertical wrapping
+                                // 3.B Flexible Grading Scale Toggle (نظام الدرجة: من 10 / من 100) — Unclipped & persisted in Firebase
                                 Surface(
                                     color = Color(0xFFECFDF5),
                                     border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
@@ -3757,14 +3910,13 @@ fun ExamsAndGradesScreen(
                                                 modifier = Modifier.size(18.dp)
                                             )
                                             Text(
-                                                text = "نظام الدرجة (${if (GradingRules.defaultMaxScoreForClass(selectedClass) == 10) "ابتدائي" else "قياسي"}):",
+                                                text = "نظام الدرجة:",
                                                 style = MaterialTheme.typography.labelLarge,
-                                                fontSize = 12.sp,
+                                                fontSize = 12.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = Color(0xFF065F46),
                                                 maxLines = 1,
-                                                softWrap = false,
-                                                overflow = TextOverflow.Ellipsis
+                                                softWrap = false
                                             )
                                         }
                                         Spacer(modifier = Modifier.width(8.dp))
@@ -3781,7 +3933,15 @@ fun ExamsAndGradesScreen(
                                                 ),
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(50))
-                                                    .clickable { selectedMaxScale = 10 }
+                                                    .clickable {
+                                                        selectedMaxScale = 10
+                                                        viewModel.updateClassSubjectMaxScoreScale(
+                                                            gradeClass = selectedClass,
+                                                            sectionName = selectedSection,
+                                                            subjectName = selectedSubject,
+                                                            newScale = 10
+                                                        )
+                                                    }
                                                     .testTag("scale_toggle_10")
                                             ) {
                                                 Row(
@@ -3816,7 +3976,15 @@ fun ExamsAndGradesScreen(
                                                 ),
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(50))
-                                                    .clickable { selectedMaxScale = 100 }
+                                                    .clickable {
+                                                        selectedMaxScale = 100
+                                                        viewModel.updateClassSubjectMaxScoreScale(
+                                                            gradeClass = selectedClass,
+                                                            sectionName = selectedSection,
+                                                            subjectName = selectedSubject,
+                                                            newScale = 100
+                                                        )
+                                                    }
                                                     .testTag("scale_toggle_100")
                                             ) {
                                                 Row(
@@ -3866,90 +4034,205 @@ fun ExamsAndGradesScreen(
                                     shape = RoundedCornerShape(12.dp)
                                 )
 
-                                // 5. Principal Grade Approval & Lock System Bar (نظام مصادقة المدير على الدرجات وقفل التعديل على المعلم)
-                                val isClassSubjectApproved = remember(grades, selectedClass, selectedSection, selectedSubject) {
-                                    viewModel.isClassSubjectApprovedByPrincipal(selectedClass, selectedSection, selectedSubject)
+                                // 5. Per-Period Principal Grade Approval & Student Completion Check Card
+                                val periodSummary = remember(grades, students, selectedClass, selectedSection, selectedSubject, selectedApprovalPeriod) {
+                                    viewModel.getPeriodCompletionSummary(
+                                        gradeClass = selectedClass,
+                                        sectionName = selectedSection,
+                                        subjectName = selectedSubject,
+                                        period = selectedApprovalPeriod
+                                    )
                                 }
+                                val approvedPeriodsList = remember(grades, students, selectedClass, selectedSection, selectedSubject) {
+                                    GradeAssessmentPeriod.entries.filter { p ->
+                                        viewModel.isClassSubjectPeriodApproved(selectedClass, selectedSection, selectedSubject, p)
+                                    }
+                                }
+
                                 if (currentUser?.role == UserRole.ADMIN) {
                                     Surface(
                                         modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp),
-                                        color = if (isClassSubjectApproved) Color(0xFFECFDF5) else Color(0xFFFFFBEB),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = if (periodSummary.isPeriodApproved) Color(0xFFECFDF5) else Color(0xFFFFFBEB),
                                         border = BorderStroke(
-                                            1.2.dp,
-                                            if (isClassSubjectApproved) Color(0xFF10B981) else Color(0xFFF59E0B)
+                                            1.3.dp,
+                                            if (periodSummary.isPeriodApproved) Color(0xFF10B981) else Color(0xFFF59E0B)
                                         )
                                     ) {
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                .padding(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 Icon(
-                                                    imageVector = if (isClassSubjectApproved) Icons.Filled.VerifiedUser else Icons.Filled.Security,
+                                                    imageVector = if (periodSummary.isPeriodApproved) Icons.Filled.VerifiedUser else Icons.Filled.Security,
                                                     contentDescription = null,
-                                                    tint = if (isClassSubjectApproved) Color(0xFF047857) else Color(0xFFB45309),
+                                                    tint = if (periodSummary.isPeriodApproved) Color(0xFF047857) else Color(0xFFB45309),
                                                     modifier = Modifier.size(20.dp)
                                                 )
                                                 Text(
-                                                    text = if (isClassSubjectApproved) {
-                                                        "🛡️ درجات مادة ($selectedSubject) مصادق عليها رسمياً ومقفولة أمام المعلم"
-                                                    } else {
-                                                        "بانتظار مصادقة المدير لقفل تعديل الدرجات أمام المعلم"
-                                                    },
+                                                    text = "نظام مصادقة المدير الذكية حسب الفترة الامتحانية:",
                                                     style = MaterialTheme.typography.labelLarge,
                                                     fontWeight = FontWeight.ExtraBold,
-                                                    color = if (isClassSubjectApproved) Color(0xFF065F46) else Color(0xFF92400E)
+                                                    color = if (periodSummary.isPeriodApproved) Color(0xFF065F46) else Color(0xFF92400E)
                                                 )
                                             }
-                                            Row(
+
+                                            // Horizontal Period Selector Chips
+                                            LazyRow(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
-                                                Button(
-                                                    onClick = {
-                                                        viewModel.setClassSubjectGradesApproval(
-                                                            gradeClass = selectedClass,
-                                                            sectionName = selectedSection,
-                                                            subjectName = selectedSubject,
-                                                            approved = !isClassSubjectApproved
-                                                        )
-                                                    },
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = if (isClassSubjectApproved) Color(0xFFB45309) else Color(0xFF047857),
-                                                        contentColor = Color.White
-                                                    ),
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .testTag("btn_principal_approve_grades")
-                                                ) {
-                                                    Text(
-                                                        text = if (isClassSubjectApproved) {
-                                                            "🔓 إلغاء المصادقة وفتح القفل للمعلم"
-                                                        } else {
-                                                            "🛡️ مصادقة واعتماد الدرجات رسمياً"
+                                                items(GradeAssessmentPeriod.entries) { pItem ->
+                                                    val isSelectedPeriod = selectedApprovalPeriod == pItem
+                                                    val isPApproved = pItem in approvedPeriodsList
+                                                    FilterChip(
+                                                        selected = isSelectedPeriod,
+                                                        onClick = { selectedApprovalPeriod = pItem },
+                                                        label = {
+                                                            Text(
+                                                                text = pItem.arabicTitle,
+                                                                fontWeight = if (isSelectedPeriod || isPApproved) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                                maxLines = 1,
+                                                                softWrap = false
+                                                            )
                                                         },
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        fontSize = 12.5.sp,
-                                                        maxLines = 1,
-                                                        softWrap = false
+                                                        leadingIcon = if (isPApproved) {
+                                                            {
+                                                                Icon(
+                                                                    imageVector = Icons.Filled.Verified,
+                                                                    contentDescription = null,
+                                                                    tint = if (isSelectedPeriod) Color(0xFF047857) else Color(0xFF10B981),
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            }
+                                                        } else null
                                                     )
                                                 }
                                             }
+
+                                            // Completion Counter & Unrecorded Students Warning
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color.White,
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (periodSummary.isFullyRecorded) Color(0xFF6EE7B7) else Color(0xFFFDE68A)
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(10.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "اكتمال الرصد لفترة (${selectedApprovalPeriod.arabicTitle}):",
+                                                            fontSize = 11.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF1E293B)
+                                                        )
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = if (periodSummary.isFullyRecorded) Color(0xFFDCFCE7) else Color(0xFFFEF3C7)
+                                                        ) {
+                                                            Text(
+                                                                text = "${periodSummary.recordedStudentsCount} من ${periodSummary.totalStudentsCount} طالب",
+                                                                fontSize = 11.5.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = if (periodSummary.isFullyRecorded) Color(0xFF065F46) else Color(0xFF92400E),
+                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                                            )
+                                                        }
+                                                    }
+
+                                                    if (periodSummary.unrecordedCount > 0) {
+                                                        Text(
+                                                            text = "الطلبة غير المرصودة درجاتهم (${periodSummary.unrecordedCount}): ${periodSummary.unrecordedStudentNames.joinToString("، ")}",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = Color(0xFFB91C1C)
+                                                        )
+                                                    } else if (periodSummary.totalStudentsCount > 0) {
+                                                        Text(
+                                                            text = "اكتمل رصد درجات جميع طلبة الشعبة لهذه الفترة بالكامل",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF047857)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            Button(
+                                                onClick = {
+                                                    if (periodSummary.isPeriodApproved) {
+                                                        viewModel.setClassSubjectPeriodApproval(
+                                                            gradeClass = selectedClass,
+                                                            sectionName = selectedSection,
+                                                            subjectName = selectedSubject,
+                                                            period = selectedApprovalPeriod,
+                                                            approved = false
+                                                        )
+                                                    } else if (periodSummary.unrecordedCount > 0) {
+                                                        pendingOverrideApprovalSummary = periodSummary
+                                                    } else {
+                                                        viewModel.setClassSubjectPeriodApproval(
+                                                            gradeClass = selectedClass,
+                                                            sectionName = selectedSection,
+                                                            subjectName = selectedSubject,
+                                                            period = selectedApprovalPeriod,
+                                                            approved = true
+                                                        )
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (periodSummary.isPeriodApproved) Color(0xFFB45309) else Color(0xFF047857),
+                                                    contentColor = Color.White
+                                                ),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .testTag("btn_principal_approve_grades")
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (periodSummary.isPeriodApproved) Icons.Filled.LockOpen else Icons.Filled.VerifiedUser,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (periodSummary.isPeriodApproved) {
+                                                        "إلغاء مصادقة (${selectedApprovalPeriod.arabicTitle}) وفتح القفل للمعلم"
+                                                    } else {
+                                                        "مصادقة واعتماد درجات (${selectedApprovalPeriod.arabicTitle}) رسمياً"
+                                                    },
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 12.sp,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                         }
                                     }
-                                } else if (currentUser?.role == UserRole.TEACHER && isClassSubjectApproved) {
+                                } else if (currentUser?.role == UserRole.TEACHER && approvedPeriodsList.isNotEmpty()) {
                                     Surface(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(14.dp),
-                                        color = Color(0xFFFEF2F2),
-                                        border = BorderStroke(1.2.dp, Color(0xFFF87171))
+                                        color = Color(0xFFFFFBEB),
+                                        border = BorderStroke(1.2.dp, Color(0xFFF59E0B))
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -3961,14 +4244,14 @@ fun ExamsAndGradesScreen(
                                             Icon(
                                                 imageVector = Icons.Filled.Lock,
                                                 contentDescription = null,
-                                                tint = Color(0xFFB91C1C),
+                                                tint = Color(0xFFB45309),
                                                 modifier = Modifier.size(18.dp)
                                             )
                                             Text(
-                                                text = "🔒 تمت مصادقة الدرجات من قِبل إدارة المدرسة (التعديل متاح للمدير فقط)",
-                                                fontSize = 12.sp,
+                                                text = "الفترات المصادق عليها والمقفولة من الإدارة: ${approvedPeriodsList.joinToString("، ") { it.arabicTitle }} (بقية الفترات متاحة للرصد)",
+                                                fontSize = 11.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFF991B1B)
+                                                color = Color(0xFF92400E)
                                             )
                                         }
                                     }
@@ -4191,7 +4474,7 @@ fun ExamsAndGradesScreen(
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Text(
-                                                            text = "التقدير/الحالة: ${if (previewGrade.isAllExamsCompleted) "${previewGrade.finalAverage}/$selectedMaxScale" else "قيد الرصد"}",
+                                                            text = "التقدير/الحالة: ${if (previewGrade.isAllExamsCompleted) "${previewGrade.finalAverage} / $selectedMaxScale" else "قيد الرصد"}",
                                                             style = MaterialTheme.typography.labelSmall,
                                                             fontWeight = FontWeight.ExtraBold,
                                                             color = DeepEmerald,
@@ -4204,21 +4487,36 @@ fun ExamsAndGradesScreen(
                                         }
                                     }
 
-                                    val isGradeLockedForCurrentTeacher = currentUser?.role == UserRole.TEACHER &&
-                                        (existingGrade?.isApprovedByPrincipal == true ||
-                                            viewModel.isClassSubjectApprovedByPrincipal(stu.gradeClass, stu.sectionName, selectedSubject))
+                                    // Per-period lock checks for the current Teacher
+                                    val isTeacherRole = currentUser?.role == UserRole.TEACHER
+                                    fun isPeriodApprovedForStu(p: GradeAssessmentPeriod): Boolean {
+                                        return existingGrade?.isPeriodApproved(p) == true ||
+                                            viewModel.isClassSubjectPeriodApproved(stu.gradeClass, stu.sectionName, selectedSubject, p)
+                                    }
+                                    val isDailyLocked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.DAILY)
+                                    val isMonth1Locked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MONTH_1)
+                                    val isMonth2Locked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MONTH_2)
+                                    val isMonth3Locked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MONTH_3)
+                                    val isMonth4Locked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MONTH_4)
+                                    val isMidYearLocked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MID_YEAR)
+                                    val isFinalLocked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.FINAL_EXAM)
+                                    val areAllPeriodsLockedForTeacher = isTeacherRole &&
+                                        GradeAssessmentPeriod.entries.all { isPeriodApprovedForStu(it) }
 
-                                    if (existingGrade?.isApprovedByPrincipal == true ||
-                                        viewModel.isClassSubjectApprovedByPrincipal(stu.gradeClass, stu.sectionName, selectedSubject)
-                                    ) {
+                                    // Only display "مصادق عليها رسمياً" for periods that are BOTH approved AND have a recorded score (> 0)
+                                    val studentApprovedAndRecordedPeriods = GradeAssessmentPeriod.entries.filter { p ->
+                                        isPeriodApprovedForStu(p) && previewGrade.getScoreForPeriod(p) > 0
+                                    }
+                                    val studentLockedPeriods = GradeAssessmentPeriod.entries.filter { p ->
+                                        isPeriodApprovedForStu(p)
+                                    }
+
+                                    if (studentApprovedAndRecordedPeriods.isNotEmpty()) {
                                         Surface(
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(10.dp),
-                                            color = if (isGradeLockedForCurrentTeacher) Color(0xFFFEF2F2) else Color(0xFFECFDF5),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (isGradeLockedForCurrentTeacher) Color(0xFFFCA5A5) else Color(0xFF6EE7B7)
-                                            )
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.dp, Color(0xFF6EE7B7))
                                         ) {
                                             Row(
                                                 modifier = Modifier
@@ -4228,60 +4526,88 @@ fun ExamsAndGradesScreen(
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 Icon(
-                                                    imageVector = if (isGradeLockedForCurrentTeacher) Icons.Filled.Lock else Icons.Filled.Verified,
+                                                    imageVector = Icons.Filled.Verified,
                                                     contentDescription = null,
-                                                    tint = if (isGradeLockedForCurrentTeacher) Color(0xFFB91C1C) else Color(0xFF047857),
+                                                    tint = Color(0xFF047857),
                                                     modifier = Modifier.size(16.dp)
                                                 )
                                                 Text(
-                                                    text = if (isGradeLockedForCurrentTeacher) {
-                                                        "🔒 تمت مصادقة الدرجات من قِبل إدارة المدرسة (التعديل متاح للمدير فقط)"
-                                                    } else {
-                                                        "🛡️ مصادق عليها رسمياً من إدارة المدرسة (مقفولة أمام المعلم)"
-                                                    },
+                                                    text = "مصادق عليها رسمياً: ${studentApprovedAndRecordedPeriods.joinToString(" • ") { it.arabicTitle }}",
                                                     fontSize = 11.5.sp,
                                                     fontWeight = FontWeight.ExtraBold,
-                                                    color = if (isGradeLockedForCurrentTeacher) Color(0xFF991B1B) else Color(0xFF065F46)
+                                                    color = Color(0xFF065F46)
+                                                )
+                                            }
+                                        }
+                                    } else if (isTeacherRole && studentLockedPeriods.isNotEmpty()) {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFFFFBEB),
+                                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Lock,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFB45309),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "الفترات المقفولة من الإدارة: ${studentLockedPeriods.joinToString(" • ") { it.arabicTitle }}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF92400E)
                                                 )
                                             }
                                         }
                                     }
 
                                     // أزرار مرنة لإضافة أو إزالة خانات درجات يومية أو شهرية إضافية حسب الحاجة
-                                    if (!isGradeLockedForCurrentTeacher) {
+                                    if (!areAllPeriodsLockedForTeacher) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    extraDailyTexts = extraDailyTexts + "0"
-                                                    savedToast = false
-                                                },
-                                                shape = RoundedCornerShape(10.dp),
-                                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.5f)),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Icon(Icons.Filled.Add, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(15.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("+ يومي إضافي", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                            if (!isDailyLocked) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        extraDailyTexts = extraDailyTexts + "0"
+                                                        savedToast = false
+                                                    },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.5f)),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Icon(Icons.Filled.Add, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(15.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("+ يومي إضافي", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                                }
                                             }
 
-                                            OutlinedButton(
-                                                onClick = {
-                                                    extraMonthlyTexts = extraMonthlyTexts + "0"
-                                                    savedToast = false
-                                                },
-                                                shape = RoundedCornerShape(10.dp),
-                                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.5f)),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Icon(Icons.Filled.Add, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(15.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("+ شهر إضافي", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                            if (!isMonth3Locked || !isMonth4Locked) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        extraMonthlyTexts = extraMonthlyTexts + "0"
+                                                        savedToast = false
+                                                    },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.5f)),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Icon(Icons.Filled.Add, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(15.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("+ شهر إضافي", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                                }
                                             }
 
                                             if (extraDailyTexts.isNotEmpty() || extraMonthlyTexts.isNotEmpty()) {
@@ -4314,7 +4640,7 @@ fun ExamsAndGradesScreen(
                                                 title = "يومي 1",
                                                 maxScale = selectedMaxScale,
                                                 value = dailyText,
-                                                enabled = !isGradeLockedForCurrentTeacher,
+                                                enabled = !isDailyLocked,
                                                 onValueChange = { digits ->
                                                     dailyText = digits
                                                     savedToast = false
@@ -4325,7 +4651,7 @@ fun ExamsAndGradesScreen(
                                                 title = "شهر 1",
                                                 maxScale = selectedMaxScale,
                                                 value = m1Text,
-                                                enabled = !isGradeLockedForCurrentTeacher,
+                                                enabled = !isMonth1Locked,
                                                 onValueChange = { digits ->
                                                     m1Text = digits
                                                     savedToast = false
@@ -4336,7 +4662,7 @@ fun ExamsAndGradesScreen(
                                                 title = "شهر 2",
                                                 maxScale = selectedMaxScale,
                                                 value = m2Text,
-                                                enabled = !isGradeLockedForCurrentTeacher,
+                                                enabled = !isMonth2Locked,
                                                 onValueChange = { digits ->
                                                     m2Text = digits
                                                     savedToast = false
@@ -4356,7 +4682,7 @@ fun ExamsAndGradesScreen(
                                                         title = "يومي ${idx + 2}",
                                                         maxScale = selectedMaxScale,
                                                         value = txtVal,
-                                                        enabled = !isGradeLockedForCurrentTeacher,
+                                                        enabled = !isDailyLocked,
                                                         onValueChange = { digits ->
                                                             extraDailyTexts = extraDailyTexts.toMutableList().also {
                                                                 it[idx] = digits
@@ -4376,11 +4702,16 @@ fun ExamsAndGradesScreen(
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 extraMonthlyTexts.forEachIndexed { idx, txtVal ->
+                                                    val isThisExtraMonthLocked = when (idx) {
+                                                        0 -> isMonth3Locked
+                                                        1 -> isMonth4Locked
+                                                        else -> false
+                                                    }
                                                     CleanGradeInputBox(
                                                         title = "شهر ${idx + 3}",
                                                         maxScale = selectedMaxScale,
                                                         value = txtVal,
-                                                        enabled = !isGradeLockedForCurrentTeacher,
+                                                        enabled = !isThisExtraMonthLocked,
                                                         onValueChange = { digits ->
                                                             extraMonthlyTexts = extraMonthlyTexts.toMutableList().also {
                                                                 it[idx] = digits
@@ -4402,7 +4733,7 @@ fun ExamsAndGradesScreen(
                                                 title = "نصف السنة",
                                                 maxScale = selectedMaxScale,
                                                 value = midText,
-                                                enabled = !isGradeLockedForCurrentTeacher,
+                                                enabled = !isMidYearLocked,
                                                 onValueChange = { digits ->
                                                     midText = digits
                                                     savedToast = false
@@ -4413,7 +4744,7 @@ fun ExamsAndGradesScreen(
                                                 title = "النهائي",
                                                 maxScale = selectedMaxScale,
                                                 value = finalText,
-                                                enabled = !isGradeLockedForCurrentTeacher,
+                                                enabled = !isFinalLocked,
                                                 onValueChange = { digits ->
                                                     finalText = digits
                                                     savedToast = false
@@ -4424,12 +4755,13 @@ fun ExamsAndGradesScreen(
                                                 label = "السعي النهائي",
                                                 score = previewGrade.annualEffortScore,
                                                 modifier = Modifier.weight(1f),
-                                                highlight = true
+                                                highlight = true,
+                                                maxScale = selectedMaxScale
                                             )
                                         }
                                     }
 
-                                    if (!isGradeLockedForCurrentTeacher) {
+                                    if (!areAllPeriodsLockedForTeacher) {
                                         VectorActionButton(
                                             text = if (savedToast) "تم حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب بنجاح" else "حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب",
                                             icon = if (savedToast) Icons.Filled.CheckCircle else Icons.Filled.Save,
@@ -4494,6 +4826,10 @@ fun ExamsAndGradesScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 110.dp)
             ) {
+                item(key = "exams_top_tabs_schedule_1") {
+                    renderTopTabsHeader()
+                }
+
                 item {
                     ThreeDHeroHeaderCard(
                         title = "مواعيد الامتحانات الرسمية",
@@ -4519,10 +4855,12 @@ fun ExamsAndGradesScreen(
 
                 items(scopedExams, key = { it.id }) { ex ->
                     val daysRemaining = ex.daysRemainingUntilExam()
-                    val formattedExamDateLabel = listOf(ex.dayName.trim(), ex.examDate.trim())
+                    val cleanExamIsoDate = ArabicTextNormalizer.normalizeDateIso(ex.examDate.trim())
+                    val examScale = viewModel.getDefaultMaxScoreForClassAndSubject(ex.gradeClass, ex.subjectName)
+                    val formattedExamDateLabel = listOf(ex.dayName.trim(), cleanExamIsoDate)
                         .filter { it.isNotEmpty() }
                         .joinToString(" • ")
-                        .ifBlank { ex.examDate }
+                        .ifBlank { cleanExamIsoDate }
                     val countdownText = when {
                         daysRemaining == null -> formattedExamDateLabel
                         daysRemaining > 0L -> "قادم (بعد $daysRemaining يوم)"
@@ -4551,7 +4889,7 @@ fun ExamsAndGradesScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 NoWrapBadge(
-                                    text = "${ex.subjectName} • ${ex.gradeClass}",
+                                    text = "${ex.subjectName} • ${ex.gradeClass} (الدرجة من $examScale)",
                                     icon = Icons.Filled.School,
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -4639,7 +4977,7 @@ fun ExamsAndGradesScreen(
         } else {
             // =========================================================================
             // TAB 2: SMART STUDENT REPORT CARDS & INTERACTIVE CELEBRATION HUB
-            // (🎓 إصدار الكارتات والنتائج)
+            // (إصدار الكارتات والنتائج)
             // =========================================================================
             if (isParentOrStudent) {
                 val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
@@ -4655,6 +4993,10 @@ fun ExamsAndGradesScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 110.dp)
                 ) {
+                    item(key = "exams_top_tabs_parent_2") {
+                        renderTopTabsHeader()
+                    }
+
                     item {
                         ThreeDHeroHeaderCard(
                             title = "الكارت المدرسي الذكي والنتيجة الرسمية",
@@ -4703,7 +5045,7 @@ fun ExamsAndGradesScreen(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "🎓 ${card.periodType.arabicTitle}",
+                                                text = card.periodType.arabicTitle,
                                                 fontSize = 15.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = Color(0xFF064E3B)
@@ -4719,7 +5061,7 @@ fun ExamsAndGradesScreen(
                                             color = if (card.isOverallPassed) Color(0xFF059669) else Color(0xFFD97706)
                                         ) {
                                             Text(
-                                                text = if (card.isOverallPassed) "ناجح 🏆 (${card.averagePercent}%)" else "مكمل / متابعة ⚠️ (${card.averagePercent}%)",
+                                                text = if (card.isOverallPassed) "ناجح (${card.averagePercent}%)" else "مكمل / متابعة (${card.averagePercent}%)",
                                                 fontSize = 11.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = Color.White,
@@ -4738,10 +5080,10 @@ fun ExamsAndGradesScreen(
                                         ),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Filled.WorkspacePremium, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "🎉 فتح الكارت المدرسي الذكي والنتيجة الكاملة",
+                                            text = "فتح الكارت المدرسي الذكي والنتيجة الكاملة",
                                             fontWeight = FontWeight.ExtraBold
                                         )
                                     }
@@ -4787,11 +5129,15 @@ fun ExamsAndGradesScreen(
                                         ),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
+                                        Icon(Icons.Filled.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "👁️ استعراض (${selectedReportCardPeriod.arabicTitle}) بتصميم الشهادة الفاخرة",
+                                            text = "استعراض (${selectedReportCardPeriod.arabicTitle}) بتصميم الشهادة الفاخرة",
                                             fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 12.sp,
                                             maxLines = 1,
-                                            softWrap = false
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -4824,6 +5170,10 @@ fun ExamsAndGradesScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 110.dp)
                 ) {
+                    item(key = "exams_top_tabs_staff_2") {
+                        renderTopTabsHeader()
+                    }
+
                     item {
                         ThreeDHeroHeaderCard(
                             title = "مركز إصدار وإرسال الكارتات المدرسية الذكية",
@@ -4910,7 +5260,7 @@ fun ExamsAndGradesScreen(
                                     }
                                 }
 
-                                // 3 Top KPI Cards for Class Summary: إجمالي طلاب الصف | عدد الناجحين ✅ | عدد الراسبين/المكملين ⚠️
+                                // 3 Top KPI Cards for Class Summary: إجمالي طلاب الصف | عدد الناجحين | الراسبين / المكملين
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4922,7 +5272,7 @@ fun ExamsAndGradesScreen(
                                         border = BorderStroke(1.dp, Color(0xFF93C5FD))
                                     ) {
                                         Column(
-                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
                                             Text(
@@ -4933,11 +5283,10 @@ fun ExamsAndGradesScreen(
                                             )
                                             Text(
                                                 text = "إجمالي طلاب الصف",
-                                                fontSize = 10.5.sp,
+                                                fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF1E3A8A),
-                                                maxLines = 1,
-                                                softWrap = false
+                                                textAlign = TextAlign.Center
                                             )
                                         }
                                     }
@@ -4948,7 +5297,7 @@ fun ExamsAndGradesScreen(
                                         border = BorderStroke(1.dp, Color(0xFF6EE7B7))
                                     ) {
                                         Column(
-                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
                                             Text(
@@ -4958,12 +5307,11 @@ fun ExamsAndGradesScreen(
                                                 color = Color(0xFF047857)
                                             )
                                             Text(
-                                                text = "عدد الناجحين ✅",
-                                                fontSize = 10.5.sp,
+                                                text = "عدد الناجحين",
+                                                fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF065F46),
-                                                maxLines = 1,
-                                                softWrap = false
+                                                textAlign = TextAlign.Center
                                             )
                                         }
                                     }
@@ -4974,7 +5322,7 @@ fun ExamsAndGradesScreen(
                                         border = BorderStroke(1.dp, Color(0xFFFCA5A5))
                                     ) {
                                         Column(
-                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
                                             Text(
@@ -4984,12 +5332,11 @@ fun ExamsAndGradesScreen(
                                                 color = Color(0xFFB91C1C)
                                             )
                                             Text(
-                                                text = "عدد الراسبين/المكملين ⚠️",
+                                                text = "الراسبين / المكملين",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF991B1B),
-                                                maxLines = 1,
-                                                softWrap = false
+                                                textAlign = TextAlign.Center
                                             )
                                         }
                                     }
@@ -5015,12 +5362,13 @@ fun ExamsAndGradesScreen(
                                             .heightIn(min = 48.dp)
                                             .testTag("btn_bulk_issue_report_cards")
                                     ) {
+                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "🚀 إصدار وإرسال الكارتات لجميع طلاب الصف دفعة واحدة",
-                                            fontSize = 12.5.sp,
+                                            text = "إصدار وإرسال الكارتات لجميع طلاب الصف دفعة واحدة",
+                                            fontSize = 11.5.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            maxLines = 1,
-                                            softWrap = false
+                                            textAlign = TextAlign.Center
                                         )
                                     }
                                 }
@@ -5077,9 +5425,9 @@ fun ExamsAndGradesScreen(
                                     ) {
                                         Text(
                                             text = if (previewCard.isOverallPassed) {
-                                                "ناجح 🏆"
+                                                "ناجح"
                                             } else {
-                                                "مكمل / راسب في ${previewCard.failedSubjectsCount} مواد ⚠️"
+                                                "مكمل / راسب (${previewCard.failedSubjectsCount} مواد)"
                                             },
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.ExtraBold,
@@ -5104,7 +5452,7 @@ fun ExamsAndGradesScreen(
                                                 )
                                             ) {
                                                 Text(
-                                                    text = "${subItem.subjectName}: ${subItem.score}/${subItem.maxScoreScale}",
+                                                    text = "${subItem.subjectName}: ${subItem.score} / ${subItem.maxScoreScale}",
                                                     fontSize = 10.5.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = if (subItem.isPassed) Color(0xFF065F46) else Color(0xFFB91C1C),
@@ -5125,11 +5473,14 @@ fun ExamsAndGradesScreen(
                                         onClick = { viewModel.openCelebrationReportCardModal(previewCard) },
                                         shape = RoundedCornerShape(12.dp),
                                         border = BorderStroke(1.2.dp, Color(0xFF059669)),
-                                        modifier = Modifier.weight(1f)
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        modifier = Modifier.weight(0.95f)
                                     ) {
+                                        Icon(Icons.Filled.Visibility, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "👁️ معاينة الكارت",
-                                            fontSize = 11.5.sp,
+                                            text = "معاينة الكارت",
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = Color(0xFF047857),
                                             maxLines = 1,
@@ -5143,15 +5494,22 @@ fun ExamsAndGradesScreen(
                                                 viewModel.issueAndSendStudentReportCard(stu, selectedReportCardPeriod)
                                             },
                                             shape = RoundedCornerShape(12.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = if (alreadyIssued) Color(0xFF047857) else Color(0xFFD97706),
                                                 contentColor = Color.White
                                             ),
-                                            modifier = Modifier.weight(1.2f)
+                                            modifier = Modifier.weight(1.25f)
                                         ) {
+                                            Icon(
+                                                imageVector = if (alreadyIssued) Icons.Filled.CheckCircle else Icons.AutoMirrored.Filled.Send,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                text = if (alreadyIssued) "✅ تم الإرسال (إعادة إرسال)" else "📩 إرسال الكارت لولي الأمر",
-                                                fontSize = 11.sp,
+                                                text = if (alreadyIssued) "تم الإرسال (إعادة إرسال)" else "إرسال الكارت لولي الأمر",
+                                                fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 maxLines = 1,
                                                 softWrap = false
@@ -5316,7 +5674,8 @@ fun ExamsAndGradesScreen(
 fun ParentIssuedReportCardArrivalBanner(
     reportCard: IssuedStudentReportCard,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDismissFromHome: (() -> Unit)? = null
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "report_card_banner_pulse")
     val glowAlpha by infiniteTransition.animateFloat(
@@ -5339,7 +5698,7 @@ fun ParentIssuedReportCardArrivalBanner(
         color = Color(0xFF064E3B),
         border = BorderStroke(2.dp, Color(0xFFF59E0B).copy(alpha = glowAlpha))
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
@@ -5348,47 +5707,90 @@ fun ParentIssuedReportCardArrivalBanner(
                     )
                 )
                 .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFF59E0B).copy(alpha = 0.24f),
-                border = BorderStroke(1.2.dp, Color(0xFFFDE68A)),
-                modifier = Modifier.size(42.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.WorkspacePremium,
-                        contentDescription = null,
-                        tint = Color(0xFFFDE68A),
-                        modifier = Modifier.size(24.dp)
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFFF59E0B).copy(alpha = 0.24f),
+                    border = BorderStroke(1.2.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.WorkspacePremium,
+                            contentDescription = null,
+                            tint = Color(0xFFFDE68A),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "وصل الآن الكارت المدرسي الرسمي للطالب (${reportCard.studentName}) — اضغط لفتح النتيجة",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFFDE68A)
+                    )
+                    Text(
+                        text = "${reportCard.periodType.arabicTitle} • الصف: ${reportCard.gradeClass} (${reportCard.sectionName}) • المعدل: ${reportCard.averagePercent}%",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.92f)
                     )
                 }
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = "🎉 وصل الآن الكارت المدرسي الرسمي للطالب (${reportCard.studentName}) — اضغط لفتح النتيجة!",
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFFDE68A)
-                )
-                Text(
-                    text = "${reportCard.periodType.arabicTitle} • الصف: ${reportCard.gradeClass} (${reportCard.sectionName}) • المعدل: ${reportCard.averagePercent}%",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.92f)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = Color(0xFFFDE68A),
+                    modifier = Modifier.size(16.dp)
                 )
             }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                contentDescription = null,
-                tint = Color(0xFFFDE68A),
-                modifier = Modifier.size(16.dp)
-            )
+
+            if (onDismissFromHome != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.55f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onDismissFromHome() }
+                            .testTag("btn_dismiss_report_card_from_home")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VisibilityOff,
+                                contentDescription = "إخفاء من الرئيسية",
+                                tint = Color(0xFFFDE68A),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "إخفاء من الرئيسية",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFFDE68A),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -5535,7 +5937,7 @@ fun LuxuryInteractiveReportCardModal(
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
-                                    text = "🌟 ألف مبارك النجاح والتفوق للطالب البطل (${reportCard.studentName})! 🌟",
+                                    text = "ألف مبارك النجاح والتفوق للطالب البطل (${reportCard.studentName})",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFFFDE68A),
@@ -5722,7 +6124,7 @@ fun LuxuryInteractiveReportCardModal(
                                             color = if (sub.isPassed) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)
                                         ) {
                                             Text(
-                                                text = if (sub.isPassed) "ناجح ✅" else "يحتاج دعم ⚠️",
+                                                text = if (sub.isPassed) "ناجح" else "يحتاج دعم",
                                                 fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = if (sub.isPassed) Color(0xFF166534) else Color(0xFF991B1B),
@@ -5782,7 +6184,7 @@ fun LuxuryInteractiveReportCardModal(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text("الختم والمصادقة", fontSize = 10.5.sp, color = Color(0xFF064E3B), fontWeight = FontWeight.ExtraBold)
-                                Text("✓ إدارة المدرسة", fontSize = 12.sp, color = Color(0xFFB45309), fontWeight = FontWeight.ExtraBold)
+                                Text("مصادق • إدارة المدرسة", fontSize = 11.sp, color = Color(0xFFB45309), fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
                             }
                         }
                     }
@@ -5795,20 +6197,21 @@ fun LuxuryInteractiveReportCardModal(
                         Button(
                             onClick = onPrintPdf,
                             shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF047857),
                                 contentColor = Color.White
                             ),
-                            modifier = Modifier.weight(1.3f)
+                            modifier = Modifier.weight(1.35f)
                         ) {
                             Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("طباعة / حفظ الكارت PDF", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                            Text("طباعة / حفظ الكارت PDF", fontWeight = FontWeight.ExtraBold, fontSize = 11.5.sp, maxLines = 1, softWrap = false)
                         }
                         OutlinedButton(
                             onClick = onDismiss,
                             shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.weight(0.8f)
+                            modifier = Modifier.weight(0.75f)
                         ) {
                             Text("إغلاق", fontWeight = FontWeight.ExtraBold)
                         }
@@ -5834,7 +6237,7 @@ private fun CleanGradeInputBox(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "$title (/$maxScale)",
+            text = "$title (من $maxScale)",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
             color = DeepForestGreen,
@@ -5877,7 +6280,8 @@ private fun ScoreCell(
     label: String,
     score: Int,
     modifier: Modifier = Modifier,
-    highlight: Boolean = false
+    highlight: Boolean = false,
+    maxScale: Int = 0
 ) {
     Column(
         modifier = modifier,
@@ -5911,9 +6315,9 @@ private fun ScoreCell(
                 modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
             ) {
                 Text(
-                    text = "$score",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    text = if (maxScale > 0) "$score / $maxScale" else "$score",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
                     color = if (highlight) DeepEmerald else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     softWrap = false
@@ -6124,7 +6528,7 @@ fun QuickQuizParticipantsModal(
                                                 color = if (item.isCorrect) SuccessGreen else DangerRed
                                             ) {
                                                 Text(
-                                                    text = if (item.isCorrect) "إجابة صحيحة ✓" else "إجابة خاطئة ✗",
+                                                    text = if (item.isCorrect) "إجابة صحيحة" else "إجابة خاطئة",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = Color.White,
@@ -6338,7 +6742,7 @@ fun HomeworkIllustrativePhotoPickerSection(
                     }
                     Text(
                         text = if (attachmentBase64.isNotBlank()) {
-                            "تم إرفاق صورة للواجب ✓ (اضغط لتغييرها)"
+                            "تم إرفاق صورة للواجب (اضغط لتغييرها)"
                         } else {
                             "+ إرفاق صورة للواجب (كاميرا / استوديو)"
                         },

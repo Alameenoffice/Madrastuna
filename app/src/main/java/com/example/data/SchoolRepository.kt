@@ -3,6 +3,8 @@ package com.example.data
 import android.content.Context
 import com.example.model.*
 import com.example.util.InputSanitizer
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -1377,7 +1379,7 @@ class SchoolRepository(context: Context) {
                         gradeClass = o.optString("gradeClass"),
                         subjectName = o.optString("subjectName"),
                         examType = o.optString("examType"),
-                        examDate = o.optString("examDate"),
+                        examDate = ArabicTextNormalizer.normalizeDateIso(o.optString("examDate")),
                         dayName = o.optString("dayName"),
                         timeSlot = o.optString("timeSlot"),
                         topicsIncluded = o.optString("topicsIncluded"),
@@ -1401,7 +1403,7 @@ class SchoolRepository(context: Context) {
                 put("gradeClass", InputSanitizer.sanitize(e.gradeClass))
                 put("subjectName", InputSanitizer.sanitize(e.subjectName))
                 put("examType", InputSanitizer.sanitize(e.examType))
-                put("examDate", InputSanitizer.sanitize(e.examDate))
+                put("examDate", ArabicTextNormalizer.normalizeDateIso(InputSanitizer.sanitize(e.examDate)))
                 put("dayName", InputSanitizer.sanitize(e.dayName))
                 put("timeSlot", InputSanitizer.sanitize(e.timeSlot))
                 put("topicsIncluded", InputSanitizer.sanitize(e.topicsIncluded))
@@ -1444,6 +1446,30 @@ class SchoolRepository(context: Context) {
                 val gCls = o.optString("gradeClass")
                 val defaultScale = GradingRules.defaultMaxScoreForClass(gCls)
                 val scale = o.optInt("maxScoreScale", defaultScale).let { if (it == 10) 10 else 100 }
+                val dScore = o.optInt("dailyScore", 0)
+                val m1Score = o.optInt("month1Score", 0)
+                val m2Score = o.optInt("month2Score", 0)
+                val midScore = o.optInt("midYearScore", 0)
+                val finScore = o.optInt("finalExamScore", 0)
+                val extraDaily = jsonArrayToIntList(o.optJSONArray("extraDailyScores"))
+                val extraMonthly = jsonArrayToIntList(o.optJSONArray("extraMonthlyScores"))
+                val rawApprovedFlag = o.optBoolean("isApprovedByPrincipal", false)
+                val approvedPeriodsArr = o.optJSONArray("approvedPeriods")
+                val parsedApprovedPeriods = if (approvedPeriodsArr != null) {
+                    jsonArrayToList(approvedPeriodsArr).map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                } else if (rawApprovedFlag) {
+                    buildSet {
+                        if (dScore > 0) add(GradeAssessmentPeriod.DAILY.key)
+                        if (m1Score > 0) add(GradeAssessmentPeriod.MONTH_1.key)
+                        if (m2Score > 0) add(GradeAssessmentPeriod.MONTH_2.key)
+                        if (midScore > 0) add(GradeAssessmentPeriod.MID_YEAR.key)
+                        if ((extraMonthly.getOrNull(0) ?: 0) > 0) add(GradeAssessmentPeriod.MONTH_3.key)
+                        if ((extraMonthly.getOrNull(1) ?: 0) > 0) add(GradeAssessmentPeriod.MONTH_4.key)
+                        if (finScore > 0) add(GradeAssessmentPeriod.FINAL_EXAM.key)
+                    }
+                } else {
+                    emptySet()
+                }
                 list.add(
                     SubjectGrade(
                         id = o.optString("id"),
@@ -1451,15 +1477,16 @@ class SchoolRepository(context: Context) {
                         studentName = o.optString("studentName"),
                         gradeClass = gCls,
                         subjectName = o.optString("subjectName"),
-                        dailyScore = o.optInt("dailyScore", 0),
-                        month1Score = o.optInt("month1Score", 0),
-                        month2Score = o.optInt("month2Score", 0),
-                        midYearScore = o.optInt("midYearScore", 0),
-                        finalExamScore = o.optInt("finalExamScore", 0),
+                        dailyScore = dScore,
+                        month1Score = m1Score,
+                        month2Score = m2Score,
+                        midYearScore = midScore,
+                        finalExamScore = finScore,
                         maxScoreScale = scale,
-                        extraDailyScores = jsonArrayToIntList(o.optJSONArray("extraDailyScores")),
-                        extraMonthlyScores = jsonArrayToIntList(o.optJSONArray("extraMonthlyScores")),
-                        isApprovedByPrincipal = o.optBoolean("isApprovedByPrincipal", false),
+                        extraDailyScores = extraDaily,
+                        extraMonthlyScores = extraMonthly,
+                        isApprovedByPrincipal = parsedApprovedPeriods.isNotEmpty() || rawApprovedFlag,
+                        approvedPeriods = parsedApprovedPeriods,
                         schoolId = itemSid
                     )
                 )
@@ -1488,7 +1515,8 @@ class SchoolRepository(context: Context) {
                 put("maxScoreScale", g.maxScoreScale)
                 put("extraDailyScores", JSONArray(g.extraDailyScores))
                 put("extraMonthlyScores", JSONArray(g.extraMonthlyScores))
-                put("isApprovedByPrincipal", g.isApprovedByPrincipal)
+                put("isApprovedByPrincipal", g.approvedPeriods.isNotEmpty() || g.isApprovedByPrincipal)
+                put("approvedPeriods", JSONArray(g.approvedPeriods.toList()))
                 put("schoolId", schoolId)
             })
         }
@@ -2421,178 +2449,141 @@ class SchoolRepository(context: Context) {
     }
 
     /**
+     * Ultra-fast essential cloud fetch for first-time login (< 1 second):
+     * Pulls ONLY `COL_SETTINGS`, `COL_USERS`, and `COL_SUBJECTS` in parallel so credentials
+     * can be verified and the user enters the Dashboard immediately without waiting for 25+ collections.
+     */
+    suspend fun syncEssentialAuthFromCloud(schoolId: String): Boolean {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return false
+
+        return kotlinx.coroutines.coroutineScope {
+            val settingsDeferred = async {
+                FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SETTINGS)
+            }
+            val usersDeferred = async {
+                FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_USERS)
+            }
+            val subjectsDeferred = async {
+                FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SUBJECTS)
+            }
+
+            val settingsRaw = settingsDeferred.await()
+            val usersRaw = usersDeferred.await()
+            val subjectsRaw = subjectsDeferred.await()
+
+            var foundAny = false
+            val editor = prefs.edit()
+            if (!settingsRaw.isNullOrBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), settingsRaw)
+                foundAny = true
+            }
+            if (!usersRaw.isNullOrBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_USERS), usersRaw)
+                foundAny = true
+            }
+            if (!subjectsRaw.isNullOrBlank()) {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SUBJECTS), subjectsRaw)
+                foundAny = true
+            }
+            editor.apply()
+            if (foundAny) {
+                loadSchoolConfig(cleanSid)
+                loadAccounts(cleanSid)
+            }
+            foundAny
+        }
+    }
+
+    /**
+     * Parallel background lazy sync of all remaining school sub-collections after instant login.
+     */
+    suspend fun syncRemainingSchoolCollectionsInBackground(schoolId: String) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return
+
+        val remainingCollections = listOf(
+            FirebaseConfigConstants.COL_HONOR_ROLL,
+            FirebaseConfigConstants.COL_ATTENDANCE,
+            FirebaseConfigConstants.COL_GRADES,
+            FirebaseConfigConstants.COL_EXAMS,
+            FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK,
+            FirebaseConfigConstants.COL_SCHEDULES_PERIODS,
+            FirebaseConfigConstants.COL_NOTIFICATIONS,
+            FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS,
+            FirebaseConfigConstants.COL_HOLIDAYS,
+            FirebaseConfigConstants.COL_FEATURE_SETTINGS,
+            FirebaseConfigConstants.COL_URGENT_ALERT,
+            FirebaseConfigConstants.COL_REPORTS,
+            FirebaseConfigConstants.COL_MESSAGES,
+            FirebaseConfigConstants.COL_LEAVE_REQUESTS,
+            FirebaseConfigConstants.COL_TUITION_FEES,
+            FirebaseConfigConstants.COL_EVENTS_GALLERY,
+            FirebaseConfigConstants.COL_STUDY_MATERIALS,
+            FirebaseConfigConstants.COL_DAILY_BEHAVIOR,
+            FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS,
+            FirebaseConfigConstants.COL_QUICK_QUIZZES,
+            FirebaseConfigConstants.COL_DISMISSAL_CALLS,
+            FirebaseConfigConstants.COL_LOST_AND_FOUND,
+            FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITIES,
+            FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
+            FirebaseConfigConstants.COL_USER_PROFILES,
+            FirebaseConfigConstants.COL_TEACHER_RATINGS
+        )
+
+        // Fetch in parallel batches of 6 to maximize speed without saturating sockets
+        remainingCollections.chunked(6).forEach { batch ->
+            kotlinx.coroutines.coroutineScope {
+                val results = batch.map { col ->
+                    col to async {
+                        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, col)
+                    }
+                }.map { (col, def) -> col to def.await() }
+
+                val editor = prefs.edit()
+                results.forEach { (col, payload) ->
+                    if (!payload.isNullOrBlank()) {
+                        when (col) {
+                            FirebaseConfigConstants.COL_SCHEDULES_PERIODS -> {
+                                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_PERIODS), payload)
+                                editor.putString("${scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", payload)
+                            }
+                            FirebaseConfigConstants.COL_EXAMS -> {
+                                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_EXAMS), payload)
+                                editor.putString("${scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES)}_exams", payload)
+                            }
+                            FirebaseConfigConstants.COL_TEACHER_RATINGS -> {
+                                if (payload != "[]") {
+                                    editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_TEACHER_RATINGS), payload)
+                                }
+                            }
+                            FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS -> {
+                                if (payload != "[]") {
+                                    editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS), payload)
+                                }
+                            }
+                            else -> {
+                                editor.putString(scopedKey(cleanSid, col), payload)
+                            }
+                        }
+                    }
+                }
+                editor.apply()
+            }
+        }
+    }
+
+    /**
      * Pulls a school's sub-collections from Firebase (Firestore/RTDB) into local storage
      * so that logging in with a prefixed username (e.g. 105-1) from any phone works immediately.
      */
     suspend fun syncFullSchoolFromCloud(schoolId: String): Boolean {
-        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
-        if (cleanSid.isBlank()) return false
-
-        var foundAny = false
-        val editor = prefs.edit()
-
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SETTINGS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), it)
-                foundAny = true
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SUBJECTS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SUBJECTS), it)
-                foundAny = true
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_USERS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_USERS), it)
-                foundAny = true
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_HONOR_ROLL)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_HONOR_ROLL), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_ATTENDANCE)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_ATTENDANCE), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_PERIODS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_PERIODS), it)
-                editor.putString("${scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods", it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_GRADES)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_EXAMS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_EXAMS), it)
-                editor.putString("${scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES)}_exams", it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_TUITION_FEES)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_TUITION_FEES), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_REPORTS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_REPORTS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_MESSAGES)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_MESSAGES), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_EVENTS_GALLERY)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_EVENTS_GALLERY), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_NOTIFICATIONS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_NOTIFICATIONS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_LEAVE_REQUESTS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_LEAVE_REQUESTS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_STUDY_MATERIALS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_STUDY_MATERIALS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_FEATURE_SETTINGS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_FEATURE_SETTINGS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_DAILY_BEHAVIOR)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_DAILY_BEHAVIOR), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_QUICK_QUIZZES)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_QUICK_QUIZZES), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_DISMISSAL_CALLS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_DISMISSAL_CALLS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_LOST_AND_FOUND)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_LOST_AND_FOUND), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_URGENT_ALERT)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_URGENT_ALERT), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_STUDENT_ACTIVITIES), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_ACTIVITY_REPORTS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_ACTIVITY_REPORTS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_USER_PROFILES)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_USER_PROFILES), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_HOLIDAYS)?.let {
-            if (it.isNotBlank()) {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_HOLIDAYS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_TEACHER_RATINGS)?.let {
-            if (it.isNotBlank() && it != "[]") {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_TEACHER_RATINGS), it)
-            }
-        }
-        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS)?.let {
-            if (it.isNotBlank() && it != "[]") {
-                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS), it)
-            }
-        }
-
-        editor.apply()
-        // Parse settings and accounts once so any teacherRatings embedded in settings or users are also merged into local cache
-        loadSchoolConfig(cleanSid)
-        loadAccounts(cleanSid)
-        return foundAny
+        val essentialOk = syncEssentialAuthFromCloud(schoolId)
+        syncRemainingSchoolCollectionsInBackground(schoolId)
+        return essentialOk
     }
+
 
     // =========================================================================
     // 14. FIELD FEATURES & DEVELOPER GLOBAL CONFIGS
@@ -3983,6 +3974,26 @@ class SchoolRepository(context: Context) {
     // 18. schools/{schoolId}/issued_report_cards (الكارتات المدرسية الذكية الصادرة)
     // =========================================================================
 
+    fun loadDismissedReportCardIds(schoolId: String = getActiveSchoolId()): Set<String> {
+        if (schoolId.isBlank()) return emptySet()
+        return prefs.getStringSet(scopedKey(schoolId, "dismissed_home_report_cards"), emptySet())?.toSet() ?: emptySet()
+    }
+
+    fun markReportCardDismissedLocally(cardId: String, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank() || cardId.isBlank()) return
+        val current = loadDismissedReportCardIds(schoolId).toMutableSet()
+        current.add(cardId)
+        prefs.edit().putStringSet(scopedKey(schoolId, "dismissed_home_report_cards"), current).apply()
+    }
+
+    fun clearReportCardDismissedLocally(cardId: String, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank() || cardId.isBlank()) return
+        val current = loadDismissedReportCardIds(schoolId).toMutableSet()
+        if (current.remove(cardId)) {
+            prefs.edit().putStringSet(scopedKey(schoolId, "dismissed_home_report_cards"), current).apply()
+        }
+    }
+
     fun loadIssuedReportCards(schoolId: String = getActiveSchoolId()): List<IssuedStudentReportCard> {
         if (schoolId.isBlank()) return emptyList()
         val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS), null)
@@ -3992,12 +4003,14 @@ class SchoolRepository(context: Context) {
 
     fun parseIssuedReportCardsJson(raw: String, schoolId: String = getActiveSchoolId()): List<IssuedStudentReportCard> {
         return try {
+            val localDismissedIds = loadDismissedReportCardIds(schoolId)
             val arr = JSONArray(raw)
             val list = mutableListOf<IssuedStudentReportCard>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
                 if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                val cardId = o.optString("id")
                 val pType = runCatching {
                     ReportCardPeriodType.valueOf(o.optString("periodType", ReportCardPeriodType.COMPREHENSIVE_ALL.name))
                 }.getOrDefault(ReportCardPeriodType.COMPREHENSIVE_ALL)
@@ -4021,9 +4034,10 @@ class SchoolRepository(context: Context) {
                         )
                     )
                 }
+                val isDismissed = o.optBoolean("isDismissedFromHome", false) || (cardId in localDismissedIds)
                 list.add(
                     IssuedStudentReportCard(
-                        id = o.optString("id"),
+                        id = cardId,
                         studentId = o.optString("studentId"),
                         studentName = o.optString("studentName"),
                         gradeClass = o.optString("gradeClass"),
@@ -4038,6 +4052,7 @@ class SchoolRepository(context: Context) {
                         principalName = o.optString("principalName", "إدارة المدرسة"),
                         schoolName = o.optString("schoolName"),
                         isViewedByParent = o.optBoolean("isViewedByParent", false),
+                        isDismissedFromHome = isDismissed,
                         schoolId = itemSid
                     )
                 )
@@ -4084,6 +4099,7 @@ class SchoolRepository(context: Context) {
                 put("principalName", InputSanitizer.sanitize(c.principalName))
                 put("schoolName", InputSanitizer.sanitize(c.schoolName))
                 put("isViewedByParent", c.isViewedByParent)
+                put("isDismissedFromHome", c.isDismissedFromHome)
                 put("schoolId", schoolId)
             })
         }

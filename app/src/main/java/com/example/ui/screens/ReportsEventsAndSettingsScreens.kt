@@ -1080,7 +1080,7 @@ fun ReportsAndChatScreen(
                                         }
                                         Text(
                                             text = if (rep.isReadByParent) {
-                                                "تمت القراءة من ولي الأمر ✓✓"
+                                                "تمت القراءة من ولي الأمر"
                                             } else {
                                                 "بانتظار اطلاع ولي الأمر"
                                             },

@@ -271,7 +271,7 @@ fun DashboardScreen(
                 val issuedReportCards by viewModel.issuedReportCards.collectAsState()
                 val activeCelebrationCard by viewModel.activeCelebrationReportCard.collectAsState()
                 val myLatestReportCard = remember(issuedReportCards, myStudent.id) {
-                    viewModel.getLatestIssuedReportCardForStudent(myStudent.id)
+                    viewModel.getLatestHomeBannerReportCardForStudent(myStudent.id)
                 }
 
                 activeCelebrationCard?.let { cardToView ->
@@ -298,6 +298,7 @@ fun DashboardScreen(
                     ParentIssuedReportCardArrivalBanner(
                         reportCard = myLatestReportCard,
                         onClick = { viewModel.openCelebrationReportCardModal(myLatestReportCard) },
+                        onDismissFromHome = { viewModel.dismissIssuedReportCardFromHome(myLatestReportCard.id) },
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
                 }
@@ -2179,7 +2180,7 @@ fun DailyAttendanceScreen(
                                                         remainingMs > 0L && unrecordedInSchoolCount > 0 ->
                                                             "متبقي (${remHours} ساعة و ${remMins} دقيقة) لاحتساب الغياب تلقائياً لـ ($unrecordedInSchoolCount) طالب بانتظار الرصد"
                                                         unrecordedInSchoolCount == 0 ->
-                                                            "اكتمل رصد جميع الطلاب لهذا اليوم بالكامل ✓"
+                                                            "اكتمل رصد جميع الطلاب لهذا اليوم بالكامل"
                                                         else ->
                                                             "انتهت المهلة الصباحية — يتم تثبيت الغياب للطلبة غير المرصودين"
                                                     }
@@ -3038,7 +3039,7 @@ fun DailyAttendanceScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "🔒 البوابة مغلقة (يوم عطلة) — جميع إجراءات الرصد والدخول والمغادرة مقفلة في هذا التاريخ",
+                                        text = "البوابة مغلقة (يوم عطلة) — جميع إجراءات الرصد والدخول والمغادرة مقفلة في هذا التاريخ",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen,
@@ -5050,12 +5051,44 @@ fun StudentComprehensiveArchiveScreen(
                 matchesSelectedMonth(it.examDate)
         }
     }
-    val stuGrades = remember(grades, selectedStudent?.id) {
-        val targetId = selectedStudent?.id ?: ""
-        if (targetId.isEmpty()) emptyList() else grades.filter { it.studentId == targetId }
+    val stuGrades = remember(grades, selectedStudent?.id, selectedStudent?.gradeClass, schoolConfig) {
+        val stuObj = selectedStudent
+        if (stuObj == null) {
+            emptyList()
+        } else {
+            val recorded = grades.filter { it.studentId == stuObj.id }
+            val configuredSubjects = viewModel.getSubjectsForClass(stuObj.gradeClass, null)
+            val allSubNames = (configuredSubjects + recorded.map { it.subjectName })
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinctBy { ArabicTextNormalizer.normalizeText(it) }
+            allSubNames.map { subName ->
+                val found = recorded.firstOrNull {
+                    ArabicTextNormalizer.normalizeText(it.subjectName) == ArabicTextNormalizer.normalizeText(subName)
+                }
+                val dynamicScale = found?.maxScoreScale ?: viewModel.getDefaultMaxScoreForClassAndSubject(stuObj.gradeClass, subName)
+                found?.copy(maxScoreScale = dynamicScale) ?: SubjectGrade(
+                    id = "temp_${stuObj.id}_$subName",
+                    studentId = stuObj.id,
+                    studentName = stuObj.studentName,
+                    gradeClass = stuObj.gradeClass,
+                    subjectName = subName,
+                    dailyScore = 0,
+                    month1Score = 0,
+                    month2Score = 0,
+                    midYearScore = 0,
+                    finalExamScore = 0,
+                    maxScoreScale = dynamicScale,
+                    schoolId = schoolConfig.schoolId
+                )
+            }
+        }
     }
     val stuAverage = remember(stuGrades) {
-        if (stuGrades.isEmpty()) 0 else stuGrades.map { it.finalAverage }.average().toInt()
+        val withScores = stuGrades.filter {
+            it.dailyScore > 0 || it.month1Score > 0 || it.month2Score > 0 || it.midYearScore > 0 || it.finalExamScore > 0
+        }
+        if (withScores.isEmpty()) 0 else withScores.map { it.normalizedPercentage }.average().toInt()
     }
     val stuBehaviors = remember(dailyBehaviors, selectedStudent?.id, selectedMonthCode) {
         val targetId = selectedStudent?.id ?: ""
@@ -5209,19 +5242,19 @@ fun StudentComprehensiveArchiveScreen(
                     illustrationType = ThreeDIllustrationType.BOOKS_GRADUATION_CAP
                 )
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.25f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                if (!isParentOrStudent) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.25f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                     ) {
-                        // Concise Unclipped Dual Mode Switcher: [السجل العام للصفوف] vs [السجل الفردي للطالب]
-                        if (!isParentOrStudent) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Concise Unclipped Dual Mode Switcher: [السجل العام للصفوف] vs [السجل الفردي للطالب]
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -5261,108 +5294,108 @@ fun StudentComprehensiveArchiveScreen(
                                     }
                                 }
                             }
-                        }
 
-                    if (isAdmin) {
-                        Button(
-                            onClick = { viewModel.buildAnnualPromotionPreviewReport() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("archive_open_annual_promotion_report_btn"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = DeepEmerald,
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.WorkspacePremium,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "الترحيل السنوي وتقرير النجاح العام",
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-
-                    if (!isParentOrStudent && archiveViewMode == 1) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(allowedClasses) { cls ->
-                                FilterChip(
-                                    selected = selectedClass == cls,
-                                    onClick = {
-                                        selectedClass = cls
-                                        val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
-                                        if (selectedSection !in nextSecs) {
-                                            selectedSection = nextSecs.firstOrNull() ?: "أ"
-                                        }
-                                    },
-                                    label = { Text(cls, maxLines = 1, softWrap = false) }
-                                )
-                            }
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text("الشعبة:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                            allowedSections.forEach { sec ->
-                                FilterChip(
-                                    selected = selectedSection == sec,
-                                    onClick = { selectedSection = sec },
-                                    label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
-                                )
-                            }
-                        }
-                        OutlinedTextField(
-                            value = studentSearchQuery,
-                            onValueChange = { studentSearchQuery = it },
-                            placeholder = { Text("بحث سريع باسم الطالب في هذا الصف...") },
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = DeepEmerald) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        if (filteredStudentsList.isNotEmpty()) {
-                            Text(
-                                text = "اختر الطالب لعرض سجله الأكاديمي الشامل (${filteredStudentsList.size} طالب):",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = DeepForestGreen
-                            )
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(filteredStudentsList, key = { it.id }) { stu ->
-                                    val isSel = selectedStudent?.id == stu.id
-                                    FilterChip(
-                                        selected = isSel,
-                                        onClick = { selectedStudentId = stu.id },
-                                        label = {
-                                            Text(
-                                                text = stu.fullNameWithFather,
-                                                fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = if (isSel) Icons.Filled.CheckCircle else Icons.Filled.Person,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
+                            if (isAdmin) {
+                                Button(
+                                    onClick = { viewModel.buildAnnualPromotionPreviewReport() },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("archive_open_annual_promotion_report_btn"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = DeepEmerald,
+                                        contentColor = Color.White
                                     )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.WorkspacePremium,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "الترحيل السنوي وتقرير النجاح العام",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+
+                            if (archiveViewMode == 1) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(allowedClasses) { cls ->
+                                        FilterChip(
+                                            selected = selectedClass == cls,
+                                            onClick = {
+                                                selectedClass = cls
+                                                val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                                if (selectedSection !in nextSecs) {
+                                                    selectedSection = nextSecs.firstOrNull() ?: "أ"
+                                                }
+                                            },
+                                            label = { Text(cls, maxLines = 1, softWrap = false) }
+                                        )
+                                    }
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("الشعبة:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    allowedSections.forEach { sec ->
+                                        FilterChip(
+                                            selected = selectedSection == sec,
+                                            onClick = { selectedSection = sec },
+                                            label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                                        )
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = studentSearchQuery,
+                                    onValueChange = { studentSearchQuery = it },
+                                    placeholder = { Text("بحث سريع باسم الطالب في هذا الصف...") },
+                                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = DeepEmerald) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                if (filteredStudentsList.isNotEmpty()) {
+                                    Text(
+                                        text = "اختر الطالب لعرض سجله الأكاديمي الشامل (${filteredStudentsList.size} طالب):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(filteredStudentsList, key = { it.id }) { stu ->
+                                            val isSel = selectedStudent?.id == stu.id
+                                            FilterChip(
+                                                selected = isSel,
+                                                onClick = { selectedStudentId = stu.id },
+                                                label = {
+                                                    Text(
+                                                        text = stu.fullNameWithFather,
+                                                        fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = if (isSel) Icons.Filled.CheckCircle else Icons.Filled.Person,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
             }
         }
 
@@ -6295,8 +6328,10 @@ fun StudentComprehensiveArchiveScreen(
                                                 )
                                             }
                                         }
+                                        val cleanExamIso = ArabicTextNormalizer.normalizeDateIso(ex.examDate.trim())
+                                        val dynamicExamMax = viewModel.getDefaultMaxScoreForClassAndSubject(ex.gradeClass, ex.subjectName)
                                         Text(
-                                            text = "${ex.examDate} • من ${ex.maxScore}",
+                                            text = "$cleanExamIso • الدرجة من $dynamicExamMax",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = DeepEmerald
@@ -6314,6 +6349,8 @@ fun StudentComprehensiveArchiveScreen(
                             )
                         } else {
                             stuGrades.forEach { gr ->
+                                val minPassForScale = if (gr.maxScoreScale <= 10) 5 else 50
+                                val isPassingAvg = gr.finalAverage >= minPassForScale
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = Color(0xFFF8FAFC),
@@ -6330,20 +6367,20 @@ fun StudentComprehensiveArchiveScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = gr.subjectName,
+                                                text = "${gr.subjectName} (من ${gr.maxScoreScale})",
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = DeepForestGreen
                                             )
                                             NoWrapBadge(
-                                                text = "المعدل: ${gr.finalAverage} / 100 (${gr.evaluationText})",
+                                                text = "المعدل: ${gr.finalAverage} / ${gr.maxScoreScale} (${gr.evaluationText})",
                                                 icon = Icons.Filled.Grade,
-                                                containerColor = if (gr.finalAverage >= 50) SuccessGreen.copy(alpha = 0.14f) else DangerRed.copy(alpha = 0.14f),
-                                                contentColor = if (gr.finalAverage >= 50) SuccessGreen else DangerRed
+                                                containerColor = if (isPassingAvg) SuccessGreen.copy(alpha = 0.14f) else DangerRed.copy(alpha = 0.14f),
+                                                contentColor = if (isPassingAvg) SuccessGreen else DangerRed
                                             )
                                         }
                                         Text(
-                                            text = "ش1: ${gr.month1} | ش2: ${gr.month2} | نصف السنة: ${gr.midYear} | ش3: ${gr.month3} | ش4: ${gr.month4} | النهائي: ${gr.finalExam}",
+                                            text = "ش1: ${gr.month1} / ${gr.maxScoreScale} | ش2: ${gr.month2} / ${gr.maxScoreScale} | نصف السنة: ${gr.midYear} / ${gr.maxScoreScale} | ش3: ${gr.month3} / ${gr.maxScoreScale} | ش4: ${gr.month4} / ${gr.maxScoreScale} | النهائي: ${gr.finalExam} / ${gr.maxScoreScale}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = TextMutedGreen,
                                             fontWeight = FontWeight.SemiBold
@@ -6878,7 +6915,7 @@ fun LiveOperationsRadarScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = "🔒 نظام البوابة ومسح الباركود مغلق اليوم (${selectedDateHolidayLabel ?: "عطلة رسمية / أسبوعية"}) — لا يمكن تسجيل دخول أو مغادرة",
+                                    text = "نظام البوابة ومسح الباركود مغلق اليوم (${selectedDateHolidayLabel ?: "عطلة رسمية / أسبوعية"}) — لا يمكن تسجيل دخول أو مغادرة",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = DangerRed
@@ -7040,15 +7077,14 @@ fun LiveOperationsRadarScreen(
                                     )
                                     Text(
                                         text = if (isHolidayToday) {
-                                            "حركة بوابة المدرسة اليوم (🔒 البوابة مغلقة - عطلة)"
+                                            "حركة بوابة المدرسة اليوم (البوابة مغلقة - عطلة)"
                                         } else {
                                             "حركة بوابة المدرسة اليوم"
                                         },
-                                        style = MaterialTheme.typography.labelLarge,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color.White,
-                                        maxLines = 1,
-                                        softWrap = false
+                                        maxLines = 2
                                     )
                                 }
                             }
@@ -7772,7 +7808,7 @@ fun LiveOperationsRadarScreen(
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
                                                     text = when {
-                                                        isHolidayToday -> "🔒 البوابة مغلقة (يوم عطلة)"
+                                                        isHolidayToday -> "البوابة مغلقة (يوم عطلة)"
                                                         isInside -> "تسجيل مغادرة"
                                                         else -> "تسجيل دخول"
                                                     },

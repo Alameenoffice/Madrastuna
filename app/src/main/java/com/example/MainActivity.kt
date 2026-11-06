@@ -405,6 +405,46 @@ fun MadrasatiRootApp(
             label = "toast_icon_scale"
         )
 
+        // Gentle Non-Blocking Background Sync Wave Indicator for First-Time Fast Login
+        val isBackgroundSyncing by viewModel.isBackgroundSyncing.collectAsState()
+        AnimatedVisibility(
+            visible = isBackgroundSyncing && toastAlert == null,
+            enter = fadeIn(tween(220)),
+            exit = fadeOut(tween(220)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 6.dp)
+                .zIndex(9998f)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color(0xFF065F46).copy(alpha = 0.92f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA7F3D0).copy(alpha = 0.55f)),
+                shadowElevation = 6.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFFA7F3D0)
+                    )
+                    Text(
+                        text = "جاري استكمال مزامنة السجلات السحابية بالخلفية...",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        }
+
         AnimatedVisibility(
             visible = toastAlert != null,
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
