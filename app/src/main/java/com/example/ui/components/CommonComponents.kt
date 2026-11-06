@@ -5674,111 +5674,88 @@ fun SectionWaveQuickCard3D(
     modifier: Modifier = Modifier,
     testTag: String = ""
 ) {
-    val waveColor1 = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFCCFBF1)
-    val waveColor2 = if (isBlueAccent) Color(0xFFBFDBFE) else Color(0xFFA7F3D0)
-    val iconCircleBg = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFD1FAE5)
-    val iconTint = if (isBlueAccent) Color(0xFF1D4ED8) else Color(0xFF059669)
+    val accentTint = if (isBlueAccent) Color(0xFF1D4ED8) else Color(0xFF059669)
+    val glassBgGradient = if (isBlueAccent) {
+        listOf(Color(0xFFFFFFFF), Color(0xFFF0F7FF), Color(0xFFDBEAFE).copy(alpha = 0.72f))
+    } else {
+        listOf(Color(0xFFFFFFFF), Color(0xFFF0FDF4), Color(0xFFD1FAE5).copy(alpha = 0.72f))
+    }
+    val glassBorderColors = if (isBlueAccent) {
+        listOf(Color(0xFF93C5FD), Color(0xFFBFDBFE), Color(0xFF3B82F6).copy(alpha = 0.45f))
+    } else {
+        listOf(Color(0xFF6EE7B7), Color(0xFFA7F3D0), Color(0xFF059669).copy(alpha = 0.45f))
+    }
 
     Card(
         modifier = modifier
             .shadow(
-                elevation = 8.dp,
+                elevation = 9.dp,
                 shape = RoundedCornerShape(22.dp),
-                ambientColor = iconTint.copy(alpha = 0.14f),
-                spotColor = iconTint.copy(alpha = 0.18f)
+                ambientColor = accentTint.copy(alpha = 0.15f),
+                spotColor = accentTint.copy(alpha = 0.20f)
             )
             .clip(RoundedCornerShape(22.dp))
             .clickable { onClick() }
             .then(if (testTag.isNotBlank()) Modifier.testTag(testTag) else Modifier),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.3.dp, Brush.linearGradient(glassBorderColors))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 132.dp)
+                .heightIn(min = 128.dp)
+                .background(Brush.linearGradient(glassBgGradient))
         ) {
-            // Double smooth water wave drawn at the bottom of the card
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val w = size.width
-                val h = size.height
-
-                val backWave = Path().apply {
-                    moveTo(0f, h * 0.74f)
-                    cubicTo(
-                        w * 0.32f, h * 0.64f,
-                        w * 0.68f, h * 0.86f,
-                        w, h * 0.72f
-                    )
-                    lineTo(w, h)
-                    lineTo(0f, h)
-                    close()
-                }
-                drawPath(path = backWave, color = waveColor1.copy(alpha = 0.72f))
-
-                val frontWave = Path().apply {
-                    moveTo(0f, h * 0.82f)
-                    cubicTo(
-                        w * 0.38f, h * 0.92f,
-                        w * 0.72f, h * 0.72f,
-                        w, h * 0.84f
-                    )
-                    lineTo(w, h)
-                    lineTo(0f, h)
-                    close()
-                }
-                drawPath(path = frontWave, color = waveColor2.copy(alpha = 0.62f))
-            }
-
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                    .padding(horizontal = 13.dp, vertical = 13.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Pure 3D Glassmorphic Top Accent Strip & Capsule (Zero Classic Icons)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = iconCircleBg,
-                        border = BorderStroke(1.5.dp, Color.White),
-                        shadowElevation = 3.dp,
-                        modifier = Modifier.size(42.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = title,
-                                tint = iconTint,
-                                modifier = Modifier.size(22.dp)
+                    Box(
+                        modifier = Modifier
+                            .width(34.dp)
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.horizontalGradient(
+                                    if (isBlueAccent) {
+                                        listOf(Color(0xFF1E3A8A), Color(0xFF3B82F6))
+                                    } else {
+                                        listOf(Color(0xFF047857), Color(0xFF10B981))
+                                    }
+                                )
                             )
-                        }
-                    }
+                    )
 
                     Surface(
-                        shape = CircleShape,
-                        color = iconCircleBg.copy(alpha = 0.65f),
-                        modifier = Modifier.size(26.dp)
+                        shape = RoundedCornerShape(50),
+                        color = accentTint.copy(alpha = 0.12f),
+                        border = BorderStroke(0.9.dp, accentTint.copy(alpha = 0.35f))
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                contentDescription = null,
-                                tint = iconTint,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
+                        Text(
+                            text = "فتح القسم",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = accentTint,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
 
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
-                    fontSize = 13.sp,
+                    fontSize = 13.5.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color(0xFF0F172A),
                     maxLines = 1,

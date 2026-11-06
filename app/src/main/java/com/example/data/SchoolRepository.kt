@@ -3101,6 +3101,92 @@ class SchoolRepository(context: Context) {
     }
 
     // =========================================================================
+    // DEVELOPER-ONLY GLOBAL CURRICULUM MASTER CONFIG (`global_curriculum_config`)
+    // =========================================================================
+
+    fun loadGlobalCurriculumBooks(): List<CurriculumBookItem> {
+        val raw = prefs.getString("global_curriculum_config_json", null)
+        if (raw.isNullOrBlank()) {
+            return OfficialIraqiCurriculumCatalog.defaultBooks
+        }
+        return parseGlobalCurriculumBooksJson(raw)
+    }
+
+    fun parseGlobalCurriculumBooksJson(raw: String): List<CurriculumBookItem> {
+        return try {
+            val arr = JSONArray(raw)
+            val customList = mutableListOf<CurriculumBookItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val id = o.optString("id", "").trim()
+                val stageKey = o.optString("stageKey", "PRIMARY").trim()
+                val gradeTitle = o.optString("gradeTitle", "").trim()
+                val bookTitle = o.optString("bookTitle", "").trim()
+                val pdfUrl = o.optString("pdfUrl", "").trim()
+                val sortOrder = o.optInt("sortOrder", i + 1)
+                if (gradeTitle.isNotEmpty() && bookTitle.isNotEmpty() && pdfUrl.isNotEmpty()) {
+                    customList.add(
+                        CurriculumBookItem(
+                            id = id.ifBlank { "CURR_${stageKey}_${i + 1}" },
+                            stageKey = stageKey,
+                            gradeTitle = gradeTitle,
+                            bookTitle = bookTitle,
+                            pdfUrl = pdfUrl,
+                            sortOrder = sortOrder
+                        )
+                    )
+                }
+            }
+            if (customList.isEmpty()) {
+                OfficialIraqiCurriculumCatalog.defaultBooks
+            } else {
+                // Merge developer overrides onto official catalog so all 15 grades remain complete
+                val byId = customList.associateBy { it.id }
+                val byGradeAndTitle = customList.associateBy { "${it.gradeTitle.trim()}|${it.bookTitle.trim()}" }
+                val mergedDefaults = OfficialIraqiCurriculumCatalog.defaultBooks.map { def ->
+                    byId[def.id] ?: byGradeAndTitle["${def.gradeTitle.trim()}|${def.bookTitle.trim()}"] ?: def
+                }
+                val defaultKeys = mergedDefaults.map { "${it.gradeTitle.trim()}|${it.bookTitle.trim()}" }.toSet()
+                val defaultIds = mergedDefaults.map { it.id }.toSet()
+                val extraAddedByDev = customList.filter {
+                    it.id !in defaultIds && "${it.gradeTitle.trim()}|${it.bookTitle.trim()}" !in defaultKeys
+                }
+                mergedDefaults + extraAddedByDev
+            }
+        } catch (_: Exception) {
+            OfficialIraqiCurriculumCatalog.defaultBooks
+        }
+    }
+
+    private fun serializeGlobalCurriculumBooks(books: List<CurriculumBookItem>): String {
+        val arr = JSONArray()
+        books.forEachIndexed { index, item ->
+            arr.put(
+                JSONObject().apply {
+                    put("id", item.id)
+                    put("stageKey", item.stageKey)
+                    put("gradeTitle", InputSanitizer.sanitize(item.gradeTitle))
+                    put("bookTitle", InputSanitizer.sanitize(item.bookTitle))
+                    put("pdfUrl", item.pdfUrl.trim())
+                    put("sortOrder", if (item.sortOrder > 0) item.sortOrder else index + 1)
+                }
+            )
+        }
+        return arr.toString()
+    }
+
+    fun saveGlobalCurriculumBooksLocalOnly(books: List<CurriculumBookItem>) {
+        val jsonStr = serializeGlobalCurriculumBooks(books)
+        prefs.edit().putString("global_curriculum_config_json", jsonStr).apply()
+    }
+
+    fun saveGlobalCurriculumBooks(books: List<CurriculumBookItem>) {
+        val jsonStr = serializeGlobalCurriculumBooks(books)
+        prefs.edit().putString("global_curriculum_config_json", jsonStr).apply()
+        FirebaseCloudSync.pushRootNodeAsync(FirebaseConfigConstants.COL_GLOBAL_CURRICULUM, jsonStr)
+    }
+
+    // =========================================================================
     // BIOMETRIC FINGERPRINT SAVED CREDENTIALS (Encrypted Local Session Storage)
     // =========================================================================
 

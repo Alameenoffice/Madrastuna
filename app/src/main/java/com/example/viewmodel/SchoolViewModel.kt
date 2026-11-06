@@ -152,6 +152,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _showUrgentAlertModal = MutableStateFlow(false)
     val showUrgentAlertModal: StateFlow<Boolean> = _showUrgentAlertModal.asStateFlow()
 
+    private val _globalCurriculumBooks = MutableStateFlow(repo.loadGlobalCurriculumBooks())
+    val globalCurriculumBooks: StateFlow<List<CurriculumBookItem>> = _globalCurriculumBooks.asStateFlow()
+
     private val _holidaysConfig = MutableStateFlow(_schoolConfig.value.holidaysConfig)
     val holidaysConfig: StateFlow<SchoolHolidaysConfig> = _holidaysConfig.asStateFlow()
 
@@ -685,9 +688,102 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         repo.saveDeveloperVaultConfig(parsedVault)
                     }
                 }
+
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_GLOBAL_CURRICULUM,
+                    docName = "registry"
+                )?.let { remoteCurrJson ->
+                    if (remoteCurrJson.isNotBlank()) {
+                        val parsedCurr = repo.parseGlobalCurriculumBooksJson(remoteCurrJson)
+                        _globalCurriculumBooks.value = parsedCurr
+                        repo.saveGlobalCurriculumBooksLocalOnly(parsedCurr)
+                    }
+                }
             } catch (_: Exception) {
             }
         }
+    }
+
+    /**
+     * Developer-Only Curriculum Manager (صلاحيات تحديث المناهج حصرية للمطور فقط سحابياً)
+     */
+    fun developerUpdateCurriculumBookUrl(
+        bookId: String,
+        newBookTitle: String,
+        newPdfUrl: String
+    ) {
+        if (!_isDeveloperAuthenticated.value) {
+            showToastAlert("صلاحية تحديث روابط المناهج حصرية لمطور النظام العام فقط", isSuccess = false)
+            return
+        }
+        val cleanTitle = InputSanitizer.sanitize(newBookTitle.trim())
+        val cleanUrl = newPdfUrl.trim()
+        if (cleanTitle.isBlank() || !cleanUrl.startsWith("http", ignoreCase = true)) {
+            showToastAlert("يرجى إدخال اسم الكتاب ورابط PDF المباشر بصيغة صحيحة", isSuccess = false)
+            return
+        }
+        val updated = _globalCurriculumBooks.value.map { item ->
+            if (item.id == bookId) {
+                item.copy(bookTitle = cleanTitle, pdfUrl = cleanUrl)
+            } else {
+                item
+            }
+        }
+        _globalCurriculumBooks.value = updated
+        repo.saveGlobalCurriculumBooks(updated)
+        showToastAlert("تم تحديث رابط المنهج الدراسي وتعميمه سحابياً بنجاح", isSuccess = true)
+    }
+
+    fun developerAddCurriculumBook(
+        stage: CurriculumStageTab,
+        gradeTitle: String,
+        bookTitle: String,
+        pdfUrl: String
+    ) {
+        if (!_isDeveloperAuthenticated.value) {
+            showToastAlert("صلاحية إضافة وتحديث المناهج حصرية لمطور النظام العام فقط", isSuccess = false)
+            return
+        }
+        val cleanGrade = InputSanitizer.sanitize(gradeTitle.trim())
+        val cleanTitle = InputSanitizer.sanitize(bookTitle.trim())
+        val cleanUrl = pdfUrl.trim()
+        if (cleanGrade.isBlank() || cleanTitle.isBlank() || !cleanUrl.startsWith("http", ignoreCase = true)) {
+            showToastAlert("يرجى إدخال الصف واسم الكتاب ورابط PDF المباشر", isSuccess = false)
+            return
+        }
+        val current = _globalCurriculumBooks.value
+        val existingIdx = current.indexOfFirst {
+            it.gradeTitle.trim() == cleanGrade && it.bookTitle.trim().equals(cleanTitle, ignoreCase = true)
+        }
+        val updated = if (existingIdx >= 0) {
+            current.toMutableList().apply {
+                this[existingIdx] = this[existingIdx].copy(pdfUrl = cleanUrl)
+            }
+        } else {
+            val nextOrder = (current.filter { it.gradeTitle == cleanGrade }.maxOfOrNull { it.sortOrder } ?: 0) + 1
+            current + CurriculumBookItem(
+                id = "CURR_DEV_${stage.key}_${UUID.randomUUID().toString().take(6)}",
+                stageKey = stage.key,
+                gradeTitle = cleanGrade,
+                bookTitle = cleanTitle,
+                pdfUrl = cleanUrl,
+                sortOrder = nextOrder
+            )
+        }
+        _globalCurriculumBooks.value = updated
+        repo.saveGlobalCurriculumBooks(updated)
+        showToastAlert("تم حفظ الكتاب والرابط في العقدة السحابية للمناهج بنجاح", isSuccess = true)
+    }
+
+    fun developerResetCurriculumToOfficialDefaults() {
+        if (!_isDeveloperAuthenticated.value) {
+            showToastAlert("هذه الصلاحية حصرية لمطور النظام العام فقط", isSuccess = false)
+            return
+        }
+        val defaults = OfficialIraqiCurriculumCatalog.defaultBooks
+        _globalCurriculumBooks.value = defaults
+        repo.saveGlobalCurriculumBooks(defaults)
+        showToastAlert("تمت استعادة وتثبيت كافة روابط المناهج الرسمية الموحدة سحابياً", isSuccess = true)
     }
 
     fun generateNewSchoolLicense(): SchoolLicense {
@@ -1523,6 +1619,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 appContext,
                                 targetAlias
                             )
+                        }
+                    }
+                    FirebaseCloudSync.fetchGlobalCollectionPayload(
+                        collectionName = FirebaseConfigConstants.COL_GLOBAL_CURRICULUM,
+                        docName = "registry"
+                    )?.let { remoteCurr ->
+                        if (remoteCurr.isNotBlank()) {
+                            val parsedCurr = repo.parseGlobalCurriculumBooksJson(remoteCurr)
+                            if (parsedCurr != _globalCurriculumBooks.value) {
+                                _globalCurriculumBooks.value = parsedCurr
+                                repo.saveGlobalCurriculumBooksLocalOnly(parsedCurr)
+                            }
                         }
                     }
                 } catch (_: Exception) {

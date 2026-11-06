@@ -1954,6 +1954,9 @@ fun DeveloperControlPanelScreen(
                 }
             }
 
+            // Developer-Only Curriculum Manager (global_curriculum_config)
+            DeveloperCurriculumManagerSection(viewModel = viewModel)
+
             // 1 & 3: Generate License Code, Direct School Setup & Broadcast to School Principals Card
             Card(
                 modifier = Modifier.fillMaxWidth(),

@@ -958,6 +958,7 @@ fun AuthenticatedMainPlatform(
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
             add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
+            add(AppSection.CURRICULUM to Icons.Filled.MenuBook)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
             if (featureSettings.studentActivitiesEnabled) {
                 add(AppSection.STUDENT_ACTIVITIES to StudentActivitiesLinearVector)
@@ -988,14 +989,8 @@ fun AuthenticatedMainPlatform(
             add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.MenuBook)
+            add(AppSection.CURRICULUM to Icons.Filled.MenuBook)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
-            if (featureSettings.studentActivitiesEnabled) {
-                add(AppSection.STUDENT_ACTIVITIES to StudentActivitiesLinearVector)
-            } else if (featureSettings.honorRollEnabled) {
-                add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
-            } else {
-                add(AppSection.REPORTS_CHAT to Icons.Filled.Forum)
-            }
         }
     }
 
@@ -1013,6 +1008,7 @@ fun AuthenticatedMainPlatform(
                         add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
                         add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
                         add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
+                        add(AppSection.CURRICULUM to Icons.Filled.MenuBook)
                         add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
                     }
                 }
@@ -1711,7 +1707,7 @@ fun AuthenticatedMainPlatform(
                         }
                     }
 
-                    // Scrollable 3D Section Capsule Tabs Strip
+                    // Scrollable Pure 3D Glassmorphism Section Capsule Tabs Strip (Zero Classic Icons)
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1719,9 +1715,8 @@ fun AuthenticatedMainPlatform(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        items(allSections, key = { it.first.name }) { (section, icon) ->
+                        items(allSections, key = { it.first.name }) { (section, _) ->
                             val selected = activeSection == section
-                            val pillIcon = if (section == AppSection.DASHBOARD) Icons.Filled.GridView else icon
                             val pillContentColor = when {
                                 selected -> Color.White
                                 isDarkMode -> Color(0xFFE2E8F0)
@@ -1729,16 +1724,16 @@ fun AuthenticatedMainPlatform(
                             }
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = if (selected) Color.Transparent else if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                                color = if (selected) Color.Transparent else if (isDarkMode) Color(0xFF1E293B).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.94f),
                                 border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
+                                    1.2.dp,
                                     when {
-                                        selected -> Color(0xFF10B981)
+                                        selected -> Color(0xFFA7F3D0)
                                         isDarkMode -> Color(0xFF334155)
-                                        else -> Color(0xFFE2E8F0)
+                                        else -> Color(0xFFCBD5E1)
                                     }
                                 ),
-                                shadowElevation = if (selected) 6.dp else 3.dp,
+                                shadowElevation = if (selected) 7.dp else 3.dp,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
                                     .clickable { viewModel.navigateToSection(section) }
@@ -1750,22 +1745,24 @@ fun AuthenticatedMainPlatform(
                                             if (selected) {
                                                 Modifier.background(
                                                     Brush.horizontalGradient(
-                                                        listOf(Color(0xFF059669), Color(0xFF047857))
+                                                        listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
                                                     )
                                                 )
                                             } else {
                                                 Modifier
                                             }
                                         )
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                        .padding(horizontal = 15.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = pillIcon,
-                                        contentDescription = section.arabicTitle,
-                                        tint = if (selected) Color.White else Color(0xFF059669),
-                                        modifier = Modifier.size(17.dp)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (selected) Color(0xFFA7F3D0) else Color(0xFF059669).copy(alpha = 0.65f)
+                                            )
                                     )
                                     Text(
                                         text = section.arabicTitle,
@@ -1783,7 +1780,7 @@ fun AuthenticatedMainPlatform(
                 }
             },
             bottomBar = {
-                // 3D Rounded White Bottom Navigation Bar with vertical dividers & glowing mint active indicator
+                // Pure 3D Glassmorphic Bottom Navigation Bar (Zero Classic Icons)
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1794,7 +1791,7 @@ fun AuthenticatedMainPlatform(
                             spotColor = Color(0xFF0F3D5E).copy(alpha = 0.25f)
                         ),
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    color = if (isDarkMode) Color(0xFF0F172A) else Color.White,
+                    color = if (isDarkMode) Color(0xFF0F172A).copy(alpha = 0.96f) else Color.White.copy(alpha = 0.96f),
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp,
                         if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE2E8F0)
@@ -1804,22 +1801,16 @@ fun AuthenticatedMainPlatform(
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                            .padding(horizontal = 6.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        bottomNavItems.forEachIndexed { index, (section, icon) ->
+                        bottomNavItems.forEachIndexed { index, (section, _) ->
                             val selected = activeSection == section
-                            val navIcon = if (section == AppSection.DASHBOARD) Icons.Filled.Home else icon
                             val activeBg = if (isDarkMode) {
-                                Color(0xFF059669).copy(alpha = 0.25f)
+                                Color(0xFF059669).copy(alpha = 0.28f)
                             } else {
-                                Color(0xFFD1FAE5)
-                            }
-                            val iconTint = when {
-                                selected -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
-                                isDarkMode -> Color(0xFF94A3B8)
-                                else -> Color(0xFF334155)
+                                Color(0xFFD1FAE5).copy(alpha = 0.85f)
                             }
                             val textTint = when {
                                 selected -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
@@ -1839,31 +1830,25 @@ fun AuthenticatedMainPlatform(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 6.dp, bottom = 4.dp, start = 2.dp, end = 2.dp),
+                                        .padding(top = 8.dp, bottom = 6.dp, start = 2.dp, end = 2.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = navIcon,
-                                        contentDescription = section.arabicTitle,
-                                        tint = iconTint,
-                                        modifier = Modifier.size(22.dp)
-                                    )
                                     Text(
                                         text = section.arabicTitle,
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold,
                                         color = textTint,
                                         maxLines = 1,
                                         softWrap = false,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    // Bottom thick emerald indicator bar on active tab
+                                    // Bottom thick emerald 3D glass indicator bar on active tab
                                     Box(
                                         modifier = Modifier
-                                            .width(32.dp)
-                                            .height(3.dp)
+                                            .width(34.dp)
+                                            .height(3.5.dp)
                                             .clip(RoundedCornerShape(50))
                                             .background(
                                                 if (selected) Color(0xFF059669) else Color.Transparent
@@ -1876,7 +1861,7 @@ fun AuthenticatedMainPlatform(
                                 Box(
                                     modifier = Modifier
                                         .width(1.dp)
-                                        .height(32.dp)
+                                        .height(28.dp)
                                         .background(
                                             if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE2E8F0)
                                         )
@@ -2013,6 +1998,7 @@ fun AuthenticatedMainPlatform(
                             AppSection.ATTENDANCE -> DailyAttendanceScreen(viewModel = viewModel)
                             AppSection.STUDENT_COMPREHENSIVE_ARCHIVE -> StudentComprehensiveArchiveScreen(viewModel = viewModel)
                             AppSection.SCHEDULE_HOMEWORK -> ScheduleAndHomeworkScreen(viewModel = viewModel)
+                            AppSection.CURRICULUM -> CurriculumScreen(viewModel = viewModel)
                             AppSection.EXAMS_GRADES -> ExamsAndGradesScreen(viewModel = viewModel)
                             AppSection.STUDENT_ACTIVITIES -> StudentActivitiesScreen(viewModel = viewModel)
                             AppSection.HONOR_ROLL -> HonorRollScreen(viewModel = viewModel)
@@ -2351,45 +2337,47 @@ private fun LuxuryDrawerMenuItem(
     val activeTextColor = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
     val inactiveTextColor = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF1E293B)
     val subtitleColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
-    val activeIconColor = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
-    val inactiveIconColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable { onClick() }
             .testTag(testTag),
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) activeBg else Color.Transparent
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) activeBg else Color.Transparent,
+        border = if (selected) {
+            androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+        } else null
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = if (selected) {
-                    if (isDarkMode) Color(0xFF059669).copy(alpha = 0.25f) else Color(0xFFD1FAE5)
-                } else {
-                    if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
-                },
-                modifier = Modifier.size(34.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = title,
-                        tint = if (selected) activeIconColor else inactiveIconColor,
-                        modifier = Modifier.size(19.dp)
+            // Pure 3D Glassmorphic Indicator Pill (Zero Classic Icons)
+            Box(
+                modifier = Modifier
+                    .width(5.dp)
+                    .height(26.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (selected) {
+                            Brush.verticalGradient(listOf(Color(0xFF10B981), Color(0xFF059669)))
+                        } else {
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xFF94A3B8).copy(alpha = 0.45f),
+                                    Color(0xFFCBD5E1).copy(alpha = 0.35f)
+                                )
+                            )
+                        }
                     )
-                }
-            }
+            )
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(1.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = title,
@@ -2416,14 +2404,6 @@ private fun LuxuryDrawerMenuItem(
                         .size(8.dp)
                         .clip(CircleShape)
                         .background(statusDotColor)
-                )
-            } else if (selected) {
-                Box(
-                    modifier = Modifier
-                        .width(4.dp)
-                        .height(18.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF059669))
                 )
             }
         }
