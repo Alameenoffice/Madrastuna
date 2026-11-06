@@ -2039,7 +2039,8 @@ enum class ThreeDIllustrationType {
     CRESCENT_LANTERN_3D,
     UPDATE_SPARK_3D,
     CALENDAR_HOLIDAYS,
-    CLOUD_OFFLINE_3D
+    CLOUD_OFFLINE_3D,
+    DIGITAL_LIBRARY_ILLUMINATED_BOOK_3D
 }
 
 fun OccasionIconKey.toThreeDIllustrationType(): ThreeDIllustrationType {
@@ -4214,6 +4215,213 @@ fun ThreeDIllustrationBox(
                     }
                 }
             }
+
+            ThreeDIllustrationType.DIGITAL_LIBRARY_ILLUMINATED_BOOK_3D -> {
+                // 1) Radiant Emerald & Gold Aura Behind the Open 3D Book
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFBBF24).copy(alpha = glowPulseAlpha * 0.85f),
+                            Color(0xFF34D399).copy(alpha = glowPulseAlpha * 0.55f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy * 0.88f),
+                        radius = w * 0.54f
+                    ),
+                    radius = w * 0.54f,
+                    center = Offset(cx, cy * 0.88f)
+                )
+
+                // 2) Glowing Holographic Pedestal Rings Under the Book
+                drawOval(
+                    color = Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.25f).coerceAtMost(0.92f)),
+                    topLeft = Offset(w * 0.08f, h * 0.72f),
+                    size = Size(w * 0.84f, h * 0.20f),
+                    style = Stroke(width = 2.4.dp.toPx())
+                )
+                drawOval(
+                    color = Color(0xFFFDE68A).copy(alpha = glowPulseAlpha * 0.9f),
+                    topLeft = Offset(w * 0.14f, h * 0.75f),
+                    size = Size(w * 0.72f, h * 0.14f),
+                    style = Stroke(width = 1.6.dp.toPx())
+                )
+
+                // 3) Smart Luminous Beams / Light Paths Rising from the Open Book Pages
+                val beamLeft = Path().apply {
+                    moveTo(w * 0.48f, h * 0.62f)
+                    cubicTo(
+                        w * 0.36f, h * 0.44f,
+                        w * 0.24f, h * 0.28f,
+                        w * 0.20f, h * (0.14f - (waveExpandFactor - 1f) * 0.08f)
+                    )
+                }
+                val beamCenter = Path().apply {
+                    moveTo(w * 0.50f, h * 0.60f)
+                    cubicTo(
+                        w * 0.48f, h * 0.38f,
+                        w * 0.52f, h * 0.24f,
+                        w * 0.50f, h * (0.08f - (waveExpandFactor - 1f) * 0.10f)
+                    )
+                }
+                val beamRight = Path().apply {
+                    moveTo(w * 0.52f, h * 0.62f)
+                    cubicTo(
+                        w * 0.64f, h * 0.44f,
+                        w * 0.76f, h * 0.28f,
+                        w * 0.80f, h * (0.14f - (waveExpandFactor - 1f) * 0.08f)
+                    )
+                }
+
+                // Wide soft light cone from open pages
+                val lightCone = Path().apply {
+                    moveTo(w * 0.26f, h * 0.62f)
+                    lineTo(w * 0.14f, h * 0.14f)
+                    lineTo(w * 0.86f, h * 0.14f)
+                    lineTo(w * 0.74f, h * 0.62f)
+                    close()
+                }
+                drawPath(
+                    path = lightCone,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xFFFEF08A).copy(alpha = glowPulseAlpha * 0.36f),
+                            Color(0xFF6EE7B7).copy(alpha = glowPulseAlpha * 0.48f)
+                        ),
+                        startY = h * 0.12f,
+                        endY = h * 0.64f
+                    )
+                )
+
+                val beamBrush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFFEF08A),
+                        Color(0xFF34D399),
+                        Color(0xFFF59E0B)
+                    )
+                )
+                drawPath(beamLeft, brush = beamBrush, style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(beamCenter, brush = beamBrush, style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(beamRight, brush = beamBrush, style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round))
+
+                // Floating Geometric Knowledge Nodes along the Light Beams
+                val nodePositions = listOf(
+                    Offset(w * 0.22f, h * 0.18f),
+                    Offset(w * 0.50f, h * 0.11f),
+                    Offset(w * 0.78f, h * 0.18f),
+                    Offset(w * 0.35f, h * 0.30f),
+                    Offset(w * 0.65f, h * 0.30f)
+                )
+                nodePositions.forEachIndexed { idx, pos ->
+                    val pulse = if (idx % 2 == 0) waveExpandFactor else (2f - waveExpandFactor)
+                    drawCircle(
+                        color = Color(0xFFFEF08A).copy(alpha = 0.38f),
+                        radius = 6.5.dp.toPx() * pulse,
+                        center = pos
+                    )
+                    drawCircle(
+                        color = if (idx == 1) Color(0xFFFBBF24) else Color(0xFFA7F3D0),
+                        radius = 3.4.dp.toPx(),
+                        center = pos
+                    )
+                }
+
+                // 4) 3D Open Hardcover Book Base (Emerald & Royal Gold)
+                val coverLeft = Path().apply {
+                    moveTo(w * 0.50f, h * 0.76f)
+                    lineTo(w * 0.10f, h * 0.66f)
+                    lineTo(w * 0.14f, h * 0.46f)
+                    lineTo(w * 0.50f, h * 0.58f)
+                    close()
+                }
+                val coverRight = Path().apply {
+                    moveTo(w * 0.50f, h * 0.76f)
+                    lineTo(w * 0.90f, h * 0.66f)
+                    lineTo(w * 0.86f, h * 0.46f)
+                    lineTo(w * 0.50f, h * 0.58f)
+                    close()
+                }
+                drawPath(
+                    path = coverLeft,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF065F46), Color(0xFF047857), Color(0xFF0F3D5E))
+                    )
+                )
+                drawPath(
+                    path = coverRight,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF047857), Color(0xFF065F46), Color(0xFF0F3D5E))
+                    )
+                )
+
+                // Golden Trim along Book Cover Edges
+                drawPath(
+                    path = coverLeft,
+                    color = Color(0xFFFBBF24).copy(alpha = 0.75f),
+                    style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round)
+                )
+                drawPath(
+                    path = coverRight,
+                    color = Color(0xFFFBBF24).copy(alpha = 0.75f),
+                    style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round)
+                )
+
+                // 5) 3D Curved Illuminated Open Pages (Left & Right)
+                val pageLeft = Path().apply {
+                    moveTo(w * 0.50f, h * 0.72f)
+                    quadraticBezierTo(w * 0.30f, h * 0.60f, w * 0.14f, h * 0.62f)
+                    lineTo(w * 0.18f, h * 0.42f)
+                    quadraticBezierTo(w * 0.34f, h * 0.42f, w * 0.50f, h * 0.54f)
+                    close()
+                }
+                val pageRight = Path().apply {
+                    moveTo(w * 0.50f, h * 0.72f)
+                    quadraticBezierTo(w * 0.70f, h * 0.60f, w * 0.86f, h * 0.62f)
+                    lineTo(w * 0.82f, h * 0.42f)
+                    quadraticBezierTo(w * 0.66f, h * 0.42f, w * 0.50f, h * 0.54f)
+                    close()
+                }
+                drawPath(
+                    path = pageLeft,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFFFFFFF), Color(0xFFECFDF5), Color(0xFFFEF9C3))
+                    )
+                )
+                drawPath(
+                    path = pageRight,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFFEF9C3), Color(0xFFECFDF5), Color(0xFFFFFFFF))
+                    )
+                )
+
+                // Subtle Luminous Text Lines on Both Open Pages
+                for (lineIdx in 0..2) {
+                    val yRatio = 0.49f + lineIdx * 0.055f
+                    drawLine(
+                        color = Color(0xFF059669).copy(alpha = 0.55f),
+                        start = Offset(w * 0.23f, h * yRatio),
+                        end = Offset(w * 0.44f, h * (yRatio + 0.04f)),
+                        strokeWidth = 2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color(0xFFD97706).copy(alpha = 0.55f),
+                        start = Offset(w * 0.77f, h * yRatio),
+                        end = Offset(w * 0.56f, h * (yRatio + 0.04f)),
+                        strokeWidth = 2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                // Center Golden Spine & Bookmark Ribbon
+                drawLine(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
+                    start = Offset(w * 0.50f, h * 0.53f),
+                    end = Offset(w * 0.50f, h * 0.82f),
+                    strokeWidth = 3.5.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
         }
     }
 }
@@ -5674,88 +5882,111 @@ fun SectionWaveQuickCard3D(
     modifier: Modifier = Modifier,
     testTag: String = ""
 ) {
-    val accentTint = if (isBlueAccent) Color(0xFF1D4ED8) else Color(0xFF059669)
-    val glassBgGradient = if (isBlueAccent) {
-        listOf(Color(0xFFFFFFFF), Color(0xFFF0F7FF), Color(0xFFDBEAFE).copy(alpha = 0.72f))
-    } else {
-        listOf(Color(0xFFFFFFFF), Color(0xFFF0FDF4), Color(0xFFD1FAE5).copy(alpha = 0.72f))
-    }
-    val glassBorderColors = if (isBlueAccent) {
-        listOf(Color(0xFF93C5FD), Color(0xFFBFDBFE), Color(0xFF3B82F6).copy(alpha = 0.45f))
-    } else {
-        listOf(Color(0xFF6EE7B7), Color(0xFFA7F3D0), Color(0xFF059669).copy(alpha = 0.45f))
-    }
+    val waveColor1 = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFCCFBF1)
+    val waveColor2 = if (isBlueAccent) Color(0xFFBFDBFE) else Color(0xFFA7F3D0)
+    val iconCircleBg = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFD1FAE5)
+    val iconTint = if (isBlueAccent) Color(0xFF1D4ED8) else Color(0xFF059669)
 
     Card(
         modifier = modifier
             .shadow(
-                elevation = 9.dp,
+                elevation = 8.dp,
                 shape = RoundedCornerShape(22.dp),
-                ambientColor = accentTint.copy(alpha = 0.15f),
-                spotColor = accentTint.copy(alpha = 0.20f)
+                ambientColor = iconTint.copy(alpha = 0.14f),
+                spotColor = iconTint.copy(alpha = 0.18f)
             )
             .clip(RoundedCornerShape(22.dp))
             .clickable { onClick() }
             .then(if (testTag.isNotBlank()) Modifier.testTag(testTag) else Modifier),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = BorderStroke(1.3.dp, Brush.linearGradient(glassBorderColors))
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 128.dp)
-                .background(Brush.linearGradient(glassBgGradient))
+                .heightIn(min = 132.dp)
         ) {
+            // Double smooth water wave drawn at the bottom of the card
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val w = size.width
+                val h = size.height
+
+                val backWave = Path().apply {
+                    moveTo(0f, h * 0.74f)
+                    cubicTo(
+                        w * 0.32f, h * 0.64f,
+                        w * 0.68f, h * 0.86f,
+                        w, h * 0.72f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(path = backWave, color = waveColor1.copy(alpha = 0.72f))
+
+                val frontWave = Path().apply {
+                    moveTo(0f, h * 0.82f)
+                    cubicTo(
+                        w * 0.38f, h * 0.92f,
+                        w * 0.72f, h * 0.72f,
+                        w, h * 0.84f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(path = frontWave, color = waveColor2.copy(alpha = 0.62f))
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 13.dp, vertical = 13.dp),
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Pure 3D Glassmorphic Top Accent Strip & Capsule (Zero Classic Icons)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .width(34.dp)
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(
-                                    if (isBlueAccent) {
-                                        listOf(Color(0xFF1E3A8A), Color(0xFF3B82F6))
-                                    } else {
-                                        listOf(Color(0xFF047857), Color(0xFF10B981))
-                                    }
-                                )
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = iconCircleBg,
+                        border = BorderStroke(1.5.dp, Color.White),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = title,
+                                tint = iconTint,
+                                modifier = Modifier.size(22.dp)
                             )
-                    )
+                        }
+                    }
 
                     Surface(
-                        shape = RoundedCornerShape(50),
-                        color = accentTint.copy(alpha = 0.12f),
-                        border = BorderStroke(0.9.dp, accentTint.copy(alpha = 0.35f))
+                        shape = CircleShape,
+                        color = iconCircleBg.copy(alpha = 0.65f),
+                        modifier = Modifier.size(26.dp)
                     ) {
-                        Text(
-                            text = "فتح القسم",
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = accentTint,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                            maxLines = 1,
-                            softWrap = false
-                        )
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = null,
+                                tint = iconTint,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
                     }
                 }
 
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
-                    fontSize = 13.5.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color(0xFF0F172A),
                     maxLines = 1,

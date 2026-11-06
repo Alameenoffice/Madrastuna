@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -787,108 +786,6 @@ fun DashboardScreen(
             }
         }
 
-        // Featured Pure 3D Glassmorphic Curriculum Hub Banner (Zero Classic Icons)
-        item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(
-                        elevation = 12.dp,
-                        shape = RoundedCornerShape(24.dp),
-                        ambientColor = Color(0xFF059669).copy(alpha = 0.22f),
-                        spotColor = Color(0xFF0F3D5E).copy(alpha = 0.28f)
-                    )
-                    .clip(RoundedCornerShape(24.dp))
-                    .clickable { viewModel.navigateToSection(AppSection.CURRICULUM) }
-                    .testTag("dashboard_featured_curriculum_card"),
-                shape = RoundedCornerShape(24.dp),
-                color = Color.Transparent,
-                border = BorderStroke(
-                    1.4.dp,
-                    Brush.linearGradient(
-                        listOf(
-                            Color(0xFFA7F3D0),
-                            Color.White.copy(alpha = 0.65f),
-                            Color(0xFFFDE68A)
-                        )
-                    )
-                )
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF044E3A),
-                                    Color(0xFF059669),
-                                    Color(0xFF0F3D5E)
-                                )
-                            )
-                        )
-                        .padding(horizontal = 18.dp, vertical = 16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.16f),
-                                border = BorderStroke(1.dp, Color(0xFFA7F3D0).copy(alpha = 0.45f))
-                            ) {
-                                Text(
-                                    text = "المكتبة الأكاديمية الرسمية الموحدة",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFA7F3D0),
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                            Text(
-                                text = "المناهج الدراسية",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "تصفح فوري مباشر لجميع كتب المراحل الابتدائية والمتوسطة والإعدادية داخل التطبيق بدون تنزيل",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White.copy(alpha = 0.90f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color.White,
-                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                            shadowElevation = 4.dp
-                        ) {
-                            Text(
-                                text = "تصفح المناهج",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF047857),
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         // All Sections 3D Wave Quick Access Grid
         item {
             SectionDividerHeaderWithLines(
@@ -898,9 +795,9 @@ fun DashboardScreen(
 
             val sectionsList = remember(schoolConfig.schoolType, featureSettings, currentUser) {
                 buildList {
-                    add(Triple(AppSection.CURRICULUM, Icons.Filled.MenuBook, "المناهج الرسمية والتصفح المباشر بدون تنزيل"))
                     add(Triple(AppSection.ATTENDANCE, Icons.Filled.HowToReg, if (isParentOrStudent) "حالة الحضور وعداد الغياب الخاص" else "رصد الحضور والغياب وتبليغ واتساب"))
                     add(Triple(AppSection.SCHEDULE_HOMEWORK, Icons.Filled.CalendarMonth, "جدول الحصص والتحضير اليومي"))
+                    add(Triple(AppSection.CURRICULUM_BOOKS, Icons.Filled.AutoStories, "المناهج العراقية الرسمية وقارئ الكتب الفائق"))
                     add(Triple(AppSection.EXAMS_GRADES, Icons.Filled.Assessment, if (isParentOrStudent) "جدول كشف درجات الطالب التفصيلي" else "الامتحانات ورصد الدرجات حسب المادة"))
                     if (featureSettings.honorRollEnabled) {
                         add(Triple(AppSection.HONOR_ROLL, Icons.Filled.WorkspacePremium, "لوحة الشرف للمتفوقين (عام)"))
