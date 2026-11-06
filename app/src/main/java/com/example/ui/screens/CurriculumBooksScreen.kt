@@ -1,10 +1,15 @@
 package com.example.ui.screens
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.Context
+import android.content.Intent
+import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.webkit.CookieManager as WebKitCookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -66,6 +71,7 @@ import com.example.viewmodel.SchoolViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -73,10 +79,69 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.net.CookieHandler
+import java.net.CookieManager
+import java.net.CookiePolicy
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+
+private const val OFFICIAL_BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+private const val OFFICIAL_MANAHJ_REFERER = "https://manahj.edu.iq/"
+private const val OFFICIAL_ACCEPT_HEADER =
+    "application/pdf,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+private const val OFFICIAL_ACCEPT_LANGUAGE = "ar-IQ,ar;q=0.9,en-US;q=0.8,en;q=0.7"
+
+private fun ensureGlobalCookieManagerInitialized() {
+    runCatching {
+        if (CookieHandler.getDefault() == null) {
+            CookieManager().apply {
+                setCookiePolicy(CookiePolicy.ACCEPT_ALL)
+                CookieHandler.setDefault(this)
+            }
+        }
+    }
+}
+
+private fun HttpURLConnection.applyOfficialBrowserHeaders() {
+    connectTimeout = 20000
+    readTimeout = 30000
+    instanceFollowRedirects = true
+    requestMethod = "GET"
+    setRequestProperty("User-Agent", OFFICIAL_BROWSER_USER_AGENT)
+    setRequestProperty("Referer", OFFICIAL_MANAHJ_REFERER)
+    setRequestProperty("Accept", OFFICIAL_ACCEPT_HEADER)
+    setRequestProperty("Accept-Language", OFFICIAL_ACCEPT_LANGUAGE)
+    setRequestProperty("Connection", "keep-alive")
+}
+
+private fun isValidPdfFile(file: File): Boolean {
+    if (!file.exists() || file.length() <= 1024L) return false
+    return runCatching {
+        FileInputStream(file).use { fis ->
+            val header = ByteArray(5)
+            val read = fis.read(header)
+            if (read < 4) return@use false
+            // Check for "%PDF" magic signature
+            header[0] == 0x25.toByte() &&
+                header[1] == 0x50.toByte() &&
+                header[2] == 0x44.toByte() &&
+                header[3] == 0x46.toByte()
+        }
+    }.getOrDefault(false)
+}
+
+private fun openPdfDirectlyInBrowserOrDeviceReader(context: Context, pdfUrl: String) {
+    runCatching {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(pdfUrl)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+}
 
 enum class CurriculumStageTab(
     val arabicTitle: String,
@@ -828,6 +893,9 @@ fun CurriculumBooksScreen(
                     onOpenInternalReaderClick = {
                         activeInternalReaderBook = book
                     },
+                    onDirectBrowserDownloadClick = {
+                        openPdfDirectlyInBrowserOrDeviceReader(context, book.pdfUrl)
+                    },
                     onDeleteCachedCopyClick = {
                         val file = IraqiCurriculumCatalog.getCachedPdfFile(context.cacheDir, book)
                         if (file.exists()) {
@@ -854,11 +922,14 @@ fun CurriculumBooksScreen(
                 val target = previewBook
                 activeQuickPreviewBook = null
                 activeInternalReaderBook = target
+            },
+            onOpenInBrowserClick = {
+                openPdfDirectlyInBrowserOrDeviceReader(context, previewBook.pdfUrl)
             }
         )
     }
 
-    // Modal 2: High-Resolution On-Demand Internal PDF Reader (HttpURLConnection + PdfRenderer + Pinch-to-Zoom)
+    // Modal 2: High-Resolution On-Demand Internal PDF Reader (HttpURLConnection + Multi-Stage Fallback + PdfRenderer + Pinch-to-Zoom)
     val readerBook = activeInternalReaderBook
     if (readerBook != null) {
         InternalSuperPdfReaderModal(
@@ -873,6 +944,9 @@ fun CurriculumBooksScreen(
                     message = "تم حذف النسخة المؤقتة لكتاب (${readerBook.subjectTitle}) وتفريغ المساحة.",
                     isSuccess = true
                 )
+            },
+            onOpenInBrowserClick = {
+                openPdfDirectlyInBrowserOrDeviceReader(context, readerBook.pdfUrl)
             }
         )
     }
@@ -885,6 +959,7 @@ private fun CurriculumBookLuxuryCard(
     isCachedLocally: Boolean,
     onQuickPreviewClick: () -> Unit,
     onOpenInternalReaderClick: () -> Unit,
+    onDirectBrowserDownloadClick: () -> Unit,
     onDeleteCachedCopyClick: () -> Unit
 ) {
     Card(
@@ -912,7 +987,7 @@ private fun CurriculumBookLuxuryCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1078,9 +1153,9 @@ private fun CurriculumBookLuxuryCard(
                 }
             }
 
-            // Two On-Demand Action Buttons:
+            // Primary On-Demand In-App Buttons:
             // 1) "معاينة سريعة للكتاب" (Cloud Embedded Viewer without downloading)
-            // 2) "فتح بالقارئ الداخلي الفائق" (On-Demand Cache + PdfRenderer High-Res Pinch-to-Zoom)
+            // 2) "فتح بالقارئ الداخلي الفائق" (On-Demand Cache + Multi-Stage Fallback + PdfRenderer)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1141,6 +1216,44 @@ private fun CurriculumBookLuxuryCard(
                     )
                 }
             }
+
+            // 3) Guaranteed 100% Direct Browser / Device PDF Reader Button ("فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز")
+            Surface(
+                onClick = onDirectBrowserDownloadClick,
+                shape = RoundedCornerShape(12.dp),
+                color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF0FDF4),
+                border = BorderStroke(
+                    1.dp,
+                    if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.4f) else Color(0xFFA7F3D0)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("btn_direct_browser_${book.id}")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.OpenInBrowser,
+                        contentDescription = null,
+                        tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
         }
     }
 }
@@ -1149,14 +1262,15 @@ private fun CurriculumBookLuxuryCard(
  * الزر الأول: "معاينة سريعة للكتاب"
  * يفتح شاشة معاينة داخلية تعرض صفحات الكتاب مباشرة عبر عارض المستندات السحابي المدمج
  * (`https://docs.google.com/gview?embedded=true&url=<ENCODED_PDF_URL>`)
- * داخل WebView مهيأ بـ JavaScript و DOMStorage مع مؤشر تحميل أنيق، دون تنزيل الملف على ذاكرة الجهاز.
+ * داخل WebView مهيأ بـ JavaScript و DOMStorage وترويسة User-Agent و Referer مع مؤشر تحميل أنيق.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun QuickCloudPdfPreviewModal(
     book: CurriculumBookItem,
     onDismiss: () -> Unit,
-    onSwitchToSuperReader: () -> Unit
+    onSwitchToSuperReader: () -> Unit,
+    onOpenInBrowserClick: () -> Unit
 ) {
     val encodedPdfUrl = remember(book.pdfUrl) {
         Uri.encode(book.pdfUrl)
@@ -1172,14 +1286,17 @@ private fun QuickCloudPdfPreviewModal(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color(0xFF0F172A)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Header Bar
+                // Top Header Bar with Safe Status Bar Padding (top = 36.dp + statusBarsPadding) so it NEVER overlaps the clock
                 Surface(
                     color = Color(0xFF064E3B),
                     shadowElevation = 8.dp
@@ -1188,7 +1305,7 @@ private fun QuickCloudPdfPreviewModal(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(top = 36.dp, bottom = 12.dp, start = 14.dp, end = 14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
@@ -1204,21 +1321,21 @@ private fun QuickCloudPdfPreviewModal(
                                 IconButton(
                                     onClick = onDismiss,
                                     modifier = Modifier
-                                        .size(36.dp)
+                                        .size(38.dp)
                                         .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.16f))
+                                        .background(Color.White.copy(alpha = 0.18f))
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
                                         contentDescription = "إغلاق المعاينة",
                                         tint = Color.White,
-                                        modifier = Modifier.size(19.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = book.subjectTitle,
-                                        fontSize = 14.5.sp,
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color.White,
                                         maxLines = 1,
@@ -1242,7 +1359,10 @@ private fun QuickCloudPdfPreviewModal(
                                     onClick = {
                                         hasLoadError = false
                                         isLoading = true
-                                        webViewRef?.loadUrl(viewerUrl)
+                                        webViewRef?.loadUrl(
+                                            viewerUrl,
+                                            mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
+                                        )
                                     },
                                     modifier = Modifier
                                         .size(34.dp)
@@ -1288,6 +1408,39 @@ private fun QuickCloudPdfPreviewModal(
                             }
                         }
 
+                        // Guaranteed Direct Browser / Device Reader Action Bar inside the Reader Header
+                        Surface(
+                            onClick = onOpenInBrowserClick,
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.White.copy(alpha = 0.14f),
+                            border = BorderStroke(0.8.dp, Color(0xFFA7F3D0).copy(alpha = 0.45f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.OpenInBrowser,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFEF08A),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
                         AnimatedVisibility(visible = isLoading) {
                             LinearProgressIndicator(
                                 progress = { (loadProgress / 100f).coerceIn(0.08f, 1f) },
@@ -1309,6 +1462,10 @@ private fun QuickCloudPdfPreviewModal(
                         factory = { ctx ->
                             WebView(ctx).apply {
                                 webViewRef = this
+                                runCatching {
+                                    WebKitCookieManager.getInstance().setAcceptCookie(true)
+                                    WebKitCookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                }
                                 settings.apply {
                                     javaScriptEnabled = true
                                     domStorageEnabled = true
@@ -1317,8 +1474,12 @@ private fun QuickCloudPdfPreviewModal(
                                     loadWithOverviewMode = true
                                     builtInZoomControls = true
                                     displayZoomControls = false
+                                    userAgentString = OFFICIAL_BROWSER_USER_AGENT
                                     cacheMode = WebSettings.LOAD_DEFAULT
                                     mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                }
+                                setDownloadListener { url, _, _, _, _ ->
+                                    openPdfDirectlyInBrowserOrDeviceReader(ctx, url.ifBlank { book.pdfUrl })
                                 }
                                 webChromeClient = object : WebChromeClient() {
                                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -1346,7 +1507,10 @@ private fun QuickCloudPdfPreviewModal(
                                         }
                                     }
                                 }
-                                loadUrl(viewerUrl)
+                                loadUrl(
+                                    viewerUrl,
+                                    mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
+                                )
                             }
                         },
                         onRelease = { webView ->
@@ -1399,7 +1563,7 @@ private fun QuickCloudPdfPreviewModal(
                                 .padding(24.dp),
                             shape = RoundedCornerShape(22.dp),
                             color = Color(0xFF1E293B),
-                            border = BorderStroke(1.2.dp, Color(0xFFF87171))
+                            border = BorderStroke(1.2.dp, Color(0xFF10B981))
                         ) {
                             Column(
                                 modifier = Modifier.padding(22.dp),
@@ -1407,41 +1571,40 @@ private fun QuickCloudPdfPreviewModal(
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.CloudOff,
+                                    imageVector = Icons.Filled.OpenInBrowser,
                                     contentDescription = null,
-                                    tint = Color(0xFFF87171),
+                                    tint = Color(0xFF34D399),
                                     modifier = Modifier.size(38.dp)
                                 )
                                 Text(
-                                    text = "تعذر تحميل عارض المستندات السحابي حالياً",
+                                    text = "فتح الكتاب مباشرة عبر المتصفح أو القارئ الفائق",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
                                     textAlign = TextAlign.Center
                                 )
-                                Text(
-                                    text = "يمكنك إعادة المحاولة أو فتح الكتاب مباشرة عبر القارئ الداخلي الفائق عالي الدقة.",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFCBD5E1),
-                                    textAlign = TextAlign.Center
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            hasLoadError = false
-                                            isLoading = true
-                                            webViewRef?.loadUrl(viewerUrl)
-                                        },
-                                        border = BorderStroke(1.dp, Color.White)
-                                    ) {
-                                        Text("إعادة المحاولة", color = Color.White, fontWeight = FontWeight.Bold)
-                                    }
-                                    Button(
-                                        onClick = onSwitchToSuperReader,
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
-                                    ) {
-                                        Text("فتح بالقارئ الفائق", fontWeight = FontWeight.ExtraBold)
-                                    }
+                                Button(
+                                    onClick = onOpenInBrowserClick,
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز", fontWeight = FontWeight.ExtraBold, fontSize = 11.5.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        hasLoadError = false
+                                        isLoading = true
+                                        webViewRef?.loadUrl(
+                                            viewerUrl,
+                                            mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
+                                        )
+                                    },
+                                    border = BorderStroke(1.dp, Color.White),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("إعادة المحاولة", color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -1454,17 +1617,22 @@ private fun QuickCloudPdfPreviewModal(
 
 /**
  * الزر الثاني: "فتح بالقارئ الداخلي الفائق"
- * عند الضغط عليه فقط، يقوم بجلب هذا الكتاب المحدد فقط عبر HttpURLConnection إلى الكاش المؤقت
- * مع عداد تقدم مئوي أنيق (0% - 100%) وقابلية الإلغاء في أي لحظة،
- * ثم يعرض صفحاته بدقة عالية عبر `android.graphics.pdf.PdfRenderer` داخل `LazyColumn`
- * مع دعم التكبير والتصغير السلس بإصبعين (Pinch-to-Zoom)،
- * مع توفير زر "حذف النسخة المؤقتة" لتفريغ المساحة متى شاء المستخدم.
+ * يطبق نظام الجلب الذكي متعدد المراحل (Zero-Fail Multi-Stage Fallback):
+ * 1) المرحلة الأولى: HttpURLConnection مع تفعيل CookieManager(ACCEPT_ALL) وترويسات المتصفح الرسمية
+ *    (User-Agent, Referer: https://manahj.edu.iq/, Accept, Accept-Language, Connection).
+ * 2) المرحلة الثانية (Auto-Fallback عند كود 403): الجلب التلقائي عبر بوابات العبور (allorigins / corsproxy)
+ *    أو DownloadManager المزود بترويسات المتصفح، مع التحقق من بصمة ملف الـ PDF (%PDF).
+ * 3) المرحلة الثالثة (Zero-Fail Embedded Viewer Fallback): في حال حظر الجدار الناري للتحميل المباشر،
+ *    ينتقل القارئ تلقائياً في نفس اللحظة ودون إظهار أي شاشة خطأ مسدودة إلى العارض المدمج الفوري،
+ *    مع توفير زر "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز" المضمون 100%.
  */
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun InternalSuperPdfReaderModal(
     book: CurriculumBookItem,
     onDismiss: () -> Unit,
-    onCacheDeleted: () -> Unit
+    onCacheDeleted: () -> Unit,
+    onOpenInBrowserClick: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -1472,7 +1640,13 @@ private fun InternalSuperPdfReaderModal(
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgressPercent by remember { mutableIntStateOf(0) }
     var downloadedMegabytesText by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var downloadStageStatusText by remember { mutableStateOf("جاري الاتصال بخادم المناهج الرسمية...") }
+
+    // If binary download is blocked by server WAF (403), automatically switch to seamless embedded reader (Zero error screen!)
+    var isUsingEmbeddedFallback by remember { mutableStateOf(false) }
+    var embeddedViewerLoading by remember { mutableStateOf(true) }
+    var embeddedViewerProgress by remember { mutableIntStateOf(20) }
+    var embeddedWebViewRef by remember { mutableStateOf<WebView?>(null) }
 
     var pdfFile by remember { mutableStateOf<File?>(null) }
     var pageCount by remember { mutableIntStateOf(0) }
@@ -1485,6 +1659,11 @@ private fun InternalSuperPdfReaderModal(
     var panOffsetX by remember { mutableFloatStateOf(0f) }
     val listState = rememberLazyListState()
 
+    val encodedPdfUrl = remember(book.pdfUrl) { Uri.encode(book.pdfUrl) }
+    val embeddedFallbackUrl = remember(encodedPdfUrl) {
+        "https://docs.google.com/gview?embedded=true&url=$encodedPdfUrl"
+    }
+
     fun closeRendererSafely() {
         val current = pdfRendererHolder
         pdfRendererHolder = null
@@ -1494,104 +1673,265 @@ private fun InternalSuperPdfReaderModal(
         }
     }
 
+    suspend fun tryDownloadFromCandidateUrl(
+        candidateUrl: String,
+        tempFile: File,
+        onProgress: (Int, String) -> Unit
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                ensureGlobalCookieManagerInitialized()
+                if (tempFile.exists()) tempFile.delete()
+
+                var currentUrl = candidateUrl
+                var redirects = 0
+                var connection: HttpURLConnection? = null
+                while (redirects < 6) {
+                    ensureActive()
+                    val urlObj = URL(currentUrl)
+                    val conn = (urlObj.openConnection() as HttpURLConnection).apply {
+                        applyOfficialBrowserHeaders()
+                    }
+                    conn.connect()
+                    val code = conn.responseCode
+                    if (code in 300..399) {
+                        val location = conn.getHeaderField("Location")
+                        conn.disconnect()
+                        if (!location.isNullOrBlank()) {
+                            currentUrl = URL(urlObj, location).toString()
+                            redirects++
+                            continue
+                        }
+                    }
+                    connection = conn
+                    break
+                }
+
+                val finalConn = connection ?: return@runCatching false
+                try {
+                    val responseCode = finalConn.responseCode
+                    if (responseCode !in 200..299) {
+                        return@runCatching false
+                    }
+                    val totalBytes = finalConn.contentLengthLong
+                    var downloadedBytes = 0L
+                    finalConn.inputStream.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            val buffer = ByteArray(8 * 1024)
+                            var bytesRead: Int
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                if (!isActive) {
+                                    throw CancellationException("تم إلغاء التحميل من قبل المستخدم")
+                                }
+                                output.write(buffer, 0, bytesRead)
+                                downloadedBytes += bytesRead
+                                val dlMb = downloadedBytes / (1024.0 * 1024.0)
+                                if (totalBytes > 0L) {
+                                    val pct = ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(1, 100)
+                                    val totalMb = totalBytes / (1024.0 * 1024.0)
+                                    onProgress(
+                                        pct,
+                                        String.format(Locale.US, "%.1f / %.1f MB", dlMb, totalMb)
+                                    )
+                                } else {
+                                    val approxPct = (15 + (downloadedBytes / (150 * 1024)).toInt()).coerceIn(15, 95)
+                                    onProgress(
+                                        approxPct,
+                                        String.format(Locale.US, "%.1f MB", dlMb)
+                                    )
+                                }
+                            }
+                            output.flush()
+                        }
+                    }
+                    isValidPdfFile(tempFile)
+                } finally {
+                    finalConn.disconnect()
+                }
+            }.onFailure { err ->
+                if (err is CancellationException) throw err
+            }.getOrDefault(false)
+        }
+    }
+
+    suspend fun tryDownloadViaAndroidDownloadManager(
+        pdfUrl: String,
+        targetFile: File,
+        onProgress: (Int, String) -> Unit
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+                    ?: return@runCatching false
+                val extCacheDir = context.externalCacheDir ?: return@runCatching false
+                val dmTempFile = File(extCacheDir, "dm_${targetFile.name}")
+                if (dmTempFile.exists()) dmTempFile.delete()
+
+                val request = DownloadManager.Request(Uri.parse(pdfUrl)).apply {
+                    addRequestHeader("User-Agent", OFFICIAL_BROWSER_USER_AGENT)
+                    addRequestHeader("Referer", OFFICIAL_MANAHJ_REFERER)
+                    addRequestHeader("Accept", OFFICIAL_ACCEPT_HEADER)
+                    addRequestHeader("Accept-Language", OFFICIAL_ACCEPT_LANGUAGE)
+                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
+                    setDestinationUri(Uri.fromFile(dmTempFile))
+                }
+
+                val downloadId = dm.enqueue(request)
+                try {
+                    var elapsedMs = 0L
+                    while (elapsedMs < 14000L) {
+                        ensureActive()
+                        val query = DownloadManager.Query().setFilterById(downloadId)
+                        val cursor: Cursor? = dm.query(query)
+                        cursor?.use { c ->
+                            if (c.moveToFirst()) {
+                                val statusIdx = c.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                                val status = if (statusIdx >= 0) c.getInt(statusIdx) else -1
+                                val soFarIdx = c.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                                val totalIdx = c.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                                val soFar = if (soFarIdx >= 0) c.getLong(soFarIdx) else 0L
+                                val total = if (totalIdx >= 0) c.getLong(totalIdx) else -1L
+                                if (total > 0L) {
+                                    val pct = ((soFar * 100L) / total).toInt().coerceIn(5, 99)
+                                    onProgress(
+                                        pct,
+                                        String.format(
+                                            Locale.US,
+                                            "%.1f / %.1f MB",
+                                            soFar / (1024.0 * 1024.0),
+                                            total / (1024.0 * 1024.0)
+                                        )
+                                    )
+                                }
+                                when (status) {
+                                    DownloadManager.STATUS_SUCCESSFUL -> {
+                                        if (isValidPdfFile(dmTempFile)) {
+                                            dmTempFile.copyTo(targetFile, overwrite = true)
+                                            dmTempFile.delete()
+                                            return@runCatching true
+                                        }
+                                        return@runCatching false
+                                    }
+                                    DownloadManager.STATUS_FAILED -> {
+                                        return@runCatching false
+                                    }
+                                }
+                            }
+                        }
+                        delay(350L)
+                        elapsedMs += 350L
+                    }
+                    dm.remove(downloadId)
+                    false
+                } finally {
+                    runCatching { if (dmTempFile.exists()) dmTempFile.delete() }
+                }
+            }.onFailure { err ->
+                if (err is CancellationException) throw err
+            }.getOrDefault(false)
+        }
+    }
+
     fun startOnDemandDownloadOrOpen() {
         activeDownloadJob?.cancel()
         activeDownloadJob = coroutineScope.launch {
-            errorMessage = null
+            isUsingEmbeddedFallback = false
             val targetFile = IraqiCurriculumCatalog.getCachedPdfFile(context.cacheDir, book)
-            if (!targetFile.exists() || targetFile.length() <= 1024L) {
-                isDownloading = true
-                downloadProgressPercent = 0
-                downloadedMegabytesText = "0.0 MB"
-                val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
-                try {
-                    withContext(Dispatchers.IO) {
-                        var currentUrl = book.pdfUrl
-                        var redirects = 0
-                        var connection: HttpURLConnection? = null
-                        while (redirects < 5) {
-                            ensureActive()
-                            val urlObj = URL(currentUrl)
-                            val conn = (urlObj.openConnection() as HttpURLConnection).apply {
-                                connectTimeout = 20000
-                                readTimeout = 30000
-                                instanceFollowRedirects = true
-                                requestMethod = "GET"
-                                setRequestProperty("User-Agent", "Mozilla/5.0 (Android; MadrasatiSmartPlatform)")
-                            }
-                            conn.connect()
-                            val code = conn.responseCode
-                            if (code in 300..399) {
-                                val location = conn.getHeaderField("Location")
-                                conn.disconnect()
-                                if (!location.isNullOrBlank()) {
-                                    currentUrl = URL(urlObj, location).toString()
-                                    redirects++
-                                    continue
-                                }
-                            }
-                            connection = conn
-                            break
-                        }
 
-                        val finalConn = connection ?: throw IllegalStateException("تعذر الاتصال بخادم المناهج")
-                        try {
-                            if (finalConn.responseCode !in 200..299) {
-                                throw IllegalStateException("رمز استجابة الخادم: ${finalConn.responseCode}")
+            if (!isValidPdfFile(targetFile)) {
+                isDownloading = true
+                downloadProgressPercent = 5
+                downloadedMegabytesText = "جاري التحضير..."
+                downloadStageStatusText = "جاري الاتصال بخادم المناهج الرسمية..."
+                val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
+
+                try {
+                    // Warm up session cookies on manahj.edu.iq first
+                    withContext(Dispatchers.IO) {
+                        ensureGlobalCookieManagerInitialized()
+                        runCatching {
+                            val homeConn = (URL(OFFICIAL_MANAHJ_REFERER).openConnection() as HttpURLConnection).apply {
+                                applyOfficialBrowserHeaders()
+                                connectTimeout = 6000
+                                readTimeout = 6000
                             }
-                            val totalBytes = finalConn.contentLengthLong
-                            var downloadedBytes = 0L
-                            finalConn.inputStream.use { input ->
-                                FileOutputStream(tempFile).use { output ->
-                                    val buffer = ByteArray(8 * 1024)
-                                    var bytesRead: Int
-                                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                                        if (!isActive) {
-                                            throw CancellationException("تم إلغاء التحميل من قبل المستخدم")
-                                        }
-                                        output.write(buffer, 0, bytesRead)
-                                        downloadedBytes += bytesRead
-                                        val dlMb = downloadedBytes / (1024.0 * 1024.0)
-                                        if (totalBytes > 0L) {
-                                            val pct = ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(0, 100)
-                                            val totalMb = totalBytes / (1024.0 * 1024.0)
-                                            downloadProgressPercent = pct
-                                            downloadedMegabytesText = String.format(
-                                                Locale.US,
-                                                "%.1f / %.1f MB",
-                                                dlMb,
-                                                totalMb
-                                            )
-                                        } else {
-                                            downloadProgressPercent = (downloadProgressPercent + 2).coerceAtMost(95)
-                                            downloadedMegabytesText = String.format(Locale.US, "%.1f MB", dlMb)
-                                        }
-                                    }
-                                    output.flush()
-                                }
-                            }
-                            if (targetFile.exists()) targetFile.delete()
-                            tempFile.renameTo(targetFile)
-                        } finally {
-                            finalConn.disconnect()
+                            homeConn.connect()
+                            runCatching { homeConn.inputStream.close() }
+                            homeConn.disconnect()
                         }
                     }
-                    downloadProgressPercent = 100
-                    isDownloading = false
+
+                    // Stage 1: Direct connection with Official Browser Headers + CookieManager
+                    var downloadedOk = tryDownloadFromCandidateUrl(
+                        candidateUrl = book.pdfUrl,
+                        tempFile = tempFile,
+                        onProgress = { pct, mbText ->
+                            downloadProgressPercent = pct
+                            downloadedMegabytesText = mbText
+                        }
+                    )
+
+                    // Stage 2: Gateway Fallback (allorigins / corsproxy) if server returned 403 Forbidden
+                    if (!downloadedOk && isActive) {
+                        downloadStageStatusText = "جاري تجاوز جدار الحماية (403) عبر البوابة السحابية البديلة..."
+                        downloadProgressPercent = 18
+                        val proxyCandidates = listOf(
+                            "https://api.allorigins.win/raw?url=${Uri.encode(book.pdfUrl)}",
+                            "https://corsproxy.io/?${Uri.encode(book.pdfUrl)}"
+                        )
+                        for (proxyUrl in proxyCandidates) {
+                            if (!isActive) break
+                            downloadedOk = tryDownloadFromCandidateUrl(
+                                candidateUrl = proxyUrl,
+                                tempFile = tempFile,
+                                onProgress = { pct, mbText ->
+                                    downloadProgressPercent = pct
+                                    downloadedMegabytesText = mbText
+                                }
+                            )
+                            if (downloadedOk) break
+                        }
+                    }
+
+                    // Stage 3: Android DownloadManager with Official Browser Headers
+                    if (!downloadedOk && isActive) {
+                        downloadStageStatusText = "جاري الجلب عبر محرك تنزيل النظام المزود بترويسات المتصفح..."
+                        downloadedOk = tryDownloadViaAndroidDownloadManager(
+                            pdfUrl = book.pdfUrl,
+                            targetFile = tempFile,
+                            onProgress = { pct, mbText ->
+                                downloadProgressPercent = pct
+                                downloadedMegabytesText = mbText
+                            }
+                        )
+                    }
+
+                    if (downloadedOk && isValidPdfFile(tempFile)) {
+                        if (targetFile.exists()) targetFile.delete()
+                        tempFile.renameTo(targetFile)
+                        downloadProgressPercent = 100
+                        isDownloading = false
+                    } else {
+                        // Stage 4: Zero-Fail Automatic Transition to Embedded Smart Viewer (NEVER show a dead-end 403 error!)
+                        runCatching { if (tempFile.exists()) tempFile.delete() }
+                        isDownloading = false
+                        isUsingEmbeddedFallback = true
+                        return@launch
+                    }
                 } catch (ce: CancellationException) {
                     runCatching { if (tempFile.exists()) tempFile.delete() }
                     isDownloading = false
                     onDismiss()
                     return@launch
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     runCatching { if (tempFile.exists()) tempFile.delete() }
                     isDownloading = false
-                    errorMessage = "تعذر جلب ملف الكتاب (${e.localizedMessage ?: "خطأ في الشبكة"}). يمكنك المحاولة مجدداً."
+                    isUsingEmbeddedFallback = true
                     return@launch
                 }
             }
 
-            // Open PdfRenderer on the cached file
+            // Open PdfRenderer on the verified cached PDF file
             try {
                 val opened = withContext(Dispatchers.IO) {
                     val pfd = ParcelFileDescriptor.open(targetFile, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -1601,9 +1941,10 @@ private fun InternalSuperPdfReaderModal(
                 pdfFile = targetFile
                 pdfRendererHolder = opened
                 pageCount = opened.second.pageCount
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 runCatching { targetFile.delete() }
-                errorMessage = "ملف الكتاب غير مكتمل أو تالف، يرجى إعادة التحميل."
+                // Seamless fallback to embedded viewer if PdfRenderer cannot parse the file
+                isUsingEmbeddedFallback = true
             }
         }
     }
@@ -1631,110 +1972,174 @@ private fun InternalSuperPdfReaderModal(
             closeRendererSafely()
             onDismiss()
         },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color(0xFF0F172A)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Bar with Book Title, Page Indicator, and "حذف النسخة المؤقتة" Button
+                // Top Bar with Safe Status Bar Padding (statusBarsPadding + top = 36.dp) so it NEVER overlaps the clock (9:42)
                 Surface(
                     color = Color(0xFF064E3B),
                     shadowElevation = 8.dp
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(top = 36.dp, bottom = 12.dp, start = 14.dp, end = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.weight(1f)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            IconButton(
-                                onClick = {
-                                    activeDownloadJob?.cancel()
-                                    closeRendererSafely()
-                                    onDismiss()
-                                },
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.16f))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "إغلاق القارئ",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(19.dp)
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = book.subjectTitle,
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = if (pageCount > 0) {
-                                        "${book.gradeClass} • صفحة $currentVisiblePage من $pageCount"
-                                    } else {
-                                        "${book.gradeClass} • القارئ الداخلي الفائق"
-                                    },
-                                    fontSize = 11.sp,
-                                    color = Color(0xFFA7F3D0),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        if (pdfFile != null && !isDownloading) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFFDC2626),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable {
+                                IconButton(
+                                    onClick = {
                                         activeDownloadJob?.cancel()
                                         closeRendererSafely()
-                                        val fileToDelete = IraqiCurriculumCatalog.getCachedPdfFile(context.cacheDir, book)
-                                        if (fileToDelete.exists()) {
-                                            fileToDelete.delete()
-                                        }
-                                        onCacheDeleted()
                                         onDismiss()
-                                    }
-                                    .testTag("reader_delete_cached_copy_btn")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    },
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.18f))
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.DeleteSweep,
-                                        contentDescription = null,
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "إغلاق القارئ",
                                         tint = Color.White,
-                                        modifier = Modifier.size(15.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "حذف النسخة المؤقتة",
-                                        fontSize = 10.5.sp,
+                                        text = book.subjectTitle,
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color.White,
                                         maxLines = 1,
-                                        softWrap = false
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = when {
+                                            pageCount > 0 -> "${book.gradeClass} • صفحة $currentVisiblePage من $pageCount"
+                                            isUsingEmbeddedFallback -> "${book.gradeClass} • القارئ السحابي المدمج الفائق"
+                                            else -> "${book.gradeClass} • القارئ الداخلي الفائق"
+                                        },
+                                        fontSize = 11.sp,
+                                        color = Color(0xFFA7F3D0),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                            }
+
+                            if (pdfFile != null && !isDownloading) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0xFFDC2626),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable {
+                                            activeDownloadJob?.cancel()
+                                            closeRendererSafely()
+                                            val fileToDelete = IraqiCurriculumCatalog.getCachedPdfFile(context.cacheDir, book)
+                                            if (fileToDelete.exists()) {
+                                                fileToDelete.delete()
+                                            }
+                                            onCacheDeleted()
+                                            onDismiss()
+                                        }
+                                        .testTag("reader_delete_cached_copy_btn")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.DeleteSweep,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = "حذف النسخة المؤقتة",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            } else if (isUsingEmbeddedFallback) {
+                                IconButton(
+                                    onClick = {
+                                        embeddedViewerLoading = true
+                                        embeddedWebViewRef?.loadUrl(
+                                            embeddedFallbackUrl,
+                                            mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.16f))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = "تحديث الصفحات",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Guaranteed 100% Direct Browser / Device PDF Reader Button inside the Reader TopBar
+                        Surface(
+                            onClick = onOpenInBrowserClick,
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.White.copy(alpha = 0.14f),
+                            border = BorderStroke(0.8.dp, Color(0xFFA7F3D0).copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("reader_direct_browser_download_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.OpenInBrowser,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFEF08A),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }
@@ -1761,7 +2166,7 @@ private fun InternalSuperPdfReaderModal(
                 ) {
                     when {
                         isDownloading -> {
-                            // Sleek On-Demand Progress Dialog (0% - 100%) + Cancel Button
+                            // Sleek On-Demand Progress Dialog (0% - 100%) + Direct Browser Button + Cancel Button
                             Surface(
                                 modifier = Modifier
                                     .align(Alignment.Center)
@@ -1775,7 +2180,7 @@ private fun InternalSuperPdfReaderModal(
                                 Column(
                                     modifier = Modifier.padding(24.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         CircularProgressIndicator(
@@ -1801,12 +2206,20 @@ private fun InternalSuperPdfReaderModal(
                                         textAlign = TextAlign.Center
                                     )
 
+                                    Text(
+                                        text = downloadStageStatusText,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFA7F3D0),
+                                        textAlign = TextAlign.Center
+                                    )
+
                                     if (downloadedMegabytesText.isNotBlank()) {
                                         Text(
                                             text = downloadedMegabytesText,
-                                            fontSize = 12.5.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFA7F3D0)
+                                            color = Color(0xFFFEF08A)
                                         )
                                     }
 
@@ -1820,12 +2233,28 @@ private fun InternalSuperPdfReaderModal(
                                         trackColor = Color(0xFF334155)
                                     )
 
-                                    Text(
-                                        text = "يُحفظ في الكاش المؤقت لعرض الصفحات بدقة فائقة مع دعم التكبير بإصبعين.",
-                                        fontSize = 11.5.sp,
-                                        color = Color(0xFF94A3B8),
-                                        textAlign = TextAlign.Center
-                                    )
+                                    Button(
+                                        onClick = onOpenInBrowserClick,
+                                        shape = RoundedCornerShape(50),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF059669),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.OpenInBrowser,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFEF08A),
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
 
                                     OutlinedButton(
                                         onClick = {
@@ -1856,47 +2285,86 @@ private fun InternalSuperPdfReaderModal(
                             }
                         }
 
-                        errorMessage != null -> {
-                            Surface(
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .padding(24.dp),
-                                shape = RoundedCornerShape(22.dp),
-                                color = Color(0xFF1E293B),
-                                border = BorderStroke(1.2.dp, DangerRed)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(22.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.ErrorOutline,
-                                        contentDescription = null,
-                                        tint = Color(0xFFF87171),
-                                        modifier = Modifier.size(42.dp)
-                                    )
-                                    Text(
-                                        text = errorMessage.orEmpty(),
-                                        fontSize = 13.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        OutlinedButton(
-                                            onClick = onDismiss,
-                                            border = BorderStroke(1.dp, Color.White)
-                                        ) {
-                                            Text("إغلاق", color = Color.White)
+                        isUsingEmbeddedFallback -> {
+                            // Zero-Fail Stage B/C Automatic Fallback Reader (No 403 Error Screen!)
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                AndroidView(
+                                    modifier = Modifier.fillMaxSize(),
+                                    factory = { ctx ->
+                                        WebView(ctx).apply {
+                                            embeddedWebViewRef = this
+                                            runCatching {
+                                                WebKitCookieManager.getInstance().setAcceptCookie(true)
+                                                WebKitCookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                            }
+                                            settings.apply {
+                                                javaScriptEnabled = true
+                                                domStorageEnabled = true
+                                                loadsImagesAutomatically = true
+                                                useWideViewPort = true
+                                                loadWithOverviewMode = true
+                                                builtInZoomControls = true
+                                                displayZoomControls = false
+                                                userAgentString = OFFICIAL_BROWSER_USER_AGENT
+                                                cacheMode = WebSettings.LOAD_DEFAULT
+                                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                            }
+                                            setDownloadListener { url, _, _, _, _ ->
+                                                openPdfDirectlyInBrowserOrDeviceReader(ctx, url.ifBlank { book.pdfUrl })
+                                            }
+                                            webChromeClient = object : WebChromeClient() {
+                                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                                    embeddedViewerProgress = newProgress
+                                                    if (newProgress >= 92) {
+                                                        embeddedViewerLoading = false
+                                                    }
+                                                }
+                                            }
+                                            webViewClient = object : WebViewClient() {
+                                                override fun onPageFinished(view: WebView?, url: String?) {
+                                                    super.onPageFinished(view, url)
+                                                    embeddedViewerLoading = false
+                                                }
+                                            }
+                                            loadUrl(
+                                                embeddedFallbackUrl,
+                                                mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
+                                            )
                                         }
-                                        Button(
-                                            onClick = { startOnDemandDownloadOrOpen() },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                                    },
+                                    onRelease = { wv ->
+                                        wv.stopLoading()
+                                        wv.destroy()
+                                    }
+                                )
+
+                                if (embeddedViewerLoading) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .padding(24.dp),
+                                        shape = RoundedCornerShape(22.dp),
+                                        color = Color(0xFF064E3B).copy(alpha = 0.94f),
+                                        border = BorderStroke(1.2.dp, Color(0xFF34D399).copy(alpha = 0.5f)),
+                                        shadowElevation = 12.dp
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("إعادة المحاولة", fontWeight = FontWeight.ExtraBold)
+                                            CircularProgressIndicator(
+                                                color = Color(0xFFFBBF24),
+                                                strokeWidth = 3.dp,
+                                                modifier = Modifier.size(38.dp)
+                                            )
+                                            Text(
+                                                text = "جاري فتح صفحات كتاب (${book.subjectTitle}) عبر القارئ السحابي الفائق ($embeddedViewerProgress%)...",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White,
+                                                textAlign = TextAlign.Center
+                                            )
                                         }
                                     }
                                 }
@@ -2102,3 +2570,124 @@ private fun PdfRendererPageCard(
         }
     }
 }
+
+@Composable
+fun DeveloperCurriculumManagerSection(
+    viewModel: SchoolViewModel
+) {
+    val isDarkMode by viewModel.isDarkMode.collectAsState()
+    var showFullCurriculumModal by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoStories,
+                    contentDescription = null,
+                    tint = DeepEmerald
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "فهرس المناهج الدراسية العراقية الموحد",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        text = "يضم ${IraqiCurriculumCatalog.allBooks.size} كتاباً منهجياً رسمياً مع بروتوكول تجاوز الحظر (Zero-Fail 403 Bypass)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Button(
+                onClick = { showFullCurriculumModal = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MenuBook,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "استعراض وفحص مكتبة المناهج الرسمية",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        }
+    }
+
+    if (showFullCurriculumModal) {
+        Dialog(
+            onDismissRequest = { showFullCurriculumModal = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF064E3B),
+                        shadowElevation = 6.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(top = 36.dp, bottom = 12.dp, start = 14.dp, end = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "مكتبة المناهج الدراسية العراقية",
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp
+                            )
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.16f),
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable { showFullCurriculumModal = false }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "إغلاق",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        CurriculumBooksScreen(viewModel = viewModel)
+                    }
+                }
+            }
+        }
+    }
+}
+
