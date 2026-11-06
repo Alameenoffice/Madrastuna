@@ -1459,6 +1459,7 @@ class SchoolRepository(context: Context) {
                         maxScoreScale = scale,
                         extraDailyScores = jsonArrayToIntList(o.optJSONArray("extraDailyScores")),
                         extraMonthlyScores = jsonArrayToIntList(o.optJSONArray("extraMonthlyScores")),
+                        isApprovedByPrincipal = o.optBoolean("isApprovedByPrincipal", false),
                         schoolId = itemSid
                     )
                 )
@@ -1487,6 +1488,7 @@ class SchoolRepository(context: Context) {
                 put("maxScoreScale", g.maxScoreScale)
                 put("extraDailyScores", JSONArray(g.extraDailyScores))
                 put("extraMonthlyScores", JSONArray(g.extraMonthlyScores))
+                put("isApprovedByPrincipal", g.isApprovedByPrincipal)
                 put("schoolId", schoolId)
             })
         }
@@ -2577,6 +2579,11 @@ class SchoolRepository(context: Context) {
         FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_TEACHER_RATINGS)?.let {
             if (it.isNotBlank() && it != "[]") {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_TEACHER_RATINGS), it)
+            }
+        }
+        FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS)?.let {
+            if (it.isNotBlank() && it != "[]") {
+                editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS), it)
             }
         }
 
@@ -3971,5 +3978,119 @@ class SchoolRepository(context: Context) {
         if (schoolId.isBlank() || dateIso.isBlank()) return
         prefs.edit().putLong(scopedKey(schoolId, "first_attendance_ts_$dateIso"), timestampMs).apply()
     }
+
+    // =========================================================================
+    // 18. schools/{schoolId}/issued_report_cards (الكارتات المدرسية الذكية الصادرة)
+    // =========================================================================
+
+    fun loadIssuedReportCards(schoolId: String = getActiveSchoolId()): List<IssuedStudentReportCard> {
+        if (schoolId.isBlank()) return emptyList()
+        val raw = prefs.getString(scopedKey(schoolId, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS), null)
+            ?: return emptyList()
+        return parseIssuedReportCardsJson(raw, schoolId)
+    }
+
+    fun parseIssuedReportCardsJson(raw: String, schoolId: String = getActiveSchoolId()): List<IssuedStudentReportCard> {
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<IssuedStudentReportCard>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemSid = o.optString("schoolId", schoolId).ifBlank { schoolId }
+                if (schoolId.isNotEmpty() && itemSid != schoolId) continue
+                val pType = runCatching {
+                    ReportCardPeriodType.valueOf(o.optString("periodType", ReportCardPeriodType.COMPREHENSIVE_ALL.name))
+                }.getOrDefault(ReportCardPeriodType.COMPREHENSIVE_ALL)
+                val subArr = o.optJSONArray("subjects") ?: JSONArray()
+                val subjects = mutableListOf<IssuedReportCardSubjectItem>()
+                for (sIdx in 0 until subArr.length()) {
+                    val sObj = subArr.optJSONObject(sIdx) ?: continue
+                    subjects.add(
+                        IssuedReportCardSubjectItem(
+                            subjectName = sObj.optString("subjectName"),
+                            score = sObj.optInt("score", 0),
+                            maxScoreScale = sObj.optInt("maxScoreScale", 100),
+                            isPassed = sObj.optBoolean("isPassed", true),
+                            dailyScore = sObj.optInt("dailyScore", 0),
+                            month1Score = sObj.optInt("month1Score", 0),
+                            month2Score = sObj.optInt("month2Score", 0),
+                            midYearScore = sObj.optInt("midYearScore", 0),
+                            annualEffortScore = sObj.optInt("annualEffortScore", 0),
+                            finalExamScore = sObj.optInt("finalExamScore", 0),
+                            finalAverage = sObj.optInt("finalAverage", 0)
+                        )
+                    )
+                }
+                list.add(
+                    IssuedStudentReportCard(
+                        id = o.optString("id"),
+                        studentId = o.optString("studentId"),
+                        studentName = o.optString("studentName"),
+                        gradeClass = o.optString("gradeClass"),
+                        sectionName = o.optString("sectionName"),
+                        periodType = pType,
+                        subjects = subjects,
+                        totalScore = o.optInt("totalScore", 0),
+                        averagePercent = o.optInt("averagePercent", 0),
+                        isOverallPassed = o.optBoolean("isOverallPassed", true),
+                        failedSubjectsCount = o.optInt("failedSubjectsCount", 0),
+                        issuedAt = o.optString("issuedAt"),
+                        principalName = o.optString("principalName", "إدارة المدرسة"),
+                        schoolName = o.optString("schoolName"),
+                        isViewedByParent = o.optBoolean("isViewedByParent", false),
+                        schoolId = itemSid
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveIssuedReportCards(cards: List<IssuedStudentReportCard>, schoolId: String = getActiveSchoolId()) {
+        if (schoolId.isBlank()) return
+        val arr = JSONArray()
+        cards.forEach { c ->
+            val subArr = JSONArray()
+            c.subjects.forEach { s ->
+                subArr.put(JSONObject().apply {
+                    put("subjectName", InputSanitizer.sanitize(s.subjectName))
+                    put("score", s.score)
+                    put("maxScoreScale", s.maxScoreScale)
+                    put("isPassed", s.isPassed)
+                    put("dailyScore", s.dailyScore)
+                    put("month1Score", s.month1Score)
+                    put("month2Score", s.month2Score)
+                    put("midYearScore", s.midYearScore)
+                    put("annualEffortScore", s.annualEffortScore)
+                    put("finalExamScore", s.finalExamScore)
+                    put("finalAverage", s.finalAverage)
+                })
+            }
+            arr.put(JSONObject().apply {
+                put("id", c.id)
+                put("studentId", c.studentId)
+                put("studentName", InputSanitizer.sanitize(c.studentName))
+                put("gradeClass", InputSanitizer.sanitize(c.gradeClass))
+                put("sectionName", InputSanitizer.sanitize(c.sectionName))
+                put("periodType", c.periodType.name)
+                put("subjects", subArr)
+                put("totalScore", c.totalScore)
+                put("averagePercent", c.averagePercent)
+                put("isOverallPassed", c.isOverallPassed)
+                put("failedSubjectsCount", c.failedSubjectsCount)
+                put("issuedAt", c.issuedAt)
+                put("principalName", InputSanitizer.sanitize(c.principalName))
+                put("schoolName", InputSanitizer.sanitize(c.schoolName))
+                put("isViewedByParent", c.isViewedByParent)
+                put("schoolId", schoolId)
+            })
+        }
+        val jsonStr = arr.toString()
+        prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS), jsonStr).apply()
+        FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS, jsonStr)
+    }
 }
+
 

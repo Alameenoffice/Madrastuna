@@ -715,15 +715,16 @@ object DocumentAndIdExporter {
     }
 
     /**
-     * Exports an official Student Report Card (بطاقة الدرجات / الشهادة المدرسية) with school header,
-     * logo, subject grades table, and principal signature.
+     * Exports an official Student Report Card (بطاقة الدرجات / الشهادة المدرسية) with official double border,
+     * 3-column ministry header, 4 summary KPI boxes, full grid table with pass/fail indicators, and 3-box signature/stamp footer.
      */
     fun exportStudentReportCardPdf(
         context: Context,
         student: StudentRecord,
         grades: List<SubjectGrade>,
         schoolConfig: SchoolConfig,
-        principalName: String = "مدير المدرسة"
+        principalName: String = "إدارة المدرسة",
+        periodLabel: String = "الكارت الشامل لجميع الفصول"
     ): Result<String> {
         return try {
             val pdfDocument = PdfDocument()
@@ -735,54 +736,45 @@ object DocumentAndIdExporter {
             drawOfficialPdfHeader(
                 canvas = canvas,
                 schoolConfig = schoolConfig,
-                documentTitle = "بطاقة الدرجات الرسمية (الشهادة المدرسية)",
-                subtitle = "الطالب: ${student.fullNameWithFather}  |  الصف: ${student.gradeClass} (${student.sectionName})"
+                documentTitle = "بطاقة الدرجات الرسمية ($periodLabel)",
+                subtitle = "الطالب: ${student.fullNameWithFather}  •  الصف: ${student.gradeClass} (${student.sectionName})",
+                periodLabel = periodLabel,
+                docNumber = "RC-${student.id.takeLast(4).uppercase()}"
             )
 
-            val tableTop = 165f
-            val left = 35f
-            val right = 560f
-            val rowHeight = 28f
-
-            val headerBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                style = Paint.Style.FILL
+            val passedCount = grades.count { g ->
+                val minPass = if (g.maxScoreScale <= 10) 5 else 50
+                g.finalAverage >= minPass
             }
-            canvas.drawRoundRect(RectF(left, tableTop, right, tableTop + 32f), 8f, 8f, headerBgPaint)
+            val failedCount = (grades.size - passedCount).coerceAtLeast(0)
+            val overallAvg = if (grades.isNotEmpty()) grades.map { it.normalizedPercentage }.average().toInt() else 0
+            val finalDecision = if (grades.isEmpty()) "قيد الرصد" else if (failedCount == 0) "ناجح ومتفوق" else "مكمل ($failedCount مادة)"
 
-            val thPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_LIGHT_GOLD
-                textSize = 11f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.CENTER
-            }
+            drawPdfFourKpiStrip(
+                canvas = canvas,
+                topY = 148f,
+                kpis = listOf(
+                    PdfKpiBoxData("عدد المواد الدراسية", "${grades.size} مادة", 0xFF065F46.toInt(), 0xFFECFDF5.toInt()),
+                    PdfKpiBoxData("المواد الناجح بها", "$passedCount مادة", 0xFF15803D.toInt(), 0xFFF0FDF4.toInt()),
+                    PdfKpiBoxData("المعدل العام المئوي", "$overallAvg%", 0xFFD97706.toInt(), 0xFFFFFBEB.toInt()),
+                    PdfKpiBoxData(
+                        "النتيجة النهائية",
+                        finalDecision,
+                        if (failedCount == 0) 0xFF047857.toInt() else 0xFFB91C1C.toInt(),
+                        if (failedCount == 0) 0xFFECFDF5.toInt() else 0xFFFEF2F2.toInt()
+                    )
+                )
+            )
 
-            // Columns (RTL from right to left): المادة | يومي | ش1 | ش2 | نصف السنة | السعي | النهائي | المعدل | التقدير
-            val cols = floatArrayOf(560f, 440f, 395f, 350f, 305f, 250f, 200f, 150f, 100f, 35f)
-            val headers = listOf("المادة الدراسية", "يومي", "ش1", "ش2", "نصف السنة", "السعي", "النهائي", "المعدل", "التقدير")
-            for (i in headers.indices) {
-                val cx = (cols[i] + cols[i + 1]) / 2f
-                canvas.drawText(headers[i], cx, tableTop + 20f, thPaint)
-            }
+            // Structured Multi-Column Grid Table
+            val cols = floatArrayOf(560f, 534f, 428f, 386f, 344f, 302f, 250f, 198f, 146f, 92f, 35f)
+            val headers = listOf("ت", "المادة الدراسية", "يومي", "ش1", "ش2", "نصف السنة", "السعي", "النهائي", "المعدل", "النتيجة")
 
-            val rowTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DARK_TEXT
-                textSize = 11f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                textAlign = Paint.Align.CENTER
-            }
-            val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = 0xFFD5E3DC.toInt()
-                strokeWidth = 1f
-            }
-
-            var currentY = tableTop + 32f
-            grades.forEachIndexed { idx, g ->
-                if (idx % 2 == 0) {
-                    val zebraPaint = Paint().apply { color = COLOR_OFF_WHITE }
-                    canvas.drawRect(left, currentY, right, currentY + rowHeight, zebraPaint)
-                }
-                val cells = listOf(
+            val rows = grades.mapIndexed { idx, g ->
+                val minPass = if (g.maxScoreScale <= 10) 5 else 50
+                val isPass = g.finalAverage >= minPass
+                listOf(
+                    (idx + 1).toString(),
                     g.subjectName,
                     g.dailyScore.toString(),
                     g.month1Score.toString(),
@@ -791,40 +783,23 @@ object DocumentAndIdExporter {
                     g.annualEffortScore.toString(),
                     g.finalExamScore.toString(),
                     "${g.finalAverage}/${g.maxScoreScale}",
-                    g.ratingLabel
+                    if (isPass) "ناجح (${g.ratingLabel})" else "راسب / يحتاج دعم"
                 )
-                for (i in cells.indices) {
-                    val cx = (cols[i] + cols[i + 1]) / 2f
-                    canvas.drawText(cells[i], cx, currentY + 18f, rowTextPaint)
-                }
-                currentY += rowHeight
-                canvas.drawLine(left, currentY, right, currentY, linePaint)
             }
 
-            // Overall average summary
-            val overallAvg = if (grades.isNotEmpty()) grades.map { it.normalizedPercentage }.average().toInt() else 0
-            val summaryTop = (currentY + 24f).coerceAtMost(700f)
-            val summaryBox = RectF(left, summaryTop, right, summaryTop + 46f)
-            val summaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_LIGHT_GOLD
-                style = Paint.Style.FILL
-            }
-            canvas.drawRoundRect(summaryBox, 10f, 10f, summaryPaint)
-
-            val boldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                textSize = 13f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            canvas.drawText(
-                "المعدل العام المئوي للطالب: $overallAvg%   |   عدد المواد المرصودة: ${grades.size}",
-                right - 20f,
-                summaryTop + 28f,
-                boldPaint
+            drawStructuredPdfGridTable(
+                canvas = canvas,
+                topY = 212f,
+                cols = cols,
+                headers = headers,
+                rows = rows.ifEmpty {
+                    listOf(listOf("-", "لم يتم رصد درجات المواد حتى الآن", "-", "-", "-", "-", "-", "-", "-", "قيد الرصد"))
+                },
+                rowHeight = 25f,
+                rightAlignColIndex = 1
             )
 
-            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName, pageNumber = 1, totalPages = 1)
             pdfDocument.finishPage(page)
 
             val safeName = student.fullNameWithFather.replace(Regex("[^\\p{L}\\p{N}_-]+"), "_")
@@ -843,7 +818,7 @@ object DocumentAndIdExporter {
     }
 
     /**
-     * Exports the Monthly Attendance & Absence Report (تصدير كشف الغياب الشهري) as an official PDF.
+     * Exports the Monthly Attendance & Absence Report (تصدير كشف الغياب الشهري) as an official tabular PDF.
      */
     fun exportMonthlyAttendanceReportPdf(
         context: Context,
@@ -853,7 +828,7 @@ object DocumentAndIdExporter {
         monthPrefix: String,
         students: List<StudentRecord>,
         attendanceList: List<AttendanceEntry>,
-        principalName: String = "مدير المدرسة"
+        principalName: String = "إدارة المدرسة"
     ): Result<String> {
         return try {
             val pdfDocument = PdfDocument()
@@ -862,72 +837,68 @@ object DocumentAndIdExporter {
             val canvas = page.canvas
             canvas.drawColor(Color.WHITE)
 
+            val cleanMonth = monthPrefix.ifBlank { "كامل العام الدراسي" }
             drawOfficialPdfHeader(
                 canvas = canvas,
                 schoolConfig = schoolConfig,
                 documentTitle = "كشف الحضور والغياب الشهري الرسمي",
-                subtitle = "الصف: $gradeClass — شعبة ($sectionName)  |  الشهر: $monthPrefix"
+                subtitle = "الصف: $gradeClass — شعبة ($sectionName)  •  الفترة: $cleanMonth",
+                periodLabel = cleanMonth,
+                docNumber = "AT-${System.currentTimeMillis() % 10000}"
             )
 
-            val left = 35f
-            val right = 560f
-            val tableTop = 165f
-            val rowHeight = 26f
-
-            val headerBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                style = Paint.Style.FILL
+            val relevantRecords = attendanceList.filter { rec ->
+                students.any { it.id == rec.studentId } && (monthPrefix.isBlank() || rec.date.startsWith(monthPrefix))
             }
-            canvas.drawRoundRect(RectF(left, tableTop, right, tableTop + 30f), 8f, 8f, headerBgPaint)
+            val totalPresent = relevantRecords.count { it.status == AttendanceStatus.PRESENT }
+            val totalAbsent = relevantRecords.count { it.status == AttendanceStatus.ABSENT }
+            val totalExcused = relevantRecords.count { it.status == AttendanceStatus.EXCUSED || it.status == AttendanceStatus.LATE }
+            val attendanceRate = if (relevantRecords.isEmpty()) 100 else ((totalPresent + totalExcused) * 100) / relevantRecords.size.coerceAtLeast(1)
 
-            val cols = floatArrayOf(560f, 360f, 280f, 200f, 120f, 35f)
-            val headers = listOf("اسم الطالب الكامل", "أيام الحضور", "أيام الغياب", "تأخر", "مجاز بعذر")
-            val thPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_LIGHT_GOLD
-                textSize = 11f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.CENTER
-            }
-            for (i in headers.indices) {
-                canvas.drawText(headers[i], (cols[i] + cols[i + 1]) / 2f, tableTop + 19f, thPaint)
-            }
+            drawPdfFourKpiStrip(
+                canvas = canvas,
+                topY = 148f,
+                kpis = listOf(
+                    PdfKpiBoxData("إجمالي طلاب الشعبة", "${students.size} طالب", 0xFF065F46.toInt(), 0xFFECFDF5.toInt()),
+                    PdfKpiBoxData("نسبة المواظبة العامة", "$attendanceRate%", 0xFF15803D.toInt(), 0xFFF0FDF4.toInt()),
+                    PdfKpiBoxData("مجموع أيام الحضور", "$totalPresent يوم", 0xFFD97706.toInt(), 0xFFFFFBEB.toInt()),
+                    PdfKpiBoxData("مجموع الغياب والإجازات", "${totalAbsent + totalExcused} يوم", 0xFFB91C1C.toInt(), 0xFFFEF2F2.toInt())
+                )
+            )
 
-            val rowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DARK_TEXT
-                textSize = 11f
-                textAlign = Paint.Align.CENTER
-            }
-            val linePaint = Paint().apply { color = 0xFFD5E3DC.toInt(); strokeWidth = 1f }
-
-            var currentY = tableTop + 30f
-            students.take(22).forEachIndexed { idx, stu ->
+            val cols = floatArrayOf(560f, 530f, 345f, 270f, 200f, 130f, 35f)
+            val headers = listOf("ت", "اسم الطالب الكامل", "أيام الحضور", "أيام الغياب", "تأخر / مجاز", "نسبة الالتزام")
+            val rows = students.take(20).mapIndexed { idx, stu ->
                 val stuRecords = attendanceList.filter {
                     it.studentId == stu.id && (monthPrefix.isBlank() || it.date.startsWith(monthPrefix))
                 }
                 val presentCount = stuRecords.count { it.status == AttendanceStatus.PRESENT }
                 val absentCount = stuRecords.count { it.status == AttendanceStatus.ABSENT }
-                val lateCount = stuRecords.count { it.status == AttendanceStatus.LATE }
-                val excusedCount = stuRecords.count { it.status == AttendanceStatus.EXCUSED }
-
-                if (idx % 2 == 0) {
-                    val zebra = Paint().apply { color = COLOR_OFF_WHITE }
-                    canvas.drawRect(left, currentY, right, currentY + rowHeight, zebra)
-                }
-                val cells = listOf(
+                val lateOrExcused = stuRecords.count { it.status == AttendanceStatus.LATE || it.status == AttendanceStatus.EXCUSED }
+                val stuRate = if (stuRecords.isEmpty()) 100 else ((presentCount + lateOrExcused) * 100) / stuRecords.size.coerceAtLeast(1)
+                listOf(
+                    (idx + 1).toString(),
                     stu.fullNameWithFather,
                     presentCount.toString(),
                     absentCount.toString(),
-                    lateCount.toString(),
-                    excusedCount.toString()
+                    lateOrExcused.toString(),
+                    "$stuRate%"
                 )
-                for (i in cells.indices) {
-                    canvas.drawText(cells[i], (cols[i] + cols[i + 1]) / 2f, currentY + 17f, rowPaint)
-                }
-                currentY += rowHeight
-                canvas.drawLine(left, currentY, right, currentY, linePaint)
             }
 
-            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            drawStructuredPdfGridTable(
+                canvas = canvas,
+                topY = 212f,
+                cols = cols,
+                headers = headers,
+                rows = rows.ifEmpty {
+                    listOf(listOf("-", "لا توجد سجلات طلاب في هذه الشعبة", "0", "0", "0", "100%"))
+                },
+                rowHeight = 24f,
+                rightAlignColIndex = 1
+            )
+
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName, pageNumber = 1, totalPages = 1)
             pdfDocument.finishPage(page)
 
             val fileName = "Monthly_Attendance_${System.currentTimeMillis()}.pdf"
@@ -945,13 +916,13 @@ object DocumentAndIdExporter {
     }
 
     /**
-     * Exports the Tuition & Installments Statement (تصدير كشف الأقساط الدراسية) as an official PDF.
+     * Exports the Tuition & Installments Statement (تصدير كشف الأقساط الدراسية) as an official tabular PDF.
      */
     fun exportTuitionStatementPdf(
         context: Context,
         schoolConfig: SchoolConfig,
         tuitions: List<TuitionRecord>,
-        principalName: String = "مدير المدرسة"
+        principalName: String = "إدارة المدرسة"
     ): Result<String> {
         return try {
             val pdfDocument = PdfDocument()
@@ -964,82 +935,53 @@ object DocumentAndIdExporter {
                 canvas = canvas,
                 schoolConfig = schoolConfig,
                 documentTitle = "كشف الأقساط والدفعات المالية الرسمي",
-                subtitle = "إجمالي السجلات: ${tuitions.size} طالب  |  العام الدراسي: ${schoolConfig.academicYear}"
+                subtitle = "إجمالي السجلات: ${tuitions.size} طالب  •  العام الدراسي: ${schoolConfig.academicYear}",
+                periodLabel = schoolConfig.academicYear,
+                docNumber = "FIN-${System.currentTimeMillis() % 10000}"
             )
 
             val fmt = NumberFormat.getNumberInstance(Locale.US)
-            val left = 35f
-            val right = 560f
-            val tableTop = 165f
-            val rowHeight = 26f
+            val totalFeeSum = tuitions.sumOf { it.totalFee }
+            val paidSum = tuitions.sumOf { it.paidAmount }
+            val remSum = tuitions.sumOf { it.remainingAmount }
 
-            val headerBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                style = Paint.Style.FILL
-            }
-            canvas.drawRoundRect(RectF(left, tableTop, right, tableTop + 30f), 8f, 8f, headerBgPaint)
+            drawPdfFourKpiStrip(
+                canvas = canvas,
+                topY = 148f,
+                kpis = listOf(
+                    PdfKpiBoxData("إجمالي الطلبة المسجلين", "${tuitions.size} طالب", 0xFF065F46.toInt(), 0xFFECFDF5.toInt()),
+                    PdfKpiBoxData("مجموع الأقساط الكلي", "${fmt.format(totalFeeSum)} د.ع", 0xFF1E3A8A.toInt(), 0xFFEFF6FF.toInt()),
+                    PdfKpiBoxData("المبالغ المستلمة", "${fmt.format(paidSum)} د.ع", 0xFF15803D.toInt(), 0xFFF0FDF4.toInt()),
+                    PdfKpiBoxData("المبالغ المتبقية", "${fmt.format(remSum)} د.ع", 0xFFD97706.toInt(), 0xFFFFFBEB.toInt())
+                )
+            )
 
-            val cols = floatArrayOf(560f, 390f, 290f, 195f, 105f, 35f)
-            val headers = listOf("اسم الطالب", "الصف", "القسط الكلي", "المدفوع", "المتبقي")
-            val thPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_LIGHT_GOLD
-                textSize = 11f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.CENTER
-            }
-            for (i in headers.indices) {
-                canvas.drawText(headers[i], (cols[i] + cols[i + 1]) / 2f, tableTop + 19f, thPaint)
-            }
-
-            val rowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DARK_TEXT
-                textSize = 10.5f
-                textAlign = Paint.Align.CENTER
-            }
-            val linePaint = Paint().apply { color = 0xFFD5E3DC.toInt(); strokeWidth = 1f }
-
-            var currentY = tableTop + 30f
-            tuitions.take(20).forEachIndexed { idx, rec ->
-                if (idx % 2 == 0) {
-                    val zebra = Paint().apply { color = COLOR_OFF_WHITE }
-                    canvas.drawRect(left, currentY, right, currentY + rowHeight, zebra)
-                }
-                val cells = listOf(
+            val cols = floatArrayOf(560f, 532f, 380f, 290f, 198f, 108f, 35f)
+            val headers = listOf("ت", "اسم الطالب", "الصف والشعبة", "القسط الكلي", "المدفوع", "المتبقي")
+            val rows = tuitions.take(19).mapIndexed { idx, rec ->
+                listOf(
+                    (idx + 1).toString(),
                     rec.studentName,
                     "${rec.gradeClass} (${rec.sectionName})",
                     "${fmt.format(rec.totalFee)} د.ع",
                     "${fmt.format(rec.paidAmount)} د.ع",
                     "${fmt.format(rec.remainingAmount)} د.ع"
                 )
-                for (i in cells.indices) {
-                    canvas.drawText(cells[i], (cols[i] + cols[i + 1]) / 2f, currentY + 17f, rowPaint)
-                }
-                currentY += rowHeight
-                canvas.drawLine(left, currentY, right, currentY, linePaint)
             }
 
-            val totalFeeSum = tuitions.sumOf { it.totalFee }
-            val paidSum = tuitions.sumOf { it.paidAmount }
-            val remSum = tuitions.sumOf { it.remainingAmount }
-
-            val sumBox = RectF(left, (currentY + 16f).coerceAtMost(700f), right, (currentY + 56f).coerceAtMost(740f))
-            val sumPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = COLOR_LIGHT_GOLD }
-            canvas.drawRoundRect(sumBox, 8f, 8f, sumPaint)
-
-            val sumTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                textSize = 11.5f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            canvas.drawText(
-                "الإجمالي الكلي: ${fmt.format(totalFeeSum)} د.ع  |  المستلم: ${fmt.format(paidSum)} د.ع  |  المتبقي: ${fmt.format(remSum)} د.ع",
-                right - 16f,
-                sumBox.centerY() + 4f,
-                sumTextPaint
+            drawStructuredPdfGridTable(
+                canvas = canvas,
+                topY = 212f,
+                cols = cols,
+                headers = headers,
+                rows = rows.ifEmpty {
+                    listOf(listOf("-", "لا توجد سجلات أقساط مسجلة", "-", "0 د.ع", "0 د.ع", "0 د.ع"))
+                },
+                rowHeight = 24f,
+                rightAlignColIndex = 1
             )
 
-            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName, pageNumber = 1, totalPages = 1)
             pdfDocument.finishPage(page)
 
             val fileName = "Tuition_Statement_${System.currentTimeMillis()}.pdf"
@@ -1056,82 +998,400 @@ object DocumentAndIdExporter {
         }
     }
 
+    private data class PdfKpiBoxData(
+        val label: String,
+        val value: String,
+        val accentColor: Int,
+        val bgColor: Int
+    )
+
+    /**
+     * Draws the Royal Official Double Border around the A4 page + 3-column Ministry/School Header + Prominent Report Badge.
+     */
     private fun drawOfficialPdfHeader(
         canvas: Canvas,
         schoolConfig: SchoolConfig,
         documentTitle: String,
-        subtitle: String
+        subtitle: String,
+        periodLabel: String = schoolConfig.academicYear,
+        docNumber: String = "DOC-${(System.currentTimeMillis() / 1000) % 100000}"
     ) {
+        // 1. Official Double Border around entire A4 page (595 x 842)
+        val outerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF064E3B.toInt() // Royal Emerald #064E3B
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+        }
+        val innerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFD97706.toInt() // Royal Gold #D97706
+            style = Paint.Style.STROKE
+            strokeWidth = 1.2f
+        }
+        canvas.drawRoundRect(RectF(16f, 16f, 579f, 826f), 10f, 10f, outerBorderPaint)
+        canvas.drawRoundRect(RectF(21f, 21f, 574f, 821f), 7f, 7f, innerBorderPaint)
+
+        // 2. Top Header Banner inside Double Border
+        val headerRect = RectF(26f, 26f, 569f, 138f)
         val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(
-                0f, 0f, 595f, 135f,
-                COLOR_DEEP_EMERALD, COLOR_ROYAL_GREEN, Shader.TileMode.CLAMP
+                headerRect.left, headerRect.top, headerRect.right, headerRect.bottom,
+                0xFF064E3B.toInt(), 0xFF065F46.toInt(), Shader.TileMode.CLAMP
             )
+            style = Paint.Style.FILL
         }
-        canvas.drawRect(0f, 0f, 595f, 135f, headerPaint)
+        canvas.drawRoundRect(headerRect, 8f, 8f, headerPaint)
 
-        val goldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = COLOR_GOLD }
-        canvas.drawRect(0f, 131f, 595f, 136f, goldPaint)
-
-        val logo = decodeBase64Bitmap(schoolConfig.logoBase64)
-        if (logo != null) {
-            val dst = RectF(500f, 22f, 565f, 87f)
-            canvas.drawBitmap(logo, null, dst, Paint(Paint.FILTER_BITMAP_FLAG))
+        val goldLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFD97706.toInt()
+            style = Paint.Style.FILL
         }
+        canvas.drawRect(28f, 134f, 567f, 138f, goldLinePaint)
 
-        val schoolPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // Right Column (School Name, Academic Year, Ministry Affiliation)
+        val rightColPaintBold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 19f
+            textSize = 11.5f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.RIGHT
         }
-        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = COLOR_LIGHT_GOLD
-            textSize = 15f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val rightColPaintSub = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFDE68A.toInt()
+            textSize = 9.8f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             textAlign = Paint.Align.RIGHT
         }
-        val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 12f
-            textAlign = Paint.Align.RIGHT
-        }
-        val rightX = if (logo != null) 485f else 555f
-        canvas.drawText(schoolConfig.schoolName, rightX, 42f, schoolPaint)
-        canvas.drawText(documentTitle, rightX, 72f, titlePaint)
-        canvas.drawText(subtitle, rightX, 102f, subPaint)
-    }
+        canvas.drawText("جمهورية العراق • وزارة التربية", 558f, 46f, rightColPaintSub)
+        canvas.drawText(schoolConfig.schoolName.ifBlank { "مدرستي الذكية النموذجية" }, 558f, 66f, rightColPaintBold)
+        canvas.drawText("العام الدراسي: ${schoolConfig.academicYear}", 558f, 84f, rightColPaintSub)
 
-    private fun drawOfficialPdfFooter(
-        canvas: Canvas,
-        schoolConfig: SchoolConfig,
-        principalName: String
-    ) {
+        // Left Column (Issue Date, Document Number, Period)
         val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val footerTop = 760f
-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = COLOR_GOLD
-            strokeWidth = 2f
-        }
-        canvas.drawLine(35f, footerTop, 560f, footerTop, linePaint)
-
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = COLOR_DARK_TEXT
-            textSize = 12f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.RIGHT
-        }
-        canvas.drawText("تاريخ الإصدار: $dateStr", 560f, footerTop + 26f, textPaint)
-        canvas.drawText("ختم المدرسة الرسمي", 330f, footerTop + 26f, textPaint)
-
-        val leftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = COLOR_DEEP_EMERALD
-            textSize = 12f
+        val leftColPaintBold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 10f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.LEFT
         }
-        canvas.drawText("مدير المدرسة: ${principalName.ifBlank { "إدارة المدرسة" }}", 35f, footerTop + 26f, leftPaint)
-        canvas.drawText("${schoolConfig.schoolName} • ${schoolConfig.address}", 35f, footerTop + 46f, leftPaint)
+        val leftColPaintSub = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFDE68A.toInt()
+            textSize = 9.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textAlign = Paint.Align.LEFT
+        }
+        canvas.drawText("تاريخ الإصدار: $dateStr", 36f, 46f, leftColPaintBold)
+        canvas.drawText("رقم الوثيقة: $docNumber", 36f, 65f, leftColPaintSub)
+        canvas.drawText("الفترة: ${periodLabel.take(22)}", 36f, 84f, leftColPaintSub)
+
+        // Center Column (School Emblem/Logo + Prominent Report Title Badge)
+        val logo = decodeBase64Bitmap(schoolConfig.logoBase64)
+        val centerX = 297.5f
+        val emblemCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x33FFFFFF
+            style = Paint.Style.FILL
+        }
+        val emblemStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFD97706.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+        }
+        canvas.drawCircle(centerX, 55f, 22f, emblemCirclePaint)
+        canvas.drawCircle(centerX, 55f, 22f, emblemStrokePaint)
+
+        if (logo != null) {
+            val dst = RectF(centerX - 18f, 37f, centerX + 18f, 73f)
+            canvas.drawBitmap(logo, null, dst, Paint(Paint.FILTER_BITMAP_FLAG))
+        } else {
+            val emblemTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFFDE68A.toInt()
+                textSize = 11f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
+            canvas.drawText("شعار", centerX, 53f, emblemTextPaint)
+            canvas.drawText("المدرسة", centerX, 65f, emblemTextPaint)
+        }
+
+        // Prominent Center Title Badge inside Header
+        val badgeRect = RectF(75f, 92f, 520f, 128f)
+        val badgeBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF042F2E.toInt()
+            style = Paint.Style.FILL
+        }
+        val badgeStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFD97706.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 1.3f
+        }
+        canvas.drawRoundRect(badgeRect, 8f, 8f, badgeBgPaint)
+        canvas.drawRoundRect(badgeRect, 8f, 8f, badgeStrokePaint)
+
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFDE68A.toInt()
+            textSize = 12.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val subtitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 9.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText(documentTitle, centerX, 108f, titlePaint)
+        canvas.drawText(subtitle, centerX, 122f, subtitlePaint)
+    }
+
+    /**
+     * Draws 4 colored KPI summary boxes side-by-side in RTL order.
+     */
+    private fun drawPdfFourKpiStrip(
+        canvas: Canvas,
+        topY: Float,
+        kpis: List<PdfKpiBoxData>
+    ) {
+        if (kpis.isEmpty()) return
+        val leftMargin = 35f
+        val rightMargin = 560f
+        val gap = 8f
+        val totalWidth = rightMargin - leftMargin
+        val boxWidth = (totalWidth - gap * 3f) / 4f
+        val boxHeight = 52f
+
+        kpis.take(4).forEachIndexed { idx, kpi ->
+            // RTL placement: index 0 on rightmost
+            val boxRight = rightMargin - idx * (boxWidth + gap)
+            val boxLeft = boxRight - boxWidth
+            val rect = RectF(boxLeft, topY, boxRight, topY + boxHeight)
+
+            val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = kpi.bgColor
+                style = Paint.Style.FILL
+            }
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = kpi.accentColor
+                style = Paint.Style.STROKE
+                strokeWidth = 1.4f
+            }
+            val topBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = kpi.accentColor
+                style = Paint.Style.FILL
+            }
+            canvas.drawRoundRect(rect, 8f, 8f, bgPaint)
+            canvas.drawRoundRect(rect, 8f, 8f, borderPaint)
+            canvas.drawRoundRect(RectF(boxLeft, topY, boxRight, topY + 5f), 4f, 4f, topBarPaint)
+
+            val valPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = kpi.accentColor
+                textSize = 13.5f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
+            val lblPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = COLOR_DARK_TEXT
+                textSize = 9.5f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
+            drawFittedCenterText(canvas, kpi.value, rect.centerX(), topY + 25f, boxWidth - 10f, valPaint)
+            drawFittedCenterText(canvas, kpi.label, rect.centerX(), topY + 42f, boxWidth - 10f, lblPaint)
+        }
+    }
+
+    /**
+     * Draws a full structured multi-column grid table with Dark Emerald header (#065F46),
+     * Zebra-striped rows (#FFFFFF & #F0FDF4), and full horizontal + vertical cell grid borders.
+     */
+    private fun drawStructuredPdfGridTable(
+        canvas: Canvas,
+        topY: Float,
+        cols: FloatArray,
+        headers: List<String>,
+        rows: List<List<String>>,
+        rowHeight: Float = 24f,
+        rightAlignColIndex: Int = -1
+    ): Float {
+        val tableRight = cols.first()
+        val tableLeft = cols.last()
+        val headerHeight = 28f
+
+        // Table Header Background (#065F46)
+        val headerBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF065F46.toInt()
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(tableLeft, topY, tableRight, topY + headerHeight, headerBgPaint)
+
+        val headerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 10f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+
+        val gridBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF94A3B8.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 0.9f
+        }
+        val headerDividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF10B981.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 0.9f
+        }
+
+        for (i in headers.indices) {
+            val colRight = cols[i]
+            val colLeft = cols[i + 1]
+            val cx = (colRight + colLeft) / 2f
+            val colW = (colRight - colLeft).coerceAtLeast(16f)
+            drawFittedCenterText(canvas, headers[i], cx, topY + 18f, colW - 4f, headerTextPaint)
+            if (i > 0) {
+                canvas.drawLine(colRight, topY, colRight, topY + headerHeight, headerDividerPaint)
+            }
+        }
+
+        var currentY = topY + headerHeight
+        val maxBottomY = 710f
+
+        rows.forEachIndexed { rowIdx, cells ->
+            if (currentY + rowHeight > maxBottomY) return@forEachIndexed
+
+            val rowBgColor = if (rowIdx % 2 == 0) Color.WHITE else 0xFFF0FDF4.toInt()
+            val rowBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = rowBgColor
+                style = Paint.Style.FILL
+            }
+            canvas.drawRect(tableLeft, currentY, tableRight, currentY + rowHeight, rowBgPaint)
+
+            for (i in cells.indices) {
+                if (i + 1 >= cols.size) break
+                val colRight = cols[i]
+                val colLeft = cols[i + 1]
+                val colW = (colRight - colLeft).coerceAtLeast(14f)
+                val cellText = cells[i]
+
+                val isWarningCell = cellText.contains("راسب") || cellText.contains("مفصول") || cellText.contains("يحتاج دعم")
+                val isSuccessCell = cellText.contains("ناجح") || cellText.contains("مستمر") || cellText.contains("مرحّل")
+
+                val cellPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = when {
+                        isWarningCell -> 0xFFB91C1C.toInt()
+                        isSuccessCell -> 0xFF065F46.toInt()
+                        else -> COLOR_DARK_TEXT
+                    }
+                    textSize = 9.5f
+                    typeface = Typeface.create(
+                        Typeface.DEFAULT,
+                        if (i == 0 || i == rightAlignColIndex || isWarningCell || isSuccessCell) Typeface.BOLD else Typeface.NORMAL
+                    )
+                    textAlign = Paint.Align.CENTER
+                }
+
+                val cx = (colRight + colLeft) / 2f
+                drawFittedCenterText(canvas, cellText, cx, currentY + (rowHeight * 0.66f), colW - 6f, cellPaint)
+
+                // Vertical cell line
+                canvas.drawLine(colRight, currentY, colRight, currentY + rowHeight, gridBorderPaint)
+            }
+            // Leftmost vertical line & horizontal bottom line
+            canvas.drawLine(tableLeft, currentY, tableLeft, currentY + rowHeight, gridBorderPaint)
+            canvas.drawLine(tableLeft, currentY + rowHeight, tableRight, currentY + rowHeight, gridBorderPaint)
+            currentY += rowHeight
+        }
+
+        // Outer table frame
+        val outerTablePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF064E3B.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 1.4f
+        }
+        canvas.drawRect(tableLeft, topY, tableRight, currentY, outerTablePaint)
+        return currentY
+    }
+
+    /**
+     * Draws the Official 3-Box Footer (Counselor/Deputy Signature on Right, Official School Stamp in Center,
+     * Principal Approval on Left) + Page Numbering.
+     */
+    private fun drawOfficialPdfFooter(
+        canvas: Canvas,
+        schoolConfig: SchoolConfig,
+        principalName: String,
+        pageNumber: Int = 1,
+        totalPages: Int = 1
+    ) {
+        val footerTop = 724f
+        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFD97706.toInt()
+            strokeWidth = 1.6f
+        }
+        canvas.drawLine(35f, footerTop, 560f, footerTop, linePaint)
+
+        val boxTop = footerTop + 8f
+        val boxBottom = 796f
+        val boxBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFF8FAFC.toInt()
+            style = Paint.Style.FILL
+        }
+        val boxBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFCBD5E1.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        val headerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF064E3B.toInt()
+            textSize = 10f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val subTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_MUTED_TEXT
+            textSize = 9f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textAlign = Paint.Align.CENTER
+        }
+
+        // 1. Right Box: توقيع المرشد / المعاون
+        val rightBox = RectF(395f, boxTop, 560f, boxBottom)
+        canvas.drawRoundRect(rightBox, 8f, 8f, boxBgPaint)
+        canvas.drawRoundRect(rightBox, 8f, 8f, boxBorderPaint)
+        canvas.drawText("توقيع المرشد / المعاون الإداري", rightBox.centerX(), boxTop + 18f, headerTextPaint)
+        canvas.drawText("الاسم والتوقيع: ...........................", rightBox.centerX(), boxTop + 44f, subTextPaint)
+
+        // 2. Center Box: الختم الرسمي للمدرسة (Circular/Box Stamp Frame)
+        val centerBox = RectF(215f, boxTop, 380f, boxBottom)
+        canvas.drawRoundRect(centerBox, 8f, 8f, boxBgPaint)
+        val stampDashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFD97706.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 1.3f
+        }
+        canvas.drawRoundRect(centerBox, 8f, 8f, stampDashPaint)
+        canvas.drawCircle(centerBox.centerX(), centerBox.centerY() + 6f, 20f, stampDashPaint)
+        canvas.drawText("الختم الرسمي للمدرسة", centerBox.centerX(), boxTop + 16f, headerTextPaint)
+        canvas.drawText("معتمد إلكترونياً", centerBox.centerX(), centerBox.centerY() + 9f, subTextPaint)
+
+        // 3. Left Box: مصادقة مدير المدرسة: [اسم المدير]
+        val leftBox = RectF(35f, boxTop, 200f, boxBottom)
+        canvas.drawRoundRect(leftBox, 8f, 8f, boxBgPaint)
+        canvas.drawRoundRect(leftBox, 8f, 8f, boxBorderPaint)
+        val cleanPrincipal = principalName.ifBlank { "إدارة المدرسة" }
+        drawFittedCenterText(canvas, "مصادقة مدير المدرسة: $cleanPrincipal", leftBox.centerX(), boxTop + 18f, leftBox.width() - 12f, headerTextPaint)
+        canvas.drawText("التوقيع الرسمي: ✓ مصادق", leftBox.centerX(), boxTop + 44f, subTextPaint)
+
+        // Bottom Page Numbering & School Address Bar
+        val pageNumPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF064E3B.toInt()
+            textSize = 9.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText(
+            "صفحة $pageNumber من $totalPages   •   ${schoolConfig.schoolName} (${schoolConfig.address})",
+            297.5f,
+            812f,
+            pageNumPaint
+        )
     }
 
     private fun savePdfAndTriggerPrint(
@@ -1293,82 +1553,67 @@ object DocumentAndIdExporter {
             val page = pdfDocument.startPage(pageInfo)
             val canvas = page.canvas
 
-            canvas.drawColor(COLOR_OFF_WHITE)
+            canvas.drawColor(Color.WHITE)
             drawOfficialPdfHeader(
                 canvas = canvas,
                 schoolConfig = schoolConfig,
                 documentTitle = "وصل قبض قسط دراسي رقمي رسمي",
-                subtitle = "رقم الوصل: ${installment.receiptNumber} • التاريخ: ${installment.paymentDate}"
+                subtitle = "رقم الوصل: ${installment.receiptNumber} • التاريخ: ${installment.paymentDate}",
+                periodLabel = installment.paymentDate,
+                docNumber = installment.receiptNumber
             )
 
-            val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.FILL
-                color = Color.WHITE
-            }
-            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = 2.5f
-                color = COLOR_GOLD
-            }
-            val receiptRect = RectF(40f, 155f, 555f, 530f)
-            canvas.drawRoundRect(receiptRect, 18f, 18f, cardPaint)
-            canvas.drawRoundRect(receiptRect, 18f, 18f, borderPaint)
+            val fmt = NumberFormat.getNumberInstance(Locale.US)
+            drawPdfFourKpiStrip(
+                canvas = canvas,
+                topY = 148f,
+                kpis = listOf(
+                    PdfKpiBoxData("مبلغ الدفعة المستلمة", "${fmt.format(installment.amount)} د.ع", 0xFF065F46.toInt(), 0xFFECFDF5.toInt()),
+                    PdfKpiBoxData("إجمالي القسط السنوي", "${fmt.format(tuitionRecord.totalFee)} د.ع", 0xFF1E3A8A.toInt(), 0xFFEFF6FF.toInt()),
+                    PdfKpiBoxData("مجموع الواصل", "${fmt.format(tuitionRecord.paidAmount)} د.ع", 0xFF15803D.toInt(), 0xFFF0FDF4.toInt()),
+                    PdfKpiBoxData("المتبقي في الذمة", "${fmt.format(tuitionRecord.remainingAmount)} د.ع", 0xFFD97706.toInt(), 0xFFFFFBEB.toInt())
+                )
+            )
 
-            val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_MUTED_TEXT
-                textSize = 14f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DARK_TEXT
-                textSize = 15f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.LEFT
-            }
-
+            val cols = floatArrayOf(560f, 380f, 35f)
+            val headers = listOf("البيان الرسمي للوصل", "التفاصيل المعتمدة")
             val rows = listOf(
-                "رقم وصل القبض الرسمي:" to installment.receiptNumber,
-                "تاريخ تسديد الدفعة:" to installment.paymentDate,
-                "اسم الطالب الكامل:" to tuitionRecord.studentName,
-                "الصف والشعبة:" to "${tuitionRecord.gradeClass} (${tuitionRecord.sectionName})",
-                "اسم ولي الأمر:" to tuitionRecord.parentName,
-                "مبلغ الدفعة المستلمة:" to "${installment.amount} دينار عراقي",
-                "ملاحظات الدفعة:" to installment.note.ifBlank { "دفعة قسط دراسي" },
-                "إجمالي القسط السنوي:" to "${tuitionRecord.totalFee} د.ع",
-                "مجموع المبالغ الواصلة:" to "${tuitionRecord.paidAmount} د.ع",
-                "المبلغ المتبقي في الذمة:" to "${tuitionRecord.remainingAmount} د.ع"
+                listOf("رقم وصل القبض الرسمي", installment.receiptNumber),
+                listOf("تاريخ تسديد الدفعة", installment.paymentDate),
+                listOf("اسم الطالب الكامل", tuitionRecord.studentName),
+                listOf("الصف والشعبة", "${tuitionRecord.gradeClass} (${tuitionRecord.sectionName})"),
+                listOf("اسم ولي الأمر", tuitionRecord.parentName),
+                listOf("مبلغ الدفعة المستلمة", "${fmt.format(installment.amount)} دينار عراقي"),
+                listOf("ملاحظات الدفعة", installment.note.ifBlank { "دفعة قسط دراسي معتمدة" }),
+                listOf("إجمالي القسط السنوي", "${fmt.format(tuitionRecord.totalFee)} د.ع"),
+                listOf("مجموع المبالغ الواصلة", "${fmt.format(tuitionRecord.paidAmount)} د.ع"),
+                listOf("المبلغ المتبقي في الذمة", "${fmt.format(tuitionRecord.remainingAmount)} د.ع")
             )
 
-            var y = 195f
-            rows.forEachIndexed { idx, (label, value) ->
-                canvas.drawText(label, 530f, y, labelPaint)
-                canvas.drawText(value, 65f, y, valuePaint)
-                if (idx < rows.lastIndex) {
-                    val divPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color = 0xFFE2E8F0.toInt()
-                        strokeWidth = 1f
-                    }
-                    canvas.drawLine(60f, y + 10f, 535f, y + 10f, divPaint)
-                }
-                y += 33f
-            }
+            val tableBottom = drawStructuredPdfGridTable(
+                canvas = canvas,
+                topY = 212f,
+                cols = cols,
+                headers = headers,
+                rows = rows,
+                rowHeight = 28f,
+                rightAlignColIndex = 0
+            )
 
             // Stamp QR verification on receipt
             val receiptQrPayload = "RECEIPT|${schoolConfig.schoolId}|${installment.receiptNumber}|${tuitionRecord.studentName}|${installment.amount}|${installment.paymentDate}"
-            val qrBmp = generateQrCodeBitmap(receiptQrPayload, 140)
-            canvas.drawBitmap(qrBmp, 65f, 560f, null)
+            val qrBmp = generateQrCodeBitmap(receiptQrPayload, 115)
+            canvas.drawBitmap(qrBmp, 45f, (tableBottom + 16f).coerceAtMost(595f), null)
 
             val stampPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = COLOR_DEEP_EMERALD
-                textSize = 14f
+                textSize = 12.5f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 textAlign = Paint.Align.RIGHT
             }
-            canvas.drawText("وصل رقمي موثق بختم QR من إدارة (${schoolConfig.schoolName})", 545f, 615f, stampPaint)
-            canvas.drawText("العنوان: ${schoolConfig.address} • العام الدراسي: ${schoolConfig.academicYear}", 545f, 642f, labelPaint)
+            canvas.drawText("وصل رقمي موثق بختم QR من إدارة (${schoolConfig.schoolName})", 550f, (tableBottom + 55f).coerceAtMost(640f), stampPaint)
 
-            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName, pageNumber = 1, totalPages = 1)
             pdfDocument.finishPage(page)
 
             val fileName = "Tuition_Receipt_${installment.receiptNumber}_${System.currentTimeMillis()}.pdf"
@@ -1386,7 +1631,7 @@ object DocumentAndIdExporter {
     }
 
     /**
-     * Exports the Comprehensive Student Archive Report (السجل الشامل للطالب - الأرشيف الشهري والسنوي) as an official PDF.
+     * Exports the Comprehensive Student Archive Report (السجل الشامل للطالب - الأرشيف الشهري والسنوي) as an official tabular PDF.
      */
     fun exportComprehensiveStudentArchivePdf(
         context: Context,
@@ -1398,7 +1643,7 @@ object DocumentAndIdExporter {
         exams: List<ExamScheduleItem> = emptyList(),
         grades: List<SubjectGrade> = emptyList(),
         behaviors: List<DailyBehaviorLogItem> = emptyList(),
-        principalName: String = "مدير المدرسة"
+        principalName: String = "إدارة المدرسة"
     ): Result<String> {
         return try {
             val pdfDocument = PdfDocument()
@@ -1410,115 +1655,81 @@ object DocumentAndIdExporter {
             val presentCount = attendanceMap.values.count { it == AttendanceStatus.PRESENT }
             val absentCount = attendanceMap.values.count { it == AttendanceStatus.ABSENT }
             val lateCount = attendanceMap.values.count { it == AttendanceStatus.LATE }
-            val excusedCount = attendanceMap.values.count { it == AttendanceStatus.EXCUSED }
+            val excusedCount = attendanceMap.values.count { it == AttendanceStatus.EXCUSED }.coerceAtLeast(leaveRequests.size)
+            val avgGrade = if (grades.isNotEmpty()) grades.map { it.normalizedPercentage }.average().toInt() else 0
 
             drawOfficialPdfHeader(
                 canvas = canvas,
                 schoolConfig = schoolConfig,
                 documentTitle = "السجل الشامل للطالب (الأرشيف الشهري والسنوي)",
-                subtitle = "الطالب: ${student.fullNameWithFather}  |  الصف: ${student.gradeClass} (${student.sectionName})  |  الفترة: $monthLabel"
+                subtitle = "الطالب: ${student.fullNameWithFather}  •  الصف: ${student.gradeClass} (${student.sectionName})",
+                periodLabel = monthLabel,
+                docNumber = "ARC-${student.id.takeLast(4).uppercase()}"
             )
 
-            val sectionHeaderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                textSize = 13f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DARK_TEXT
-                textSize = 11f
-                textAlign = Paint.Align.RIGHT
-            }
-            val boxBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_OFF_WHITE
-                style = Paint.Style.FILL
-            }
-            val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = 0xFFD5E3DC.toInt()
-                strokeWidth = 1f
-            }
-
-            var y = 175f
-            canvas.drawRoundRect(RectF(35f, y, 560f, y + 52f), 8f, 8f, boxBgPaint)
-            canvas.drawText("أولاً: إحصائية المواظبة والحضور للفترة ($monthLabel):", 545f, y + 20f, sectionHeaderPaint)
-            canvas.drawText(
-                "أيام الحضور: $presentCount يوم   |   أيام الغياب: $absentCount يوم   |   أيام التأخر: $lateCount   |   الإجازات: ${excusedCount.coerceAtLeast(leaveRequests.size)}   |   حالة القيد: ${student.enrollmentStatus.arabicLabel}",
-                545f,
-                y + 40f,
-                bodyPaint
+            drawPdfFourKpiStrip(
+                canvas = canvas,
+                topY = 148f,
+                kpis = listOf(
+                    PdfKpiBoxData("أيام الحضور الفعلية", "$presentCount يوم", 0xFF065F46.toInt(), 0xFFECFDF5.toInt()),
+                    PdfKpiBoxData("الغياب والإجازات", "غياب $absentCount | إجازة $excusedCount", 0xFFB91C1C.toInt(), 0xFFFEF2F2.toInt()),
+                    PdfKpiBoxData("المعدل الأكاديمي العام", "$avgGrade%", 0xFFD97706.toInt(), 0xFFFFFBEB.toInt()),
+                    PdfKpiBoxData("حالة القيد", student.enrollmentStatus.arabicLabel, 0xFF1E3A8A.toInt(), 0xFFEFF6FF.toInt())
+                )
             )
 
-            y += 68f
-            canvas.drawText("ثانياً: سجل الامتحانات والدرجات (${grades.size} مادة / ${exams.size} امتحان):", 545f, y, sectionHeaderPaint)
-            y += 12f
-            if (grades.isEmpty() && exams.isEmpty()) {
-                canvas.drawText("لا توجد درجات أو امتحانات مسجلة في هذه الفترة.", 545f, y + 16f, bodyPaint)
-                y += 28f
-            } else {
-                grades.take(8).forEach { gr ->
-                    canvas.drawText(
-                        "• ${gr.subjectName} — المعدل: ${gr.finalAverage} من ${gr.maxScoreScale}  |  التقدير: ${gr.ratingLabel}",
-                        545f,
-                        y + 16f,
-                        bodyPaint
-                    )
-                    y += 22f
-                    canvas.drawLine(45f, y, 550f, y, linePaint)
-                }
-                if (grades.isEmpty()) {
-                    exams.take(6).forEach { ex ->
-                        canvas.drawText(
-                            "• ${ex.subjectName} (${ex.examType}) — التاريخ: ${ex.examDate}  |  الدرجة القصوى: ${ex.maxScore}",
-                            545f,
-                            y + 16f,
-                            bodyPaint
-                        )
-                        y += 22f
-                        canvas.drawLine(45f, y, 550f, y, linePaint)
-                    }
-                }
+            val gradeCols = floatArrayOf(560f, 530f, 405f, 345f, 285f, 225f, 165f, 100f, 35f)
+            val gradeHeaders = listOf("ت", "المادة الدراسية", "ش1", "ش2", "نصف السنة", "السعي", "النهائي", "المعدل والتقدير")
+            val gradeRows = grades.take(10).mapIndexed { idx, gr ->
+                listOf(
+                    (idx + 1).toString(),
+                    gr.subjectName,
+                    gr.month1Score.toString(),
+                    gr.month2Score.toString(),
+                    gr.midYearScore.toString(),
+                    gr.annualEffortScore.toString(),
+                    gr.finalExamScore.toString(),
+                    "${gr.finalAverage}/${gr.maxScoreScale} (${gr.ratingLabel})"
+                )
             }
 
-            y += 22f
-            canvas.drawText("ثالثاً: سجل المتابعة اليومية والسلوك (${behaviors.size} متابعة):", 545f, y, sectionHeaderPaint)
-            y += 12f
-            if (behaviors.isEmpty()) {
-                canvas.drawText("لا توجد ملاحظات سلوكية أو متابعات مسجلة في هذه الفترة.", 545f, y + 16f, bodyPaint)
-                y += 28f
-            } else {
-                behaviors.take(6).forEach { beh ->
-                    canvas.drawText(
-                        "• [${beh.date}] ${beh.subjectName}: ${beh.behaviorType.arabicTitle} ${if (beh.note.isNotBlank()) "— ${beh.note}" else ""}",
-                        545f,
-                        y + 16f,
-                        bodyPaint
-                    )
-                    y += 22f
-                    canvas.drawLine(45f, y, 550f, y, linePaint)
-                }
+            val afterGradesY = drawStructuredPdfGridTable(
+                canvas = canvas,
+                topY = 212f,
+                cols = gradeCols,
+                headers = gradeHeaders,
+                rows = gradeRows.ifEmpty {
+                    listOf(listOf("-", "لا توجد درجات مرصودة في هذه الفترة", "-", "-", "-", "-", "-", "قيد الرصد"))
+                },
+                rowHeight = 22f,
+                rightAlignColIndex = 1
+            )
+
+            val behCols = floatArrayOf(560f, 470f, 355f, 220f, 35f)
+            val behHeaders = listOf("التاريخ", "المادة", "التقييم السلوكي والعلمي", "ملاحظات المعلم")
+            val behRows = behaviors.take(7).map { beh ->
+                listOf(
+                    beh.date,
+                    beh.subjectName,
+                    beh.behaviorType.arabicTitle,
+                    beh.note.ifBlank { "متابعة صفية منتظمة" }
+                )
+            }
+            if ((afterGradesY + 60f) < 700f) {
+                drawStructuredPdfGridTable(
+                    canvas = canvas,
+                    topY = afterGradesY + 14f,
+                    cols = behCols,
+                    headers = behHeaders,
+                    rows = behRows.ifEmpty {
+                        listOf(listOf("-", "-", "سلوك الطالب منتظم ومنضبط", "لا توجد مخالفات مسجلة"))
+                    },
+                    rowHeight = 22f,
+                    rightAlignColIndex = 3
+                )
             }
 
-            y += 22f
-            val fmt = NumberFormat.getNumberInstance(Locale.US)
-            val walletTxList = student.walletTransactions
-            canvas.drawText("رابعاً: حركات محفظة الحانوت المدرسي (الرصيد الحالي: ${fmt.format(student.walletBalance)} د.ع):", 545f, y, sectionHeaderPaint)
-            y += 12f
-            if (walletTxList.isEmpty()) {
-                canvas.drawText("لا توجد حركات مالية مسجلة في هذه الفترة.", 545f, y + 16f, bodyPaint)
-            } else {
-                walletTxList.take(5).forEach { tx ->
-                    canvas.drawText(
-                        "• [${tx.timestamp}] ${tx.type.arabicLabel}: ${fmt.format(tx.amount)} د.ع — ${tx.note}",
-                        545f,
-                        y + 16f,
-                        bodyPaint
-                    )
-                    y += 20f
-                }
-            }
-
-            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName, pageNumber = 1, totalPages = 1)
             pdfDocument.finishPage(page)
 
             val fileName = "Student_Comprehensive_Archive_${student.id}_${System.currentTimeMillis()}.pdf"
@@ -1536,13 +1747,13 @@ object DocumentAndIdExporter {
     }
 
     /**
-     * Exports the Official Annual Promotion & End-of-Year Principal Report as a PDF.
+     * Exports the Official Annual Promotion & End-of-Year Principal Report as a structured tabular PDF.
      */
     fun exportAnnualPromotionReportPdf(
         context: Context,
         schoolConfig: SchoolConfig,
         report: AnnualPromotionReport,
-        principalName: String = "مدير المدرسة"
+        principalName: String = "إدارة المدرسة"
     ): Result<String> {
         return try {
             val pdfDocument = PdfDocument()
@@ -1555,66 +1766,80 @@ object DocumentAndIdExporter {
                 canvas = canvas,
                 schoolConfig = schoolConfig,
                 documentTitle = "تقرير الترحيل السنوي ونتائج نهاية العام الدراسي",
-                subtitle = "من العام (${report.previousAcademicYear}) إلى العام (${report.newAcademicYear})  |  نسبة النجاح العامة: ${report.overallPassRatePercent}%"
+                subtitle = "الترحيل من (${report.previousAcademicYear}) إلى (${report.newAcademicYear})  •  نسبة النجاح العامة: ${report.overallPassRatePercent}%",
+                periodLabel = "${report.previousAcademicYear} ← ${report.newAcademicYear}",
+                docNumber = "PRM-${System.currentTimeMillis() % 10000}"
             )
 
-            val sectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                textSize = 12.5f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DARK_TEXT
-                textSize = 10.5f
-                textAlign = Paint.Align.RIGHT
-            }
-            val linePaint = Paint().apply { color = 0xFFD5E3DC.toInt(); strokeWidth = 1f }
-
-            var y = 175f
-            canvas.drawText(
-                "إجمالي الطلاب: ${report.totalStudentsEvaluated}  |  الناجحون المرحّلون: ${report.promotedCount}  |  المعيدون: ${report.repeatingCount}  |  بانتظار الدرجات: ${report.pendingGradesCount}",
-                550f,
-                y,
-                sectionPaint
-            )
-            y += 24f
-            canvas.drawText("أولاً: نسب النجاح وتفاصيل الترحيل حسب الصفوف الدراسية:", 550f, y, sectionPaint)
-            y += 14f
-
-            report.classBreakdowns.take(8).forEach { cb ->
-                canvas.drawText(
-                    "• من (${cb.gradeClass}) ← إلى (${cb.nextGradeClass}): الإجمالي ${cb.totalCount} | الناجحون ${cb.passedCount} | المعيدون ${cb.repeatingCount} | قيد الرصد ${cb.pendingGradesCount} | النجاح: ${cb.passRatePercent}%",
-                    550f,
-                    y + 14f,
-                    bodyPaint
+            drawPdfFourKpiStrip(
+                canvas = canvas,
+                topY = 148f,
+                kpis = listOf(
+                    PdfKpiBoxData("إجمالي الطلبة", "${report.totalStudentsEvaluated} طالب", 0xFF065F46.toInt(), 0xFFECFDF5.toInt()),
+                    PdfKpiBoxData("الناجحون المرحّلون", "${report.promotedCount} طالب", 0xFF15803D.toInt(), 0xFFF0FDF4.toInt()),
+                    PdfKpiBoxData("الباقون للإعادة", "${report.repeatingCount} طالب", 0xFFB91C1C.toInt(), 0xFFFEF2F2.toInt()),
+                    PdfKpiBoxData("معدل النجاح العام", "${report.overallPassRatePercent}%", 0xFFD97706.toInt(), 0xFFFFFBEB.toInt())
                 )
-                y += 20f
-                canvas.drawLine(40f, y, 555f, y, linePaint)
+            )
+
+            val classCols = floatArrayOf(560f, 530f, 405f, 290f, 225f, 160f, 95f, 35f)
+            val classHeaders = listOf("ت", "الصف الحالي", "الترحيل إلى", "الإجمالي", "ناجح", "معيد", "نسبة النجاح")
+            val classRows = report.classBreakdowns.take(9).mapIndexed { idx, cb ->
+                listOf(
+                    (idx + 1).toString(),
+                    cb.gradeClass,
+                    cb.nextGradeClass,
+                    cb.totalCount.toString(),
+                    cb.passedCount.toString(),
+                    cb.repeatingCount.toString(),
+                    "${cb.passRatePercent}%"
+                )
             }
 
-            y += 18f
-            canvas.drawText("ثانياً: قائمة الطلاب المرحّلين والباقين للإعادة وبانتظار الدرجات:", 550f, y, sectionPaint)
-            y += 14f
-            val allItems = (report.promotedStudents + report.repeatingStudents + report.pendingGradesStudents).take(14)
-            allItems.forEach { item ->
-                val stateLabel = when {
-                    item.isPendingGrades -> "بانتظار استكمال الدرجات (${item.completedSubjectsCount}/${item.requiredSubjectsCount} مادة)"
+            val afterClassTableY = drawStructuredPdfGridTable(
+                canvas = canvas,
+                topY = 212f,
+                cols = classCols,
+                headers = classHeaders,
+                rows = classRows.ifEmpty {
+                    listOf(listOf("-", "لا توجد صفوف مسجلة", "-", "0", "0", "0", "0%"))
+                },
+                rowHeight = 22f,
+                rightAlignColIndex = 1
+            )
+
+            val stuCols = floatArrayOf(560f, 530f, 350f, 240f, 155f, 35f)
+            val stuHeaders = listOf("ت", "اسم الطالب الكامل", "المرحلة والصف", "المعدل السنوي", "قرار الترحيل النهائي")
+            val allItems = (report.promotedStudents + report.repeatingStudents + report.pendingGradesStudents).take(10)
+            val stuRows = allItems.mapIndexed { idx, item ->
+                val decision = when {
+                    item.isPendingGrades -> "بانتظار الرصد (${item.completedSubjectsCount}/${item.requiredSubjectsCount})"
                     item.graduated -> "متخرج بنجاح (${item.toGradeClass})"
-                    item.passed -> "مرحّل بنجاح من (${item.fromGradeClass}) إلى (${item.toGradeClass})"
-                    else -> "معيد في (${item.fromGradeClass})"
+                    item.passed -> "ناجح ومرحّل إلى ${item.toGradeClass}"
+                    else -> "معيد في ${item.fromGradeClass}"
                 }
-                canvas.drawText(
-                    "• ${item.studentName} — المعدل: ${if (item.isPendingGrades) "بانتظار الرصد" else "${item.finalAverage}%"} — $stateLabel",
-                    550f,
-                    y + 14f,
-                    bodyPaint
+                listOf(
+                    (idx + 1).toString(),
+                    item.studentName,
+                    item.fromGradeClass,
+                    if (item.isPendingGrades) "قيد الرصد" else "${item.finalAverage}%",
+                    decision
                 )
-                y += 19f
-                canvas.drawLine(40f, y, 555f, y, linePaint)
             }
 
-            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            if ((afterClassTableY + 60f) < 705f && stuRows.isNotEmpty()) {
+                drawStructuredPdfGridTable(
+                    canvas = canvas,
+                    topY = afterClassTableY + 12f,
+                    cols = stuCols,
+                    headers = stuHeaders,
+                    rows = stuRows,
+                    rowHeight = 21f,
+                    rightAlignColIndex = 1
+                )
+            }
+
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName, pageNumber = 1, totalPages = 1)
             pdfDocument.finishPage(page)
 
             val fileName = "Annual_Promotion_Report_${System.currentTimeMillis()}.pdf"
@@ -1632,14 +1857,14 @@ object DocumentAndIdExporter {
     }
 
     /**
-     * Exports the Official General Class & Section Comprehensive Statistical Report as a PDF.
+     * Exports the Official General Class & Section Comprehensive Statistical Report as a Luxury Official Tabular PDF.
      */
     fun exportClassComprehensiveStatisticalReportPdf(
         context: Context,
         schoolConfig: SchoolConfig,
         reports: List<ClassComprehensiveStatisticalReport>,
         periodLabel: String,
-        principalName: String = "مدير المدرسة"
+        principalName: String = "إدارة المدرسة"
     ): Result<String> {
         return try {
             val pdfDocument = PdfDocument()
@@ -1652,66 +1877,75 @@ object DocumentAndIdExporter {
                 canvas = canvas,
                 schoolConfig = schoolConfig,
                 documentTitle = "السجل الإحصائي العام للصفوف والشعب الدراسية",
-                subtitle = "الفترة: $periodLabel  |  العام الدراسي: ${schoolConfig.academicYear}"
+                subtitle = "الفترة: $periodLabel  •  العام الدراسي: ${schoolConfig.academicYear}",
+                periodLabel = periodLabel,
+                docNumber = "STAT-${System.currentTimeMillis() % 10000}"
             )
-
-            val sectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DEEP_EMERALD
-                textSize = 12.5f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = COLOR_DARK_TEXT
-                textSize = 10.5f
-                textAlign = Paint.Align.RIGHT
-            }
-            val linePaint = Paint().apply { color = 0xFFD5E3DC.toInt(); strokeWidth = 1f }
 
             val totalStudentsAll = reports.sumOf { it.totalStudents }
             val avgAttendanceAll = if (reports.isEmpty()) 100 else reports.map { it.attendanceRatePercent }.average().toInt()
             val avgPassRateAll = if (reports.isEmpty()) 0 else reports.map { it.passRatePercent }.average().toInt()
 
-            var y = 175f
-            canvas.drawText(
-                "عدد الصفوف/الشعب: ${reports.size}  |  إجمالي الطلبة: $totalStudentsAll طالب  |  معدل المواظبة العام: $avgAttendanceAll%  |  معدل النجاح: $avgPassRateAll%",
-                550f,
-                y,
-                sectionPaint
+            // 4 Summary KPI Boxes: إجمالي الطلبة | عدد الصفوف والشعب | نسبة المواظبة العامة | معدل النجاح العام
+            drawPdfFourKpiStrip(
+                canvas = canvas,
+                topY = 148f,
+                kpis = listOf(
+                    PdfKpiBoxData("إجمالي الطلبة", "$totalStudentsAll طالب", 0xFF065F46.toInt(), 0xFFECFDF5.toInt()),
+                    PdfKpiBoxData("عدد الصفوف والشعب", "${reports.size} صف/شعبة", 0xFF1E3A8A.toInt(), 0xFFEFF6FF.toInt()),
+                    PdfKpiBoxData("نسبة المواظبة العامة", "$avgAttendanceAll%", 0xFF15803D.toInt(), 0xFFF0FDF4.toInt()),
+                    PdfKpiBoxData("معدل النجاح العام", "$avgPassRateAll%", 0xFFD97706.toInt(), 0xFFFFFBEB.toInt())
+                )
             )
-            y += 24f
-            canvas.drawText("تفاصيل الأداء الأكاديمي والمواظبة وحالة القيد لكل صف وشعبة:", 550f, y, sectionPaint)
-            y += 14f
 
-            reports.take(14).forEach { rep ->
-                canvas.drawText(
-                    "• الصف: ${rep.gradeClass} (شعبة ${rep.sectionName}) — العدد الكلي: ${rep.totalStudents} طالب (مستمر: ${rep.activeStudentsCount})",
-                    550f,
-                    y + 14f,
-                    sectionPaint
-                )
-                y += 18f
-                canvas.drawText(
-                    "  نسبة الحضور: ${rep.attendanceRatePercent}% (حضور: ${rep.presentDaysTotal} | غياب: ${rep.absentDaysTotal} | إجازات: ${rep.excusedDaysTotal})  |  معدل الدرجات: ${rep.averageGradePercent}%  |  نسبة النجاح: ${rep.passRatePercent}%",
-                    550f,
-                    y + 12f,
-                    bodyPaint
-                )
-                y += 16f
-                if (rep.suspendedStudentsCount > 0 || rep.expelledStudentsCount > 0 || rep.transferredStudentsCount > 0 || rep.pendingGradesCount > 0) {
-                    canvas.drawText(
-                        "  بانتظار رصد الدرجات: ${rep.pendingGradesCount}  |  مفصول مؤقتاً: ${rep.suspendedStudentsCount}  |  مرقن قيده/مفصول: ${rep.expelledStudentsCount}  |  منقول: ${rep.transferredStudentsCount}",
-                        550f,
-                        y + 12f,
-                        bodyPaint
-                    )
-                    y += 16f
+            // Structured Multi-Column Grid Table:
+            // ت | الصف والشعبة | العدد الكلي | نسبة الحضور | الغياب والإجازات | معدل الدرجات | نسبة النجاح | حالة القيد
+            val cols = floatArrayOf(560f, 535f, 430f, 376f, 322f, 244f, 190f, 134f, 35f)
+            val headers = listOf(
+                "ت",
+                "الصف والشعبة",
+                "العدد الكلي",
+                "نسبة الحضور",
+                "الغياب والإجازات",
+                "معدل الدرجات",
+                "نسبة النجاح",
+                "حالة القيد"
+            )
+
+            val rows = reports.take(19).mapIndexed { idx, rep ->
+                val statusSummary = buildString {
+                    append("مستمر ${rep.activeStudentsCount}")
+                    if (rep.suspendedStudentsCount > 0) append(" | مؤقت ${rep.suspendedStudentsCount}")
+                    if (rep.expelledStudentsCount > 0) append(" | مفصول ${rep.expelledStudentsCount}")
+                    if (rep.transferredStudentsCount > 0) append(" | منقول ${rep.transferredStudentsCount}")
                 }
-                canvas.drawLine(40f, y + 4f, 555f, y + 4f, linePaint)
-                y += 10f
+                listOf(
+                    (idx + 1).toString(),
+                    "${rep.gradeClass} (${rep.sectionName})",
+                    "${rep.totalStudents} طالب",
+                    "${rep.attendanceRatePercent}%",
+                    "غ:${rep.absentDaysTotal} / إ:${rep.excusedDaysTotal}",
+                    if (rep.pendingGradesCount == rep.totalStudents && rep.totalStudents > 0) "قيد الرصد" else "${rep.averageGradePercent}%",
+                    "${rep.passRatePercent}%",
+                    statusSummary
+                )
             }
 
-            drawOfficialPdfFooter(canvas, schoolConfig, principalName)
+            drawStructuredPdfGridTable(
+                canvas = canvas,
+                topY = 212f,
+                cols = cols,
+                headers = headers,
+                rows = rows.ifEmpty {
+                    listOf(
+                        listOf("-", "لا توجد صفوف أو شعب مسجلة", "0", "100%", "0 / 0", "0%", "0%", "مستمر 0")
+                    )
+                },
+                rowHeight = 25f,
+                rightAlignColIndex = 1
+            )
+
+            drawOfficialPdfFooter(canvas, schoolConfig, principalName, pageNumber = 1, totalPages = 1)
             pdfDocument.finishPage(page)
 
             val fileName = "Class_Statistical_Report_${System.currentTimeMillis()}.pdf"

@@ -268,6 +268,40 @@ fun DashboardScreen(
         // Strict Privacy Isolation vs Admin/Teacher Stat Cards
         item {
             if (isParentOrStudent && myStudent != null) {
+                val issuedReportCards by viewModel.issuedReportCards.collectAsState()
+                val activeCelebrationCard by viewModel.activeCelebrationReportCard.collectAsState()
+                val myLatestReportCard = remember(issuedReportCards, myStudent.id) {
+                    viewModel.getLatestIssuedReportCardForStudent(myStudent.id)
+                }
+
+                activeCelebrationCard?.let { cardToView ->
+                    val stuGrades = grades.filter { it.studentId == cardToView.studentId }
+                    LuxuryInteractiveReportCardModal(
+                        reportCard = cardToView,
+                        schoolConfig = schoolConfig,
+                        onDismiss = { viewModel.closeCelebrationReportCardModal() },
+                        onPrintPdf = {
+                            val res = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                context = context,
+                                student = myStudent,
+                                grades = stuGrades,
+                                schoolConfig = schoolConfig,
+                                principalName = cardToView.principalName,
+                                periodLabel = cardToView.periodType.arabicTitle
+                            )
+                            viewModel.showBannerMessage(res)
+                        }
+                    )
+                }
+
+                if (myLatestReportCard != null) {
+                    ParentIssuedReportCardArrivalBanner(
+                        reportCard = myLatestReportCard,
+                        onClick = { viewModel.openCelebrationReportCardModal(myLatestReportCard) },
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                }
+
                 // PRIVATE STUDENT-ONLY DASHBOARD STATS (Strictly NO general school stats!)
                 val myTodayStatus = if (todayHolidayLabel != null) {
                     AttendanceStatus.HOLIDAY
@@ -2997,14 +3031,14 @@ fun DailyAttendanceScreen(
                                     horizontalArrangement = Arrangement.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.EventAvailable,
+                                        imageVector = Icons.Filled.Lock,
                                         contentDescription = null,
                                         tint = DeepEmerald,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "يوم عطلة رسمية معتمدة — جميع إجراءات الرصد والسلوك مقفلة في هذا التاريخ",
+                                        text = "🔒 البوابة مغلقة (يوم عطلة) — جميع إجراءات الرصد والدخول والمغادرة مقفلة في هذا التاريخ",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen,
@@ -3455,6 +3489,8 @@ fun DailyAttendanceScreen(
             onScanStudentGateDetailed = { qrValue, scanMode ->
                 viewModel.recordAttendanceByQrCodeDetailed(qrValue, selectedDate, scanMode)
             },
+            isHoliday = selectedDateHolidayLabel != null,
+            holidayLabel = selectedDateHolidayLabel,
             toastAlert = toastAlert,
             onDismiss = { showQrScannerDialog = false }
         )
@@ -6670,6 +6706,10 @@ fun LiveOperationsRadarScreen(
     var selectedDateIso by remember { mutableStateOf(todayIso) }
     var selectedClassFilter by remember { mutableStateOf("ALL") }
     var drillTarget by remember { mutableStateOf<LiveRadarDrillTarget?>(null) }
+    val selectedDateHolidayLabel = remember(holidaysConfig, selectedDateIso) {
+        viewModel.getHolidayLabelForDate(selectedDateIso)
+    }
+    val isHolidayToday = selectedDateHolidayLabel != null
 
     val isTeacher = currentUser?.role == UserRole.TEACHER
     val allowedClasses = remember(schoolConfig, currentUser, students) {
@@ -6815,65 +6855,159 @@ fun LiveOperationsRadarScreen(
                         }
                     }
 
-                    // إحصائية الحضور والغياب اليوم (الإجمالي | الحاضرون | الغائبون | المجازون | بانتظار الرصد) بدون أي انقطاع
+                    if (isHolidayToday) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("live_radar_holiday_lock_banner"),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFFEF2F2),
+                            border = androidx.compose.foundation.BorderStroke(1.4.dp, DangerRed.copy(alpha = 0.7f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Lock,
+                                    contentDescription = null,
+                                    tint = DangerRed,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "🔒 نظام البوابة ومسح الباركود مغلق اليوم (${selectedDateHolidayLabel ?: "عطلة رسمية / أسبوعية"}) — لا يمكن تسجيل دخول أو مغادرة",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DangerRed
+                                )
+                            }
+                        }
+                    }
+
+                    // إحصائية الحضور والغياب اليوم (الإجمالي | الحاضرون | الغائبون | المجازون | بانتظار الرصد) بدون أي بتر للحروف نهائياً
                     Text(
                         text = "أولاً: إحصائية الحضور والغياب والإجازات اليوم (اضغط لعرض الأسماء):",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold,
                         color = DeepForestGreen
                     )
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf(
-                            Triple("الإجمالي", "$totalStudentsCount", DeepEmerald to LiveRadarDrillFilter.ALL),
-                            Triple("الحاضرون", "$presentTodayCount", SuccessGreen to LiveRadarDrillFilter.PRESENT),
-                            Triple("الغائبون", "$absentTodayCount", DangerRed to LiveRadarDrillFilter.ABSENT),
-                            Triple("المجازون", "$excusedTodayCount", InfoBlue to LiveRadarDrillFilter.EXCUSED),
-                            Triple("بانتظار الرصد", "$unrecordedTodayCount", Color(0xFF64748B) to LiveRadarDrillFilter.UNRECORDED)
-                        ).forEach { (lbl, valTxt, pair) ->
-                            val (col, filterType) = pair
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable {
-                                        drillTarget = LiveRadarDrillTarget(
-                                            title = "كشف $lbl في المدرسة ($selectedDateIso)",
-                                            initialFilter = filterType
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                Triple("الإجمالي", "$totalStudentsCount", DeepEmerald to LiveRadarDrillFilter.ALL),
+                                Triple("الحاضرون", "$presentTodayCount", SuccessGreen to LiveRadarDrillFilter.PRESENT),
+                                Triple("الغائبون", "$absentTodayCount", DangerRed to LiveRadarDrillFilter.ABSENT)
+                            ).forEach { (lbl, valTxt, pair) ->
+                                val (col, filterType) = pair
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable {
+                                            drillTarget = LiveRadarDrillTarget(
+                                                title = "كشف $lbl في المدرسة ($selectedDateIso)",
+                                                initialFilter = filterType
+                                            )
+                                        }
+                                        .testTag("live_radar_counter_${filterType.name}"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = col.copy(alpha = 0.10f),
+                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, col.copy(alpha = 0.38f))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = valTxt,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = col,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = lbl,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
-                                    .testTag("live_radar_counter_${filterType.name}"),
-                                shape = RoundedCornerShape(14.dp),
-                                color = col.copy(alpha = 0.10f),
-                                border = androidx.compose.foundation.BorderStroke(1.2.dp, col.copy(alpha = 0.38f))
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                Triple("المجازون", "$excusedTodayCount", InfoBlue to LiveRadarDrillFilter.EXCUSED),
+                                Triple("بانتظار الرصد", "$unrecordedTodayCount", Color(0xFF64748B) to LiveRadarDrillFilter.UNRECORDED)
+                            ).forEach { (lbl, valTxt, pair) ->
+                                val (col, filterType) = pair
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable {
+                                            drillTarget = LiveRadarDrillTarget(
+                                                title = "كشف $lbl في المدرسة ($selectedDateIso)",
+                                                initialFilter = filterType
+                                            )
+                                        }
+                                        .testTag("live_radar_counter_${filterType.name}"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = col.copy(alpha = 0.10f),
+                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, col.copy(alpha = 0.38f))
                                 ) {
-                                    Text(
-                                        text = valTxt,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = col,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = lbl,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = DeepForestGreen,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp, horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = lbl,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = col.copy(alpha = 0.18f)
+                                        ) {
+                                            Text(
+                                                text = valTxt,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = col,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // بطاقة حركة بوابة المدرسة اليوم (مع شارة واضحة غير مقطوعة: اضغط على أي مؤشر لعرض الأسماء)
+                    // بطاقة حركة بوابة المدرسة اليوم (مع كبسولة واسعة غير مقطوعة نهائياً: اضغط على أي مؤشر لعرض الأسماء)
                     Surface(
                         shape = RoundedCornerShape(18.dp),
                         color = Color(0xFF059669),
@@ -6886,7 +7020,8 @@ fun LiveOperationsRadarScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .wrapContentHeight()
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -6898,13 +7033,17 @@ fun LiveOperationsRadarScreen(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.QrCodeScanner,
+                                        imageVector = if (isHolidayToday) Icons.Filled.Lock else Icons.Filled.QrCodeScanner,
                                         contentDescription = null,
                                         tint = Color.White,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = "حركة بوابة المدرسة اليوم",
+                                        text = if (isHolidayToday) {
+                                            "حركة بوابة المدرسة اليوم (🔒 البوابة مغلقة - عطلة)"
+                                        } else {
+                                            "حركة بوابة المدرسة اليوم"
+                                        },
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color.White,
@@ -6912,24 +7051,30 @@ fun LiveOperationsRadarScreen(
                                         softWrap = false
                                     )
                                 }
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.22f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.22f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = "اضغط على أي مؤشر لعرض الأسماء",
-                                        fontSize = 10.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color.White,
                                         maxLines = 1,
-                                        softWrap = false,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        softWrap = false
                                     )
                                 }
                             }
-
-                            Spacer(modifier = Modifier.height(10.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -7090,10 +7235,10 @@ fun LiveOperationsRadarScreen(
                         )
                     }
 
-                    // Attendance Breakdown Row (حاضر • غائب • مجاز • بانتظار الرصد)
+                    // Attendance Breakdown Row (حاضر • غائب • مجاز • بانتظار الرصد) بدون أي بتر للحروف
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         listOf(
                             Triple("حاضر", "${card.presentCount}", SuccessGreen to LiveRadarDrillFilter.PRESENT),
@@ -7102,9 +7247,10 @@ fun LiveOperationsRadarScreen(
                             Triple("بانتظار الرصد", "${card.unrecordedCount}", Color(0xFF64748B) to LiveRadarDrillFilter.UNRECORDED)
                         ).forEach { (lbl, valTxt, pair) ->
                             val (col, filterType) = pair
+                            val itemWeight = if (filterType == LiveRadarDrillFilter.UNRECORDED) 1.45f else 0.88f
                             Surface(
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(itemWeight)
                                     .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         drillTarget = LiveRadarDrillTarget(
@@ -7130,12 +7276,11 @@ fun LiveOperationsRadarScreen(
                                     )
                                     Text(
                                         text = lbl,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen,
                                         maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -7594,33 +7739,47 @@ fun LiveOperationsRadarScreen(
 
                                             Button(
                                                 onClick = {
-                                                    viewModel.requireOnlineAndExecute {
-                                                        val mode = if (isInside) GateScanMode.CHECK_OUT else GateScanMode.CHECK_IN
-                                                        viewModel.recordAttendanceByQrCodeDetailed(
-                                                            qrOrUsername = stu.id,
-                                                            date = selectedDateIso,
-                                                            scanMode = mode
-                                                        )
+                                                    if (!isHolidayToday) {
+                                                        viewModel.requireOnlineAndExecute {
+                                                            val mode = if (isInside) GateScanMode.CHECK_OUT else GateScanMode.CHECK_IN
+                                                            viewModel.recordAttendanceByQrCodeDetailed(
+                                                                qrOrUsername = stu.id,
+                                                                date = selectedDateIso,
+                                                                scanMode = mode
+                                                            )
+                                                        }
                                                     }
                                                 },
+                                                enabled = !isHolidayToday,
                                                 shape = RoundedCornerShape(10.dp),
                                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                                 colors = ButtonDefaults.buttonColors(
                                                     containerColor = if (isInside) InfoBlue else DeepEmerald,
-                                                    contentColor = Color.White
+                                                    contentColor = Color.White,
+                                                    disabledContainerColor = Color(0xFFCBD5E1),
+                                                    disabledContentColor = Color(0xFF475569)
                                                 )
                                             ) {
                                                 Icon(
-                                                    imageVector = if (isInside) Icons.AutoMirrored.Filled.Logout else Icons.AutoMirrored.Filled.Login,
+                                                    imageVector = when {
+                                                        isHolidayToday -> Icons.Filled.Lock
+                                                        isInside -> Icons.AutoMirrored.Filled.Logout
+                                                        else -> Icons.AutoMirrored.Filled.Login
+                                                    },
                                                     contentDescription = null,
                                                     modifier = Modifier.size(14.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
-                                                    text = if (isInside) "تسجيل مغادرة" else "تسجيل دخول",
+                                                    text = when {
+                                                        isHolidayToday -> "🔒 البوابة مغلقة (يوم عطلة)"
+                                                        isInside -> "تسجيل مغادرة"
+                                                        else -> "تسجيل دخول"
+                                                    },
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.ExtraBold,
-                                                    maxLines = 1
+                                                    maxLines = 1,
+                                                    softWrap = false
                                                 )
                                             }
                                         }

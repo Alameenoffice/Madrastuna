@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -818,7 +819,8 @@ fun SchoolHolidaysManagementModalDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 16.dp)
+                .wrapContentHeight()
+                .padding(horizontal = 12.dp, vertical = 14.dp)
                 .shadow(
                     elevation = 20.dp,
                     shape = RoundedCornerShape(28.dp),
@@ -832,9 +834,10 @@ fun SchoolHolidaysManagementModalDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .wrapContentHeight()
                     .verticalScroll(rememberScrollState())
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 InlineDialogToastBanner(toastAlert = toastAlert, onDismiss = onDismissToast)
 
@@ -848,19 +851,22 @@ fun SchoolHolidaysManagementModalDialog(
                     illustrationType = ThreeDIllustrationType.CALENDAR_HOLIDAYS
                 )
 
-                // القسم الأول: أيام العطلة الأسبوعية الثابتة (بطاقة زجاجية واسعة وتفاعلية)
+                // القسم الأول: أيام العطلة الأسبوعية الثابتة (شبكة عمودين واسعة ومرتبة بدون أي فراغ أو بتر للحروف)
                 Surface(
                     shape = RoundedCornerShape(22.dp),
                     color = Color.White,
                     shadowElevation = 6.dp,
                     border = BorderStroke(1.3.dp, Color(0xFF10B981).copy(alpha = 0.32f)),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .wrapContentHeight()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -869,27 +875,30 @@ fun SchoolHolidaysManagementModalDialog(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Surface(
                                     shape = CircleShape,
                                     color = Color(0xFFD1FAE5),
-                                    modifier = Modifier.size(34.dp)
+                                    modifier = Modifier.size(32.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             imageVector = Icons.Filled.CalendarMonth,
                                             contentDescription = null,
                                             tint = Color(0xFF047857),
-                                            modifier = Modifier.size(18.dp)
+                                            modifier = Modifier.size(17.dp)
                                         )
                                     }
                                 }
                                 Text(
                                     text = "1. أيام العطلة الأسبوعية الثابتة",
-                                    style = MaterialTheme.typography.titleMedium,
+                                    style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = DeepForestGreen
+                                    color = DeepForestGreen,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             Surface(
@@ -902,24 +911,28 @@ fun SchoolHolidaysManagementModalDialog(
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFF047857),
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
                         }
 
                         Text(
-                            text = "اضغط على أي يوم لتحديده أو إلغائه كعطلة أسبوعية ثابتة للمدرسة (تُقفل أزرار الحضور تلقائياً في هذه الأيام):",
+                            text = "اضغط على أي يوم لتحديده أو إلغائه كعطلة أسبوعية ثابتة للمدرسة (تُقفل البوابة وأزرار الحضور تلقائياً في هذه الأيام):",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF475569),
                             lineHeight = 18.sp
                         )
 
-                        // شبكة متناسقة وواسعة لأيام الأسبوع (الأحد إلى السبت) بحجم مريح وواضح
+                        // شبكة عمودين (2-Column Grid) واسعة ومريحة لأيام الأسبوع السبعة لمنع بتر أي حرف نهائياً
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            allWeekDays.chunked(3).forEach { rowDays ->
+                            allWeekDays.chunked(2).forEach { rowDays ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -932,9 +945,9 @@ fun SchoolHolidaysManagementModalDialog(
                                         Surface(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .heightIn(min = 48.dp)
+                                                .heightIn(min = 46.dp)
                                                 .shadow(
-                                                    elevation = if (isSelected) 8.dp else 2.dp,
+                                                    elevation = if (isSelected) 6.dp else 2.dp,
                                                     shape = RoundedCornerShape(14.dp),
                                                     ambientColor = if (isSelected) Color(0xFF059669) else Color.Black.copy(alpha = 0.06f),
                                                     spotColor = if (isSelected) Color(0xFF10B981) else Color.Black.copy(alpha = 0.08f)
@@ -955,7 +968,7 @@ fun SchoolHolidaysManagementModalDialog(
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.Center
                                             ) {
@@ -963,14 +976,14 @@ fun SchoolHolidaysManagementModalDialog(
                                                     Surface(
                                                         shape = CircleShape,
                                                         color = GoldAccent,
-                                                        modifier = Modifier.size(20.dp)
+                                                        modifier = Modifier.size(16.dp)
                                                     ) {
                                                         Box(contentAlignment = Alignment.Center) {
                                                             Icon(
                                                                 imageVector = Icons.Filled.Check,
                                                                 contentDescription = null,
                                                                 tint = Color(0xFF042F2E),
-                                                                modifier = Modifier.size(13.dp)
+                                                                modifier = Modifier.size(11.dp)
                                                             )
                                                         }
                                                     }
@@ -978,19 +991,17 @@ fun SchoolHolidaysManagementModalDialog(
                                                 }
                                                 Text(
                                                     text = dayLabel,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontSize = 13.5.sp,
+                                                    fontSize = 13.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = if (isSelected) Color.White else Color(0xFF1E293B),
-                                                    maxLines = 1
+                                                    maxLines = 1,
+                                                    softWrap = false
                                                 )
                                             }
                                         }
                                     }
-                                    if (rowDays.size < 3) {
-                                        repeat(3 - rowDays.size) {
-                                            Spacer(modifier = Modifier.weight(1f))
-                                        }
+                                    if (rowDays.size == 1) {
+                                        Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
                             }

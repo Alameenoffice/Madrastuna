@@ -46,6 +46,7 @@ object FirebaseConfigConstants {
     const val COL_USER_PROFILES = "user_profiles"
     const val COL_HOLIDAYS = "holidays"
     const val COL_TEACHER_RATINGS = "teacher_ratings"
+    const val COL_ISSUED_REPORT_CARDS = "issued_report_cards"
 
     // Root collections for Developer Super-Admin Panel
     const val COL_SCHOOL_LICENSES = "school_licenses"
@@ -1228,6 +1229,7 @@ data class SubjectGrade(
     val maxScoreScale: Int = GradingRules.defaultMaxScoreForClass(gradeClass),
     val extraDailyScores: List<Int> = emptyList(),
     val extraMonthlyScores: List<Int> = emptyList(),
+    val isApprovedByPrincipal: Boolean = false,
     val schoolId: String = ""
 ) {
     // هل اكتملت جميع الامتحانات (شهر 1، شهر 2، والأشهر الإضافية، نصف السنة، النهائي)؟
@@ -2264,3 +2266,49 @@ data class TeacherEvaluationSummary(
     val myParentRating: TeacherRatingRecord?,
     val recentParentNotes: List<Pair<String, String>> = emptyList()
 )
+
+/**
+ * 12. Smart Student Report Cards & Interactive Celebration Hub (مركز إصدار وإرسال الكارتات المدرسية الذكية والتهنئة التفاعلية)
+ */
+enum class ReportCardPeriodType(val arabicTitle: String, val shortLabel: String) {
+    MONTH_1("كارت الشهر الأول", "الشهر الأول"),
+    MONTH_2("كارت الشهر الثاني", "الشهر الثاني"),
+    MID_YEAR("كارت نصف السنة", "نصف السنة"),
+    ANNUAL_EFFORT("كارت السعي السنوي", "السعي السنوي"),
+    FINAL_EXAM("كارت الامتحان النهائي", "الامتحان النهائي"),
+    COMPREHENSIVE_ALL("الكارت الشامل لجميع الفصول", "الكارت الشامل")
+}
+
+data class IssuedReportCardSubjectItem(
+    val subjectName: String,
+    val score: Int,
+    val maxScoreScale: Int = 100,
+    val isPassed: Boolean = true,
+    val dailyScore: Int = 0,
+    val month1Score: Int = 0,
+    val month2Score: Int = 0,
+    val midYearScore: Int = 0,
+    val annualEffortScore: Int = 0,
+    val finalExamScore: Int = 0,
+    val finalAverage: Int = 0
+)
+
+data class IssuedStudentReportCard(
+    val id: String,
+    val studentId: String,
+    val studentName: String,
+    val gradeClass: String,
+    val sectionName: String,
+    val periodType: ReportCardPeriodType = ReportCardPeriodType.COMPREHENSIVE_ALL,
+    val subjects: List<IssuedReportCardSubjectItem> = emptyList(),
+    val totalScore: Int = 0,
+    val averagePercent: Int = 0,
+    val isOverallPassed: Boolean = true,
+    val failedSubjectsCount: Int = 0,
+    val issuedAt: String = "",
+    val principalName: String = "إدارة المدرسة",
+    val schoolName: String = "",
+    val isViewedByParent: Boolean = false,
+    val schoolId: String = ""
+)
+
