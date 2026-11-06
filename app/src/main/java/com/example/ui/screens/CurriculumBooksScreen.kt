@@ -1,21 +1,14 @@
 package com.example.ui.screens
 
 import android.annotation.SuppressLint
-import android.app.DownloadManager
+import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
-import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
-import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.ParcelFileDescriptor
-import android.webkit.CookieManager as WebKitCookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.provider.MediaStore
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -32,39 +25,36 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.*
 import com.example.ui.components.ThreeDHeroHeaderCard
 import com.example.ui.components.ThreeDIllustrationType
-import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepEmerald
 import com.example.ui.theme.GoldAccent
 import com.example.viewmodel.SchoolViewModel
@@ -72,7 +62,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -86,14 +75,35 @@ import java.net.CookieManager
 import java.net.CookiePolicy
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.Locale
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
-private const val OFFICIAL_BROWSER_USER_AGENT =
-    "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+private const val NATIVE_CURRICULUM_USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36"
 private const val OFFICIAL_MANAHJ_REFERER = "https://manahj.edu.iq/"
-private const val OFFICIAL_ACCEPT_HEADER =
-    "application/pdf,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-private const val OFFICIAL_ACCEPT_LANGUAGE = "ar-IQ,ar;q=0.9,en-US;q=0.8,en;q=0.7"
+private const val MIN_VALID_BOOK_BYTES = 100L * 1024L // 100 KB minimum
+
+/**
+ * Normalizes any curriculum URL: trims spaces and converts any uppercase protocol prefix
+ * such as "Https://" or "HTTP://" to standard lowercase "https://" / "http://".
+ */
+private fun normalizeCurriculumPdfUrl(rawUrl: String): String {
+    val trimmed = rawUrl.trim()
+    return when {
+        trimmed.startsWith("https://", ignoreCase = true) ->
+            "https://" + trimmed.substring("https://".length)
+        trimmed.startsWith("http://", ignoreCase = true) ->
+            "http://" + trimmed.substring("http://".length)
+        else -> trimmed
+    }
+}
 
 private fun ensureGlobalCookieManagerInitialized() {
     runCatching {
@@ -106,41 +116,128 @@ private fun ensureGlobalCookieManagerInitialized() {
     }
 }
 
-private fun HttpURLConnection.applyOfficialBrowserHeaders() {
-    connectTimeout = 20000
-    readTimeout = 30000
-    instanceFollowRedirects = true
-    requestMethod = "GET"
-    setRequestProperty("User-Agent", OFFICIAL_BROWSER_USER_AGENT)
-    setRequestProperty("Referer", OFFICIAL_MANAHJ_REFERER)
-    setRequestProperty("Accept", OFFICIAL_ACCEPT_HEADER)
-    setRequestProperty("Accept-Language", OFFICIAL_ACCEPT_LANGUAGE)
-    setRequestProperty("Connection", "keep-alive")
+/**
+ * Custom SSL Socket Factory & TrustManager to bypass SSL certificate chain discrepancies
+ * on manahj.edu.iq across older/varied Android trust stores.
+ */
+@SuppressLint("CustomX509TrustManager", "TrustAllX509TrustManager")
+private fun buildCurriculumTrustAllSslSocketFactory(): Pair<SSLSocketFactory, HostnameVerifier>? {
+    return runCatching {
+        val trustAllCerts = arrayOf<TrustManager>(
+            object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+                override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+            }
+        )
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, trustAllCerts, SecureRandom())
+        val hostnameVerifier = HostnameVerifier { _, _ -> true }
+        sslContext.socketFactory to hostnameVerifier
+    }.getOrNull()
 }
 
-private fun isValidPdfFile(file: File): Boolean {
-    if (!file.exists() || file.length() <= 1024L) return false
+private fun HttpURLConnection.configureCurriculumStreamConnection(
+    sslConfig: Pair<SSLSocketFactory, HostnameVerifier>?
+) {
+    connectTimeout = 25000
+    readTimeout = 45000
+    instanceFollowRedirects = true
+    requestMethod = "GET"
+    setRequestProperty("User-Agent", NATIVE_CURRICULUM_USER_AGENT)
+    setRequestProperty("Referer", OFFICIAL_MANAHJ_REFERER)
+    setRequestProperty("Accept", "application/pdf,application/octet-stream,*/*;q=0.9")
+    setRequestProperty("Accept-Language", "ar-IQ,ar;q=0.9,en-US;q=0.8,en;q=0.7")
+    setRequestProperty("Connection", "keep-alive")
+    if (this is HttpsURLConnection && sslConfig != null) {
+        sslSocketFactory = sslConfig.first
+        hostnameVerifier = sslConfig.second
+    }
+}
+
+/**
+ * Checks whether a local book file exists in `filesDir/curriculums/book_${bookId}.pdf`,
+ * is larger than 100 KB, and starts with the `%PDF` magic byte header.
+ */
+private fun isValidDownloadedCurriculumPdf(file: File): Boolean {
+    if (!file.exists() || file.length() <= MIN_VALID_BOOK_BYTES) return false
     return runCatching {
         FileInputStream(file).use { fis ->
-            val header = ByteArray(5)
-            val read = fis.read(header)
-            if (read < 4) return@use false
-            // Check for "%PDF" magic signature
-            header[0] == 0x25.toByte() &&
-                header[1] == 0x50.toByte() &&
-                header[2] == 0x44.toByte() &&
-                header[3] == 0x46.toByte()
+            val buffer = ByteArray(1024)
+            val bytesRead = fis.read(buffer)
+            if (bytesRead < 4) return@use false
+            // Search within first 1024 bytes for "%PDF" signature (handles leading BOM/whitespace if any)
+            for (i in 0..(bytesRead - 4)) {
+                if (buffer[i] == 0x25.toByte() &&
+                    buffer[i + 1] == 0x50.toByte() &&
+                    buffer[i + 2] == 0x44.toByte() &&
+                    buffer[i + 3] == 0x46.toByte()
+                ) {
+                    return@use true
+                }
+            }
+            false
         }
     }.getOrDefault(false)
 }
 
-private fun openPdfDirectlyInBrowserOrDeviceReader(context: Context, pdfUrl: String) {
+/**
+ * Copies the already-downloaded in-app PDF file directly into the phone's public `Downloads` folder
+ * without opening any external browser or leaving the app.
+ */
+private suspend fun saveBookFileToPublicDownloads(
+    context: Context,
+    sourceFile: File,
+    book: CurriculumBookItem
+): Boolean = withContext(Dispatchers.IO) {
+    if (!isValidDownloadedCurriculumPdf(sourceFile)) return@withContext false
+    val safeSubject = book.subjectTitle
+        .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        .replace(" ", "_")
+    val safeGrade = book.gradeClass
+        .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        .replace(" ", "_")
+    val fileName = "كتاب_${safeSubject}_${safeGrade}.pdf"
+
     runCatching {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(pdfUrl)).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                ?: return@runCatching false
+            resolver.openOutputStream(uri)?.use { outStream ->
+                FileInputStream(sourceFile).use { inStream ->
+                    inStream.copyTo(outStream, bufferSize = 16 * 1024)
+                    outStream.flush()
+                }
+            } ?: return@runCatching false
+
+            val completeValues = ContentValues().apply {
+                put(MediaStore.Downloads.IS_PENDING, 0)
+            }
+            resolver.update(uri, completeValues, null, null)
+            true
+        } else {
+            @Suppress("DEPRECATION")
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs()
+            }
+            val destFile = File(downloadsDir, fileName)
+            FileInputStream(sourceFile).use { inStream ->
+                FileOutputStream(destFile).use { outStream ->
+                    inStream.copyTo(outStream, bufferSize = 16 * 1024)
+                    outStream.flush()
+                }
+            }
+            true
         }
-        context.startActivity(intent)
-    }
+    }.getOrDefault(false)
 }
 
 enum class CurriculumStageTab(
@@ -190,13 +287,12 @@ data class CurriculumBookItem(
     val gradeClass: String,
     val pdfUrl: String
 ) {
-    val fileKey: String
-        get() = pdfUrl.substringAfterLast("/").substringBeforeLast(".pdf").ifBlank { id }
+    val normalizedPdfUrl: String
+        get() = normalizeCurriculumPdfUrl(pdfUrl)
 }
 
 /**
- * الفهرس النصي الخفيف الكامل لروابط المناهج العراقية الرسمية (Strict On-Demand Only - Zero Pre-loading).
- * جميع العناصر هنا عبارة عن عناوين وروابط نصية فقط ولا يتم جلب أي ملف إلا عند ضغط المستخدم فعلياً.
+ * الفهرس النصي الرسمي الكامل لروابط المناهج العراقية (Strict On-Demand Only - Native In-App Stream & PdfRenderer).
  */
 object IraqiCurriculumCatalog {
 
@@ -366,10 +462,6 @@ object IraqiCurriculumCatalog {
         CurriculumBookItem("prep_6l_economics", "الاقتصاد", CurriculumStageTab.PREPARATORY, "السادس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1792.pdf")
     )
 
-    /**
-     * Resolves the student's raw gradeClass (e.g. "الأول المتوسط", "الرابع الإعدادي", "الخامس الابتدائي")
-     * to the matching CurriculumStageTab and exact class tab name for instant smart auto-filtering.
-     */
     fun resolveStageAndClass(rawStudentClass: String?, schoolStage: SchoolStage): Pair<CurriculumStageTab, String> {
         val norm = ArabicTextNormalizer.normalizeText(rawStudentClass.orEmpty())
         if (norm.isNotBlank()) {
@@ -415,20 +507,30 @@ object IraqiCurriculumCatalog {
         }
     }
 
-    fun getCachedPdfFile(cacheDir: File, book: CurriculumBookItem): File {
-        val dir = File(cacheDir, "curriculum_pdfs")
+    /**
+     * Local book file path in app storage: `File(context.filesDir, "curriculums/book_${bookId}.pdf")`
+     */
+    fun getLocalCurriculumBookFile(context: Context, bookId: String): File {
+        val dir = File(context.filesDir, "curriculums")
         if (!dir.exists()) {
             dir.mkdirs()
         }
-        return File(dir, "book_${book.fileKey}.pdf")
+        return File(dir, "book_${bookId}.pdf")
     }
 }
+
+private data class ActiveReaderSessionRequest(
+    val book: CurriculumBookItem,
+    val forceRedownload: Boolean = false,
+    val autoSaveToDownloadsOnOpen: Boolean = false
+)
 
 @Composable
 fun CurriculumBooksScreen(
     viewModel: SchoolViewModel
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
@@ -465,9 +567,8 @@ fun CurriculumBooksScreen(
     var searchQuery by remember { mutableStateOf("") }
     var cacheRefreshTick by remember { mutableIntStateOf(0) }
 
-    // Strict On-Demand Modals (Null until user explicitly taps a specific book!)
-    var activeQuickPreviewBook by remember { mutableStateOf<CurriculumBookItem?>(null) }
-    var activeInternalReaderBook by remember { mutableStateOf<CurriculumBookItem?>(null) }
+    // Active In-App Native PDF Reader Session (Zero WebView, Zero External Browser)
+    var activeReaderSession by remember { mutableStateOf<ActiveReaderSessionRequest?>(null) }
 
     val displayedBooks = remember(selectedStage, selectedClass, searchQuery) {
         val cleanQuery = ArabicTextNormalizer.normalizeText(searchQuery.trim())
@@ -476,7 +577,6 @@ fun CurriculumBooksScreen(
                 it.stage == selectedStage && it.gradeClass == selectedClass
             }
         } else {
-            // Search across the selected class first, or all books matching the query
             val inClass = IraqiCurriculumCatalog.allBooks.filter {
                 it.stage == selectedStage &&
                     it.gradeClass == selectedClass &&
@@ -494,11 +594,17 @@ fun CurriculumBooksScreen(
         }
     }
 
-    val cachedFilesSet = remember(cacheRefreshTick, displayedBooks) {
-        displayedBooks.filter { book ->
-            val f = IraqiCurriculumCatalog.getCachedPdfFile(context.cacheDir, book)
-            f.exists() && f.length() > 1024L
-        }.map { it.id }.toSet()
+    val localSavedBooksMap = remember(cacheRefreshTick, displayedBooks) {
+        displayedBooks.associate { book ->
+            val f = IraqiCurriculumCatalog.getLocalCurriculumBookFile(context, book.id)
+            val valid = isValidDownloadedCurriculumPdf(f)
+            val sizeMb = if (valid) {
+                String.format(Locale.US, "%.1f MB", f.length() / (1024.0 * 1024.0))
+            } else {
+                ""
+            }
+            book.id to (valid to sizeMb)
+        }
     }
 
     LazyColumn(
@@ -508,11 +614,11 @@ fun CurriculumBooksScreen(
         contentPadding = PaddingValues(bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1) Zero-Gap Wavy Emerald & Gold Header with Exclusive 3D Illuminated Digital Library Book Animation
+        // 1) Wavy Emerald & Gold Header with Exclusive 3D Illuminated Digital Library Book Animation
         item(key = "curriculum_hero_header") {
             ThreeDHeroHeaderCard(
                 title = "المناهج الدراسية الرسمية",
-                subtitle = "المكتبة الرقمية الشاملة للمناهج العراقية (الابتدائية، المتوسطة، والإعدادية) بنظام الفتح الفوري عند الطلب.",
+                subtitle = "المكتبة الرقمية المدمجة للمناهج العراقية بنظام التنزيل والقراءة الأصلي عالي الدقة داخل التطبيق.",
                 rightPillText = selectedStage.arabicTitle,
                 rightPillIcon = Icons.Filled.AutoStories,
                 leftPillText = "$selectedClass (${displayedBooks.size} كتاب)",
@@ -522,7 +628,7 @@ fun CurriculumBooksScreen(
             )
         }
 
-        // 2) Smart Auto-Filter Notice for Student & Parent Accounts
+        // 2) Smart Auto-Filter Notice for Student & Parent Accounts (Pure Glassmorphic Text Capsules)
         if (isParentOrStudent && activeStudent != null) {
             item(key = "student_auto_filter_banner") {
                 Surface(
@@ -543,44 +649,28 @@ fun CurriculumBooksScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFF059669),
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.School,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = "مناهج الطالب: ${activeStudent.fullNameWithFather} (${initialSelection.second})",
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isDarkMode) Color.White else Color(0xFF065F46)
-                                )
-                                Text(
-                                    text = "تم فتح مرحلة وصف الطالب تلقائياً للتسهيل، ويمكنك تصفح بقية المراحل والصفوف بحرية كاملة.",
-                                    fontSize = 11.sp,
-                                    color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857)
-                                )
-                            }
+                            Text(
+                                text = "مناهج الطالب: ${activeStudent.fullNameWithFather} (${initialSelection.second})",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color.White else Color(0xFF065F46)
+                            )
+                            Text(
+                                text = "تم فتح مرحلة وصف الطالب تلقائياً، ويمكنك تصفح بقية المراحل والصفوف بحرية كاملة.",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857)
+                            )
                         }
 
                         if (selectedStage != initialSelection.first || selectedClass != initialSelection.second) {
                             Surface(
                                 shape = RoundedCornerShape(50),
                                 color = Color(0xFF059669),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
                                     .clickable {
@@ -595,7 +685,7 @@ fun CurriculumBooksScreen(
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                             }
                         }
@@ -604,7 +694,7 @@ fun CurriculumBooksScreen(
             }
         }
 
-        // 3) Three Stages Glassmorphic Capsule Tabs + Class Sub-Pills + Instant Search Bar
+        // 3) Three Stages Glassmorphic Capsule Tabs + Class Sub-Pills + Instant Search Bar (Zero Classic Icons)
         item(key = "curriculum_stages_and_classes_selector") {
             Card(
                 modifier = Modifier
@@ -626,7 +716,7 @@ fun CurriculumBooksScreen(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Stage Capsules Row (المرحلة الابتدائية | المرحلة المتوسطة | المرحلة الإعدادية)
+                    // Stage Capsules Row (Pure Text Glassmorphic Capsules)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -685,7 +775,7 @@ fun CurriculumBooksScreen(
                         }
                     }
 
-                    // Class Selection Strip for the Active Stage
+                    // Class Selection Strip for the Active Stage (Pure Text Glassmorphic Capsules)
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -698,12 +788,12 @@ fun CurriculumBooksScreen(
                             }
                             Surface(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(50))
                                     .clickable {
                                         selectedClass = classTitle
                                     }
                                     .testTag("curriculum_class_pill_$classTitle"),
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(50),
                                 color = if (isClassSelected) {
                                     if (isDarkMode) Color(0xFF065F46) else Color(0xFFECFDF5)
                                 } else {
@@ -715,20 +805,10 @@ fun CurriculumBooksScreen(
                                 )
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = if (isClassSelected) Icons.Filled.CheckCircle else Icons.Filled.Class,
-                                        contentDescription = null,
-                                        tint = if (isClassSelected) {
-                                            if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
-                                        } else {
-                                            if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
-                                        },
-                                        modifier = Modifier.size(16.dp)
-                                    )
                                     Text(
                                         text = classTitle,
                                         fontSize = 12.sp,
@@ -758,7 +838,7 @@ fun CurriculumBooksScreen(
                         }
                     }
 
-                    // Instant Search Bar
+                    // Instant Search Bar (Pure Text Capsule Clear Button)
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -767,20 +847,22 @@ fun CurriculumBooksScreen(
                             .testTag("curriculum_search_input"),
                         shape = RoundedCornerShape(16.dp),
                         singleLine = true,
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.Search,
-                                contentDescription = "بحث في المناهج",
-                                tint = Color(0xFF059669)
-                            )
-                        },
                         trailingIcon = {
                             if (searchQuery.isNotBlank()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "مسح البحث",
-                                        tint = Color(0xFF64748B)
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0),
+                                    modifier = Modifier
+                                        .padding(end = 8.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable { searchQuery = "" }
+                                ) {
+                                    Text(
+                                        text = "مسح",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isDarkMode) Color.White else Color(0xFF1E293B),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                     )
                                 }
                             }
@@ -800,7 +882,7 @@ fun CurriculumBooksScreen(
             }
         }
 
-        // 4) Strict On-Demand Info Pill
+        // 4) Strict Native In-App Reader Notice
         item(key = "on_demand_policy_notice") {
             Row(
                 modifier = Modifier
@@ -809,34 +891,30 @@ fun CurriculumBooksScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Text(
+                    text = if (searchQuery.isBlank()) {
+                        "كتب الصف: $selectedClass (${displayedBooks.size} منهج رسمي)"
+                    } else {
+                        "نتائج البحث الفوري (${displayedBooks.size} كتاب)"
+                    },
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.6f) else Color(0xFFECFDF5),
+                    border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.45f))
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Bolt,
-                        contentDescription = null,
-                        tint = Color(0xFF059669),
-                        modifier = Modifier.size(17.dp)
-                    )
                     Text(
-                        text = if (searchQuery.isBlank()) {
-                            "كتب الصف: $selectedClass (${displayedBooks.size} منهج رسمي)"
-                        } else {
-                            "نتائج البحث الفوري (${displayedBooks.size} كتاب)"
-                        },
-                        fontSize = 13.5.sp,
+                        text = "قارئ PDF أصلي مدمج",
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                     )
                 }
-
-                Text(
-                    text = "تُفتح عند الطلب فقط",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF059669)
-                )
             }
         }
 
@@ -859,12 +937,6 @@ fun CurriculumBooksScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.SearchOff,
-                            contentDescription = null,
-                            tint = Color(0xFF64748B),
-                            modifier = Modifier.size(40.dp)
-                        )
                         Text(
                             text = "لا يوجد كتاب مطابق لعبارة البحث الحالية",
                             fontSize = 14.sp,
@@ -882,29 +954,53 @@ fun CurriculumBooksScreen(
             }
         } else {
             items(displayedBooks, key = { it.id }) { book ->
-                val isCachedLocally = book.id in cachedFilesSet
+                val savedState = localSavedBooksMap[book.id]
+                val isSavedLocally = savedState?.first == true
+                val fileSizeLabel = savedState?.second.orEmpty()
+
                 CurriculumBookLuxuryCard(
                     book = book,
                     isDarkMode = isDarkMode,
-                    isCachedLocally = isCachedLocally,
-                    onQuickPreviewClick = {
-                        activeQuickPreviewBook = book
+                    isSavedLocally = isSavedLocally,
+                    fileSizeLabel = fileSizeLabel,
+                    onOpenBookInAppClick = {
+                        activeReaderSession = ActiveReaderSessionRequest(
+                            book = book,
+                            forceRedownload = false,
+                            autoSaveToDownloadsOnOpen = false
+                        )
                     },
-                    onOpenInternalReaderClick = {
-                        activeInternalReaderBook = book
-                    },
-                    onDirectBrowserDownloadClick = {
-                        openPdfDirectlyInBrowserOrDeviceReader(context, book.pdfUrl)
-                    },
-                    onDeleteCachedCopyClick = {
-                        val file = IraqiCurriculumCatalog.getCachedPdfFile(context.cacheDir, book)
-                        if (file.exists()) {
-                            file.delete()
+                    onSaveToPhoneDownloadsClick = {
+                        val localFile = IraqiCurriculumCatalog.getLocalCurriculumBookFile(context, book.id)
+                        if (isValidDownloadedCurriculumPdf(localFile)) {
+                            coroutineScope.launch {
+                                val savedOk = saveBookFileToPublicDownloads(context, localFile, book)
+                                if (savedOk) {
+                                    viewModel.showToastAlert(
+                                        message = "تم حفظ كتاب ${book.subjectTitle} في مجلد التنزيلات بنجاح",
+                                        isSuccess = true
+                                    )
+                                } else {
+                                    viewModel.showToastAlert(
+                                        message = "تعذر نسخ الكتاب إلى مجلد التنزيلات، يرجى المحاولة من داخل القارئ",
+                                        isSuccess = false
+                                    )
+                                }
+                            }
+                        } else {
+                            // Stream download inside the app first and automatically save to Downloads upon completion
+                            activeReaderSession = ActiveReaderSessionRequest(
+                                book = book,
+                                forceRedownload = false,
+                                autoSaveToDownloadsOnOpen = true
+                            )
                         }
-                        cacheRefreshTick += 1
-                        viewModel.showToastAlert(
-                            message = "تم حذف النسخة المؤقتة لكتاب (${book.subjectTitle}) وتفريغ المساحة بنجاح.",
-                            isSuccess = true
+                    },
+                    onRedownloadBookClick = {
+                        activeReaderSession = ActiveReaderSessionRequest(
+                            book = book,
+                            forceRedownload = true,
+                            autoSaveToDownloadsOnOpen = false
                         )
                     }
                 )
@@ -912,41 +1008,20 @@ fun CurriculumBooksScreen(
         }
     }
 
-    // Modal 1: Instant Cloud Preview (Google Docs Viewer WebView — Zero Download)
-    val previewBook = activeQuickPreviewBook
-    if (previewBook != null) {
-        QuickCloudPdfPreviewModal(
-            book = previewBook,
-            onDismiss = { activeQuickPreviewBook = null },
-            onSwitchToSuperReader = {
-                val target = previewBook
-                activeQuickPreviewBook = null
-                activeInternalReaderBook = target
-            },
-            onOpenInBrowserClick = {
-                openPdfDirectlyInBrowserOrDeviceReader(context, previewBook.pdfUrl)
-            }
-        )
-    }
-
-    // Modal 2: High-Resolution On-Demand Internal PDF Reader (HttpURLConnection + Multi-Stage Fallback + PdfRenderer + Pinch-to-Zoom)
-    val readerBook = activeInternalReaderBook
-    if (readerBook != null) {
-        InternalSuperPdfReaderModal(
-            book = readerBook,
+    // Native In-App PDF Downloader & Android PdfRenderer Engine Modal (100% In-App, Zero WebView, Zero External Browser)
+    val currentSession = activeReaderSession
+    if (currentSession != null) {
+        NativeInAppPdfReaderModal(
+            sessionRequest = currentSession,
             onDismiss = {
-                activeInternalReaderBook = null
+                activeReaderSession = null
                 cacheRefreshTick += 1
             },
-            onCacheDeleted = {
+            onBookDownloadedReady = {
                 cacheRefreshTick += 1
-                viewModel.showToastAlert(
-                    message = "تم حذف النسخة المؤقتة لكتاب (${readerBook.subjectTitle}) وتفريغ المساحة.",
-                    isSuccess = true
-                )
             },
-            onOpenInBrowserClick = {
-                openPdfDirectlyInBrowserOrDeviceReader(context, readerBook.pdfUrl)
+            onShowToast = { msg, success ->
+                viewModel.showToastAlert(message = msg, isSuccess = success)
             }
         )
     }
@@ -956,25 +1031,26 @@ fun CurriculumBooksScreen(
 private fun CurriculumBookLuxuryCard(
     book: CurriculumBookItem,
     isDarkMode: Boolean,
-    isCachedLocally: Boolean,
-    onQuickPreviewClick: () -> Unit,
-    onOpenInternalReaderClick: () -> Unit,
-    onDirectBrowserDownloadClick: () -> Unit,
-    onDeleteCachedCopyClick: () -> Unit
+    isSavedLocally: Boolean,
+    fileSizeLabel: String,
+    onOpenBookInAppClick: () -> Unit,
+    onSaveToPhoneDownloadsClick: () -> Unit,
+    onRedownloadBookClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp)
+            .clickable { onOpenBookInAppClick() }
             .testTag("curriculum_book_card_${book.id}"),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
         ),
         border = BorderStroke(
             1.2.dp,
-            if (isCachedLocally) {
-                Color(0xFF10B981).copy(alpha = 0.65f)
+            if (isSavedLocally) {
+                Color(0xFF10B981).copy(alpha = 0.70f)
             } else if (isDarkMode) {
                 Color(0xFF334155)
             } else {
@@ -999,10 +1075,10 @@ private fun CurriculumBookLuxuryCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    // Geometric 3D Book Vector Icon Box
+                    // Geometric 3D Book Artwork on Canvas
                     Box(
                         modifier = Modifier
-                            .size(52.dp)
+                            .size(50.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(
                                 Brush.linearGradient(
@@ -1015,10 +1091,9 @@ private fun CurriculumBookLuxuryCard(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Canvas(modifier = Modifier.size(30.dp)) {
+                        Canvas(modifier = Modifier.size(28.dp)) {
                             val w = size.width
                             val h = size.height
-                            // Geometric open book vector icon drawn on Canvas
                             val leftPage = Path().apply {
                                 moveTo(w * 0.50f, h * 0.82f)
                                 lineTo(w * 0.10f, h * 0.68f)
@@ -1093,521 +1168,150 @@ private fun CurriculumBookLuxuryCard(
                     }
                 }
 
-                if (isCachedLocally) {
-                    IconButton(
-                        onClick = onDeleteCachedCopyClick,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFEF2F2))
-                            .testTag("delete_cached_book_${book.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.DeleteSweep,
-                            contentDescription = "حذف النسخة المؤقتة",
-                            tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-                }
-            }
-
-            if (isCachedLocally) {
+                // Pure-text status badge capsule
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.45f) else Color(0xFFF0FDF4),
-                    border = BorderStroke(0.8.dp, Color(0xFF34D399).copy(alpha = 0.5f))
+                    shape = RoundedCornerShape(50),
+                    color = if (isSavedLocally) {
+                        if (isDarkMode) Color(0xFF065F46) else Color(0xFFDCFCE7)
+                    } else {
+                        if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF1F5F9)
+                    },
+                    border = BorderStroke(
+                        0.9.dp,
+                        if (isSavedLocally) Color(0xFF10B981) else Color(0xFF94A3B8).copy(alpha = 0.4f)
+                    )
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.OfflinePin,
-                                contentDescription = null,
-                                tint = Color(0xFF059669),
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Text(
-                                text = "محفوظ في الكاش المؤقت للقراءة الفورية الفائقة",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
-                            )
-                        }
-                        Text(
-                            text = "حذف النسخة المؤقتة",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFDC2626),
-                            modifier = Modifier.clickable { onDeleteCachedCopyClick() }
-                        )
-                    }
+                    Text(
+                        text = if (isSavedLocally) {
+                            if (fileSizeLabel.isNotBlank()) "جاهز محلياً • $fileSizeLabel" else "جاهز محلياً"
+                        } else {
+                            "تحميل فوري عند الفتح"
+                        },
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isSavedLocally) {
+                            if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                        } else {
+                            if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                        },
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
             }
 
-            // Primary On-Demand In-App Buttons:
-            // 1) "معاينة سريعة للكتاب" (Cloud Embedded Viewer without downloading)
-            // 2) "فتح بالقارئ الداخلي الفائق" (On-Demand Cache + Multi-Stage Fallback + PdfRenderer)
+            // Primary Glassmorphic Pure-Text Capsule Button: Open & Read In-App
+            Surface(
+                onClick = onOpenBookInAppClick,
+                shape = RoundedCornerShape(50),
+                color = Color.Transparent,
+                border = BorderStroke(1.2.dp, Color(0xFF34D399).copy(alpha = 0.7f)),
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(50))
+                    .testTag("btn_super_reader_${book.id}")
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFF059669),
+                                    Color(0xFF047857),
+                                    Color(0xFF0F3D5E)
+                                )
+                            )
+                        )
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (isSavedLocally) {
+                            "فتح وقراءة الكتاب فوراً (بدون إنترنت)"
+                        } else {
+                            "فتح وقراءة الكتاب داخل التطبيق"
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+
+            // Secondary Glassmorphic Pure-Text Capsule Buttons Row:
+            // 1) "حفظ نسخة في تنزيلات الهاتف"
+            // 2) "تحديث / إعادة تنزيل الكتاب"
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = onQuickPreviewClick,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.2.dp, Color(0xFF059669)),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 46.dp)
-                        .testTag("btn_quick_preview_${book.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Visibility,
-                        contentDescription = null,
-                        tint = Color(0xFF059669),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = "معاينة سريعة للكتاب",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-
-                Button(
-                    onClick = onOpenInternalReaderClick,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF047857),
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1.18f)
-                        .heightIn(min = 46.dp)
-                        .testTag("btn_super_reader_${book.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.MenuBook,
-                        contentDescription = null,
-                        tint = Color(0xFFFEF08A),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = "فتح بالقارئ الداخلي الفائق",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-
-            // 3) Guaranteed 100% Direct Browser / Device PDF Reader Button ("فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز")
-            Surface(
-                onClick = onDirectBrowserDownloadClick,
-                shape = RoundedCornerShape(12.dp),
-                color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF0FDF4),
-                border = BorderStroke(
-                    1.dp,
-                    if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.4f) else Color(0xFFA7F3D0)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("btn_direct_browser_${book.id}")
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.OpenInBrowser,
-                        contentDescription = null,
-                        tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * الزر الأول: "معاينة سريعة للكتاب"
- * يفتح شاشة معاينة داخلية تعرض صفحات الكتاب مباشرة عبر عارض المستندات السحابي المدمج
- * (`https://docs.google.com/gview?embedded=true&url=<ENCODED_PDF_URL>`)
- * داخل WebView مهيأ بـ JavaScript و DOMStorage وترويسة User-Agent و Referer مع مؤشر تحميل أنيق.
- */
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun QuickCloudPdfPreviewModal(
-    book: CurriculumBookItem,
-    onDismiss: () -> Unit,
-    onSwitchToSuperReader: () -> Unit,
-    onOpenInBrowserClick: () -> Unit
-) {
-    val encodedPdfUrl = remember(book.pdfUrl) {
-        Uri.encode(book.pdfUrl)
-    }
-    val viewerUrl = remember(encodedPdfUrl) {
-        "https://docs.google.com/gview?embedded=true&url=$encodedPdfUrl"
-    }
-
-    var isLoading by remember { mutableStateOf(true) }
-    var loadProgress by remember { mutableIntStateOf(15) }
-    var hasLoadError by remember { mutableStateOf(false) }
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color(0xFF0F172A)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Top Header Bar with Safe Status Bar Padding (top = 36.dp + statusBarsPadding) so it NEVER overlaps the clock
                 Surface(
-                    color = Color(0xFF064E3B),
-                    shadowElevation = 8.dp
+                    onClick = onSaveToPhoneDownloadsClick,
+                    shape = RoundedCornerShape(50),
+                    color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.55f) else Color(0xFFECFDF5),
+                    border = BorderStroke(
+                        1.1.dp,
+                        if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.6f) else Color(0xFF10B981)
+                    ),
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(50))
+                        .testTag("btn_save_downloads_${book.id}")
                 ) {
-                    Column(
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(top = 36.dp, bottom = 12.dp, start = 14.dp, end = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                IconButton(
-                                    onClick = onDismiss,
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.18f))
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "إغلاق المعاينة",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = book.subjectTitle,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "${book.gradeClass} • معاينة سحابية فورية بدون تنزيل",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFFA7F3D0),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                IconButton(
-                                    onClick = {
-                                        hasLoadError = false
-                                        isLoading = true
-                                        webViewRef?.loadUrl(
-                                            viewerUrl,
-                                            mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.14f))
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Refresh,
-                                        contentDescription = "إعادة تحميل المعاينة",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFFF59E0B),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable { onSwitchToSuperReader() }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.HighQuality,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Text(
-                                            text = "القارئ الفائق",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Guaranteed Direct Browser / Device Reader Action Bar inside the Reader Header
-                        Surface(
-                            onClick = onOpenInBrowserClick,
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color.White.copy(alpha = 0.14f),
-                            border = BorderStroke(0.8.dp, Color(0xFFA7F3D0).copy(alpha = 0.45f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.OpenInBrowser,
-                                    contentDescription = null,
-                                    tint = Color(0xFFFEF08A),
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
-
-                        AnimatedVisibility(visible = isLoading) {
-                            LinearProgressIndicator(
-                                progress = { (loadProgress / 100f).coerceIn(0.08f, 1f) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(50)),
-                                color = Color(0xFFFBBF24),
-                                trackColor = Color.White.copy(alpha = 0.2f)
-                            )
-                        }
+                        Text(
+                            text = "حفظ نسخة في تنزيلات الهاتف",
+                            fontSize = 10.8.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
 
-                // WebView Container
-                Box(modifier = Modifier.weight(1f)) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                webViewRef = this
-                                runCatching {
-                                    WebKitCookieManager.getInstance().setAcceptCookie(true)
-                                    WebKitCookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                                }
-                                settings.apply {
-                                    javaScriptEnabled = true
-                                    domStorageEnabled = true
-                                    loadsImagesAutomatically = true
-                                    useWideViewPort = true
-                                    loadWithOverviewMode = true
-                                    builtInZoomControls = true
-                                    displayZoomControls = false
-                                    userAgentString = OFFICIAL_BROWSER_USER_AGENT
-                                    cacheMode = WebSettings.LOAD_DEFAULT
-                                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                }
-                                setDownloadListener { url, _, _, _, _ ->
-                                    openPdfDirectlyInBrowserOrDeviceReader(ctx, url.ifBlank { book.pdfUrl })
-                                }
-                                webChromeClient = object : WebChromeClient() {
-                                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                        loadProgress = newProgress
-                                        if (newProgress >= 95) {
-                                            isLoading = false
-                                        }
-                                    }
-                                }
-                                webViewClient = object : WebViewClient() {
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        super.onPageFinished(view, url)
-                                        isLoading = false
-                                    }
-
-                                    override fun onReceivedError(
-                                        view: WebView?,
-                                        request: WebResourceRequest?,
-                                        error: WebResourceError?
-                                    ) {
-                                        super.onReceivedError(view, request, error)
-                                        if (request?.isForMainFrame == true) {
-                                            hasLoadError = true
-                                            isLoading = false
-                                        }
-                                    }
-                                }
-                                loadUrl(
-                                    viewerUrl,
-                                    mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
-                                )
-                            }
-                        },
-                        onRelease = { webView ->
-                            webView.stopLoading()
-                            webView.destroy()
-                        }
-                    )
-
-                    if (isLoading) {
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(24.dp),
-                            shape = RoundedCornerShape(22.dp),
-                            color = Color(0xFF064E3B).copy(alpha = 0.94f),
-                            border = BorderStroke(1.2.dp, Color(0xFF34D399).copy(alpha = 0.5f)),
-                            shadowElevation = 12.dp
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    color = Color(0xFFFBBF24),
-                                    strokeWidth = 3.dp,
-                                    modifier = Modifier.size(38.dp)
-                                )
-                                Text(
-                                    text = "جاري تجهيز المعاينة السحابية لكتاب (${book.subjectTitle})...",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = "يتم العرض مباشرة بدون تنزيل الملف على ذاكرة الهاتف ($loadProgress%)",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFFA7F3D0),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-
-                    if (hasLoadError) {
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(24.dp),
-                            shape = RoundedCornerShape(22.dp),
-                            color = Color(0xFF1E293B),
-                            border = BorderStroke(1.2.dp, Color(0xFF10B981))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(22.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.OpenInBrowser,
-                                    contentDescription = null,
-                                    tint = Color(0xFF34D399),
-                                    modifier = Modifier.size(38.dp)
-                                )
-                                Text(
-                                    text = "فتح الكتاب مباشرة عبر المتصفح أو القارئ الفائق",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center
-                                )
-                                Button(
-                                    onClick = onOpenInBrowserClick,
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Filled.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز", fontWeight = FontWeight.ExtraBold, fontSize = 11.5.sp)
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        hasLoadError = false
-                                        isLoading = true
-                                        webViewRef?.loadUrl(
-                                            viewerUrl,
-                                            mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
-                                        )
-                                    },
-                                    border = BorderStroke(1.dp, Color.White),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("إعادة المحاولة", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
+                Surface(
+                    onClick = onRedownloadBookClick,
+                    shape = RoundedCornerShape(50),
+                    color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isDarkMode) Color(0xFF475569) else Color(0xFFCBD5E1)
+                    ),
+                    modifier = Modifier
+                        .weight(0.95f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(50))
+                        .testTag("btn_redownload_book_${book.id}")
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "تحديث / إعادة تنزيل الكتاب",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF334155),
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -1616,341 +1320,298 @@ private fun QuickCloudPdfPreviewModal(
 }
 
 /**
- * الزر الثاني: "فتح بالقارئ الداخلي الفائق"
- * يطبق نظام الجلب الذكي متعدد المراحل (Zero-Fail Multi-Stage Fallback):
- * 1) المرحلة الأولى: HttpURLConnection مع تفعيل CookieManager(ACCEPT_ALL) وترويسات المتصفح الرسمية
- *    (User-Agent, Referer: https://manahj.edu.iq/, Accept, Accept-Language, Connection).
- * 2) المرحلة الثانية (Auto-Fallback عند كود 403): الجلب التلقائي عبر بوابات العبور (allorigins / corsproxy)
- *    أو DownloadManager المزود بترويسات المتصفح، مع التحقق من بصمة ملف الـ PDF (%PDF).
- * 3) المرحلة الثالثة (Zero-Fail Embedded Viewer Fallback): في حال حظر الجدار الناري للتحميل المباشر،
- *    ينتقل القارئ تلقائياً في نفس اللحظة ودون إظهار أي شاشة خطأ مسدودة إلى العارض المدمج الفوري،
- *    مع توفير زر "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز" المضمون 100%.
+ * محرك التنزيل وقارئ كتب الـ PDF الأصلي المدمج داخل التطبيق حصراً
+ * (`Native In-App PDF Downloader & Android PdfRenderer Engine`)
+ *
+ * - بدون أي WebView أو متصفح خارجي إطلاقاً.
+ * - يتحقق أولاً من `File(context.filesDir, "curriculums/book_${bookId}.pdf")` بحجم أكبر من 100 KB:
+ *   إذا كان محفوظاً مسبقاً يفتحه في جزء من الثانية بدون إنترنت!
+ * - إذا لم يكن محفوظاً بعد: يشغّل `HttpURLConnection` مباشر في `Dispatchers.IO` مع توحيد البروتوكول `https://`،
+ *   وترويسة `User-Agent: Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36`،
+ *   و `instanceFollowRedirects = true`، وتخطي تعارض شهادات SSL لسيرفر `manahj.edu.iq` عبر `TrustManager` مخصص.
+ * - يعرض شاشة تقدم تنزيل زجاجية حية (`45%` + `7.2 MB / 15.8 MB`) وينتقل تلقائياً لعرض الصفحات فور وصول التحميل إلى `100%`.
  */
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun InternalSuperPdfReaderModal(
-    book: CurriculumBookItem,
+private fun NativeInAppPdfReaderModal(
+    sessionRequest: ActiveReaderSessionRequest,
     onDismiss: () -> Unit,
-    onCacheDeleted: () -> Unit,
-    onOpenInBrowserClick: () -> Unit
+    onBookDownloadedReady: () -> Unit,
+    onShowToast: (String, Boolean) -> Unit
 ) {
+    val book = sessionRequest.book
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-
-    var isDownloading by remember { mutableStateOf(false) }
-    var downloadProgressPercent by remember { mutableIntStateOf(0) }
-    var downloadedMegabytesText by remember { mutableStateOf("") }
-    var downloadStageStatusText by remember { mutableStateOf("جاري الاتصال بخادم المناهج الرسمية...") }
-
-    // If binary download is blocked by server WAF (403), automatically switch to seamless embedded reader (Zero error screen!)
-    var isUsingEmbeddedFallback by remember { mutableStateOf(false) }
-    var embeddedViewerLoading by remember { mutableStateOf(true) }
-    var embeddedViewerProgress by remember { mutableIntStateOf(20) }
-    var embeddedWebViewRef by remember { mutableStateOf<WebView?>(null) }
-
-    var pdfFile by remember { mutableStateOf<File?>(null) }
-    var pageCount by remember { mutableIntStateOf(0) }
-    var pdfRendererHolder by remember { mutableStateOf<Pair<ParcelFileDescriptor, PdfRenderer>?>(null) }
-    val renderMutex = remember { Mutex() }
-    var activeDownloadJob by remember { mutableStateOf<Job?>(null) }
-
-    // Pinch-to-Zoom & Pan State
-    var zoomScale by remember { mutableFloatStateOf(1f) }
-    var panOffsetX by remember { mutableFloatStateOf(0f) }
     val listState = rememberLazyListState()
+    val renderMutex = remember { Mutex() }
 
-    val encodedPdfUrl = remember(book.pdfUrl) { Uri.encode(book.pdfUrl) }
-    val embeddedFallbackUrl = remember(encodedPdfUrl) {
-        "https://docs.google.com/gview?embedded=true&url=$encodedPdfUrl"
+    var isDownloading by remember(book.id) { mutableStateOf(false) }
+    var downloadProgressPercent by remember(book.id) { mutableIntStateOf(0) }
+    var downloadedMegabytesText by remember(book.id) { mutableStateOf("0.0 MB") }
+    var downloadErrorMessage by remember(book.id) { mutableStateOf<String?>(null) }
+    var inAppBannerMessage by remember(book.id) { mutableStateOf<String?>(null) }
+
+    var pdfFile by remember(book.id) { mutableStateOf<File?>(null) }
+    var pdfRendererHolder by remember(book.id) { mutableStateOf<Pair<ParcelFileDescriptor, PdfRenderer>?>(null) }
+    var pageCount by remember(book.id) { mutableIntStateOf(0) }
+
+    var zoomScale by remember(book.id) { mutableFloatStateOf(1f) }
+    var panOffsetX by remember(book.id) { mutableFloatStateOf(0f) }
+    var showJumpToPageBar by remember(book.id) { mutableStateOf(false) }
+    var jumpPageInput by remember(book.id) { mutableStateOf("") }
+
+    var activeDownloadJob by remember(book.id) { mutableStateOf<Job?>(null) }
+
+    LaunchedEffect(inAppBannerMessage) {
+        if (inAppBannerMessage != null) {
+            delay(4000L)
+            inAppBannerMessage = null
+        }
     }
 
     fun closeRendererSafely() {
-        val current = pdfRendererHolder
+        val holder = pdfRendererHolder
         pdfRendererHolder = null
-        if (current != null) {
-            runCatching { current.second.close() }
-            runCatching { current.first.close() }
+        if (holder != null) {
+            runCatching { holder.second.close() }
+            runCatching { holder.first.close() }
         }
     }
 
-    suspend fun tryDownloadFromCandidateUrl(
-        candidateUrl: String,
-        tempFile: File,
-        onProgress: (Int, String) -> Unit
-    ): Boolean {
-        return withContext(Dispatchers.IO) {
-            runCatching {
-                ensureGlobalCookieManagerInitialized()
-                if (tempFile.exists()) tempFile.delete()
+    suspend fun streamDownloadBookToStorage(
+        rawBookUrl: String,
+        destinationFile: File,
+        onProgressUpdate: (Int, String) -> Unit
+    ): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
+            ensureGlobalCookieManagerInitialized()
+            val sslConfig = buildCurriculumTrustAllSslSocketFactory()
+            val normalizedPrimaryUrl = normalizeCurriculumPdfUrl(rawBookUrl)
 
-                var currentUrl = candidateUrl
-                var redirects = 0
-                var connection: HttpURLConnection? = null
-                while (redirects < 6) {
-                    ensureActive()
-                    val urlObj = URL(currentUrl)
-                    val conn = (urlObj.openConnection() as HttpURLConnection).apply {
-                        applyOfficialBrowserHeaders()
-                    }
-                    conn.connect()
-                    val code = conn.responseCode
-                    if (code in 300..399) {
-                        val location = conn.getHeaderField("Location")
-                        conn.disconnect()
-                        if (!location.isNullOrBlank()) {
-                            currentUrl = URL(urlObj, location).toString()
-                            redirects++
-                            continue
-                        }
-                    }
-                    connection = conn
-                    break
+            // Build candidate URLs (normalized https:// first, then http:// fallback if needed)
+            val candidateUrls = buildList {
+                add(normalizedPrimaryUrl)
+                if (normalizedPrimaryUrl.startsWith("https://")) {
+                    add("http://" + normalizedPrimaryUrl.removePrefix("https://"))
                 }
+            }.distinct()
 
-                val finalConn = connection ?: return@runCatching false
+            val tempFile = File(destinationFile.parentFile, "${destinationFile.name}.downloading")
+            var lastException: Exception? = null
+
+            for (startUrl in candidateUrls) {
+                if (!isActive) throw CancellationException("تم إلغاء التنزيل")
                 try {
-                    val responseCode = finalConn.responseCode
-                    if (responseCode !in 200..299) {
-                        return@runCatching false
-                    }
-                    val totalBytes = finalConn.contentLengthLong
-                    var downloadedBytes = 0L
-                    finalConn.inputStream.use { input ->
-                        FileOutputStream(tempFile).use { output ->
-                            val buffer = ByteArray(8 * 1024)
-                            var bytesRead: Int
-                            while (input.read(buffer).also { bytesRead = it } != -1) {
-                                if (!isActive) {
-                                    throw CancellationException("تم إلغاء التحميل من قبل المستخدم")
-                                }
-                                output.write(buffer, 0, bytesRead)
-                                downloadedBytes += bytesRead
-                                val dlMb = downloadedBytes / (1024.0 * 1024.0)
-                                if (totalBytes > 0L) {
-                                    val pct = ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(1, 100)
-                                    val totalMb = totalBytes / (1024.0 * 1024.0)
-                                    onProgress(
-                                        pct,
-                                        String.format(Locale.US, "%.1f / %.1f MB", dlMb, totalMb)
-                                    )
-                                } else {
-                                    val approxPct = (15 + (downloadedBytes / (150 * 1024)).toInt()).coerceIn(15, 95)
-                                    onProgress(
-                                        approxPct,
-                                        String.format(Locale.US, "%.1f MB", dlMb)
-                                    )
-                                }
-                            }
-                            output.flush()
+                    if (tempFile.exists()) tempFile.delete()
+
+                    // Warm-up session cookie on manahj.edu.iq
+                    runCatching {
+                        val warmConn = (URL(OFFICIAL_MANAHJ_REFERER).openConnection() as HttpURLConnection).apply {
+                            configureCurriculumStreamConnection(sslConfig)
+                            connectTimeout = 8000
+                            readTimeout = 8000
                         }
-                    }
-                    isValidPdfFile(tempFile)
-                } finally {
-                    finalConn.disconnect()
-                }
-            }.onFailure { err ->
-                if (err is CancellationException) throw err
-            }.getOrDefault(false)
-        }
-    }
-
-    suspend fun tryDownloadViaAndroidDownloadManager(
-        pdfUrl: String,
-        targetFile: File,
-        onProgress: (Int, String) -> Unit
-    ): Boolean {
-        return withContext(Dispatchers.IO) {
-            runCatching {
-                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-                    ?: return@runCatching false
-                val extCacheDir = context.externalCacheDir ?: return@runCatching false
-                val dmTempFile = File(extCacheDir, "dm_${targetFile.name}")
-                if (dmTempFile.exists()) dmTempFile.delete()
-
-                val request = DownloadManager.Request(Uri.parse(pdfUrl)).apply {
-                    addRequestHeader("User-Agent", OFFICIAL_BROWSER_USER_AGENT)
-                    addRequestHeader("Referer", OFFICIAL_MANAHJ_REFERER)
-                    addRequestHeader("Accept", OFFICIAL_ACCEPT_HEADER)
-                    addRequestHeader("Accept-Language", OFFICIAL_ACCEPT_LANGUAGE)
-                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
-                    setDestinationUri(Uri.fromFile(dmTempFile))
-                }
-
-                val downloadId = dm.enqueue(request)
-                try {
-                    var elapsedMs = 0L
-                    while (elapsedMs < 14000L) {
-                        ensureActive()
-                        val query = DownloadManager.Query().setFilterById(downloadId)
-                        val cursor: Cursor? = dm.query(query)
-                        cursor?.use { c ->
-                            if (c.moveToFirst()) {
-                                val statusIdx = c.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                                val status = if (statusIdx >= 0) c.getInt(statusIdx) else -1
-                                val soFarIdx = c.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-                                val totalIdx = c.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-                                val soFar = if (soFarIdx >= 0) c.getLong(soFarIdx) else 0L
-                                val total = if (totalIdx >= 0) c.getLong(totalIdx) else -1L
-                                if (total > 0L) {
-                                    val pct = ((soFar * 100L) / total).toInt().coerceIn(5, 99)
-                                    onProgress(
-                                        pct,
-                                        String.format(
-                                            Locale.US,
-                                            "%.1f / %.1f MB",
-                                            soFar / (1024.0 * 1024.0),
-                                            total / (1024.0 * 1024.0)
-                                        )
-                                    )
-                                }
-                                when (status) {
-                                    DownloadManager.STATUS_SUCCESSFUL -> {
-                                        if (isValidPdfFile(dmTempFile)) {
-                                            dmTempFile.copyTo(targetFile, overwrite = true)
-                                            dmTempFile.delete()
-                                            return@runCatching true
-                                        }
-                                        return@runCatching false
-                                    }
-                                    DownloadManager.STATUS_FAILED -> {
-                                        return@runCatching false
-                                    }
-                                }
-                            }
-                        }
-                        delay(350L)
-                        elapsedMs += 350L
-                    }
-                    dm.remove(downloadId)
-                    false
-                } finally {
-                    runCatching { if (dmTempFile.exists()) dmTempFile.delete() }
-                }
-            }.onFailure { err ->
-                if (err is CancellationException) throw err
-            }.getOrDefault(false)
-        }
-    }
-
-    fun startOnDemandDownloadOrOpen() {
-        activeDownloadJob?.cancel()
-        activeDownloadJob = coroutineScope.launch {
-            isUsingEmbeddedFallback = false
-            val targetFile = IraqiCurriculumCatalog.getCachedPdfFile(context.cacheDir, book)
-
-            if (!isValidPdfFile(targetFile)) {
-                isDownloading = true
-                downloadProgressPercent = 5
-                downloadedMegabytesText = "جاري التحضير..."
-                downloadStageStatusText = "جاري الاتصال بخادم المناهج الرسمية..."
-                val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
-
-                try {
-                    // Warm up session cookies on manahj.edu.iq first
-                    withContext(Dispatchers.IO) {
-                        ensureGlobalCookieManagerInitialized()
-                        runCatching {
-                            val homeConn = (URL(OFFICIAL_MANAHJ_REFERER).openConnection() as HttpURLConnection).apply {
-                                applyOfficialBrowserHeaders()
-                                connectTimeout = 6000
-                                readTimeout = 6000
-                            }
-                            homeConn.connect()
-                            runCatching { homeConn.inputStream.close() }
-                            homeConn.disconnect()
-                        }
+                        warmConn.connect()
+                        runCatching { warmConn.inputStream.close() }
+                        warmConn.disconnect()
                     }
 
-                    // Stage 1: Direct connection with Official Browser Headers + CookieManager
-                    var downloadedOk = tryDownloadFromCandidateUrl(
-                        candidateUrl = book.pdfUrl,
-                        tempFile = tempFile,
-                        onProgress = { pct, mbText ->
-                            downloadProgressPercent = pct
-                            downloadedMegabytesText = mbText
-                        }
-                    )
+                    var currentUrl = normalizeCurriculumPdfUrl(startUrl)
+                    var redirectCount = 0
+                    var activeConnection: HttpURLConnection? = null
 
-                    // Stage 2: Gateway Fallback (allorigins / corsproxy) if server returned 403 Forbidden
-                    if (!downloadedOk && isActive) {
-                        downloadStageStatusText = "جاري تجاوز جدار الحماية (403) عبر البوابة السحابية البديلة..."
-                        downloadProgressPercent = 18
-                        val proxyCandidates = listOf(
-                            "https://api.allorigins.win/raw?url=${Uri.encode(book.pdfUrl)}",
-                            "https://corsproxy.io/?${Uri.encode(book.pdfUrl)}"
-                        )
-                        for (proxyUrl in proxyCandidates) {
-                            if (!isActive) break
-                            downloadedOk = tryDownloadFromCandidateUrl(
-                                candidateUrl = proxyUrl,
-                                tempFile = tempFile,
-                                onProgress = { pct, mbText ->
-                                    downloadProgressPercent = pct
-                                    downloadedMegabytesText = mbText
-                                }
+                    while (redirectCount < 8) {
+                        val urlObj = URL(currentUrl)
+                        val conn = (urlObj.openConnection() as HttpURLConnection).apply {
+                            configureCurriculumStreamConnection(sslConfig)
+                        }
+                        conn.connect()
+                        val code = conn.responseCode
+                        if (code in listOf(
+                                HttpURLConnection.HTTP_MOVED_PERM,
+                                HttpURLConnection.HTTP_MOVED_TEMP,
+                                HttpURLConnection.HTTP_SEE_OTHER,
+                                307,
+                                308
                             )
-                            if (downloadedOk) break
-                        }
-                    }
-
-                    // Stage 3: Android DownloadManager with Official Browser Headers
-                    if (!downloadedOk && isActive) {
-                        downloadStageStatusText = "جاري الجلب عبر محرك تنزيل النظام المزود بترويسات المتصفح..."
-                        downloadedOk = tryDownloadViaAndroidDownloadManager(
-                            pdfUrl = book.pdfUrl,
-                            targetFile = tempFile,
-                            onProgress = { pct, mbText ->
-                                downloadProgressPercent = pct
-                                downloadedMegabytesText = mbText
+                        ) {
+                            val location = conn.getHeaderField("Location")
+                            conn.disconnect()
+                            if (!location.isNullOrBlank()) {
+                                val resolvedUrl = URL(urlObj, location.trim()).toString()
+                                currentUrl = normalizeCurriculumPdfUrl(resolvedUrl)
+                                redirectCount++
+                                continue
                             }
-                        )
+                        }
+                        activeConnection = conn
+                        break
                     }
 
-                    if (downloadedOk && isValidPdfFile(tempFile)) {
-                        if (targetFile.exists()) targetFile.delete()
-                        tempFile.renameTo(targetFile)
-                        downloadProgressPercent = 100
-                        isDownloading = false
-                    } else {
-                        // Stage 4: Zero-Fail Automatic Transition to Embedded Smart Viewer (NEVER show a dead-end 403 error!)
-                        runCatching { if (tempFile.exists()) tempFile.delete() }
-                        isDownloading = false
-                        isUsingEmbeddedFallback = true
-                        return@launch
+                    val finalConn = activeConnection
+                        ?: throw IllegalStateException("تعذر فتح قناة الاتصال مع خادم المناهج")
+
+                    try {
+                        val responseCode = finalConn.responseCode
+                        if (responseCode !in 200..299) {
+                            throw IllegalStateException("رمز استجابة الخادم: $responseCode")
+                        }
+
+                        val totalBytes = finalConn.contentLengthLong
+                        var downloadedBytes = 0L
+                        var lastReportedPct = -1
+                        var lastReportTimeMs = 0L
+
+                        finalConn.inputStream.use { input ->
+                            FileOutputStream(tempFile).use { output ->
+                                val buffer = ByteArray(16 * 1024)
+                                var bytesRead: Int
+                                while (input.read(buffer).also { bytesRead = it } != -1) {
+                                    if (!isActive) {
+                                        throw CancellationException("تم إلغاء التنزيل")
+                                    }
+                                    output.write(buffer, 0, bytesRead)
+                                    downloadedBytes += bytesRead
+
+                                    val nowMs = System.currentTimeMillis()
+                                    val dlMb = downloadedBytes / (1024.0 * 1024.0)
+                                    if (totalBytes > 0L) {
+                                        val pct = ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(1, 99)
+                                        if (pct != lastReportedPct || nowMs - lastReportTimeMs >= 120L) {
+                                            lastReportedPct = pct
+                                            lastReportTimeMs = nowMs
+                                            val totalMb = totalBytes / (1024.0 * 1024.0)
+                                            onProgressUpdate(
+                                                pct,
+                                                String.format(Locale.US, "%.1f MB / %.1f MB", dlMb, totalMb)
+                                            )
+                                        }
+                                    } else {
+                                        val approxPct = (10 + (downloadedBytes / (180 * 1024)).toInt()).coerceIn(10, 95)
+                                        if (nowMs - lastReportTimeMs >= 150L) {
+                                            lastReportTimeMs = nowMs
+                                            onProgressUpdate(
+                                                approxPct,
+                                                String.format(Locale.US, "%.1f MB", dlMb)
+                                            )
+                                        }
+                                    }
+                                }
+                                output.flush()
+                            }
+                        }
+
+                        if (isValidDownloadedCurriculumPdf(tempFile)) {
+                            val finalMb = tempFile.length() / (1024.0 * 1024.0)
+                            onProgressUpdate(
+                                100,
+                                String.format(Locale.US, "%.1f MB / %.1f MB", finalMb, finalMb)
+                            )
+                            if (destinationFile.exists()) {
+                                destinationFile.delete()
+                            }
+                            val renamed = tempFile.renameTo(destinationFile)
+                            if (!renamed) {
+                                tempFile.copyTo(destinationFile, overwrite = true)
+                                tempFile.delete()
+                            }
+                            return@runCatching destinationFile
+                        } else {
+                            if (tempFile.exists()) tempFile.delete()
+                            throw IllegalStateException("الملف المستلم غير مكتمل أو ليس بصيغة PDF صالحة")
+                        }
+                    } finally {
+                        finalConn.disconnect()
                     }
                 } catch (ce: CancellationException) {
-                    runCatching { if (tempFile.exists()) tempFile.delete() }
-                    isDownloading = false
-                    onDismiss()
-                    return@launch
-                } catch (_: Exception) {
-                    runCatching { if (tempFile.exists()) tempFile.delete() }
-                    isDownloading = false
-                    isUsingEmbeddedFallback = true
-                    return@launch
+                    if (tempFile.exists()) tempFile.delete()
+                    throw ce
+                } catch (e: Exception) {
+                    if (tempFile.exists()) tempFile.delete()
+                    lastException = e
                 }
             }
 
-            // Open PdfRenderer on the verified cached PDF file
+            throw (lastException ?: IllegalStateException("تعذر تنزيل ملف الكتاب من خادم المناهج"))
+        }
+    }
+
+    fun startBookLoadOrStream(
+        forceRedownload: Boolean,
+        saveToDownloadsAfterReady: Boolean
+    ) {
+        activeDownloadJob?.cancel()
+        activeDownloadJob = coroutineScope.launch {
+            downloadErrorMessage = null
+            val targetFile = IraqiCurriculumCatalog.getLocalCurriculumBookFile(context, book.id)
+
+            if (forceRedownload || !isValidDownloadedCurriculumPdf(targetFile)) {
+                closeRendererSafely()
+                pdfFile = null
+                pageCount = 0
+                isDownloading = true
+                downloadProgressPercent = 1
+                downloadedMegabytesText = "0.0 MB"
+
+                val result = streamDownloadBookToStorage(
+                    rawBookUrl = book.normalizedPdfUrl,
+                    destinationFile = targetFile,
+                    onProgressUpdate = { pct, mbLabel ->
+                        downloadProgressPercent = pct
+                        downloadedMegabytesText = mbLabel
+                    }
+                )
+
+                if (result.isFailure) {
+                    val ex = result.exceptionOrNull()
+                    if (ex is CancellationException) {
+                        isDownloading = false
+                        return@launch
+                    }
+                    isDownloading = false
+                    downloadErrorMessage = ex?.localizedMessage ?: "تعذر الاتصال بخادم المناهج، يرجى التحقق من الإنترنت وإعادة المحاولة."
+                    return@launch
+                }
+
+                isDownloading = false
+                onBookDownloadedReady()
+            }
+
+            // Open PdfRenderer immediately on the local PDF file
             try {
                 val opened = withContext(Dispatchers.IO) {
                     val pfd = ParcelFileDescriptor.open(targetFile, ParcelFileDescriptor.MODE_READ_ONLY)
                     val renderer = PdfRenderer(pfd)
                     pfd to renderer
                 }
+                closeRendererSafely()
                 pdfFile = targetFile
                 pdfRendererHolder = opened
                 pageCount = opened.second.pageCount
+
+                if (saveToDownloadsAfterReady) {
+                    val savedOk = saveBookFileToPublicDownloads(context, targetFile, book)
+                    if (savedOk) {
+                        val confirmMsg = "تم حفظ كتاب ${book.subjectTitle} في مجلد التنزيلات بنجاح"
+                        inAppBannerMessage = confirmMsg
+                        onShowToast(confirmMsg, true)
+                    } else {
+                        val failMsg = "تعذر حفظ نسخة الكتاب في مجلد التنزيلات"
+                        inAppBannerMessage = failMsg
+                        onShowToast(failMsg, false)
+                    }
+                }
             } catch (_: Exception) {
                 runCatching { targetFile.delete() }
-                // Seamless fallback to embedded viewer if PdfRenderer cannot parse the file
-                isUsingEmbeddedFallback = true
+                downloadErrorMessage = "تعذر قراءة صفحات ملف الـ PDF، يرجى الضغط على (تحديث / إعادة تنزيل الكتاب)."
             }
         }
     }
 
-    LaunchedEffect(book.id) {
-        startOnDemandDownloadOrOpen()
+    LaunchedEffect(sessionRequest) {
+        startBookLoadOrStream(
+            forceRedownload = sessionRequest.forceRedownload,
+            saveToDownloadsAfterReady = sessionRequest.autoSaveToDownloadsOnOpen
+        )
     }
 
     DisposableEffect(book.id) {
@@ -1982,7 +1643,8 @@ private fun InternalSuperPdfReaderModal(
             color = Color(0xFF0F172A)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Bar with Safe Status Bar Padding (statusBarsPadding + top = 36.dp) so it NEVER overlaps the clock (9:42)
+                // Top Glassmorphic Header Bar with Safe Status Bar Padding (statusBarsPadding + top = 36.dp)
+                // Strictly Pure-Text Glassmorphic Capsules (Zero Classic Icons)
                 Surface(
                     color = Color(0xFF064E3B),
                     shadowElevation = 8.dp
@@ -1992,160 +1654,299 @@ private fun InternalSuperPdfReaderModal(
                             .fillMaxWidth()
                             .statusBarsPadding()
                             .padding(top = 36.dp, bottom = 12.dp, start = 14.dp, end = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                IconButton(
-                                    onClick = {
-                                        activeDownloadJob?.cancel()
-                                        closeRendererSafely()
-                                        onDismiss()
-                                    },
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.18f))
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "إغلاق القارئ",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = book.subjectTitle,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = when {
-                                            pageCount > 0 -> "${book.gradeClass} • صفحة $currentVisiblePage من $pageCount"
-                                            isUsingEmbeddedFallback -> "${book.gradeClass} • القارئ السحابي المدمج الفائق"
-                                            else -> "${book.gradeClass} • القارئ الداخلي الفائق"
-                                        },
-                                        fontSize = 11.sp,
-                                        color = Color(0xFFA7F3D0),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            if (pdfFile != null && !isDownloading) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFFDC2626),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable {
-                                            activeDownloadJob?.cancel()
-                                            closeRendererSafely()
-                                            val fileToDelete = IraqiCurriculumCatalog.getCachedPdfFile(context.cacheDir, book)
-                                            if (fileToDelete.exists()) {
-                                                fileToDelete.delete()
-                                            }
-                                            onCacheDeleted()
-                                            onDismiss()
-                                        }
-                                        .testTag("reader_delete_cached_copy_btn")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.DeleteSweep,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Text(
-                                            text = "حذف النسخة المؤقتة",
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
-                            } else if (isUsingEmbeddedFallback) {
-                                IconButton(
-                                    onClick = {
-                                        embeddedViewerLoading = true
-                                        embeddedWebViewRef?.loadUrl(
-                                            embeddedFallbackUrl,
-                                            mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.16f))
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Refresh,
-                                        contentDescription = "تحديث الصفحات",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Guaranteed 100% Direct Browser / Device PDF Reader Button inside the Reader TopBar
-                        Surface(
-                            onClick = onOpenInBrowserClick,
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color.White.copy(alpha = 0.14f),
-                            border = BorderStroke(0.8.dp, Color(0xFFA7F3D0).copy(alpha = 0.45f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("reader_direct_browser_download_btn")
-                        ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
+                                    .weight(1f)
+                                    .padding(end = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.OpenInBrowser,
-                                    contentDescription = null,
-                                    tint = Color(0xFFFEF08A),
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز",
-                                    fontSize = 11.sp,
+                                    text = book.subjectTitle,
+                                    fontSize = 15.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (pageCount > 0) {
+                                        "${book.stage.arabicTitle} • ${book.gradeClass} • صفحة $currentVisiblePage من $pageCount"
+                                    } else {
+                                        "${book.stage.arabicTitle} • ${book.gradeClass}"
+                                    },
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFFA7F3D0),
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            // Pure-Text Glassmorphic Close Capsule Button
+                            Surface(
+                                onClick = {
+                                    activeDownloadJob?.cancel()
+                                    closeRendererSafely()
+                                    onDismiss()
+                                },
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.16f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
+                                modifier = Modifier.testTag("reader_close_capsule_btn")
+                            ) {
+                                Text(
+                                    text = "إغلاق القارئ",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                     maxLines = 1,
                                     softWrap = false
                                 )
                             }
                         }
+
+                        // Action Capsules Row Inside Reader Header:
+                        // 1) "حفظ نسخة في تنزيلات الهاتف"
+                        // 2) "تحديث / إعادة تنزيل الكتاب"
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                onClick = {
+                                    val currentLocal = pdfFile ?: IraqiCurriculumCatalog.getLocalCurriculumBookFile(context, book.id)
+                                    if (isValidDownloadedCurriculumPdf(currentLocal) && !isDownloading) {
+                                        coroutineScope.launch {
+                                            val savedOk = saveBookFileToPublicDownloads(context, currentLocal, book)
+                                            if (savedOk) {
+                                                val msg = "تم حفظ كتاب ${book.subjectTitle} في مجلد التنزيلات بنجاح"
+                                                inAppBannerMessage = msg
+                                                onShowToast(msg, true)
+                                            } else {
+                                                val errMsg = "تعذر حفظ نسخة الكتاب في مجلد التنزيلات"
+                                                inAppBannerMessage = errMsg
+                                                onShowToast(errMsg, false)
+                                            }
+                                        }
+                                    } else if (!isDownloading) {
+                                        startBookLoadOrStream(
+                                            forceRedownload = false,
+                                            saveToDownloadsAfterReady = true
+                                        )
+                                    }
+                                },
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFF059669),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0).copy(alpha = 0.7f)),
+                                modifier = Modifier
+                                    .weight(1.1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .testTag("reader_save_to_downloads_btn")
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "حفظ نسخة في تنزيلات الهاتف",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                onClick = {
+                                    if (!isDownloading) {
+                                        startBookLoadOrStream(
+                                            forceRedownload = true,
+                                            saveToDownloadsAfterReady = false
+                                        )
+                                    }
+                                },
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.14f),
+                                border = BorderStroke(1.dp, Color(0xFFFEF08A).copy(alpha = 0.55f)),
+                                modifier = Modifier
+                                    .weight(0.95f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .testTag("reader_redownload_book_btn")
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "تحديث / إعادة تنزيل الكتاب",
+                                        fontSize = 10.8.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFEF08A),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        // Instant In-App Glassmorphic Confirmation Banner
+                        AnimatedVisibility(
+                            visible = !inAppBannerMessage.isNullOrBlank(),
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF047857),
+                                border = BorderStroke(1.dp, Color(0xFFFEF08A)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = inAppBannerMessage.orEmpty(),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+
+                        // Quick Jump to Any Page Bar (Collapsible Pure-Text Glassmorphic Bar)
+                        AnimatedVisibility(visible = showJumpToPageBar && pageCount > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFF0F172A).copy(alpha = 0.72f),
+                                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = jumpPageInput,
+                                            onValueChange = { raw ->
+                                                jumpPageInput = raw.filter { it.isDigit() }.take(4)
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(50.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            placeholder = {
+                                                Text(
+                                                    text = "اكتب رقم الصفحة (1 - $pageCount)",
+                                                    fontSize = 11.5.sp,
+                                                    color = Color(0xFF94A3B8)
+                                                )
+                                            },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF34D399),
+                                                unfocusedBorderColor = Color(0xFF475569),
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White
+                                            )
+                                        )
+
+                                        Surface(
+                                            onClick = {
+                                                val target = jumpPageInput.toIntOrNull()
+                                                if (target != null && pageCount > 0) {
+                                                    val index = (target - 1).coerceIn(0, pageCount - 1)
+                                                    coroutineScope.launch {
+                                                        listState.scrollToItem(index)
+                                                    }
+                                                    showJumpToPageBar = false
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFF10B981),
+                                            modifier = Modifier.height(44.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(horizontal = 16.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "انتقال فوري",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Quick Jump Capsules (الأولى | -10 | +10 | الأخيرة)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        val jumpActions = listOf(
+                                            "الصفحة الأولى" to 0,
+                                            "السابق 10-" to (currentVisiblePage - 11).coerceAtLeast(0),
+                                            "التالي 10+" to (currentVisiblePage + 9).coerceAtMost((pageCount - 1).coerceAtLeast(0)),
+                                            "الصفحة الأخيرة" to (pageCount - 1).coerceAtLeast(0)
+                                        )
+                                        jumpActions.forEach { (label, targetIdx) ->
+                                            Surface(
+                                                onClick = {
+                                                    coroutineScope.launch {
+                                                        listState.scrollToItem(targetIdx)
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(50),
+                                                color = Color.White.copy(alpha = 0.12f),
+                                                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.3f)),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(
+                                                    text = label,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    textAlign = TextAlign.Center,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
-                // Main Content Area
+                // Main Content Area: Live In-App Download Progress UI OR Native PdfRenderer Pages
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -2156,7 +1957,7 @@ private fun InternalSuperPdfReaderModal(
                                     val newScale = (zoomScale * zoom).coerceIn(1f, 3.5f)
                                     zoomScale = newScale
                                     panOffsetX = if (newScale > 1.02f) {
-                                        (panOffsetX + pan.x).coerceIn(-650f, 650f)
+                                        (panOffsetX + pan.x).coerceIn(-700f, 700f)
                                     } else {
                                         0f
                                     }
@@ -2166,15 +1967,165 @@ private fun InternalSuperPdfReaderModal(
                 ) {
                     when {
                         isDownloading -> {
-                            // Sleek On-Demand Progress Dialog (0% - 100%) + Direct Browser Button + Cancel Button
+                            // 2) شاشة تقدم تنزيل زجاجية حية داخل التطبيق (Live In-App Download Progress UI)
                             Surface(
                                 modifier = Modifier
                                     .align(Alignment.Center)
-                                    .padding(horizontal = 24.dp)
+                                    .padding(horizontal = 22.dp)
+                                    .fillMaxWidth()
+                                    .testTag("live_in_app_download_progress_card"),
+                                shape = RoundedCornerShape(28.dp),
+                                color = Color(0xFF1E293B).copy(alpha = 0.96f),
+                                border = BorderStroke(
+                                    1.5.dp,
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            Color(0xFF34D399),
+                                            Color(0xFFFBBF24),
+                                            Color(0xFF10B981)
+                                        )
+                                    )
+                                ),
+                                shadowElevation = 18.dp
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 28.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    // Stage & Grade Pill
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFF064E3B),
+                                        border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.6f))
+                                    ) {
+                                        Text(
+                                            text = "${book.stage.arabicTitle} • ${book.gradeClass}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFFA7F3D0),
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                                        )
+                                    }
+
+                                    // Book Name
+                                    Text(
+                                        text = "كتاب ${book.subjectTitle}",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        textAlign = TextAlign.Center
+                                    )
+
+                                    // Circular Glowing Percentage Ring
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            progress = { (downloadProgressPercent / 100f).coerceIn(0.03f, 1f) },
+                                            modifier = Modifier.size(92.dp),
+                                            color = Color(0xFF10B981),
+                                            trackColor = Color(0xFF334155),
+                                            strokeWidth = 7.dp
+                                        )
+                                        Text(
+                                            text = "$downloadProgressPercent%",
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFFFEF08A)
+                                        )
+                                    }
+
+                                    // Glowing Glassmorphic Linear Progress Bar
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(14.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .background(Color(0xFF0F172A))
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .fillMaxWidth(fraction = (downloadProgressPercent / 100f).coerceIn(0.04f, 1f))
+                                                .clip(RoundedCornerShape(50))
+                                                .background(
+                                                    Brush.horizontalGradient(
+                                                        colors = listOf(
+                                                            Color(0xFF059669),
+                                                            Color(0xFF10B981),
+                                                            Color(0xFFFBBF24)
+                                                        )
+                                                    )
+                                                )
+                                        )
+                                    }
+
+                                    // Downloaded Megabytes out of Total Megabytes (e.g., 7.2 MB / 15.8 MB)
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFF0F172A),
+                                        border = BorderStroke(1.dp, Color(0xFFFEF08A).copy(alpha = 0.45f))
+                                    ) {
+                                        Text(
+                                            text = downloadedMegabytesText,
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFFFEF08A),
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                        )
+                                    }
+
+                                    Text(
+                                        text = "جاري سحب ملف الكتاب مباشرة إلى ذاكرة التطبيق المحلية...\nسيتم فتح صفحات الكتاب تلقائياً فور اكتمال التحميل 100%",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFCBD5E1),
+                                        textAlign = TextAlign.Center
+                                    )
+
+                                    // Pure-Text Glassmorphic Cancel Capsule
+                                    Surface(
+                                        onClick = {
+                                            activeDownloadJob?.cancel()
+                                            isDownloading = false
+                                            onDismiss()
+                                        },
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFF7F1D1D).copy(alpha = 0.45f),
+                                        border = BorderStroke(1.2.dp, Color(0xFFF87171)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(42.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .testTag("cancel_on_demand_download_btn")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "إلغاء التحميل والعودة",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFFFCA5A5)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        downloadErrorMessage != null -> {
+                            // In-App Retry Card (Zero External Browser)
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 22.dp)
                                     .fillMaxWidth(),
                                 shape = RoundedCornerShape(26.dp),
                                 color = Color(0xFF1E293B),
-                                border = BorderStroke(1.4.dp, Color(0xFF10B981).copy(alpha = 0.6f)),
+                                border = BorderStroke(1.4.dp, Color(0xFFF87171).copy(alpha = 0.6f)),
                                 shadowElevation = 16.dp
                             ) {
                                 Column(
@@ -2182,188 +2133,61 @@ private fun InternalSuperPdfReaderModal(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        CircularProgressIndicator(
-                                            progress = { (downloadProgressPercent / 100f).coerceIn(0.04f, 1f) },
-                                            modifier = Modifier.size(76.dp),
-                                            color = Color(0xFF10B981),
-                                            trackColor = Color(0xFF334155),
-                                            strokeWidth = 6.dp
-                                        )
-                                        Text(
-                                            text = "$downloadProgressPercent%",
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFFFEF08A)
-                                        )
-                                    }
-
                                     Text(
-                                        text = "جاري جلب كتاب (${book.subjectTitle}) عند الطلب",
+                                        text = "تعذر إكمال سحب ملف الكتاب (${book.subjectTitle})",
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color.White,
                                         textAlign = TextAlign.Center
                                     )
-
                                     Text(
-                                        text = downloadStageStatusText,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFFA7F3D0),
+                                        text = downloadErrorMessage.orEmpty(),
+                                        fontSize = 12.sp,
+                                        color = Color(0xFFFCA5A5),
                                         textAlign = TextAlign.Center
                                     )
 
-                                    if (downloadedMegabytesText.isNotBlank()) {
-                                        Text(
-                                            text = downloadedMegabytesText,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFFEF08A)
-                                        )
-                                    }
-
-                                    LinearProgressIndicator(
-                                        progress = { (downloadProgressPercent / 100f).coerceIn(0.02f, 1f) },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(8.dp)
-                                            .clip(RoundedCornerShape(50)),
-                                        color = Color(0xFF10B981),
-                                        trackColor = Color(0xFF334155)
-                                    )
-
-                                    Button(
-                                        onClick = onOpenInBrowserClick,
-                                        shape = RoundedCornerShape(50),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color(0xFF059669),
-                                            contentColor = Color.White
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.OpenInBrowser,
-                                            contentDescription = null,
-                                            tint = Color(0xFFFEF08A),
-                                            modifier = Modifier.size(17.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "فتح وتنزيل مباشر عبر المتصفح / قارئ الجهاز",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                    }
-
-                                    OutlinedButton(
+                                    Surface(
                                         onClick = {
-                                            activeDownloadJob?.cancel()
-                                            isDownloading = false
-                                            onDismiss()
+                                            startBookLoadOrStream(
+                                                forceRedownload = true,
+                                                saveToDownloadsAfterReady = sessionRequest.autoSaveToDownloadsOnOpen
+                                            )
                                         },
                                         shape = RoundedCornerShape(50),
-                                        border = BorderStroke(1.2.dp, Color(0xFFF87171)),
+                                        color = Color(0xFF059669),
+                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .testTag("cancel_on_demand_download_btn")
+                                            .height(44.dp)
+                                            .clip(RoundedCornerShape(50))
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Cancel,
-                                            contentDescription = null,
-                                            tint = Color(0xFFF87171),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "إلغاء التحميل والعودة",
-                                            color = Color(0xFFFCA5A5),
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        isUsingEmbeddedFallback -> {
-                            // Zero-Fail Stage B/C Automatic Fallback Reader (No 403 Error Screen!)
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                AndroidView(
-                                    modifier = Modifier.fillMaxSize(),
-                                    factory = { ctx ->
-                                        WebView(ctx).apply {
-                                            embeddedWebViewRef = this
-                                            runCatching {
-                                                WebKitCookieManager.getInstance().setAcceptCookie(true)
-                                                WebKitCookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                                            }
-                                            settings.apply {
-                                                javaScriptEnabled = true
-                                                domStorageEnabled = true
-                                                loadsImagesAutomatically = true
-                                                useWideViewPort = true
-                                                loadWithOverviewMode = true
-                                                builtInZoomControls = true
-                                                displayZoomControls = false
-                                                userAgentString = OFFICIAL_BROWSER_USER_AGENT
-                                                cacheMode = WebSettings.LOAD_DEFAULT
-                                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                            }
-                                            setDownloadListener { url, _, _, _, _ ->
-                                                openPdfDirectlyInBrowserOrDeviceReader(ctx, url.ifBlank { book.pdfUrl })
-                                            }
-                                            webChromeClient = object : WebChromeClient() {
-                                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                                    embeddedViewerProgress = newProgress
-                                                    if (newProgress >= 92) {
-                                                        embeddedViewerLoading = false
-                                                    }
-                                                }
-                                            }
-                                            webViewClient = object : WebViewClient() {
-                                                override fun onPageFinished(view: WebView?, url: String?) {
-                                                    super.onPageFinished(view, url)
-                                                    embeddedViewerLoading = false
-                                                }
-                                            }
-                                            loadUrl(
-                                                embeddedFallbackUrl,
-                                                mapOf("Referer" to OFFICIAL_MANAHJ_REFERER)
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "تحديث / إعادة تنزيل الكتاب الآن",
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White
                                             )
                                         }
-                                    },
-                                    onRelease = { wv ->
-                                        wv.stopLoading()
-                                        wv.destroy()
                                     }
-                                )
 
-                                if (embeddedViewerLoading) {
                                     Surface(
+                                        onClick = onDismiss,
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
                                         modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .padding(24.dp),
-                                        shape = RoundedCornerShape(22.dp),
-                                        color = Color(0xFF064E3B).copy(alpha = 0.94f),
-                                        border = BorderStroke(1.2.dp, Color(0xFF34D399).copy(alpha = 0.5f)),
-                                        shadowElevation = 12.dp
+                                            .fillMaxWidth()
+                                            .height(42.dp)
+                                            .clip(RoundedCornerShape(50))
                                     ) {
-                                        Column(
-                                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            CircularProgressIndicator(
-                                                color = Color(0xFFFBBF24),
-                                                strokeWidth = 3.dp,
-                                                modifier = Modifier.size(38.dp)
-                                            )
+                                        Box(contentAlignment = Alignment.Center) {
                                             Text(
-                                                text = "جاري فتح صفحات كتاب (${book.subjectTitle}) عبر القارئ السحابي الفائق ($embeddedViewerProgress%)...",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White,
-                                                textAlign = TextAlign.Center
+                                                text = "العودة لقائمة الكتب",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
                                             )
                                         }
                                     }
@@ -2372,6 +2196,7 @@ private fun InternalSuperPdfReaderModal(
                         }
 
                         pdfRendererHolder != null && pageCount > 0 -> {
+                            // 3) عارض صفحات PDF أصلي فائق الوضوح عبر android.graphics.pdf.PdfRenderer
                             val renderer = pdfRendererHolder!!.second
                             LazyColumn(
                                 state = listState,
@@ -2381,8 +2206,14 @@ private fun InternalSuperPdfReaderModal(
                                         scaleX = zoomScale
                                         scaleY = zoomScale
                                         translationX = panOffsetX
-                                    },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 14.dp),
+                                    }
+                                    .testTag("native_pdf_pages_lazy_column"),
+                                contentPadding = PaddingValues(
+                                    start = 10.dp,
+                                    end = 10.dp,
+                                    top = 14.dp,
+                                    bottom = 96.dp
+                                ),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 items(count = pageCount, key = { pageIndex -> "pdf_page_$pageIndex" }) { pageIndex ->
@@ -2395,83 +2226,118 @@ private fun InternalSuperPdfReaderModal(
                                 }
                             }
 
-                            // Floating Bottom Zoom & Page Bar
+                            // Floating Bottom Pure-Text Glassmorphic Zoom & Page Counter Bar
+                            // ("تكبير +" | "تصغير -" | "ملاءمة الشاشة" | "صفحة X من Y")
                             Surface(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .navigationBarsPadding()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                                 shape = RoundedCornerShape(50),
-                                color = Color(0xFF064E3B).copy(alpha = 0.94f),
-                                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.55f)),
-                                shadowElevation = 10.dp
+                                color = Color(0xFF064E3B).copy(alpha = 0.95f),
+                                border = BorderStroke(1.2.dp, Color(0xFF34D399).copy(alpha = 0.65f)),
+                                shadowElevation = 12.dp
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .padding(horizontal = 10.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    IconButton(
+                                    // Pure-Text Zoom In Capsule ("تكبير +")
+                                    Surface(
+                                        onClick = {
+                                            zoomScale = (zoomScale + 0.25f).coerceAtMost(3.5f)
+                                        },
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White.copy(alpha = 0.16f),
+                                        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.4f)),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .testTag("pdf_zoom_in_btn")
+                                    ) {
+                                        Text(
+                                            text = "تكبير +",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+
+                                    // Pure-Text Zoom Out Capsule ("تصغير -")
+                                    Surface(
                                         onClick = {
                                             zoomScale = (zoomScale - 0.25f).coerceAtLeast(1f)
                                             if (zoomScale <= 1.02f) panOffsetX = 0f
                                         },
-                                        modifier = Modifier.size(32.dp)
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White.copy(alpha = 0.16f),
+                                        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.4f)),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .testTag("pdf_zoom_out_btn")
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.ZoomOut,
-                                            contentDescription = "تصغير",
-                                            tint = Color.White
+                                        Text(
+                                            text = "تصغير -",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
 
-                                    Text(
-                                        text = "${(zoomScale * 100).toInt()}%",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = GoldAccent
-                                    )
-
-                                    IconButton(
+                                    // Pure-Text Fit Screen Capsule ("ملاءمة الشاشة")
+                                    Surface(
                                         onClick = {
-                                            zoomScale = (zoomScale + 0.25f).coerceAtMost(3.5f)
+                                            zoomScale = 1f
+                                            panOffsetX = 0f
                                         },
-                                        modifier = Modifier.size(32.dp)
+                                        shape = RoundedCornerShape(50),
+                                        color = if (zoomScale > 1.02f) Color(0xFFF59E0B) else Color.White.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.8.dp, Color(0xFFFEF08A).copy(alpha = 0.5f)),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .testTag("pdf_fit_screen_btn")
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.ZoomIn,
-                                            contentDescription = "تكبير",
-                                            tint = Color.White
+                                        Text(
+                                            text = "ملاءمة الشاشة",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
 
-                                    if (zoomScale > 1.05f) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = Color.White.copy(alpha = 0.18f),
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(50))
-                                                .clickable {
-                                                    zoomScale = 1f
-                                                    panOffsetX = 0f
-                                                }
-                                        ) {
-                                            Text(
-                                                text = "إعادة ضبط",
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                            )
-                                        }
+                                    // Page Counter & Quick Jump Trigger Capsule ("صفحة X من Y")
+                                    Surface(
+                                        onClick = {
+                                            jumpPageInput = currentVisiblePage.toString()
+                                            showJumpToPageBar = !showJumpToPageBar
+                                        },
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFF0F172A).copy(alpha = 0.75f),
+                                        border = BorderStroke(0.9.dp, GoldAccent.copy(alpha = 0.7f)),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .testTag("pdf_page_counter_jump_btn")
+                                    ) {
+                                        Text(
+                                            text = "صفحة $currentVisiblePage من $pageCount",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFFFEF08A),
+                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
                                     }
-
-                                    Text(
-                                        text = "صفحة $currentVisiblePage / $pageCount",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFA7F3D0)
-                                    )
                                 }
                             }
                         }
@@ -2529,7 +2395,7 @@ private fun PdfRendererPageCard(
             if (bmp != null) {
                 Image(
                     bitmap = bmp.asImageBitmap(),
-                    contentDescription = "صفحة ${pageIndex + 1}",
+                    contentDescription = "صفحة ${pageIndex + 1} من $totalPages",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -2557,14 +2423,14 @@ private fun PdfRendererPageCard(
                     .align(Alignment.BottomEnd)
                     .padding(8.dp),
                 shape = RoundedCornerShape(50),
-                color = Color(0xFF0F172A).copy(alpha = 0.72f)
+                color = Color(0xFF0F172A).copy(alpha = 0.76f)
             ) {
                 Text(
-                    text = "${pageIndex + 1} / $totalPages",
+                    text = "صفحة ${pageIndex + 1} من $totalPages",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                 )
             }
         }
@@ -2588,45 +2454,37 @@ fun DeveloperCurriculumManagerSection(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.AutoStories,
-                    contentDescription = null,
-                    tint = DeepEmerald
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "فهرس المناهج الدراسية العراقية الموحد",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Text(
-                        text = "يضم ${IraqiCurriculumCatalog.allBooks.size} كتاباً منهجياً رسمياً مع بروتوكول تجاوز الحظر (Zero-Fail 403 Bypass)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Button(
-                onClick = { showFullCurriculumModal = true },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.MenuBook,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "استعراض وفحص مكتبة المناهج الرسمية",
+                    text = "فهرس المناهج الدراسية العراقية الموحد",
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.ExtraBold
                 )
+                Text(
+                    text = "يضم ${IraqiCurriculumCatalog.allBooks.size} كتاباً منهجياً رسمياً بمحرك تنزيل وقارئ PDF أصلي مدمج داخل التطبيق حصراً",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Surface(
+                onClick = { showFullCurriculumModal = true },
+                shape = RoundedCornerShape(50),
+                color = DeepEmerald,
+                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(50))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "استعراض وفحص مكتبة المناهج الرسمية",
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                }
             }
         }
     }
@@ -2664,21 +2522,18 @@ fun DeveloperCurriculumManagerSection(
                                 fontSize = 15.sp
                             )
                             Surface(
-                                shape = CircleShape,
+                                onClick = { showFullCurriculumModal = false },
+                                shape = RoundedCornerShape(50),
                                 color = Color.White.copy(alpha = 0.16f),
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .clickable { showFullCurriculumModal = false }
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "إغلاق",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
+                                Text(
+                                    text = "إغلاق",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.5.sp,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
                             }
                         }
                     }
@@ -2690,4 +2545,3 @@ fun DeveloperCurriculumManagerSection(
         }
     }
 }
-
