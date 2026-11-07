@@ -1302,77 +1302,118 @@ fun ChoreographedRoyalEmblemAnimation(
             }
 
             // =====================================================================
-            // STAGE 3 (0.68s - 1.35s): 3D Frosted Glass Plate with Pure "MADRASATI" Typography
+            // STAGE 3 (0.7s - 1.3s): Descending Golden Graduation Cap & Pendulum Tassel
             // =====================================================================
             if (capAlpha > 0.01f) {
-                val plateTargetCy = cy - 28f * unit
-                val dropOffsetY = (1f - capLandingEase) * (-36f * unit)
-                val plateCy = plateTargetCy + dropOffsetY
-                val plateScale = (0.78f + 0.22f * capLandingEase).coerceAtLeast(0.1f)
-                val plateW = 148f * unit
-                val plateH = 54f * unit
-                val plateLeft = cx - plateW / 2f
-                val plateTop = plateCy - plateH / 2f
+                val capTargetCy = cy - 34f * unit
+                val dropOffsetY = (1f - capLandingEase) * (-68f * unit)
+                val capCy = capTargetCy + dropOffsetY
+                val capScale = (0.72f + 0.28f * capLandingEase).coerceAtLeast(0.1f)
 
                 withTransform({
-                    scale(scaleX = plateScale, scaleY = plateScale, pivot = Offset(cx, plateCy))
+                    scale(scaleX = capScale, scaleY = capScale, pivot = Offset(cx, capCy))
                 }) {
-                    // 3D Drop Shadow under Frosted Glass Plate
-                    drawRoundRect(
-                        color = Color(0x8801110E).copy(alpha = 0.55f * capAlpha),
-                        topLeft = Offset(plateLeft, plateTop + 4.5f * unit),
-                        size = Size(plateW, plateH),
-                        cornerRadius = CornerRadius(16f * unit, 16f * unit)
+                    // Royal Graduation Cap Skullcap Base
+                    val capBasePath = Path().apply {
+                        moveTo(cx - 28f * unit, capCy + 4f * unit)
+                        lineTo(cx - 24f * unit, capCy + 20f * unit)
+                        quadraticTo(
+                            cx, capCy + 28f * unit,
+                            cx + 24f * unit, capCy + 20f * unit
+                        )
+                        lineTo(cx + 28f * unit, capCy + 4f * unit)
+                        close()
+                    }
+                    drawPath(
+                        path = capBasePath,
+                        color = GoldDeep.copy(alpha = capAlpha)
+                    )
+                    drawPath(
+                        path = capBasePath,
+                        color = Color(0xFFFEF3C7).copy(alpha = capAlpha),
+                        style = Stroke(width = 1.8f * unit, join = StrokeJoin.Round)
                     )
 
-                    // 3D Frosted Glass Plate Fill
-                    drawRoundRect(
+                    // Mortarboard Diamond Top
+                    val diamondPath = Path().apply {
+                        moveTo(cx, capCy - 18f * unit)
+                        lineTo(cx + 50f * unit, capCy - 2f * unit)
+                        lineTo(cx, capCy + 14f * unit)
+                        lineTo(cx - 50f * unit, capCy - 2f * unit)
+                        close()
+                    }
+                    drawPath(
+                        path = diamondPath,
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.28f * capAlpha),
-                                Color(0xFF14B8A6).copy(alpha = 0.18f * capAlpha),
-                                Color(0xFF042F2E).copy(alpha = 0.42f * capAlpha)
+                                Color(0xFFFEF3C7).copy(alpha = capAlpha),
+                                GoldAccent.copy(alpha = capAlpha),
+                                GoldDeep.copy(alpha = capAlpha)
                             ),
-                            start = Offset(plateLeft, plateTop),
-                            end = Offset(plateLeft + plateW, plateTop + plateH)
-                        ),
-                        topLeft = Offset(plateLeft, plateTop),
-                        size = Size(plateW, plateH),
-                        cornerRadius = CornerRadius(16f * unit, 16f * unit)
+                            start = Offset(cx - 50f * unit, capCy - 18f * unit),
+                            end = Offset(cx + 50f * unit, capCy + 14f * unit)
+                        )
+                    )
+                    drawPath(
+                        path = diamondPath,
+                        color = Color.White.copy(alpha = 0.85f * capAlpha),
+                        style = Stroke(width = 2.2f * unit, join = StrokeJoin.Round)
                     )
 
-                    // Glowing Royal Gold & Pearl Rim around the 3D Glass Plate
-                    drawRoundRect(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFFFFFDF7).copy(alpha = capAlpha),
-                                Color(0xFFF5D061).copy(alpha = capAlpha),
-                                Color(0xFFD4AF37).copy(alpha = capAlpha)
-                            ),
-                            start = Offset(plateLeft, plateTop),
-                            end = Offset(plateLeft + plateW, plateTop + plateH)
-                        ),
-                        topLeft = Offset(plateLeft, plateTop),
-                        size = Size(plateW, plateH),
-                        cornerRadius = CornerRadius(16f * unit, 16f * unit),
-                        style = Stroke(width = 2.4f * unit)
+                    // Center Golden Button Pivot on Mortarboard
+                    val pivotX = cx
+                    val pivotY = capCy - 2f * unit
+                    drawCircle(
+                        color = Color(0xFFFEF3C7).copy(alpha = capAlpha),
+                        radius = 4.2f * unit,
+                        center = Offset(pivotX, pivotY)
                     )
 
-                    // Golden Underline Bar inside 3D Glass Plate
-                    drawRoundRect(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color(0xFFF5D061).copy(alpha = 0.9f * capAlpha),
-                                Color.Transparent
-                            ),
-                            startX = plateLeft + 16f * unit,
-                            endX = plateLeft + plateW - 16f * unit
-                        ),
-                        topLeft = Offset(plateLeft + 18f * unit, plateTop + plateH - 10f * unit),
-                        size = Size(plateW - 36f * unit, 2.4f * unit),
-                        cornerRadius = CornerRadius(2f * unit, 2f * unit)
+                    // Real Physical Pendulum Tassel Swing
+                    val tasselAnchorX = cx + 34f * unit
+                    val tasselAnchorY = capCy + 4f * unit
+                    // Cord from center pivot to right edge of cap
+                    drawLine(
+                        color = Color(0xFFFEF3C7).copy(alpha = capAlpha),
+                        start = Offset(pivotX, pivotY),
+                        end = Offset(tasselAnchorX, tasselAnchorY),
+                        strokeWidth = 2.2f * unit,
+                        cap = StrokeCap.Round
                     )
+
+                    // Hanging Pendulum Tassel swinging around tasselAnchor
+                    withTransform({
+                        rotate(
+                            degrees = totalTasselSwingDeg,
+                            pivot = Offset(tasselAnchorX, tasselAnchorY)
+                        )
+                    }) {
+                        val tasselEndY = tasselAnchorY + 26f * unit
+                        drawLine(
+                            color = GoldAccent.copy(alpha = capAlpha),
+                            start = Offset(tasselAnchorX, tasselAnchorY),
+                            end = Offset(tasselAnchorX, tasselEndY),
+                            strokeWidth = 2.5f * unit,
+                            cap = StrokeCap.Round
+                        )
+                        // Golden Tassel Fringe Bell
+                        val fringePath = Path().apply {
+                            moveTo(tasselAnchorX - 5f * unit, tasselEndY + 9f * unit)
+                            lineTo(tasselAnchorX + 5f * unit, tasselEndY + 9f * unit)
+                            lineTo(tasselAnchorX + 2.5f * unit, tasselEndY - 1f * unit)
+                            lineTo(tasselAnchorX - 2.5f * unit, tasselEndY - 1f * unit)
+                            close()
+                        }
+                        drawPath(
+                            path = fringePath,
+                            color = Color(0xFFFDE68A).copy(alpha = capAlpha)
+                        )
+                        drawCircle(
+                            color = GoldAccent.copy(alpha = capAlpha),
+                            radius = 3.2f * unit,
+                            center = Offset(tasselAnchorX, tasselEndY)
+                        )
+                    }
                 }
             }
 
@@ -1394,39 +1435,6 @@ fun ChoreographedRoyalEmblemAnimation(
                         end = Offset(bandCenter + bandWidth, h)
                     ),
                     size = this.size
-                )
-            }
-        }
-
-        // Crisp 3D "MADRASATI" Typography centered inside the Frosted Glass Plate
-        if (capAlpha > 0.05f) {
-            Box(
-                modifier = Modifier
-                    .offset(y = (-24).dp)
-                    .graphicsLayer {
-                        alpha = capAlpha
-                        val s = (0.78f + 0.22f * capLandingEase).coerceAtLeast(0.1f)
-                        scaleX = s
-                        scaleY = s
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                // 3D Shadow Layer
-                androidx.compose.material3.Text(
-                    text = "MADRASATI",
-                    color = Color(0xAA011510),
-                    fontSize = (size.value * 0.088f).sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.6.sp,
-                    modifier = Modifier.offset(x = 1.dp, y = 1.5.dp)
-                )
-                // Main Pearl-Gold Layer
-                androidx.compose.material3.Text(
-                    text = "MADRASATI",
-                    color = Color(0xFFFFFDF7),
-                    fontSize = (size.value * 0.088f).sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.6.sp
                 )
             }
         }
@@ -2398,31 +2406,75 @@ fun ThreeDIllustrationBox(
                     )
                 )
 
-                // 4) 3D Glassmorphic Golden Crystal Capsule & Star above the 3D Books (Zero Graduation Cap)
-                drawRoundRect(
-                    brush = Brush.linearGradient(
-                        listOf(Color(0x55FFFFFF), Color(0x3314B8A6), Color(0x44042F2E))
-                    ),
-                    topLeft = Offset(w * 0.20f, h * 0.16f),
-                    size = Size(w * 0.60f, h * 0.22f),
-                    cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
-                )
-                drawRoundRect(
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFFFFFDF7), Color(0xFFF5D061), Color(0xFFD4AF37))
-                    ),
-                    topLeft = Offset(w * 0.20f, h * 0.16f),
-                    size = Size(w * 0.60f, h * 0.22f),
-                    cornerRadius = CornerRadius(w * 0.08f, w * 0.08f),
-                    style = Stroke(width = 2.2.dp.toPx())
-                )
-                drawRoundRect(
+                // 4) 3D Graduation Cap on top (Deep Navy/Charcoal Skullcap + Mortarboard + Golden Tassel)
+                val capSkull = Path().apply {
+                    moveTo(w * 0.33f, h * 0.30f)
+                    lineTo(w * 0.69f, h * 0.30f)
+                    lineTo(w * 0.66f, h * 0.44f)
+                    quadraticBezierTo(w * 0.51f, h * 0.50f, w * 0.36f, h * 0.44f)
+                    close()
+                }
+                drawPath(
+                    path = capSkull,
                     brush = Brush.horizontalGradient(
-                        listOf(Color(0xFFFFFDF7), Color(0xFFF5D061), Color(0xFFD4AF37))
-                    ),
-                    topLeft = Offset(w * 0.28f, h * 0.25f),
-                    size = Size(w * 0.44f, h * 0.045f),
-                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                        listOf(Color(0xFF1E293B), Color(0xFF334155), Color(0xFF0F172A))
+                    )
+                )
+
+                // Mortarboard 3D thickness
+                val capRim = Path().apply {
+                    moveTo(w * 0.12f, h * 0.25f)
+                    lineTo(w * 0.51f, h * 0.36f)
+                    lineTo(w * 0.90f, h * 0.25f)
+                    lineTo(w * 0.90f, h * 0.28f)
+                    lineTo(w * 0.51f, h * 0.39f)
+                    lineTo(w * 0.12f, h * 0.28f)
+                    close()
+                }
+                drawPath(capRim, color = Color(0xFF0F172A))
+
+                // Mortarboard top diamond
+                val capTop = Path().apply {
+                    moveTo(w * 0.12f, h * 0.25f)
+                    lineTo(w * 0.51f, h * 0.36f)
+                    lineTo(w * 0.90f, h * 0.25f)
+                    lineTo(w * 0.51f, h * 0.14f)
+                    close()
+                }
+                drawPath(
+                    path = capTop,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF475569), Color(0xFF1E293B), Color(0xFF0F172A))
+                    )
+                )
+
+                // Center button & Golden Tassel
+                drawCircle(
+                    color = Color(0xFFFBBF24),
+                    radius = 3.2.dp.toPx(),
+                    center = Offset(w * 0.51f, h * 0.25f)
+                )
+                val tasselCord = Path().apply {
+                    moveTo(w * 0.51f, h * 0.25f)
+                    quadraticBezierTo(w * 0.74f, h * 0.28f, w * 0.80f, h * 0.34f)
+                    lineTo(w * 0.80f, h * 0.50f)
+                }
+                drawPath(
+                    path = tasselCord,
+                    color = Color(0xFFF59E0B),
+                    style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+                )
+                val tasselFringe = Path().apply {
+                    moveTo(w * 0.80f, h * 0.46f)
+                    lineTo(w * 0.76f, h * 0.57f)
+                    lineTo(w * 0.84f, h * 0.57f)
+                    close()
+                }
+                drawPath(
+                    path = tasselFringe,
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xFFFBBF24), Color(0xFFD97706))
+                    )
                 )
             }
 

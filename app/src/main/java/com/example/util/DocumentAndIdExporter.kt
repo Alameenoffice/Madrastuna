@@ -86,14 +86,13 @@ object DocumentAndIdExporter {
         maxWidth: Float,
         paint: Paint
     ) {
-        val localized = AppLocalizationEngine.localize(text)
         val originalSize = paint.textSize
         var currentSize = originalSize
-        while (currentSize > 16f && paint.measureText(localized) > maxWidth) {
+        while (currentSize > 16f && paint.measureText(text) > maxWidth) {
             currentSize -= 1.5f
             paint.textSize = currentSize
         }
-        canvas.drawText(localized, rightX, y, paint)
+        canvas.drawText(text, rightX, y, paint)
         paint.textSize = originalSize
     }
 
@@ -105,14 +104,13 @@ object DocumentAndIdExporter {
         maxWidth: Float,
         paint: Paint
     ) {
-        val localized = AppLocalizationEngine.localize(text)
         val originalSize = paint.textSize
         var currentSize = originalSize
-        while (currentSize > 13f && paint.measureText(localized) > maxWidth) {
+        while (currentSize > 13f && paint.measureText(text) > maxWidth) {
             currentSize -= 1f
             paint.textSize = currentSize
         }
-        canvas.drawText(localized, centerX, y, paint)
+        canvas.drawText(text, centerX, y, paint)
         paint.textSize = originalSize
     }
 
@@ -385,11 +383,11 @@ object DocumentAndIdExporter {
         }
 
         // Row 1: Student Full Name on a single clean line
-        canvas.drawText(AppLocalizationEngine.localize("اسم الطالب الكامل:"), infoRightX, 292f, labelPaint)
+        canvas.drawText("اسم الطالب الكامل:", infoRightX, 292f, labelPaint)
         drawFittedRightText(canvas, student.fullNameWithFather, infoRightX, 340f, maxInfoWidth, valuePaint)
 
         // Row 2: Grade & Section
-        canvas.drawText(AppLocalizationEngine.localize("الصف والشعبة الدراسية:"), infoRightX, 398f, labelPaint)
+        canvas.drawText("الصف والشعبة الدراسية:", infoRightX, 398f, labelPaint)
         drawFittedRightText(
             canvas,
             "${student.gradeClass}  —  شعبة (${student.sectionName})",
@@ -403,7 +401,7 @@ object DocumentAndIdExporter {
         val cleanParentPhone = student.parentPhone.trim().takeIf {
             it.isNotEmpty() && !SecurityShieldHelper.isLegacyPlaceholderPhone(it)
         } ?: "غير مسجل"
-        canvas.drawText(AppLocalizationEngine.localize("كود الطالب الموحد / هاتف ولي الأمر:"), infoRightX, 502f, labelPaint)
+        canvas.drawText("كود الطالب الموحد / هاتف ولي الأمر:", infoRightX, 502f, labelPaint)
         drawFittedRightText(
             canvas,
             "${student.studentUsername}   |   $cleanParentPhone",
@@ -1062,9 +1060,9 @@ object DocumentAndIdExporter {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             textAlign = Paint.Align.RIGHT
         }
-        canvas.drawText(AppLocalizationEngine.localize("جمهورية العراق • وزارة التربية"), 558f, 46f, rightColPaintSub)
-        canvas.drawText(AppLocalizationEngine.localize(schoolConfig.schoolName.ifBlank { "مدرستي الذكية النموذجية" }), 558f, 66f, rightColPaintBold)
-        canvas.drawText(AppLocalizationEngine.localize("العام الدراسي: ${schoolConfig.academicYear}"), 558f, 84f, rightColPaintSub)
+        canvas.drawText("جمهورية العراق • وزارة التربية", 558f, 46f, rightColPaintSub)
+        canvas.drawText(schoolConfig.schoolName.ifBlank { "مدرستي الذكية النموذجية" }, 558f, 66f, rightColPaintBold)
+        canvas.drawText("العام الدراسي: ${schoolConfig.academicYear}", 558f, 84f, rightColPaintSub)
 
         // Left Column (Issue Date, Document Number, Period)
         val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -1080,9 +1078,9 @@ object DocumentAndIdExporter {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             textAlign = Paint.Align.LEFT
         }
-        canvas.drawText(AppLocalizationEngine.localize("تاريخ الإصدار: $dateStr"), 36f, 46f, leftColPaintBold)
-        canvas.drawText(AppLocalizationEngine.localize("رقم الوثيقة: $docNumber"), 36f, 65f, leftColPaintSub)
-        canvas.drawText(AppLocalizationEngine.localize("الفترة: ${periodLabel.take(22)}"), 36f, 84f, leftColPaintSub)
+        canvas.drawText("تاريخ الإصدار: $dateStr", 36f, 46f, leftColPaintBold)
+        canvas.drawText("رقم الوثيقة: $docNumber", 36f, 65f, leftColPaintSub)
+        canvas.drawText("الفترة: ${periodLabel.take(22)}", 36f, 84f, leftColPaintSub)
 
         // Center Column (School Emblem/Logo + Prominent Report Title Badge)
         val logo = decodeBase64Bitmap(schoolConfig.logoBase64)
@@ -1109,8 +1107,8 @@ object DocumentAndIdExporter {
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
             }
-            canvas.drawText(AppLocalizationEngine.localize("شعار"), centerX, 53f, emblemTextPaint)
-            canvas.drawText(AppLocalizationEngine.localize("المدرسة"), centerX, 65f, emblemTextPaint)
+            canvas.drawText("شعار", centerX, 53f, emblemTextPaint)
+            canvas.drawText("المدرسة", centerX, 65f, emblemTextPaint)
         }
 
         // Prominent Center Title Badge inside Header
@@ -1139,8 +1137,8 @@ object DocumentAndIdExporter {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText(AppLocalizationEngine.localize(documentTitle), centerX, 108f, titlePaint)
-        canvas.drawText(AppLocalizationEngine.localize(subtitle), centerX, 122f, subtitlePaint)
+        canvas.drawText(documentTitle, centerX, 108f, titlePaint)
+        canvas.drawText(subtitle, centerX, 122f, subtitlePaint)
     }
 
     /**
@@ -1357,8 +1355,8 @@ object DocumentAndIdExporter {
         val rightBox = RectF(395f, boxTop, 560f, boxBottom)
         canvas.drawRoundRect(rightBox, 8f, 8f, boxBgPaint)
         canvas.drawRoundRect(rightBox, 8f, 8f, boxBorderPaint)
-        canvas.drawText(AppLocalizationEngine.localize("توقيع المرشد / المعاون الإداري"), rightBox.centerX(), boxTop + 18f, headerTextPaint)
-        canvas.drawText("...........................", rightBox.centerX(), boxTop + 44f, subTextPaint)
+        canvas.drawText("توقيع المرشد / المعاون الإداري", rightBox.centerX(), boxTop + 18f, headerTextPaint)
+        canvas.drawText("الاسم والتوقيع: ...........................", rightBox.centerX(), boxTop + 44f, subTextPaint)
 
         // 2. Center Box: الختم الرسمي للمدرسة (Circular/Box Stamp Frame)
         val centerBox = RectF(215f, boxTop, 380f, boxBottom)
@@ -1370,8 +1368,8 @@ object DocumentAndIdExporter {
         }
         canvas.drawRoundRect(centerBox, 8f, 8f, stampDashPaint)
         canvas.drawCircle(centerBox.centerX(), centerBox.centerY() + 6f, 20f, stampDashPaint)
-        canvas.drawText(AppLocalizationEngine.localize("الختم الرسمي للمدرسة"), centerBox.centerX(), boxTop + 16f, headerTextPaint)
-        canvas.drawText(AppLocalizationEngine.localize("معتمد إلكترونياً"), centerBox.centerX(), centerBox.centerY() + 9f, subTextPaint)
+        canvas.drawText("الختم الرسمي للمدرسة", centerBox.centerX(), boxTop + 16f, headerTextPaint)
+        canvas.drawText("معتمد إلكترونياً", centerBox.centerX(), centerBox.centerY() + 9f, subTextPaint)
 
         // 3. Left Box: مصادقة مدير المدرسة: [اسم المدير]
         val leftBox = RectF(35f, boxTop, 200f, boxBottom)
@@ -1379,7 +1377,7 @@ object DocumentAndIdExporter {
         canvas.drawRoundRect(leftBox, 8f, 8f, boxBorderPaint)
         val cleanPrincipal = principalName.ifBlank { "إدارة المدرسة" }
         drawFittedCenterText(canvas, "مصادقة مدير المدرسة: $cleanPrincipal", leftBox.centerX(), boxTop + 18f, leftBox.width() - 12f, headerTextPaint)
-        canvas.drawText(AppLocalizationEngine.localize("التوقيع الرسمي: مصادق ومعتمد"), leftBox.centerX(), boxTop + 44f, subTextPaint)
+        canvas.drawText("التوقيع الرسمي: مصادق ومعتمد", leftBox.centerX(), boxTop + 44f, subTextPaint)
 
         // Bottom Page Numbering & School Address Bar
         val pageNumPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1389,7 +1387,7 @@ object DocumentAndIdExporter {
             textAlign = Paint.Align.CENTER
         }
         canvas.drawText(
-            AppLocalizationEngine.localize("صفحة $pageNumber من $totalPages   •   ${schoolConfig.schoolName} (${schoolConfig.address})"),
+            "صفحة $pageNumber من $totalPages   •   ${schoolConfig.schoolName} (${schoolConfig.address})",
             297.5f,
             812f,
             pageNumPaint

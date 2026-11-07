@@ -308,9 +308,6 @@ fun MadrasatiRootApp(
         // Global Smooth Interactive Image Lightbox Dialog
         GlobalImageLightboxDialog()
 
-        // Global 4-Language Selection Glass Modal (Arabic, Kurdish, Turkmen, English)
-        com.example.util.LanguageSelectionGlassModal()
-
         // Global Remote App Update Notification Modal / Banner (Managed by System Developer)
         val shouldShowUpdateModal = appUpdateConfig.isUpdateActive &&
             appUpdateConfig.apkDownloadUrl.isNotBlank() &&
@@ -1582,14 +1579,11 @@ fun AuthenticatedMainPlatform(
                             }
                         }
 
-                        // Left side (in RTL): Language Switcher Capsule + 3 Circular 3D Buttons + Soft Rose Logout Capsule
+                        // Left side (in RTL): 3 Circular 3D Buttons (Bell, Crescent, Gear) + Soft Rose Logout Capsule
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            // 0) 3D Glassmorphism Language Switcher Capsule (العربية | کوردی | Türkmençe | English)
-                            com.example.util.LanguageSwitcherGlassCapsule(isCompact = true)
-
                             // 1) Notification Bell (32.dp 3D white circle, navy icon)
                             Surface(
                                 onClick = {

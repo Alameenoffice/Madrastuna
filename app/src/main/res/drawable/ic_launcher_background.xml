@@ -5,8 +5,6 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- Deep Royal Emerald & Dark Teal 3D Gradient Base -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -15,91 +13,8 @@
                 android:endX="108"
                 android:endY="108"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#FF03221C" />
-                <item android:offset="0.52" android:color="#FF084C3E" />
-                <item android:offset="1.0" android:color="#FF0D6E59" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Soft Radial 3D Ambient Emerald Glow in Center -->
-    <path android:pathData="M0,0h108v108h-108z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:centerX="54"
-                android:centerY="48"
-                android:gradientRadius="56"
-                android:type="radial">
-                <item android:offset="0.0" android:color="#4414B8A6" />
-                <item android:offset="0.55" android:color="#180D9488" />
-                <item android:offset="1.0" android:color="#0003221C" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Upper 3D Glass Wave Layer -->
-    <path android:pathData="M0,26 C28,12 52,38 82,22 C94,16 102,18 108,22 L108,0 L0,0 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="0"
-                android:startY="0"
-                android:endX="108"
-                android:endY="36"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#28FFFFFF" />
-                <item android:offset="0.5" android:color="#125EEAD4" />
-                <item android:offset="1.0" android:color="#05FFFFFF" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Mid-Screen 3D Glass Ribbon Wave -->
-    <path android:pathData="M0,70 C24,56 48,82 76,66 C90,58 100,62 108,67 L108,108 L0,108 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="12"
-                android:startY="58"
-                android:endX="96"
-                android:endY="108"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#2210B981" />
-                <item android:offset="0.5" android:color="#14042F2E" />
-                <item android:offset="1.0" android:color="#36021713" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Lower 3D Glass Wave Reflection -->
-    <path android:pathData="M0,84 C32,74 64,94 108,78 L108,108 L0,108 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="0"
-                android:startY="76"
-                android:endX="108"
-                android:endY="108"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#1FD4AF37" />
-                <item android:offset="0.5" android:color="#12FFFFFF" />
-                <item android:offset="1.0" android:color="#2803221C" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Thin Glowing Royal Gold Inner Frame -->
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M24,18 L84,18 A6,6 0 0,1 90,24 L90,84 A6,6 0 0,1 84,90 L24,90 A6,6 0 0,1 18,84 L18,24 A6,6 0 0,1 24,18 Z"
-        android:strokeWidth="0.75">
-        <aapt:attr name="android:strokeColor">
-            <gradient
-                android:startX="18"
-                android:startY="18"
-                android:endX="90"
-                android:endY="90"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#99FDE68A" />
-                <item android:offset="0.5" android:color="#55D4AF37" />
-                <item android:offset="1.0" android:color="#88F59E0B" />
+                <item android:offset="0.0" android:color="#0F172A" />
+                <item android:offset="1.0" android:color="#065F46" />
             </gradient>
         </aapt:attr>
     </path>

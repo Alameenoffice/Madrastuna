@@ -1,5 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@drawable/ic_launcher_background" />
-    <item android:drawable="@drawable/ic_launcher_foreground" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Deep Emerald Luxury Background -->
+    <path
+        android:fillColor="#064E3B"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#047857"
+        android:pathData="M54,14A40,40 0,1 1,14 54A40,40 0,0 1,54 14Z" />
+    <!-- Golden Ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FBBF24"
+        android:strokeWidth="2.5"
+        android:pathData="M54,17A37,37 0,1 1,17 54A37,37 0,0 1,54 17Z" />
+    <!-- Royal Golden New Year Star & Festive Crown -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M54,24L61,41L79,43L65,55L69,73L54,63L39,73L43,55L29,43L47,41Z" />
+    <!-- Inner Bright Gold Star Core -->
+    <path
+        android:fillColor="#FEF08A"
+        android:pathData="M54,34L58,44L68,45L60,52L63,62L54,56L45,62L48,52L40,45L50,44Z" />
+    <!-- Festive Sparkles -->
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M33,27L35,31L39,33L35,35L33,39L31,35L27,33L31,31Z" />
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M75,27L77,31L81,33L77,35L75,39L73,35L69,33L73,31Z" />
+</vector>
