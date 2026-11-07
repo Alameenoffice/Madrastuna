@@ -1172,15 +1172,24 @@ fun UnifiedLoginScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Seamless 3D Wave Hero Header for Unified Login Screen (Exclusive 3D Digital Portal & Key Animation)
-                    ThreeDHeroHeaderCard(
-                        title = "منصة مدرستي الذكية",
-                        subtitle = "بوابة تسجيل الدخول الموحدة والآمنة للهيئة الإدارية والتدريسية والطلبة وأولياء الأمور",
-                        rightPillText = "",
-                        rightPillIcon = Icons.Filled.School,
-                        leftPillText = "",
-                        leftPillIcon = Icons.Filled.VerifiedUser,
-                        illustrationType = ThreeDIllustrationType.SECURITY_SHIELD
+                    // Razor-Sharp Full-Resolution Native Compose Vector Crest + Live "منصة مدرستي الذكية" & "MADRASATI"
+                    RoyalAcademicCrestBrandHeader(
+                        isDarkMode = isDarkMode,
+                        logoSize = 108.dp,
+                        subtitleText = "بوابة تسجيل الدخول الموحدة والآمنة للهيئة الإدارية والتدريسية والطلبة وأولياء الأمور",
+                        onLogoClick = {
+                            val now = System.currentTimeMillis()
+                            if (now - lastLogoTapTime > 2200L) {
+                                logoTapCount = 1
+                            } else {
+                                logoTapCount++
+                            }
+                            lastLogoTapTime = now
+                            if (logoTapCount >= 5) {
+                                logoTapCount = 0
+                                showActivationCodeDialog = true
+                            }
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))

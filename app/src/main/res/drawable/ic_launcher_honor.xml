@@ -1,41 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Deep Emerald Honor Background -->
-    <path
-        android:fillColor="#064E3B"
-        android:pathData="M0,0h108v108h-108z" />
-    <path
-        android:fillColor="#047857"
-        android:pathData="M54,14A40,40 0,1 1,14 54A40,40 0,0 1,54 14Z" />
-    <!-- Double Gold Honor Ring -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FBBF24"
-        android:strokeWidth="3"
-        android:pathData="M54,17A37,37 0,1 1,17 54A37,37 0,0 1,54 17Z" />
-    <!-- Royal Golden Championship Trophy Handles -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FDE68A"
-        android:strokeWidth="3.5"
-        android:pathData="M36,34C28,34 27,46 36,49M72,34C80,34 81,46 72,49" />
-    <!-- Trophy Cup Body -->
-    <path
-        android:fillColor="#FBBF24"
-        android:pathData="M35,28L73,28L69,53C67,62 61,67 54,67C47,67 41,62 39,53Z" />
-    <!-- Trophy Pedestal Stem & Base -->
-    <path
-        android:fillColor="#F59E0B"
-        android:pathData="M49,67h10v9h-10z" />
-    <path
-        android:fillColor="#FDE68A"
-        android:pathData="M38,76h32v6h-32z" />
-    <!-- Star of Excellence on Trophy -->
-    <path
-        android:fillColor="#FEF9C3"
-        android:pathData="M54,34L57,41L65,41L59,46L61,53L54,48L47,53L49,46L43,41L51,41Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background" />
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+</layer-list>

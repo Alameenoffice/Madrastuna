@@ -1,32 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Deep Emerald Background -->
-    <path
-        android:fillColor="#064E3B"
-        android:pathData="M0,0h108v108h-108z" />
-    <path
-        android:fillColor="#047857"
-        android:pathData="M54,14A40,40 0,1 1,14 54A40,40 0,0 1,54 14Z" />
-    <!-- Golden Sovereign Outer Ring -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FBBF24"
-        android:strokeWidth="2.5"
-        android:pathData="M54,17A37,37 0,1 1,17 54A37,37 0,0 1,54 17Z" />
-    <!-- Luxury Golden National Shield (درع وشعار وطني ذهبي) -->
-    <path
-        android:fillColor="#FBBF24"
-        android:pathData="M54,24L76,33L76,53C76,68 65,78 54,83C43,78 32,68 32,53L32,33Z" />
-    <!-- Inner Emerald Shield Core -->
-    <path
-        android:fillColor="#064E3B"
-        android:pathData="M54,29L71,36L71,52C71,64 62,72 54,77C46,72 37,64 37,52L37,36Z" />
-    <!-- Central Sovereign Golden Star & Emblem -->
-    <path
-        android:fillColor="#FDE047"
-        android:pathData="M54,37L58,47L68,47L60,53L63,63L54,57L45,63L48,53L40,47L50,47Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background" />
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+</layer-list>

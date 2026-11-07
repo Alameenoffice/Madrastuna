@@ -93,18 +93,21 @@ object FirebaseConfigConstants {
     }
 }
 
-enum class SchoolType(val arabicLabel: String) {
+enum class SchoolType(private val rawArabicLabel: String) {
     PUBLIC("مدرسة حكومية"),
-    PRIVATE("مدرسة أهلية")
+    PRIVATE("مدرسة أهلية");
+
+    val arabicLabel: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicLabel)
 }
 
 enum class SchoolStage(
-    val arabicLabel: String,
+    private val rawArabicLabel: String,
     val defaultClasses: List<String>,
     val defaultSubjects: List<String>
 ) {
     PRIMARY(
-        arabicLabel = "مدرسة ابتدائية",
+        rawArabicLabel = "مدرسة ابتدائية",
         defaultClasses = listOf(
             "الأول الابتدائي",
             "الثاني الابتدائي",
@@ -124,7 +127,7 @@ enum class SchoolStage(
         )
     ),
     MIDDLE(
-        arabicLabel = "مدرسة متوسطة",
+        rawArabicLabel = "مدرسة متوسطة",
         defaultClasses = listOf(
             "الأول المتوسط",
             "الثاني المتوسط",
@@ -143,7 +146,7 @@ enum class SchoolStage(
         )
     ),
     PREPARATORY(
-        arabicLabel = "مدرسة إعدادية",
+        rawArabicLabel = "مدرسة إعدادية",
         defaultClasses = listOf(
             "الرابع الإعدادي",
             "الخامس الإعدادي",
@@ -161,7 +164,7 @@ enum class SchoolStage(
         )
     ),
     SECONDARY(
-        arabicLabel = "ثانوية",
+        rawArabicLabel = "ثانوية",
         defaultClasses = listOf(
             "الأول المتوسط",
             "الثاني المتوسط",
@@ -183,36 +186,45 @@ enum class SchoolStage(
         )
     );
 
+    val arabicLabel: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicLabel)
+
     val staffTitleSingular: String
-        get() = if (this == PRIMARY) "المعلم" else "المدرس"
+        get() = com.example.util.AppLocalizationEngine.localize(if (this == PRIMARY) "المعلم" else "المدرس")
 
     val staffTitlePlural: String
-        get() = if (this == PRIMARY) "المعلمين" else "المدرسين"
+        get() = com.example.util.AppLocalizationEngine.localize(if (this == PRIMARY) "المعلمين" else "المدرسين")
 
     val staffIndefiniteSingular: String
-        get() = if (this == PRIMARY) "معلم" else "مدرس"
+        get() = com.example.util.AppLocalizationEngine.localize(if (this == PRIMARY) "معلم" else "مدرس")
 
     val staffIndefinitePlural: String
-        get() = if (this == PRIMARY) "معلمين" else "مدرسين"
+        get() = com.example.util.AppLocalizationEngine.localize(if (this == PRIMARY) "معلمين" else "مدرسين")
 }
 
 /**
  * Job title for the school administrator is exclusively "المدير".
  */
-enum class UserRole(val arabicTitle: String) {
+enum class UserRole(private val rawArabicTitle: String) {
     ADMIN("المدير"),
     TEACHER("كادر تدريسي"),
     PARENT("ولي أمر"),
-    STUDENT("طالب")
+    STUDENT("طالب");
+
+    val arabicTitle: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicTitle)
 }
 
-enum class AttendanceStatus(val arabicLabel: String) {
+enum class AttendanceStatus(private val rawArabicLabel: String) {
     PRESENT("حاضر"),
     ABSENT("غائب"),
     LATE("متأخر"),
     EXCUSED("مجاز"),
     HOLIDAY("عطلة رسمية"),
     UNRECORDED("بانتظار الرصد");
+
+    val arabicLabel: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicLabel)
 
     companion object {
         val manualSelectableStatuses: List<AttendanceStatus> = listOf(
@@ -224,23 +236,29 @@ enum class AttendanceStatus(val arabicLabel: String) {
     }
 }
 
-enum class ReportType(val arabicLabel: String) {
+enum class ReportType(private val rawArabicLabel: String) {
     APPRECIATION("شكر وتقدير"),
     ACADEMIC_NOTE("ملاحظة علمية"),
     BEHAVIOR_ALERT("تنبيه سلوكي"),
-    PARENT_SUMMONS("استدعاء ولي أمر")
+    PARENT_SUMMONS("استدعاء ولي أمر");
+
+    val arabicLabel: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicLabel)
 }
 
-enum class NotificationType(val arabicLabel: String) {
+enum class NotificationType(private val rawArabicLabel: String) {
     ATTENDANCE("غياب وحضور"),
     HOMEWORK("واجب وتحضير"),
     GRADES("درجات وامتحانات"),
     REPORT("تبليغ إداري"),
     TUITION("قسط دراسي"),
-    GENERAL("إشعار عام")
+    GENERAL("إشعار عام");
+
+    val arabicLabel: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicLabel)
 }
 
-enum class AppSection(val arabicTitle: String) {
+enum class AppSection(private val rawArabicTitle: String) {
     DASHBOARD("الرئيسية"),
     LIVE_OPERATIONS_RADAR("موجز الدوام اليومي"),
     ATTENDANCE("الحضور والغياب"),
@@ -255,15 +273,21 @@ enum class AppSection(val arabicTitle: String) {
     REPORTS_CHAT("البلاغات والتواصل"),
     EVENTS_NEWS("الفعاليات والأخبار"),
     ADMIN_ACCOUNTS("إدارة الحسابات"),
-    SETTINGS("الإعدادات")
+    SETTINGS("الإعدادات");
+
+    val arabicTitle: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicTitle)
 }
 
-enum class StudentEnrollmentStatus(val key: String, val arabicLabel: String) {
+enum class StudentEnrollmentStatus(val key: String, private val rawArabicLabel: String) {
     ACTIVE("active", "مستمر بالدوام"),
     SUSPENDED_TEMP("suspended_temp", "فصل مؤقت"),
     EXPELLED("expelled", "فصل دائمي"),
     DEREGISTERED("deregistered", "ترقين قيد"),
     TRANSFERRED("transferred", "منقول إلى مدرسة أخرى");
+
+    val arabicLabel: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicLabel)
 
     companion object {
         fun fromKeyOrName(raw: String): StudentEnrollmentStatus {
@@ -272,6 +296,7 @@ enum class StudentEnrollmentStatus(val key: String, val arabicLabel: String) {
             return entries.firstOrNull {
                 it.name.equals(clean, ignoreCase = true) ||
                     it.key.equals(clean, ignoreCase = true) ||
+                    it.rawArabicLabel == clean ||
                     it.arabicLabel == clean
             } ?: ACTIVE
         }
@@ -1218,8 +1243,8 @@ object GradingRules {
 
 enum class GradeAssessmentPeriod(
     val key: String,
-    val arabicTitle: String,
-    val shortLabel: String
+    private val rawArabicTitle: String,
+    private val rawShortLabel: String
 ) {
     DAILY("daily", "التقييم اليومي", "اليومي"),
     MONTH_1("month1", "الشهر الأول", "شهر 1"),
@@ -1228,6 +1253,12 @@ enum class GradeAssessmentPeriod(
     MONTH_3("month3", "الشهر الثالث", "شهر 3"),
     MONTH_4("month4", "الشهر الرابع", "شهر 4"),
     FINAL_EXAM("finalExam", "الامتحان النهائي", "النهائي");
+
+    val arabicTitle: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawArabicTitle)
+
+    val shortLabel: String
+        get() = com.example.util.AppLocalizationEngine.localize(rawShortLabel)
 
     companion object {
         fun fromKey(rawKey: String): GradeAssessmentPeriod? {
@@ -1335,23 +1366,27 @@ data class SubjectGrade(
 
     // حالة الطالب الأكاديمية: لا يُحكم بالرسوب أو النجاح النهائي إلا بعد اكتمال جميع الامتحانات
     val academicStatusLabel: String
-        get() = when {
-            !isAllExamsCompleted -> "مستمر"
-            normalizedPercentage >= 50 -> "ناجح"
-            else -> "راسب"
-        }
+        get() = com.example.util.AppLocalizationEngine.localize(
+            when {
+                !isAllExamsCompleted -> "مستمر"
+                normalizedPercentage >= 50 -> "ناجح"
+                else -> "راسب"
+            }
+        )
 
     // التقدير التلقائي (لا يظهر "راسب" إطلاقاً أثناء العام الدراسي طالما لم تكتمل جميع الامتحانات)
     val ratingLabel: String
-        get() = when {
-            !isAllExamsCompleted -> "مستمر"
-            normalizedPercentage >= 90 -> "ممتاز"
-            normalizedPercentage >= 80 -> "جيد جداً"
-            normalizedPercentage >= 70 -> "جيد"
-            normalizedPercentage >= 60 -> "متوسط"
-            normalizedPercentage >= 50 -> "مقبول"
-            else -> "راسب"
-        }
+        get() = com.example.util.AppLocalizationEngine.localize(
+            when {
+                !isAllExamsCompleted -> "مستمر"
+                normalizedPercentage >= 90 -> "ممتاز"
+                normalizedPercentage >= 80 -> "جيد جداً"
+                normalizedPercentage >= 70 -> "جيد"
+                normalizedPercentage >= 60 -> "متوسط"
+                normalizedPercentage >= 50 -> "مقبول"
+                else -> "راسب"
+            }
+        )
 
     val evaluationText: String get() = ratingLabel
     val month1: Int get() = month1Score
