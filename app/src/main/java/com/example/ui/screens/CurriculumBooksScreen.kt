@@ -138,17 +138,22 @@ private fun buildCurriculumTrustAllSslSocketFactory(): Pair<SSLSocketFactory, Ho
 }
 
 private fun HttpURLConnection.configureCurriculumStreamConnection(
-    sslConfig: Pair<SSLSocketFactory, HostnameVerifier>?
+    sslConfig: Pair<SSLSocketFactory, HostnameVerifier>?,
+    cookieHeaderValue: String = ""
 ) {
     connectTimeout = 25000
     readTimeout = 45000
-    instanceFollowRedirects = true
+    // Disable automatic redirect following so our Manual Redirect Loop handles HTTPS <-> HTTP transitions and cookies
+    instanceFollowRedirects = false
     requestMethod = "GET"
     setRequestProperty("User-Agent", NATIVE_CURRICULUM_USER_AGENT)
     setRequestProperty("Referer", OFFICIAL_MANAHJ_REFERER)
     setRequestProperty("Accept", "application/pdf,application/octet-stream,*/*;q=0.9")
     setRequestProperty("Accept-Language", "ar-IQ,ar;q=0.9,en-US;q=0.8,en;q=0.7")
     setRequestProperty("Connection", "keep-alive")
+    if (cookieHeaderValue.isNotBlank()) {
+        setRequestProperty("Cookie", cookieHeaderValue)
+    }
     if (this is HttpsURLConnection && sslConfig != null) {
         sslSocketFactory = sslConfig.first
         hostnameVerifier = sslConfig.second
@@ -713,20 +718,19 @@ fun CurriculumBooksScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
+                        .padding(horizontal = 10.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Stage Capsules Row (Pure Text Glassmorphic Capsules)
+                    // Stage Capsules Row (Pure Text Glassmorphic Capsules — Full Unclipped Text)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         CurriculumStageTab.entries.forEach { stageTab ->
                             val isSelected = selectedStage == stageTab
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(44.dp)
                                     .clip(RoundedCornerShape(50))
                                     .clickable {
                                         selectedStage = stageTab
@@ -745,7 +749,7 @@ fun CurriculumBooksScreen(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fillMaxWidth()
                                         .then(
                                             if (isSelected) {
                                                 Modifier.background(
@@ -757,17 +761,16 @@ fun CurriculumBooksScreen(
                                                 Modifier
                                             }
                                         )
-                                        .padding(horizontal = 6.dp),
+                                        .padding(PaddingValues(horizontal = 6.dp, vertical = 10.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = stageTab.arabicTitle,
-                                        fontSize = 11.5.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
                                         color = if (isSelected) Color.White else if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF1E293B),
                                         maxLines = 1,
                                         softWrap = false,
-                                        overflow = TextOverflow.Ellipsis,
                                         textAlign = TextAlign.Center
                                     )
                                 }
@@ -882,40 +885,23 @@ fun CurriculumBooksScreen(
             }
         }
 
-        // 4) Strict Native In-App Reader Notice
+        // 4) Full-Width Class Curriculum Section Title (Zero Squished Side Capsules)
         item(key = "on_demand_policy_notice") {
-            Row(
+            Text(
+                text = if (searchQuery.isBlank()) {
+                    "كتب الصف: $selectedClass (${displayedBooks.size} منهج رسمي)"
+                } else {
+                    "نتائج البحث الفوري (${displayedBooks.size} كتاب)"
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = if (searchQuery.isBlank()) {
-                        "كتب الصف: $selectedClass (${displayedBooks.size} منهج رسمي)"
-                    } else {
-                        "نتائج البحث الفوري (${displayedBooks.size} كتاب)"
-                    },
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                )
-
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.6f) else Color(0xFFECFDF5),
-                    border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.45f))
-                ) {
-                    Text(
-                        text = "قارئ PDF أصلي مدمج",
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                    )
-                }
-            }
+                fontSize = 14.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
 
         // 5) Books Cards List
@@ -1062,142 +1048,75 @@ private fun CurriculumBookLuxuryCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
+            // Clean Spacious Header: Large Subject Title + Unclipped Row of Grade Badge & Instant Browse Badge
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    // Geometric 3D Book Artwork on Canvas
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFF065F46),
-                                        Color(0xFF047857),
-                                        Color(0xFF0F3D5E)
-                                    )
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.size(28.dp)) {
-                            val w = size.width
-                            val h = size.height
-                            val leftPage = Path().apply {
-                                moveTo(w * 0.50f, h * 0.82f)
-                                lineTo(w * 0.10f, h * 0.68f)
-                                lineTo(w * 0.10f, h * 0.20f)
-                                lineTo(w * 0.50f, h * 0.34f)
-                                close()
-                            }
-                            val rightPage = Path().apply {
-                                moveTo(w * 0.50f, h * 0.82f)
-                                lineTo(w * 0.90f, h * 0.68f)
-                                lineTo(w * 0.90f, h * 0.20f)
-                                lineTo(w * 0.50f, h * 0.34f)
-                                close()
-                            }
-                            drawPath(leftPage, color = Color.White.copy(alpha = 0.92f))
-                            drawPath(rightPage, color = Color(0xFFA7F3D0))
-                            drawLine(
-                                color = Color(0xFFFBBF24),
-                                start = Offset(w * 0.50f, h * 0.30f),
-                                end = Offset(w * 0.50f, h * 0.86f),
-                                strokeWidth = 2.2.dp.toPx()
-                            )
-                        }
-                    }
+                Text(
+                    text = book.subjectTitle,
+                    fontSize = 16.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
+                        border = BorderStroke(0.9.dp, Color(0xFF10B981).copy(alpha = 0.5f))
                     ) {
                         Text(
-                            text = book.subjectTitle,
-                            fontSize = 15.5.sp,
+                            text = book.gradeClass,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                            color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            softWrap = false
                         )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
-                                border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.45f))
-                            ) {
-                                Text(
-                                    text = book.gradeClass,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = if (isDarkMode) Color(0xFF1E3A8A).copy(alpha = 0.45f) else Color(0xFFEFF6FF)
-                            ) {
-                                Text(
-                                    text = book.stage.arabicTitle,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDarkMode) Color(0xFF93C5FD) else Color(0xFF1D4ED8),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
                     }
-                }
 
-                // Pure-text status badge capsule
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (isSavedLocally) {
-                        if (isDarkMode) Color(0xFF065F46) else Color(0xFFDCFCE7)
-                    } else {
-                        if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF1F5F9)
-                    },
-                    border = BorderStroke(
-                        0.9.dp,
-                        if (isSavedLocally) Color(0xFF10B981) else Color(0xFF94A3B8).copy(alpha = 0.4f)
-                    )
-                ) {
-                    Text(
-                        text = if (isSavedLocally) {
-                            if (fileSizeLabel.isNotBlank()) "جاهز محلياً • $fileSizeLabel" else "جاهز محلياً"
-                        } else {
-                            "تحميل فوري عند الفتح"
-                        },
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                    Surface(
+                        shape = RoundedCornerShape(50),
                         color = if (isSavedLocally) {
-                            if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                            if (isDarkMode) Color(0xFF065F46) else Color(0xFFDCFCE7)
                         } else {
-                            if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                            if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF1F5F9)
                         },
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                        maxLines = 1,
-                        softWrap = false
-                    )
+                        border = BorderStroke(
+                            0.9.dp,
+                            if (isSavedLocally) Color(0xFF10B981) else Color(0xFF94A3B8).copy(alpha = 0.45f)
+                        )
+                    ) {
+                        Text(
+                            text = if (isSavedLocally) {
+                                if (fileSizeLabel.isNotBlank()) "جاهز محلياً • $fileSizeLabel" else "جاهز محلياً"
+                            } else {
+                                "تصفح فوري داخل التطبيق"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isSavedLocally) {
+                                if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                            } else {
+                                if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
 
@@ -1403,6 +1322,24 @@ private fun NativeInAppPdfReaderModal(
                 try {
                     if (tempFile.exists()) tempFile.delete()
 
+                    val sessionCookies = mutableListOf<String>()
+
+                    fun extractCookiesFromConnection(conn: HttpURLConnection) {
+                        runCatching {
+                            val headerMap = conn.headerFields
+                            headerMap?.forEach { (key, values) ->
+                                if (key != null && key.equals("Set-Cookie", ignoreCase = true)) {
+                                    values?.forEach { rawCookie ->
+                                        val pair = rawCookie.substringBefore(";").trim()
+                                        if (pair.isNotBlank() && pair !in sessionCookies) {
+                                            sessionCookies.add(pair)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Warm-up session cookie on manahj.edu.iq
                     runCatching {
                         val warmConn = (URL(OFFICIAL_MANAHJ_REFERER).openConnection() as HttpURLConnection).apply {
@@ -1411,6 +1348,7 @@ private fun NativeInAppPdfReaderModal(
                             readTimeout = 8000
                         }
                         warmConn.connect()
+                        extractCookiesFromConnection(warmConn)
                         runCatching { warmConn.inputStream.close() }
                         warmConn.disconnect()
                     }
@@ -1419,12 +1357,36 @@ private fun NativeInAppPdfReaderModal(
                     var redirectCount = 0
                     var activeConnection: HttpURLConnection? = null
 
-                    while (redirectCount < 8) {
-                        val urlObj = URL(currentUrl)
-                        val conn = (urlObj.openConnection() as HttpURLConnection).apply {
-                            configureCurriculumStreamConnection(sslConfig)
+                    // Manual Redirect Loop (up to 6 hops) handling HTTPS <-> HTTP redirects & Cookie forwarding
+                    val visitedHopUrls = mutableSetOf<String>()
+                    while (redirectCount < 6) {
+                        visitedHopUrls.add(currentUrl)
+                        val cookieHeaderStr = sessionCookies.joinToString("; ")
+                        val hopConnResult = runCatching {
+                            val u = URL(currentUrl)
+                            (u.openConnection() as HttpURLConnection).apply {
+                                configureCurriculumStreamConnection(sslConfig, cookieHeaderStr)
+                                connect()
+                            }
+                        }.recoverCatching {
+                            val altProtocolUrl = if (currentUrl.startsWith("http://")) {
+                                "https://" + currentUrl.removePrefix("http://")
+                            } else if (currentUrl.startsWith("https://")) {
+                                "http://" + currentUrl.removePrefix("https://")
+                            } else {
+                                currentUrl
+                            }
+                            currentUrl = altProtocolUrl
+                            val u = URL(altProtocolUrl)
+                            (u.openConnection() as HttpURLConnection).apply {
+                                configureCurriculumStreamConnection(sslConfig, cookieHeaderStr)
+                                connect()
+                            }
                         }
-                        conn.connect()
+
+                        val conn = hopConnResult.getOrThrow()
+                        extractCookiesFromConnection(conn)
+
                         val code = conn.responseCode
                         if (code in listOf(
                                 HttpURLConnection.HTTP_MOVED_PERM,
@@ -1435,10 +1397,19 @@ private fun NativeInAppPdfReaderModal(
                             )
                         ) {
                             val location = conn.getHeaderField("Location")
+                                ?: conn.getHeaderField("location")
+                            val baseUrlForResolve = conn.url ?: URL(currentUrl)
                             conn.disconnect()
                             if (!location.isNullOrBlank()) {
-                                val resolvedUrl = URL(urlObj, location.trim()).toString()
-                                currentUrl = normalizeCurriculumPdfUrl(resolvedUrl)
+                                val resolvedUrl = normalizeCurriculumPdfUrl(
+                                    URL(baseUrlForResolve, location.trim()).toString()
+                                )
+                                // If server redirects https -> http to the exact same path that was already visited, use resolvedUrl directly
+                                currentUrl = if (resolvedUrl in visitedHopUrls && resolvedUrl.startsWith("http://")) {
+                                    resolvedUrl
+                                } else {
+                                    resolvedUrl
+                                }
                                 redirectCount++
                                 continue
                             }
