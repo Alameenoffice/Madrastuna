@@ -74,6 +74,7 @@ fun MyApplicationTheme(
     }
 
     LaunchedEffect(Unit) {
+        com.example.util.AppLocalizationEngine.init(context)
         val loadedFontFamily = ArabicFontLoader.loadArabicFontFamily(context)
         activeFontFamily = loadedFontFamily
     }
@@ -83,8 +84,13 @@ fun MyApplicationTheme(
     }
 
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val activeLanguage = com.example.util.AppLocalizationEngine.currentLanguageState
+    val activeLayoutDirection = if (activeLanguage.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    CompositionLocalProvider(
+        LocalLayoutDirection provides activeLayoutDirection,
+        com.example.util.LocalAppLanguage provides activeLanguage
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = dynamicTypography

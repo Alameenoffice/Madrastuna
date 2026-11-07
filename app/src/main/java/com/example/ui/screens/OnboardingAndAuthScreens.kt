@@ -154,6 +154,8 @@ fun OnboardingScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        com.example.util.LanguageSwitcherGlassCapsule(isCompact = true)
+
                         Surface(
                             onClick = onToggleDarkMode,
                             shape = CircleShape,
@@ -1145,23 +1147,30 @@ fun UnifiedLoginScreen(
                         }
                     }
 
-                    Surface(
-                        onClick = onToggleDarkMode,
-                        shape = CircleShape,
-                        color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
-                        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
-                        shadowElevation = 3.dp,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .testTag("login_theme_toggle")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                                contentDescription = "تبديل الوضع الليلي والنهاري",
-                                tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
-                                modifier = Modifier.size(18.dp)
-                            )
+                        com.example.util.LanguageSwitcherGlassCapsule(isCompact = true)
+
+                        Surface(
+                            onClick = onToggleDarkMode,
+                            shape = CircleShape,
+                            color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                            border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                            shadowElevation = 3.dp,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("login_theme_toggle")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                    contentDescription = "تبديل الوضع الليلي والنهاري",
+                                    tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
