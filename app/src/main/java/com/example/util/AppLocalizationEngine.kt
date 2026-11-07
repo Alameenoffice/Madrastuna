@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -40,12 +41,13 @@ enum class AppLanguage(
     val nativeName: String,
     val subtitleName: String,
     val shortCodeLabel: String,
+    val badgeSymbol: String,
     val isRtl: Boolean
 ) {
-    ARABIC("ar", "العربية", "اللغة العربية الرسمية", "عربي", true),
-    KURDISH("ku", "کوردی", "زمانی کوردی فەرمی", "کوردی", true),
-    TURKMEN("tr", "Türkmençe", "Resmi Türkmen Dili", "Türkmen", false),
-    ENGLISH("en", "English", "Official English Language", "EN", false);
+    ARABIC("ar", "العربية", "اللغة العربية الرسمية", "عربي", "ع", true),
+    KURDISH("ku", "کوردی", "زمانی کوردی فەرمی", "کوردی", "ک", true),
+    TURKMEN("tr", "Türkmençe", "Resmi Türkmen Dili", "Türkmen", "TR", false),
+    ENGLISH("en", "English", "Official English Language", "EN", "EN", false);
 
     companion object {
         fun fromCode(code: String?): AppLanguage {
@@ -473,6 +475,62 @@ object AppLocalizationEngine {
     }
 
     /**
+     * Checks whether [c] is an Arabic letter/diacritic or alphanumeric word character.
+     * Used by the Safe Token Replacement Rule so dictionary keys NEVER slice the middle of an Arabic word
+     * (e.g. preventing "حاضر" from matching inside "الحاضرون", "من" inside "الأنظمة", "مدرس" inside "للمدرسة", or "يومي" inside "يومية").
+     */
+    private fun isWordBoundaryChar(c: Char): Boolean {
+        if (c in '\uE000'..'\uF8FF') return true // Private-use placeholder boundary
+        if (c in '\u0600'..'\u06FF' || c in '\u0750'..'\u077F' || c in '\u08A0'..'\u08FF') {
+            // Arabic punctuation like ، ؛ ؟ are boundaries; Arabic letters/diacritics are word chars
+            return c == '،' || c == '؛' || c == '؟' || c == '٪' || c == '٬' || c == '٫'
+        }
+        return !Character.isLetterOrDigit(c)
+    }
+
+    /**
+     * Safe Token Replacement Rule (Longest-Match-First & Full Word Tokenization):
+     * Replaces occurrences of [arabicPhrase] in [source] ONLY when bounded by word boundaries
+     * (start/end of string, spaces, or punctuation) and substitutes a protected placeholder token
+     * so already-translated segments are never re-processed or corrupted.
+     */
+    private fun replaceWholePhraseWithProtectedToken(
+        source: String,
+        arabicPhrase: String,
+        translatedValue: String,
+        protectedTokens: MutableList<String>
+    ): String {
+        if (arabicPhrase.isEmpty() || !source.contains(arabicPhrase)) return source
+        val sb = StringBuilder(source.length + 16)
+        var searchFrom = 0
+        val phraseLen = arabicPhrase.length
+        while (searchFrom < source.length) {
+            val idx = source.indexOf(arabicPhrase, searchFrom)
+            if (idx < 0) {
+                sb.append(source, searchFrom, source.length)
+                break
+            }
+            val endIdx = idx + phraseLen
+            val leftOk = idx == 0 || isWordBoundaryChar(source[idx - 1]) || isWordBoundaryChar(arabicPhrase.first())
+            val rightOk = endIdx == source.length || isWordBoundaryChar(source[endIdx]) || isWordBoundaryChar(arabicPhrase.last())
+
+            if (leftOk && rightOk) {
+                sb.append(source, searchFrom, idx)
+                val tokenIndex = protectedTokens.size
+                protectedTokens.add(translatedValue)
+                sb.append('\uE000').append(tokenIndex).append('\uE001')
+                searchFrom = endIdx
+            } else {
+                sb.append(source, searchFrom, idx + 1)
+                searchFrom = idx + 1
+            }
+        }
+        return sb.toString()
+    }
+
+    private val pageOfRegex = Regex("""صفحة\s+(\d+)\s+من\s+(\d+)""")
+
+    /**
      * Translates any Arabic string (exact UI label, compound sentence, grade, section, subject, status, or PDF text)
      * into the active language (`ARABIC`, `KURDISH`, `TURKMEN`, `ENGLISH`).
      */
@@ -536,31 +594,74 @@ object AppLocalizationEngine {
             }
         }
 
-        // 3. Compound & Dynamic Pattern Replacement
+        // 3. Compound & Dynamic Pattern Replacement (Longest-Match-First + Protected Word Boundaries)
         var working = raw
-        // Replace parenthesized or trailing section letters like "شعبة (أ)" or "(أ)"
+
+        // Format "صفحة X من Y" cleanly before general tokenization
+        if (working.contains("صفحة") && working.contains("من")) {
+            working = pageOfRegex.replace(working) { match ->
+                val p = match.groupValues[1]
+                val total = match.groupValues[2]
+                when (lang) {
+                    AppLanguage.ARABIC -> "صفحة $p من $total"
+                    AppLanguage.KURDISH -> "لاپەڕە $p لە $total"
+                    AppLanguage.TURKMEN -> "Sahypa $p / $total"
+                    AppLanguage.ENGLISH -> "Page $p of $total"
+                }
+            }
+        }
+
+        val protectedTokens = mutableListOf<String>()
+
+        // Replace parenthesized or explicit section labels first
         if (lang == AppLanguage.TURKMEN || lang == AppLanguage.ENGLISH) {
             working = working
                 .replace("(أ)", "(A)")
                 .replace("(ب)", "(B)")
                 .replace("(ج)", "(C)")
                 .replace("(د)", "(D)")
-                .replace("شعبة أ", if (lang == AppLanguage.TURKMEN) "Şube A" else "Section A")
-                .replace("شعبة ب", if (lang == AppLanguage.TURKMEN) "Şube B" else "Section B")
-                .replace("شعبة ج", if (lang == AppLanguage.TURKMEN) "Şube C" else "Section C")
-                .replace("شعبة د", if (lang == AppLanguage.TURKMEN) "Şube D" else "Section D")
+            val secPrefix = if (lang == AppLanguage.TURKMEN) "Şube" else "Section"
+            working = replaceWholePhraseWithProtectedToken(working, "شعبة أ", "$secPrefix A", protectedTokens)
+            working = replaceWholePhraseWithProtectedToken(working, "شعبة ب", "$secPrefix B", protectedTokens)
+            working = replaceWholePhraseWithProtectedToken(working, "شعبة ج", "$secPrefix C", protectedTokens)
+            working = replaceWholePhraseWithProtectedToken(working, "شعبة د", "$secPrefix D", protectedTokens)
         } else if (lang == AppLanguage.KURDISH) {
-            working = working
-                .replace("شعبة أ", "لقی ئـ")
-                .replace("شعبة ب", "لقی ب")
-                .replace("شعبة ج", "لقی ج")
-                .replace("شعبة د", "لقی د")
+            working = replaceWholePhraseWithProtectedToken(working, "شعبة أ", "لقی ئـ", protectedTokens)
+            working = replaceWholePhraseWithProtectedToken(working, "شعبة ب", "لقی ب", protectedTokens)
+            working = replaceWholePhraseWithProtectedToken(working, "شعبة ج", "لقی ج", protectedTokens)
+            working = replaceWholePhraseWithProtectedToken(working, "شعبة د", "لقی د", protectedTokens)
         }
 
         for (entry in phraseReplacements) {
             if (working.contains(entry.ar)) {
-                working = working.replace(entry.ar, entry.forLanguage(lang))
+                working = replaceWholePhraseWithProtectedToken(
+                    source = working,
+                    arabicPhrase = entry.ar,
+                    translatedValue = entry.forLanguage(lang),
+                    protectedTokens = protectedTokens
+                )
             }
+        }
+
+        if (protectedTokens.isNotEmpty()) {
+            val restored = StringBuilder(working.length + 32)
+            var i = 0
+            while (i < working.length) {
+                if (working[i] == '\uE000') {
+                    val endMarker = working.indexOf('\uE001', i + 1)
+                    if (endMarker > i + 1) {
+                        val tokenIdx = working.substring(i + 1, endMarker).toIntOrNull()
+                        if (tokenIdx != null && tokenIdx in protectedTokens.indices) {
+                            restored.append(protectedTokens[tokenIdx])
+                            i = endMarker + 1
+                            continue
+                        }
+                    }
+                }
+                restored.append(working[i])
+                i++
+            }
+            working = restored.toString()
         }
 
         return working
@@ -568,9 +669,9 @@ object AppLocalizationEngine {
 }
 
 /**
- * 3D Glassmorphism Language Switcher Capsule (Pure Typography — Zero Classic Icons Policy).
- * Displays the active language name inside a glowing frosted-glass capsule and opens the
- * 4-Language Selection Dialog on tap.
+ * 3D Glassmorphism Circular Language Badge (38.dp Circle):
+ * Displays the active language code (`ع` for Arabic, `ک` for Kurdish, `TR` for Turkmen, `EN` for English)
+ * inside a sleek 38.dp glass circle and opens the 4-Language Selection Dialog on tap.
  */
 @Composable
 fun LanguageSwitcherGlassCapsule(
@@ -578,46 +679,41 @@ fun LanguageSwitcherGlassCapsule(
     isCompact: Boolean = false
 ) {
     val activeLang = LocalAppLanguage.current
+    val circleSize = 38.dp
     Surface(
         modifier = modifier
-            .heightIn(min = if (isCompact) 34.dp else 38.dp)
-            .clip(RoundedCornerShape(50))
+            .requiredSize(circleSize)
+            .aspectRatio(1f)
+            .clip(CircleShape)
             .clickable { AppLocalizationEngine.isLanguageModalOpen = true }
             .testTag("language_switcher_capsule"),
-        shape = RoundedCornerShape(50),
+        shape = CircleShape,
         color = Color(0x33FFFFFF),
-        border = BorderStroke(1.2.dp, Color(0xCCF5D061))
+        border = BorderStroke(1.2.dp, Color(0xCCF5D061)),
+        shadowElevation = 3.dp
     ) {
         Box(
             modifier = Modifier
+                .fillMaxSize()
                 .background(
-                    Brush.horizontalGradient(
+                    Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF064E3B).copy(alpha = 0.85f),
-                            Color(0xFF0D9488).copy(alpha = 0.75f)
+                            Color(0xFF0D9488).copy(alpha = 0.90f),
+                            Color(0xFF064E3B).copy(alpha = 0.95f)
                         )
                     )
-                )
-                .padding(horizontal = if (isCompact) 12.dp else 14.dp, vertical = 6.dp),
+                ),
             contentAlignment = Alignment.Center
         ) {
             androidx.compose.material3.Text(
-                text = "${activeLang.nativeName} • ${
-                    tr(
-                        ar = "اللغة",
-                        ku = "زمان",
-                        tr = "Dil",
-                        en = "Lang",
-                        lang = activeLang
-                    )
-                }",
-                style = MaterialTheme.typography.labelMedium,
-                fontSize = if (isCompact) 11.5.sp else 12.5.sp,
+                text = activeLang.badgeSymbol,
+                style = MaterialTheme.typography.labelLarge,
+                fontSize = if (activeLang.badgeSymbol.length == 1) 14.5.sp else 11.5.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color(0xFFFFFDF7),
                 maxLines = 1,
                 softWrap = false,
-                overflow = TextOverflow.Ellipsis
+                textAlign = TextAlign.Center
             )
         }
     }

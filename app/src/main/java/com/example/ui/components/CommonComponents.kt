@@ -841,7 +841,8 @@ fun Base64AvatarImage(
     }
     Box(
         modifier = Modifier
-            .size(size)
+            .requiredSize(size)
+            .aspectRatio(1f)
             .clip(CircleShape)
             .background(
                 brush = Brush.linearGradient(
@@ -5073,7 +5074,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                     top = 18.dp + topOverlapPadding,
                     bottom = 18.dp
                 ),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -5096,8 +5097,8 @@ fun SeamlessWaveTeacherSpotlightSection(
                     ) {
                         Box(
                             modifier = Modifier
-                                .width(3.dp)
-                                .height(58.dp)
+                                .width(3.5.dp)
+                                .height(72.dp)
                                 .clip(RoundedCornerShape(50))
                                 .background(
                                     Brush.verticalGradient(
@@ -5108,74 +5109,68 @@ fun SeamlessWaveTeacherSpotlightSection(
 
                         Column(
                             modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            Text(
+                                text = "نخبة الكادر التدريسي",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFA7F3D0),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFFBBF24).copy(alpha = 0.24f)
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFFFBBF24).copy(alpha = 0.24f)
-                                ) {
-                                    Text(
-                                        text = slide.rankLabel,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFFEF08A),
-                                        maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                    )
-                                }
                                 Text(
-                                    text = "نخبة الكادر التدريسي",
+                                    text = slide.rankLabel,
                                     fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFA7F3D0),
-                                    maxLines = 1
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFFEF08A),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                                 )
                             }
 
                             Text(
                                 text = "الأستاذ(ة): ${slide.fullName}",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontSize = 16.5.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            Text(
+                                text = slide.subjects,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFD1FAE5),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.18f)
                             ) {
                                 Text(
-                                    text = slide.subjects,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFD1FAE5),
+                                    text = String.format(
+                                        java.util.Locale.US,
+                                        "%.1f / 5.0 (%d تقييم)",
+                                        slide.avgRating,
+                                        slide.count
+                                    ),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFFEF08A),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                                 )
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.18f)
-                                ) {
-                                    Text(
-                                        text = String.format(
-                                            java.util.Locale.US,
-                                            "%.1f / 5.0 (%d تقييم)",
-                                            slide.avgRating,
-                                            slide.count
-                                        ),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFFEF08A),
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp)
-                                    )
-                                }
                             }
                         }
                     }
@@ -5185,37 +5180,40 @@ fun SeamlessWaveTeacherSpotlightSection(
 
                 ThreeDIllustrationBox(
                     type = ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D,
-                    modifier = Modifier.size(78.dp)
+                    modifier = Modifier.requiredSize(74.dp)
                 )
             }
 
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = Color.White.copy(alpha = 0.16f),
                         modifier = Modifier
+                            .weight(1f, fill = false)
                             .clip(RoundedCornerShape(50))
                             .clickable { onOpenEvaluationSection() }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Icon(Icons.Filled.Star, contentDescription = null, tint = Color(0xFFFEF08A), modifier = Modifier.size(14.dp))
                             Text(
                                 text = "عرض تقييمات الكادر التدريسي",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -5224,7 +5222,8 @@ fun SeamlessWaveTeacherSpotlightSection(
                     if (slides.size > 1) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.padding(start = 8.dp)
                         ) {
                             slides.forEachIndexed { idx, _ ->
                                 val isSelected = idx == activeIndex
@@ -5253,7 +5252,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                             .testTag("hide_top_teacher_from_home_btn")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
@@ -5262,7 +5261,9 @@ fun SeamlessWaveTeacherSpotlightSection(
                                 text = "إزالة من الرئيسية",
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }

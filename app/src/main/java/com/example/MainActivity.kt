@@ -1486,13 +1486,13 @@ fun AuthenticatedMainPlatform(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Right side (in RTL): Hamburger Menu + Avatar (40.dp) + Name & Full Unclipped "• School Name"
+                        // Right side (in RTL): Hamburger Menu + Avatar (42.dp un-squished circle) + User Name & School Name
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(end = 4.dp)
+                                .padding(end = 6.dp)
                         ) {
                             if (isSideDrawerEnabled) {
                                 Surface(
@@ -1509,7 +1509,9 @@ fun AuthenticatedMainPlatform(
                                     ),
                                     shadowElevation = 2.dp,
                                     modifier = Modifier
-                                        .size(34.dp)
+                                        .requiredSize(34.dp)
+                                        .aspectRatio(1f)
+                                        .clip(CircleShape)
                                         .testTag("top_hamburger_menu_button")
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
@@ -1528,7 +1530,10 @@ fun AuthenticatedMainPlatform(
                                 color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFD1FAE5),
                                 border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
                                 shadowElevation = 3.dp,
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier
+                                    .requiredSize(42.dp)
+                                    .aspectRatio(1f)
+                                    .clip(CircleShape)
                             ) {
                                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                     Base64AvatarImage(
@@ -1536,7 +1541,7 @@ fun AuthenticatedMainPlatform(
                                             ?: schoolConfig.logoBase64,
                                         fallbackIcon = Icons.Filled.Person,
                                         contentDescription = currentUser?.fullName ?: schoolConfig.schoolName,
-                                        size = 36.dp,
+                                        size = 38.dp,
                                         tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
                                     )
                                 }
@@ -1546,12 +1551,12 @@ fun AuthenticatedMainPlatform(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(1.dp)
                             ) {
-                                val headerDisplayName = currentUser?.fullName?.ifBlank { schoolConfig.schoolName }
-                                    ?: schoolConfig.schoolName
+                                val headerDisplayName = currentUser?.fullName?.ifBlank { "المدير" }
+                                    ?: "المدير"
                                 Text(
                                     text = headerDisplayName,
                                     style = MaterialTheme.typography.titleSmall,
-                                    fontSize = if (headerDisplayName.length > 18) 10.5.sp else 11.5.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (isDarkMode) Color.White else Color(0xFF0F172A),
                                     maxLines = 1,
@@ -1560,11 +1565,11 @@ fun AuthenticatedMainPlatform(
                                 )
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(4.5.dp)
+                                            .requiredSize(5.dp)
                                             .clip(CircleShape)
                                             .background(if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669))
                                     )
@@ -1582,12 +1587,12 @@ fun AuthenticatedMainPlatform(
                             }
                         }
 
-                        // Left side (in RTL): Language Switcher Capsule + 3 Circular 3D Buttons + Soft Rose Logout Capsule
+                        // Left side (in RTL): 38.dp Circular Language Badge + 3 Circular 3D Buttons + Soft Rose Logout Capsule
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            // 0) 3D Glassmorphism Language Switcher Capsule (العربية | کوردی | Türkmençe | English)
+                            // 0) 38.dp 3D Glassmorphism Circular Language Badge (ع | ک | TR | EN)
                             com.example.util.LanguageSwitcherGlassCapsule(isCompact = true)
 
                             // 1) Notification Bell (32.dp 3D white circle, navy icon)
@@ -1604,7 +1609,8 @@ fun AuthenticatedMainPlatform(
                                 ),
                                 shadowElevation = 3.dp,
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .requiredSize(32.dp)
+                                    .aspectRatio(1f)
                                     .testTag("top_notifications_bell")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -1646,7 +1652,8 @@ fun AuthenticatedMainPlatform(
                                 ),
                                 shadowElevation = 3.dp,
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .requiredSize(32.dp)
+                                    .aspectRatio(1f)
                                     .testTag("top_theme_toggle")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -1670,7 +1677,8 @@ fun AuthenticatedMainPlatform(
                                 ),
                                 shadowElevation = 3.dp,
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .requiredSize(32.dp)
+                                    .aspectRatio(1f)
                                     .testTag("top_settings_button")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -1721,7 +1729,7 @@ fun AuthenticatedMainPlatform(
                         }
                     }
 
-                    // Scrollable 3D Section Capsule Tabs Strip
+                    // Scrollable 3D Section Capsule Tabs Strip (with Graphical Icons + Titles)
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1767,15 +1775,21 @@ fun AuthenticatedMainPlatform(
                                                 Modifier
                                             }
                                         )
-                                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
+                                    Icon(
+                                        imageVector = pillIcon,
+                                        contentDescription = section.arabicTitle,
+                                        tint = pillContentColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                     Text(
                                         text = section.arabicTitle,
                                         color = pillContentColor,
                                         style = MaterialTheme.typography.labelLarge,
-                                        fontSize = 12.5.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold,
                                         maxLines = 1,
                                         softWrap = false
@@ -1787,7 +1801,7 @@ fun AuthenticatedMainPlatform(
                 }
             },
             bottomBar = {
-                // 3D Rounded White Bottom Navigation Bar with vertical dividers & glowing mint active indicator
+                // 3D Rounded White Bottom Navigation Bar with Graphical Icons, vertical dividers & glowing mint active indicator
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1812,7 +1826,7 @@ fun AuthenticatedMainPlatform(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        bottomNavItems.forEachIndexed { index, (section, _) ->
+                        bottomNavItems.forEachIndexed { index, (section, icon) ->
                             val selected = activeSection == section
                             val activeBg = if (isDarkMode) {
                                 Color(0xFF059669).copy(alpha = 0.25f)
@@ -1837,14 +1851,20 @@ fun AuthenticatedMainPlatform(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 9.dp, bottom = 7.dp, start = 4.dp, end = 4.dp),
+                                        .padding(top = 7.dp, bottom = 6.dp, start = 2.dp, end = 2.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = section.arabicTitle,
+                                        tint = textTint,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                     Text(
                                         text = section.arabicTitle,
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 11.2.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
                                         color = textTint,
                                         maxLines = 1,
@@ -1854,7 +1874,7 @@ fun AuthenticatedMainPlatform(
                                     // Bottom thick emerald indicator bar on active tab
                                     Box(
                                         modifier = Modifier
-                                            .width(32.dp)
+                                            .width(28.dp)
                                             .height(3.dp)
                                             .clip(RoundedCornerShape(50))
                                             .background(

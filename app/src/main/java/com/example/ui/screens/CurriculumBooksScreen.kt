@@ -1,18 +1,29 @@
 package com.example.ui.screens
 
+import android.annotation.SuppressLint
+import android.app.DownloadManager
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -152,23 +163,90 @@ private suspend fun importPdfUriToInternalBookStorage(
 }
 
 /**
+ * يقوم بجدولة تنزيل مباشر للكتاب داخل التطبيق عبر `android.app.DownloadManager`
+ * مع تمرير كوكيز الجلسة الشرعية (`Cookie`) و (`User-Agent`) المستخلصة من `WebView` المدمج،
+ * وحفظه مباشرة في: `setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "book_${bookId}.pdf")`.
+ */
+private fun enqueueDirectBookDownloadWithSessionCookies(
+    context: Context,
+    book: CurriculumBookItem,
+    downloadUrl: String,
+    cookies: String?,
+    userAgent: String?
+): Long? {
+    return runCatching {
+        val cleanUrl = normalizeCurriculumPdfUrl(downloadUrl.ifBlank { book.normalizedPdfUrl })
+        val appDownloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        if (appDownloadsDir != null) {
+            val targetFile = File(appDownloadsDir, "book_${book.id}.pdf")
+            if (targetFile.exists() && !isValidDownloadedCurriculumPdf(targetFile)) {
+                targetFile.delete()
+            }
+        }
+
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+            ?: return@runCatching null
+
+        val effectiveUa = userAgent?.takeIf { it.isNotBlank() }
+            ?: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+
+        val request = DownloadManager.Request(Uri.parse(cleanUrl)).apply {
+            addRequestHeader("User-Agent", effectiveUa)
+            addRequestHeader("Referer", "https://manahj.edu.iq/")
+            addRequestHeader("Accept", "application/pdf,application/octet-stream,*/*;q=0.8")
+            if (!cookies.isNullOrBlank()) {
+                addRequestHeader("Cookie", cookies)
+            }
+            setTitle("كتاب ${book.subjectTitle} - ${book.gradeClass}")
+            setDescription("جاري تنزيل الكتاب المنهجي لفتحه تلقائياً داخل التطبيق")
+            setMimeType("application/pdf")
+            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+            setAllowedOverMetered(true)
+            setAllowedOverRoaming(true)
+            setDestinationInExternalFilesDir(
+                context,
+                Environment.DIRECTORY_DOWNLOADS,
+                "book_${book.id}.pdf"
+            )
+        }
+        dm.enqueue(request)
+    }.getOrNull()
+}
+
+/**
  * دالة الفحص والبحث التلقائي الذكي في الهاتف (`autoFindAndImportBookPdf`):
  * تبحث عن ملف الكتاب تلقائياً في:
- * 1. مجلد التطبيق الداخلي (`File(context.filesDir, "books/book_${bookId}.pdf")`) ومجلد التخزين المحلي للتطبيق.
+ * 1. مجلد التطبيق الداخلي (`File(context.filesDir, "books/book_${bookId}.pdf")`) ومجلد `getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)`.
  * 2. مجلد تنزيلات الهاتف العام `Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)`
- *    للبحث عن أي ملف PDF يطابق رقم الكتاب في الرابط (مثل `1881.pdf` أو `1881 (1).pdf` أو `1881 (2).pdf` أو يحتوي على رقم الملف أو اسم المادة) وحجمه أكبر من 50 KB.
+ *    للبحث عن أي ملف PDF يطابق رقم الكتاب في الرابط (مثل `1881.pdf` أو `1881 (1).pdf`) أو أحدث ملف PDF تم تنزيله للتو.
  * 3. استعلام `MediaStore.Downloads` (`contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ...)`)
- *    للبحث عن أحدث ملف PDF في التنزيلات يبدأ برقم ملف الكتاب (`1881%`)، وبمجرد العثور عليه ينسخه بصمت عبر `contentResolver.openInputStream(uri)` إلى مجلد التطبيق الداخلي!
+ *    للبحث عن أحدث ملف PDF في التنزيلات ونسخه بصمت عبر `contentResolver.openInputStream(uri)` إلى مجلد التطبيق الداخلي!
  */
 private suspend fun autoFindAndImportBookPdf(
     context: Context,
-    book: CurriculumBookItem
+    book: CurriculumBookItem,
+    acceptRecentPdfSinceMs: Long = 0L
 ): File? = withContext(Dispatchers.IO) {
     val internalFile = IraqiCurriculumCatalog.getInternalBookFile(context, book.id)
 
     // 1. فحص مجلد التطبيق الداخلي أولاً: File(context.filesDir, "books/book_${bookId}.pdf")
     if (isValidDownloadedCurriculumPdf(internalFile)) {
         return@withContext internalFile
+    }
+
+    // 1-ب. فحص مسار DownloadManager المدمج داخل التطبيق: getExternalFilesDir(DIRECTORY_DOWNLOADS)/book_${book.id}.pdf
+    runCatching {
+        val appExtDownloads = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        if (appExtDownloads != null) {
+            val dmFile = File(appExtDownloads, "book_${book.id}.pdf")
+            if (isValidDownloadedCurriculumPdf(dmFile)) {
+                dmFile.copyTo(internalFile, overwrite = true)
+                if (isValidDownloadedCurriculumPdf(internalFile)) {
+                    return@withContext internalFile
+                }
+                return@withContext dmFile
+            }
+        }
     }
 
     // فحص المسار المحلي الرديف داخل التطبيق في حال كان محفوظاً من جلسة سابقة
@@ -212,15 +290,27 @@ private suspend fun autoFindAndImportBookPdf(
         @Suppress("DEPRECATION")
         val publicDownloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         if (publicDownloadsDir != null && publicDownloadsDir.exists() && publicDownloadsDir.isDirectory) {
-            val matchedFile = publicDownloadsDir
+            val allValidPdfs = publicDownloadsDir
                 .listFiles()
                 ?.filter { file ->
                     file.isFile &&
+                        file.name.lowercase(Locale.ROOT).endsWith(".pdf") &&
                         file.length() > MIN_VALID_BOOK_BYTES &&
-                        matchesBookFileName(file.name) &&
                         hasPdfMagicSignature(file)
                 }
-                ?.maxByOrNull { it.lastModified() }
+                .orEmpty()
+
+            val matchedFile = allValidPdfs
+                .filter { file -> matchesBookFileName(file.name) }
+                .maxByOrNull { it.lastModified() }
+                ?: if (acceptRecentPdfSinceMs > 0L) {
+                    // يلتقط أحدث ملف PDF نزل في مجلد Downloads خلال جلسة التنزيل الحالية
+                    allValidPdfs
+                        .filter { file -> file.lastModified() >= (acceptRecentPdfSinceMs - 20_000L) }
+                        .maxByOrNull { it.lastModified() }
+                } else {
+                    null
+                }
 
             if (matchedFile != null) {
                 val tempCopy = File(internalFile.parentFile, "scan_copy_${book.id}.pdf")
@@ -240,8 +330,8 @@ private suspend fun autoFindAndImportBookPdf(
         }
     }
 
-    // 3. استعلام MediaStore.Downloads للبحث عن أحدث ملف PDF في التنزيلات يبدأ برقم ملف الكتاب (مثل 1881%)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && fileNum.isNotBlank()) {
+    // 3. استعلام MediaStore.Downloads للبحث عن أحدث ملف PDF في التنزيلات
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         runCatching {
             val resolver = context.contentResolver
             val projection = arrayOf(
@@ -250,8 +340,8 @@ private suspend fun autoFindAndImportBookPdf(
                 MediaStore.Downloads.SIZE,
                 MediaStore.Downloads.DATE_MODIFIED
             )
-            val selection = "${MediaStore.Downloads.DISPLAY_NAME} LIKE ? AND ${MediaStore.Downloads.SIZE} > ?"
-            val selectionArgs = arrayOf("$fileNum%", MIN_VALID_BOOK_BYTES.toString())
+            val selection = "${MediaStore.Downloads.SIZE} > ?"
+            val selectionArgs = arrayOf(MIN_VALID_BOOK_BYTES.toString())
             val sortOrder = "${MediaStore.Downloads.DATE_MODIFIED} DESC"
 
             resolver.query(
@@ -263,10 +353,16 @@ private suspend fun autoFindAndImportBookPdf(
             )?.use { cursor ->
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_MODIFIED)
+                var recentFallbackId: Long? = null
+
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val displayName = cursor.getString(nameCol).orEmpty()
-                    if (matchesBookFileName(displayName) || displayName.startsWith(fileNum)) {
+                    val dateModifiedMs = cursor.getLong(dateCol) * 1000L
+                    val isPdfName = displayName.lowercase(Locale.ROOT).endsWith(".pdf")
+
+                    if (matchesBookFileName(displayName) || (fileNum.isNotBlank() && displayName.startsWith(fileNum))) {
                         val contentUri = ContentUris.withAppendedId(
                             MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                             id
@@ -275,6 +371,21 @@ private suspend fun autoFindAndImportBookPdf(
                         if (imported != null && isValidDownloadedCurriculumPdf(imported)) {
                             return@withContext imported
                         }
+                    } else if (acceptRecentPdfSinceMs > 0L && isPdfName && recentFallbackId == null &&
+                        dateModifiedMs >= (acceptRecentPdfSinceMs - 25_000L)
+                    ) {
+                        recentFallbackId = id
+                    }
+                }
+
+                if (recentFallbackId != null) {
+                    val contentUri = ContentUris.withAppendedId(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        recentFallbackId
+                    )
+                    val imported = importPdfUriToInternalBookStorage(context, contentUri, book)
+                    if (imported != null && isValidDownloadedCurriculumPdf(imported)) {
+                        return@withContext imported
                     }
                 }
             }
@@ -1436,7 +1547,8 @@ private fun NativeInAppPdfReaderModal(
     var panOffsetX by remember(bookId) { mutableFloatStateOf(0f) }
     var showJumpToPageBar by remember(bookId) { mutableStateOf(false) }
     var jumpPageInput by remember(bookId) { mutableStateOf("") }
-    var browserLaunchedOnce by remember(sessionRequest) { mutableStateOf(false) }
+    val sessionStartTimeMs = remember(sessionRequest) { System.currentTimeMillis() }
+    var activeDownloadId by remember(sessionRequest) { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(inAppBannerMessage) {
         if (inAppBannerMessage != null) {
@@ -1499,57 +1611,182 @@ private fun NativeInAppPdfReaderModal(
         }
     }
 
-    // الفحص الأولي + الفحص الدوري كل ثانية لالتقاط الكتاب من التنزيلات تلقائياً
+    // WebView مدمج خفي لتوليد كوكيز الجلسة الشرعية لموقع manahj.edu.iq وتمريرها فوراً إلى DownloadManager
+    if (pdfRendererHolder == null) {
+        @SuppressLint("SetJavaScriptEnabled")
+        AndroidView(
+            modifier = Modifier.size(1.dp),
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(this, true)
+
+                    setDownloadListener { url, userAgent, _, _, _ ->
+                        if (activeDownloadId == null) {
+                            val cookies = cookieManager.getCookie(url)
+                                ?: cookieManager.getCookie("https://manahj.edu.iq")
+                            val dlId = enqueueDirectBookDownloadWithSessionCookies(
+                                context = ctx,
+                                book = book,
+                                downloadUrl = url,
+                                cookies = cookies,
+                                userAgent = userAgent
+                            )
+                            if (dlId != null) {
+                                activeDownloadId = dlId
+                            }
+                        }
+                    }
+
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView?,
+                            request: WebResourceRequest?
+                        ): Boolean {
+                            val targetUrl = request?.url?.toString().orEmpty()
+                            if (targetUrl.lowercase(Locale.ROOT).endsWith(".pdf") && activeDownloadId == null) {
+                                val cookies = cookieManager.getCookie(targetUrl)
+                                    ?: cookieManager.getCookie("https://manahj.edu.iq")
+                                val dlId = enqueueDirectBookDownloadWithSessionCookies(
+                                    context = ctx,
+                                    book = book,
+                                    downloadUrl = targetUrl,
+                                    cookies = cookies,
+                                    userAgent = view?.settings?.userAgentString
+                                )
+                                if (dlId != null) {
+                                    activeDownloadId = dlId
+                                    return true
+                                }
+                            }
+                            return false
+                        }
+
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            if (activeDownloadId == null && !url.isNullOrBlank()) {
+                                val cookies = cookieManager.getCookie(url)
+                                    ?: cookieManager.getCookie("https://manahj.edu.iq")
+                                val dlId = enqueueDirectBookDownloadWithSessionCookies(
+                                    context = ctx,
+                                    book = book,
+                                    downloadUrl = book.normalizedPdfUrl,
+                                    cookies = cookies,
+                                    userAgent = view?.settings?.userAgentString
+                                )
+                                if (dlId != null) {
+                                    activeDownloadId = dlId
+                                }
+                            }
+                        }
+                    }
+
+                    loadUrl(
+                        book.normalizedPdfUrl,
+                        mapOf("Referer" to "https://manahj.edu.iq/")
+                    )
+                }
+            }
+        )
+    }
+
+    // الفحص الأولي + الفحص الدوري كل 800ms لالتقاط الكتاب من DownloadManager أو من التنزيلات تلقائياً
     LaunchedEffect(sessionRequest) {
         val existing = autoFindAndImportBookPdf(context, book)
-        if (existing != null && !sessionRequest.launchBrowserOnOpenIfMissing) {
-            if (openBookFileInRenderer(existing)) {
-                return@LaunchedEffect
-            }
-        } else if (existing != null && sessionRequest.launchBrowserOnOpenIfMissing) {
-            // إذا ضغط المستخدم على تنزيل/فتح والملف نزل بالفعل في التنزيلات، افتحه مباشرة
-            if (openBookFileInRenderer(existing)) {
-                return@LaunchedEffect
-            }
+        if (existing != null && openBookFileInRenderer(existing)) {
+            return@LaunchedEffect
         }
 
-        // إذا لم يكن الكتاب نازلاً بعد، افتح رابط الكتاب في المتصفح لتنزيله وشغّل الالتقاط التلقائي
         isScanningOrWaitingForBrowser = true
-        if (!browserLaunchedOnce) {
-            browserLaunchedOnce = true
-            launchBrowserForBookDownload(
+
+        // إذا لم ينطلق DownloadManager خلال أول ثانيتين من الـ WebView، نقوم بجدولة التنزيل المباشر تلقائياً
+        delay(1200L)
+        if (pdfRendererHolder == null && activeDownloadId == null) {
+            val cookies = runCatching {
+                CookieManager.getInstance().getCookie(book.normalizedPdfUrl)
+                    ?: CookieManager.getInstance().getCookie("https://manahj.edu.iq")
+            }.getOrNull()
+            activeDownloadId = enqueueDirectBookDownloadWithSessionCookies(
                 context = context,
                 book = book,
-                onError = { err -> statusNoticeMessage = err }
+                downloadUrl = book.normalizedPdfUrl,
+                cookies = cookies,
+                userAgent = null
             )
         }
 
         while (isActive && pdfRendererHolder == null) {
-            val scanned = autoFindAndImportBookPdf(context, book)
+            val scanned = autoFindAndImportBookPdf(
+                context = context,
+                book = book,
+                acceptRecentPdfSinceMs = sessionStartTimeMs
+            )
             if (scanned != null && openBookFileInRenderer(scanned)) {
-                val msg = "تم التقاط كتاب ${book.subjectTitle} من التنزيلات وفتحه تلقائياً"
+                val msg = "تم تنزيل وفتح كتاب ${book.subjectTitle} تلقائياً"
                 inAppBannerMessage = msg
                 break
             }
-            delay(1000L)
+            delay(800L)
         }
     }
 
-    // مراقب حدث ON_RESUME: فور عودة المستخدم من المتصفح إلى التطبيق يفحص مجلد التنزيلات ويفتح الكتاب فوراً
+    // مراقب ContentObserver حي على MediaStore.Downloads + مراقب حدث ON_RESUME لفتح الكتاب فوراً
     DisposableEffect(lifecycleOwner, bookId) {
-        val observer = LifecycleEventObserver { _, event ->
+        val downloadsObserver = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    if (pdfRendererHolder == null) {
+                        coroutineScope.launch {
+                            val scanned = autoFindAndImportBookPdf(
+                                context = context,
+                                book = book,
+                                acceptRecentPdfSinceMs = sessionStartTimeMs
+                            )
+                            if (scanned != null && openBookFileInRenderer(scanned)) {
+                                inAppBannerMessage = "تم التقاط كتاب ${book.subjectTitle} من التنزيلات وفتحه تلقائياً"
+                            }
+                        }
+                    }
+                }
+            }.also { obs ->
+                runCatching {
+                    context.contentResolver.registerContentObserver(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        true,
+                        obs
+                    )
+                }
+            }
+        } else {
+            null
+        }
+
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && pdfRendererHolder == null) {
                 coroutineScope.launch {
-                    val scanned = autoFindAndImportBookPdf(context, book)
+                    val scanned = autoFindAndImportBookPdf(
+                        context = context,
+                        book = book,
+                        acceptRecentPdfSinceMs = sessionStartTimeMs
+                    )
                     if (scanned != null && openBookFileInRenderer(scanned)) {
                         inAppBannerMessage = "تم التقاط كتاب ${book.subjectTitle} وفتحه تلقائياً"
                     }
                 }
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+            if (downloadsObserver != null) {
+                runCatching {
+                    context.contentResolver.unregisterContentObserver(downloadsObserver)
+                }
+            }
             closeRendererSafely()
         }
     }
