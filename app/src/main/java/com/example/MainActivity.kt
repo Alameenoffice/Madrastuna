@@ -1761,16 +1761,10 @@ fun AuthenticatedMainPlatform(
                                                 Modifier
                                             }
                                         )
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                        .padding(horizontal = 16.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Icon(
-                                        imageVector = pillIcon,
-                                        contentDescription = section.arabicTitle,
-                                        tint = if (selected) Color.White else Color(0xFF059669),
-                                        modifier = Modifier.size(17.dp)
-                                    )
                                     Text(
                                         text = section.arabicTitle,
                                         color = pillContentColor,
@@ -1812,18 +1806,12 @@ fun AuthenticatedMainPlatform(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        bottomNavItems.forEachIndexed { index, (section, icon) ->
+                        bottomNavItems.forEachIndexed { index, (section, _) ->
                             val selected = activeSection == section
-                            val navIcon = if (section == AppSection.DASHBOARD) Icons.Filled.Home else icon
                             val activeBg = if (isDarkMode) {
                                 Color(0xFF059669).copy(alpha = 0.25f)
                             } else {
                                 Color(0xFFD1FAE5)
-                            }
-                            val iconTint = when {
-                                selected -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
-                                isDarkMode -> Color(0xFF94A3B8)
-                                else -> Color(0xFF334155)
                             }
                             val textTint = when {
                                 selected -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
@@ -1843,20 +1831,14 @@ fun AuthenticatedMainPlatform(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 6.dp, bottom = 4.dp, start = 2.dp, end = 2.dp),
+                                        .padding(top = 9.dp, bottom = 7.dp, start = 4.dp, end = 4.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = navIcon,
-                                        contentDescription = section.arabicTitle,
-                                        tint = iconTint,
-                                        modifier = Modifier.size(22.dp)
-                                    )
                                     Text(
                                         text = section.arabicTitle,
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.5.sp,
+                                        fontSize = 11.2.sp,
                                         fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
                                         color = textTint,
                                         maxLines = 1,

@@ -1,14 +1,18 @@
 package com.example.ui.screens
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
 import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.webkit.WebSettings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -75,6 +79,7 @@ import java.net.CookieManager
 import java.net.CookiePolicy
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.Locale
@@ -88,6 +93,7 @@ import javax.net.ssl.X509TrustManager
 private const val NATIVE_CURRICULUM_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36"
 private const val OFFICIAL_MANAHJ_REFERER = "https://manahj.edu.iq/"
+private const val OFFICIAL_MANAHJ_ORIGIN = "https://manahj.edu.iq"
 private const val MIN_VALID_BOOK_BYTES = 100L * 1024L // 100 KB minimum
 
 /**
@@ -105,6 +111,12 @@ private fun normalizeCurriculumPdfUrl(rawUrl: String): String {
     }
 }
 
+private fun resolveOfficialBrowserUserAgent(context: Context): String {
+    return runCatching {
+        WebSettings.getDefaultUserAgent(context)
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: NATIVE_CURRICULUM_USER_AGENT
+}
+
 private fun ensureGlobalCookieManagerInitialized() {
     runCatching {
         if (CookieHandler.getDefault() == null) {
@@ -113,6 +125,9 @@ private fun ensureGlobalCookieManagerInitialized() {
                 CookieHandler.setDefault(this)
             }
         }
+    }
+    runCatching {
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true)
     }
 }
 
@@ -139,6 +154,7 @@ private fun buildCurriculumTrustAllSslSocketFactory(): Pair<SSLSocketFactory, Ho
 
 private fun HttpURLConnection.configureCurriculumStreamConnection(
     sslConfig: Pair<SSLSocketFactory, HostnameVerifier>?,
+    userAgentValue: String,
     cookieHeaderValue: String = ""
 ) {
     connectTimeout = 25000
@@ -146,9 +162,10 @@ private fun HttpURLConnection.configureCurriculumStreamConnection(
     // Disable automatic redirect following so our Manual Redirect Loop handles HTTPS <-> HTTP transitions and cookies
     instanceFollowRedirects = false
     requestMethod = "GET"
-    setRequestProperty("User-Agent", NATIVE_CURRICULUM_USER_AGENT)
+    setRequestProperty("User-Agent", userAgentValue)
     setRequestProperty("Referer", OFFICIAL_MANAHJ_REFERER)
-    setRequestProperty("Accept", "application/pdf,application/octet-stream,*/*;q=0.9")
+    setRequestProperty("Origin", OFFICIAL_MANAHJ_ORIGIN)
+    setRequestProperty("Accept", "application/pdf,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
     setRequestProperty("Accept-Language", "ar-IQ,ar;q=0.9,en-US;q=0.8,en;q=0.7")
     setRequestProperty("Connection", "keep-alive")
     if (cookieHeaderValue.isNotBlank()) {
@@ -1296,6 +1313,161 @@ private fun NativeInAppPdfReaderModal(
         }
     }
 
+    suspend fun streamViaSilentDownloadManager(
+        rawTargetUrl: String,
+        destinationFile: File,
+        userAgentValue: String,
+        cookieHeaderValue: String,
+        onProgressUpdate: (Int, String) -> Unit
+    ): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+                ?: throw IllegalStateException("خدمة التنزيل غير متوفرة")
+
+            val extDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val extDownloadFile = if (extDir != null) {
+                File(extDir, "book_${book.id}.pdf")
+            } else null
+            if (extDownloadFile != null && extDownloadFile.exists()) {
+                runCatching { extDownloadFile.delete() }
+            }
+
+            val req = DownloadManager.Request(Uri.parse(rawTargetUrl)).apply {
+                addRequestHeader("User-Agent", userAgentValue)
+                addRequestHeader("Referer", OFFICIAL_MANAHJ_REFERER)
+                addRequestHeader("Origin", OFFICIAL_MANAHJ_ORIGIN)
+                addRequestHeader("Accept", "application/pdf,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                addRequestHeader("Accept-Language", "ar-IQ,ar;q=0.9,en-US;q=0.8,en;q=0.7")
+                if (cookieHeaderValue.isNotBlank()) {
+                    addRequestHeader("Cookie", cookieHeaderValue)
+                }
+                setTitle(book.subjectTitle)
+                setDescription("${book.gradeClass} - المناهج العراقية")
+                setMimeType("application/pdf")
+                setAllowedOverMetered(true)
+                setAllowedOverRoaming(true)
+                runCatching {
+                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
+                }.onFailure {
+                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                }
+                setDestinationInExternalFilesDir(
+                    context,
+                    Environment.DIRECTORY_DOWNLOADS,
+                    "book_${book.id}.pdf"
+                )
+            }
+
+            val downloadId = try {
+                dm.enqueue(req)
+            } catch (_: SecurityException) {
+                req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                dm.enqueue(req)
+            }
+
+            var isFinished = false
+            var PollTicks = 0
+            while (!isFinished && isActive && PollTicks < 600) {
+                PollTicks++
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                var cursor: Cursor? = null
+                try {
+                    cursor = dm.query(query)
+                    if (cursor != null && cursor.moveToFirst()) {
+                        val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                        val bytesIdx = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                        val totalIdx = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+
+                        val status = if (statusIdx >= 0) cursor.getInt(statusIdx) else DownloadManager.STATUS_RUNNING
+                        val downloadedBytes = if (bytesIdx >= 0) cursor.getLong(bytesIdx) else 0L
+                        val totalBytes = if (totalIdx >= 0) cursor.getLong(totalIdx) else -1L
+
+                        if (downloadedBytes > 0L) {
+                            val dlMb = downloadedBytes / (1024.0 * 1024.0)
+                            if (totalBytes > 0L) {
+                                val pct = ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(1, 99)
+                                val totalMb = totalBytes / (1024.0 * 1024.0)
+                                onProgressUpdate(
+                                    pct,
+                                    String.format(Locale.US, "%.1f MB / %.1f MB", dlMb, totalMb)
+                                )
+                            } else {
+                                val approxPct = (12 + (downloadedBytes / (180 * 1024)).toInt()).coerceIn(12, 95)
+                                onProgressUpdate(
+                                    approxPct,
+                                    String.format(Locale.US, "%.1f MB", dlMb)
+                                )
+                            }
+                        }
+
+                        when (status) {
+                            DownloadManager.STATUS_SUCCESSFUL -> {
+                                isFinished = true
+                            }
+                            DownloadManager.STATUS_FAILED -> {
+                                dm.remove(downloadId)
+                                throw IllegalStateException("تعذر استكمال التنزيل عبر مدير الملفات")
+                            }
+                        }
+                    } else {
+                        break
+                    }
+                } finally {
+                    cursor?.close()
+                }
+
+                if (!isFinished) {
+                    delay(300L)
+                }
+            }
+
+            if (!isActive) {
+                dm.remove(downloadId)
+                throw CancellationException("تم إلغاء التنزيل")
+            }
+
+            val tempCopy = File(destinationFile.parentFile, "${destinationFile.name}.dm_copy")
+            if (tempCopy.exists()) tempCopy.delete()
+
+            var copiedOk = false
+            if (extDownloadFile != null && isValidDownloadedCurriculumPdf(extDownloadFile)) {
+                extDownloadFile.copyTo(tempCopy, overwrite = true)
+                copiedOk = isValidDownloadedCurriculumPdf(tempCopy)
+            }
+            if (!copiedOk) {
+                dm.openDownloadedFile(downloadId)?.use { pfd ->
+                    FileInputStream(pfd.fileDescriptor).use { input ->
+                        FileOutputStream(tempCopy).use { output ->
+                            input.copyTo(output, bufferSize = 16 * 1024)
+                            output.flush()
+                        }
+                    }
+                }
+                copiedOk = isValidDownloadedCurriculumPdf(tempCopy)
+            }
+
+            runCatching { dm.remove(downloadId) }
+            runCatching { if (extDownloadFile != null && extDownloadFile.exists()) extDownloadFile.delete() }
+
+            if (copiedOk) {
+                val finalMb = tempCopy.length() / (1024.0 * 1024.0)
+                onProgressUpdate(
+                    100,
+                    String.format(Locale.US, "%.1f MB / %.1f MB", finalMb, finalMb)
+                )
+                if (destinationFile.exists()) destinationFile.delete()
+                if (!tempCopy.renameTo(destinationFile)) {
+                    tempCopy.copyTo(destinationFile, overwrite = true)
+                    tempCopy.delete()
+                }
+                destinationFile
+            } else {
+                if (tempCopy.exists()) tempCopy.delete()
+                throw IllegalStateException("الملف المستلم من مدير التنزيل غير مكتمل")
+            }
+        }
+    }
+
     suspend fun streamDownloadBookToStorage(
         rawBookUrl: String,
         destinationFile: File,
@@ -1304,201 +1476,274 @@ private fun NativeInAppPdfReaderModal(
         runCatching {
             ensureGlobalCookieManagerInitialized()
             val sslConfig = buildCurriculumTrustAllSslSocketFactory()
+            val officialUserAgent = resolveOfficialBrowserUserAgent(context)
             val normalizedPrimaryUrl = normalizeCurriculumPdfUrl(rawBookUrl)
 
-            // Build candidate URLs (normalized https:// first, then http:// fallback if needed)
-            val candidateUrls = buildList {
+            val sessionCookies = mutableListOf<String>()
+
+            fun mergeWebkitCookies(forUrl: String) {
+                runCatching {
+                    val webkitCookie = android.webkit.CookieManager.getInstance().getCookie(forUrl)
+                    if (!webkitCookie.isNullOrBlank()) {
+                        webkitCookie.split(";").forEach { part ->
+                            val clean = part.trim()
+                            if (clean.isNotBlank() && clean !in sessionCookies) {
+                                sessionCookies.add(clean)
+                            }
+                        }
+                    }
+                }
+            }
+
+            fun extractCookiesFromConnection(conn: HttpURLConnection, targetUrlForWebkit: String) {
+                runCatching {
+                    val headerMap = conn.headerFields
+                    headerMap?.forEach { (key, values) ->
+                        if (key != null && (key.equals("Set-Cookie", ignoreCase = true) || key.equals("Set-Cookie2", ignoreCase = true))) {
+                            values?.forEach { rawCookie ->
+                                runCatching {
+                                    android.webkit.CookieManager.getInstance().setCookie(targetUrlForWebkit, rawCookie)
+                                }
+                                val pair = rawCookie.substringBefore(";").trim()
+                                if (pair.isNotBlank() && pair !in sessionCookies) {
+                                    sessionCookies.add(pair)
+                                }
+                            }
+                        }
+                    }
+                }
+                mergeWebkitCookies(targetUrlForWebkit)
+                mergeWebkitCookies(OFFICIAL_MANAHJ_REFERER)
+            }
+
+            // Layer 1 Step A: Warm-up session cookie on https://manahj.edu.iq/
+            mergeWebkitCookies(OFFICIAL_MANAHJ_REFERER)
+            runCatching {
+                val warmConn = (URL(OFFICIAL_MANAHJ_REFERER).openConnection() as HttpURLConnection).apply {
+                    configureCurriculumStreamConnection(
+                        sslConfig = sslConfig,
+                        userAgentValue = officialUserAgent,
+                        cookieHeaderValue = sessionCookies.joinToString("; ")
+                    )
+                    connectTimeout = 9000
+                    readTimeout = 9000
+                }
+                warmConn.connect()
+                extractCookiesFromConnection(warmConn, OFFICIAL_MANAHJ_REFERER)
+                runCatching { warmConn.inputStream.close() }
+                warmConn.disconnect()
+            }
+
+            // Build candidate URLs (normalized https:// first, then http://, plus proxy mirrors as Layer 3)
+            val encodedHttpsUrl = runCatching { URLEncoder.encode(normalizedPrimaryUrl, "UTF-8") }.getOrDefault(normalizedPrimaryUrl)
+            val directCandidateUrls = buildList {
                 add(normalizedPrimaryUrl)
                 if (normalizedPrimaryUrl.startsWith("https://")) {
                     add("http://" + normalizedPrimaryUrl.removePrefix("https://"))
                 }
             }.distinct()
 
+            val proxyCandidateUrls = listOf(
+                "https://corsproxy.io/?$encodedHttpsUrl",
+                "https://api.allorigins.win/raw?url=$encodedHttpsUrl"
+            )
+
             val tempFile = File(destinationFile.parentFile, "${destinationFile.name}.downloading")
             var lastException: Exception? = null
+            var encounteredHttp403OrDirectError = false
 
-            for (startUrl in candidateUrls) {
-                if (!isActive) throw CancellationException("تم إلغاء التنزيل")
-                try {
-                    if (tempFile.exists()) tempFile.delete()
-
-                    val sessionCookies = mutableListOf<String>()
-
-                    fun extractCookiesFromConnection(conn: HttpURLConnection) {
-                        runCatching {
-                            val headerMap = conn.headerFields
-                            headerMap?.forEach { (key, values) ->
-                                if (key != null && key.equals("Set-Cookie", ignoreCase = true)) {
-                                    values?.forEach { rawCookie ->
-                                        val pair = rawCookie.substringBefore(";").trim()
-                                        if (pair.isNotBlank() && pair !in sessionCookies) {
-                                            sessionCookies.add(pair)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Warm-up session cookie on manahj.edu.iq
-                    runCatching {
-                        val warmConn = (URL(OFFICIAL_MANAHJ_REFERER).openConnection() as HttpURLConnection).apply {
-                            configureCurriculumStreamConnection(sslConfig)
-                            connectTimeout = 8000
-                            readTimeout = 8000
-                        }
-                        warmConn.connect()
-                        extractCookiesFromConnection(warmConn)
-                        runCatching { warmConn.inputStream.close() }
-                        warmConn.disconnect()
-                    }
-
-                    var currentUrl = normalizeCurriculumPdfUrl(startUrl)
-                    var redirectCount = 0
-                    var activeConnection: HttpURLConnection? = null
-
-                    // Manual Redirect Loop (up to 6 hops) handling HTTPS <-> HTTP redirects & Cookie forwarding
-                    val visitedHopUrls = mutableSetOf<String>()
-                    while (redirectCount < 6) {
-                        visitedHopUrls.add(currentUrl)
-                        val cookieHeaderStr = sessionCookies.joinToString("; ")
-                        val hopConnResult = runCatching {
-                            val u = URL(currentUrl)
-                            (u.openConnection() as HttpURLConnection).apply {
-                                configureCurriculumStreamConnection(sslConfig, cookieHeaderStr)
-                                connect()
-                            }
-                        }.recoverCatching {
-                            val altProtocolUrl = if (currentUrl.startsWith("http://")) {
-                                "https://" + currentUrl.removePrefix("http://")
-                            } else if (currentUrl.startsWith("https://")) {
-                                "http://" + currentUrl.removePrefix("https://")
-                            } else {
-                                currentUrl
-                            }
-                            currentUrl = altProtocolUrl
-                            val u = URL(altProtocolUrl)
-                            (u.openConnection() as HttpURLConnection).apply {
-                                configureCurriculumStreamConnection(sslConfig, cookieHeaderStr)
-                                connect()
-                            }
-                        }
-
-                        val conn = hopConnResult.getOrThrow()
-                        extractCookiesFromConnection(conn)
-
-                        val code = conn.responseCode
-                        if (code in listOf(
-                                HttpURLConnection.HTTP_MOVED_PERM,
-                                HttpURLConnection.HTTP_MOVED_TEMP,
-                                HttpURLConnection.HTTP_SEE_OTHER,
-                                307,
-                                308
-                            )
-                        ) {
-                            val location = conn.getHeaderField("Location")
-                                ?: conn.getHeaderField("location")
-                            val baseUrlForResolve = conn.url ?: URL(currentUrl)
-                            conn.disconnect()
-                            if (!location.isNullOrBlank()) {
-                                val resolvedUrl = normalizeCurriculumPdfUrl(
-                                    URL(baseUrlForResolve, location.trim()).toString()
-                                )
-                                // If server redirects https -> http to the exact same path that was already visited, use resolvedUrl directly
-                                currentUrl = if (resolvedUrl in visitedHopUrls && resolvedUrl.startsWith("http://")) {
-                                    resolvedUrl
-                                } else {
-                                    resolvedUrl
-                                }
-                                redirectCount++
-                                continue
-                            }
-                        }
-                        activeConnection = conn
-                        break
-                    }
-
-                    val finalConn = activeConnection
-                        ?: throw IllegalStateException("تعذر فتح قناة الاتصال مع خادم المناهج")
-
+            suspend fun tryStreamFromUrlList(urlsToTry: List<String>): File? {
+                for (startUrl in urlsToTry) {
+                    if (!isActive) throw CancellationException("تم إلغاء التنزيل")
                     try {
-                        val responseCode = finalConn.responseCode
-                        if (responseCode !in 200..299) {
-                            throw IllegalStateException("رمز استجابة الخادم: $responseCode")
-                        }
+                        if (tempFile.exists()) tempFile.delete()
 
-                        val totalBytes = finalConn.contentLengthLong
-                        var downloadedBytes = 0L
-                        var lastReportedPct = -1
-                        var lastReportTimeMs = 0L
+                        var currentUrl = normalizeCurriculumPdfUrl(startUrl)
+                        var redirectCount = 0
+                        var activeConnection: HttpURLConnection? = null
+                        val visitedHopUrls = mutableSetOf<String>()
 
-                        finalConn.inputStream.use { input ->
-                            FileOutputStream(tempFile).use { output ->
-                                val buffer = ByteArray(16 * 1024)
-                                var bytesRead: Int
-                                while (input.read(buffer).also { bytesRead = it } != -1) {
-                                    if (!isActive) {
-                                        throw CancellationException("تم إلغاء التنزيل")
-                                    }
-                                    output.write(buffer, 0, bytesRead)
-                                    downloadedBytes += bytesRead
-
-                                    val nowMs = System.currentTimeMillis()
-                                    val dlMb = downloadedBytes / (1024.0 * 1024.0)
-                                    if (totalBytes > 0L) {
-                                        val pct = ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(1, 99)
-                                        if (pct != lastReportedPct || nowMs - lastReportTimeMs >= 120L) {
-                                            lastReportedPct = pct
-                                            lastReportTimeMs = nowMs
-                                            val totalMb = totalBytes / (1024.0 * 1024.0)
-                                            onProgressUpdate(
-                                                pct,
-                                                String.format(Locale.US, "%.1f MB / %.1f MB", dlMb, totalMb)
-                                            )
-                                        }
-                                    } else {
-                                        val approxPct = (10 + (downloadedBytes / (180 * 1024)).toInt()).coerceIn(10, 95)
-                                        if (nowMs - lastReportTimeMs >= 150L) {
-                                            lastReportTimeMs = nowMs
-                                            onProgressUpdate(
-                                                approxPct,
-                                                String.format(Locale.US, "%.1f MB", dlMb)
-                                            )
-                                        }
-                                    }
+                        while (redirectCount < 6) {
+                            visitedHopUrls.add(currentUrl)
+                            mergeWebkitCookies(currentUrl)
+                            val cookieHeaderStr = sessionCookies.joinToString("; ")
+                            val hopConnResult = runCatching {
+                                val u = URL(currentUrl)
+                                (u.openConnection() as HttpURLConnection).apply {
+                                    configureCurriculumStreamConnection(
+                                        sslConfig = sslConfig,
+                                        userAgentValue = officialUserAgent,
+                                        cookieHeaderValue = cookieHeaderStr
+                                    )
+                                    connect()
                                 }
-                                output.flush()
+                            }.recoverCatching {
+                                val altProtocolUrl = if (currentUrl.startsWith("http://")) {
+                                    "https://" + currentUrl.removePrefix("http://")
+                                } else if (currentUrl.startsWith("https://")) {
+                                    "http://" + currentUrl.removePrefix("https://")
+                                } else {
+                                    currentUrl
+                                }
+                                currentUrl = altProtocolUrl
+                                val u = URL(altProtocolUrl)
+                                (u.openConnection() as HttpURLConnection).apply {
+                                    configureCurriculumStreamConnection(
+                                        sslConfig = sslConfig,
+                                        userAgentValue = officialUserAgent,
+                                        cookieHeaderValue = cookieHeaderStr
+                                    )
+                                    connect()
+                                }
                             }
+
+                            val conn = hopConnResult.getOrThrow()
+                            extractCookiesFromConnection(conn, currentUrl)
+
+                            val code = conn.responseCode
+                            if (code in listOf(
+                                    HttpURLConnection.HTTP_MOVED_PERM,
+                                    HttpURLConnection.HTTP_MOVED_TEMP,
+                                    HttpURLConnection.HTTP_SEE_OTHER,
+                                    307,
+                                    308
+                                )
+                            ) {
+                                val location = conn.getHeaderField("Location")
+                                    ?: conn.getHeaderField("location")
+                                val baseUrlForResolve = conn.url ?: URL(currentUrl)
+                                conn.disconnect()
+                                if (!location.isNullOrBlank()) {
+                                    val resolvedUrl = normalizeCurriculumPdfUrl(
+                                        URL(baseUrlForResolve, location.trim()).toString()
+                                    )
+                                    currentUrl = resolvedUrl
+                                    redirectCount++
+                                    continue
+                                }
+                            }
+                            activeConnection = conn
+                            break
                         }
 
-                        if (isValidDownloadedCurriculumPdf(tempFile)) {
-                            val finalMb = tempFile.length() / (1024.0 * 1024.0)
-                            onProgressUpdate(
-                                100,
-                                String.format(Locale.US, "%.1f MB / %.1f MB", finalMb, finalMb)
-                            )
-                            if (destinationFile.exists()) {
-                                destinationFile.delete()
+                        val finalConn = activeConnection
+                            ?: throw IllegalStateException("تعذر فتح قناة الاتصال مع خادم المناهج")
+
+                        try {
+                            val responseCode = finalConn.responseCode
+                            if (responseCode == HttpURLConnection.HTTP_FORBIDDEN) {
+                                encounteredHttp403OrDirectError = true
                             }
-                            val renamed = tempFile.renameTo(destinationFile)
-                            if (!renamed) {
-                                tempFile.copyTo(destinationFile, overwrite = true)
-                                tempFile.delete()
+                            if (responseCode !in 200..299) {
+                                encounteredHttp403OrDirectError = true
+                                throw IllegalStateException("رمز استجابة الخادم: $responseCode")
                             }
-                            return@runCatching destinationFile
-                        } else {
-                            if (tempFile.exists()) tempFile.delete()
-                            throw IllegalStateException("الملف المستلم غير مكتمل أو ليس بصيغة PDF صالحة")
+
+                            val totalBytes = finalConn.contentLengthLong
+                            var downloadedBytes = 0L
+                            var lastReportedPct = -1
+                            var lastReportTimeMs = 0L
+
+                            finalConn.inputStream.use { input ->
+                                FileOutputStream(tempFile).use { output ->
+                                    val buffer = ByteArray(16 * 1024)
+                                    var bytesRead: Int
+                                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                                        if (!isActive) {
+                                            throw CancellationException("تم إلغاء التنزيل")
+                                        }
+                                        output.write(buffer, 0, bytesRead)
+                                        downloadedBytes += bytesRead
+
+                                        val nowMs = System.currentTimeMillis()
+                                        val dlMb = downloadedBytes / (1024.0 * 1024.0)
+                                        if (totalBytes > 0L) {
+                                            val pct = ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(1, 99)
+                                            if (pct != lastReportedPct || nowMs - lastReportTimeMs >= 120L) {
+                                                lastReportedPct = pct
+                                                lastReportTimeMs = nowMs
+                                                val totalMb = totalBytes / (1024.0 * 1024.0)
+                                                onProgressUpdate(
+                                                    pct,
+                                                    String.format(Locale.US, "%.1f MB / %.1f MB", dlMb, totalMb)
+                                                )
+                                            }
+                                        } else {
+                                            val approxPct = (10 + (downloadedBytes / (180 * 1024)).toInt()).coerceIn(10, 95)
+                                            if (nowMs - lastReportTimeMs >= 150L) {
+                                                lastReportTimeMs = nowMs
+                                                onProgressUpdate(
+                                                    approxPct,
+                                                    String.format(Locale.US, "%.1f MB", dlMb)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    output.flush()
+                                }
+                            }
+
+                            if (isValidDownloadedCurriculumPdf(tempFile)) {
+                                val finalMb = tempFile.length() / (1024.0 * 1024.0)
+                                onProgressUpdate(
+                                    100,
+                                    String.format(Locale.US, "%.1f MB / %.1f MB", finalMb, finalMb)
+                                )
+                                if (destinationFile.exists()) {
+                                    destinationFile.delete()
+                                }
+                                val renamed = tempFile.renameTo(destinationFile)
+                                if (!renamed) {
+                                    tempFile.copyTo(destinationFile, overwrite = true)
+                                    tempFile.delete()
+                                }
+                                return destinationFile
+                            } else {
+                                if (tempFile.exists()) tempFile.delete()
+                                encounteredHttp403OrDirectError = true
+                                throw IllegalStateException("الملف المستلم غير مكتمل أو ليس بصيغة PDF صالحة")
+                            }
+                        } finally {
+                            finalConn.disconnect()
                         }
-                    } finally {
-                        finalConn.disconnect()
+                    } catch (ce: CancellationException) {
+                        if (tempFile.exists()) tempFile.delete()
+                        throw ce
+                    } catch (e: Exception) {
+                        if (tempFile.exists()) tempFile.delete()
+                        encounteredHttp403OrDirectError = true
+                        lastException = e
                     }
-                } catch (ce: CancellationException) {
-                    if (tempFile.exists()) tempFile.delete()
-                    throw ce
-                } catch (e: Exception) {
-                    if (tempFile.exists()) tempFile.delete()
-                    lastException = e
+                }
+                return null
+            }
+
+            // Layer 1: Direct HttpURLConnection with CookieManager & Official Browser Headers
+            val layer1File = tryStreamFromUrlList(directCandidateUrls)
+            if (layer1File != null) {
+                return@runCatching layer1File
+            }
+
+            // Layer 2: Silent In-App DownloadManager Stream Fallback (Never show error screen on 403!)
+            if (encounteredHttp403OrDirectError) {
+                for (dmUrl in directCandidateUrls) {
+                    if (!isActive) throw CancellationException("تم إلغاء التنزيل")
+                    val dmResult = streamViaSilentDownloadManager(
+                        rawTargetUrl = dmUrl,
+                        destinationFile = destinationFile,
+                        userAgentValue = officialUserAgent,
+                        cookieHeaderValue = sessionCookies.joinToString("; "),
+                        onProgressUpdate = onProgressUpdate
+                    )
+                    if (dmResult.isSuccess) {
+                        return@runCatching dmResult.getOrThrow()
+                    }
+                }
+
+                // Layer 3: Silent In-App Proxy Stream Fallback
+                val layer3File = tryStreamFromUrlList(proxyCandidateUrls)
+                if (layer3File != null) {
+                    return@runCatching layer3File
                 }
             }
 

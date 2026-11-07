@@ -3219,7 +3219,7 @@ fun ExamsAndGradesScreen(
                         }
                     }
 
-                    // Two explicit options for the Principal
+                    // Two explicit options for the Principal (Pure-Text Capsules)
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -3235,8 +3235,6 @@ fun ExamsAndGradesScreen(
                                 .fillMaxWidth()
                                 .testTag("btn_cancel_approval_wait_teacher")
                         ) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "إلغاء والعودة لحين استكمال المعلم لرصد جميع الطلبة",
                                 fontSize = 12.sp,
@@ -3263,8 +3261,6 @@ fun ExamsAndGradesScreen(
                                 .fillMaxWidth()
                                 .testTag("btn_override_approval_by_principal")
                         ) {
-                            Icon(Icons.Filled.GppGood, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "تجاوز التحذير والمصادقة الاستثنائية بأمر المدير",
                                 fontSize = 12.sp,
@@ -3340,23 +3336,15 @@ fun ExamsAndGradesScreen(
                         .clickable { selectedTab = 0 }
                         .testTag("tab_detailed_grades")
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                            .padding(horizontal = 10.dp, vertical = 11.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Assessment,
-                            contentDescription = null,
-                            tint = if (isGradesTab) Color.White else Color(0xFF047857),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = if (isParentOrStudent) "جدول كشف الدرجات" else "الدرجات حسب المادة",
-                            fontSize = 12.sp,
+                            fontSize = 12.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isGradesTab) Color.White else Color(0xFF0F172A),
                             maxLines = 1,
@@ -3378,23 +3366,15 @@ fun ExamsAndGradesScreen(
                         .clickable { selectedTab = 1 }
                         .testTag("tab_exam_schedule")
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                            .padding(horizontal = 10.dp, vertical = 11.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.EventNote,
-                            contentDescription = null,
-                            tint = if (isScheduleTab) Color.White else Color(0xFF047857),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = "مواعيد الامتحانات",
-                            fontSize = 12.sp,
+                            fontSize = 12.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isScheduleTab) Color.White else Color(0xFF0F172A),
                             maxLines = 1,
@@ -3421,20 +3401,12 @@ fun ExamsAndGradesScreen(
                     .clickable { selectedTab = 2 }
                     .testTag("tab_smart_report_cards_hub")
             ) {
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.WorkspacePremium,
-                        contentDescription = null,
-                        tint = if (isReportCardsTab) Color(0xFFFDE68A) else Color(0xFFB45309),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "إصدار الكارتات والنتائج",
                         fontSize = 13.sp,
@@ -3808,7 +3780,7 @@ fun ExamsAndGradesScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
-                                // 1. Registered Class Selector
+                                // 1. Registered Class Selector (Pure-Text Chips)
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(allowedClasses) { cls ->
                                         FilterChip(
@@ -3820,9 +3792,13 @@ fun ExamsAndGradesScreen(
                                                     selectedSection = nextSecs.firstOrNull() ?: "أ"
                                                 }
                                             },
-                                            label = { Text(cls, maxLines = 1, softWrap = false) },
-                                            leadingIcon = {
-                                                Icon(Icons.Filled.Class, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            label = {
+                                                Text(
+                                                    text = cls,
+                                                    fontWeight = if (selectedClass == cls) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
                                             }
                                         )
                                     }
@@ -3861,7 +3837,7 @@ fun ExamsAndGradesScreen(
                                     }
                                 }
 
-                                // 3. Subject Selector (المادة الدراسية المخصصة للصف المختار)
+                                // 3. Subject Selector (المادة الدراسية المخصصة للصف المختار - Pure-Text Chips)
                                 Text(
                                     text = "المادة الدراسية المختارة للرصد (${allowedSubjects.size}):",
                                     style = MaterialTheme.typography.labelLarge,
@@ -3872,19 +3848,19 @@ fun ExamsAndGradesScreen(
                                         FilterChip(
                                             selected = selectedSubject == subj,
                                             onClick = { selectedSubject = subj },
-                                            label = { Text(subj, maxLines = 1, softWrap = false) },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = if (selectedSubject == subj) Icons.Filled.CheckCircle else Icons.Filled.MenuBook,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
+                                            label = {
+                                                Text(
+                                                    text = subj,
+                                                    fontWeight = if (selectedSubject == subj) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
                                                 )
                                             }
                                         )
                                     }
                                 }
 
-                                // 3.B Flexible Grading Scale Toggle (نظام الدرجة: من 10 / من 100) — Unclipped & persisted in Firebase
+                                // 3.B Flexible Grading Scale Toggle (نظام الدرجة: من 10 / من 100) — Pure-Text Glassmorphic Capsules
                                 Surface(
                                     color = Color(0xFFECFDF5),
                                     border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
@@ -3898,30 +3874,18 @@ fun ExamsAndGradesScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Tune,
-                                                contentDescription = null,
-                                                tint = Color(0xFF059669),
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Text(
-                                                text = "نظام الدرجة:",
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontSize = 12.5.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFF065F46),
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        }
+                                        Text(
+                                            text = "نظام الدرجة:",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF065F46),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Row(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Surface(
@@ -3944,22 +3908,13 @@ fun ExamsAndGradesScreen(
                                                     }
                                                     .testTag("scale_toggle_10")
                                             ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                Box(
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    if (selectedMaxScale == 10) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Check,
-                                                            contentDescription = null,
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
                                                     Text(
                                                         text = "من 10",
-                                                        fontSize = 11.5.sp,
+                                                        fontSize = 11.8.sp,
                                                         fontWeight = FontWeight.ExtraBold,
                                                         color = if (selectedMaxScale == 10) Color.White else Color(0xFF065F46),
                                                         maxLines = 1,
@@ -3987,22 +3942,13 @@ fun ExamsAndGradesScreen(
                                                     }
                                                     .testTag("scale_toggle_100")
                                             ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                Box(
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    if (selectedMaxScale == 100) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Check,
-                                                            contentDescription = null,
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
                                                     Text(
                                                         text = "من 100",
-                                                        fontSize = 11.5.sp,
+                                                        fontSize = 11.8.sp,
                                                         fontWeight = FontWeight.ExtraBold,
                                                         color = if (selectedMaxScale == 100) Color.White else Color(0xFF065F46),
                                                         maxLines = 1,
@@ -4014,16 +3960,29 @@ fun ExamsAndGradesScreen(
                                     }
                                 }
 
-                                // 4. Search by Student Name within the selected Class & Section
+                                // 4. Search by Student Name within the selected Class & Section (Pure-Text Search Field)
                                 OutlinedTextField(
                                     value = searchStudentName,
                                     onValueChange = { searchStudentName = it },
                                     label = { Text("بحث بالاسم داخل طلاب ($selectedClass - شعبة $selectedSection)...") },
-                                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                                     trailingIcon = {
                                         if (searchStudentName.isNotEmpty()) {
-                                            IconButton(onClick = { searchStudentName = "" }) {
-                                                Icon(Icons.Filled.Clear, contentDescription = "مسح")
+                                            Surface(
+                                                onClick = { searchStudentName = "" },
+                                                shape = RoundedCornerShape(50),
+                                                color = Color(0xFFECFDF5),
+                                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            ) {
+                                                Text(
+                                                    text = "مسح",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF047857),
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
                                             }
                                         }
                                     },
@@ -4065,25 +4024,14 @@ fun ExamsAndGradesScreen(
                                                 .padding(14.dp),
                                             verticalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (periodSummary.isPeriodApproved) Icons.Filled.VerifiedUser else Icons.Filled.Security,
-                                                    contentDescription = null,
-                                                    tint = if (periodSummary.isPeriodApproved) Color(0xFF047857) else Color(0xFFB45309),
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Text(
-                                                    text = "نظام مصادقة المدير الذكية حسب الفترة الامتحانية:",
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = if (periodSummary.isPeriodApproved) Color(0xFF065F46) else Color(0xFF92400E)
-                                                )
-                                            }
+                                            Text(
+                                                text = "نظام مصادقة المدير الذكية حسب الفترة الامتحانية:",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (periodSummary.isPeriodApproved) Color(0xFF065F46) else Color(0xFF92400E)
+                                            )
 
-                                            // Horizontal Period Selector Chips
+                                            // Horizontal Period Selector Chips (Pure-Text without classic shield/verified icons)
                                             LazyRow(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -4096,27 +4044,17 @@ fun ExamsAndGradesScreen(
                                                         onClick = { selectedApprovalPeriod = pItem },
                                                         label = {
                                                             Text(
-                                                                text = pItem.arabicTitle,
+                                                                text = if (isPApproved) "${pItem.arabicTitle} (معتمد)" else pItem.arabicTitle,
                                                                 fontWeight = if (isSelectedPeriod || isPApproved) FontWeight.ExtraBold else FontWeight.SemiBold,
                                                                 maxLines = 1,
                                                                 softWrap = false
                                                             )
-                                                        },
-                                                        leadingIcon = if (isPApproved) {
-                                                            {
-                                                                Icon(
-                                                                    imageVector = Icons.Filled.Verified,
-                                                                    contentDescription = null,
-                                                                    tint = if (isSelectedPeriod) Color(0xFF047857) else Color(0xFF10B981),
-                                                                    modifier = Modifier.size(16.dp)
-                                                                )
-                                                            }
-                                                        } else null
+                                                        }
                                                     )
                                                 }
                                             }
 
-                                            // Completion Counter & Unrecorded Students Warning
+                                            // Completion Counter & Unrecorded Students Warning (Horizontal unclipped capsule "0 من 1 طالب")
                                             Surface(
                                                 shape = RoundedCornerShape(12.dp),
                                                 color = Color.White,
@@ -4129,8 +4067,8 @@ fun ExamsAndGradesScreen(
                                                 Column(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .padding(10.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                                        .padding(12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                                 ) {
                                                     Row(
                                                         modifier = Modifier.fillMaxWidth(),
@@ -4139,20 +4077,30 @@ fun ExamsAndGradesScreen(
                                                     ) {
                                                         Text(
                                                             text = "اكتمال الرصد لفترة (${selectedApprovalPeriod.arabicTitle}):",
-                                                            fontSize = 11.5.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color(0xFF1E293B)
+                                                            fontSize = 11.8.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFF1E293B),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.weight(1f, fill = false)
                                                         )
+                                                        Spacer(modifier = Modifier.width(8.dp))
                                                         Surface(
                                                             shape = RoundedCornerShape(50),
-                                                            color = if (periodSummary.isFullyRecorded) Color(0xFFDCFCE7) else Color(0xFFFEF3C7)
+                                                            color = if (periodSummary.isFullyRecorded) Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
+                                                            border = BorderStroke(
+                                                                1.dp,
+                                                                if (periodSummary.isFullyRecorded) Color(0xFF6EE7B7) else Color(0xFFFCD34D)
+                                                            )
                                                         ) {
                                                             Text(
                                                                 text = "${periodSummary.recordedStudentsCount} من ${periodSummary.totalStudentsCount} طالب",
-                                                                fontSize = 11.5.sp,
+                                                                fontSize = 11.8.sp,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 color = if (periodSummary.isFullyRecorded) Color(0xFF065F46) else Color(0xFF92400E),
-                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                                             )
                                                         }
                                                     }
@@ -4175,6 +4123,7 @@ fun ExamsAndGradesScreen(
                                                 }
                                             }
 
+                                            // Full Unclipped Single-Line Principal Approval Capsule Button (Zero Icons, Zero Truncation)
                                             Button(
                                                 onClick = {
                                                     if (periodSummary.isPeriodApproved) {
@@ -4197,32 +4146,27 @@ fun ExamsAndGradesScreen(
                                                         )
                                                     }
                                                 },
-                                                shape = RoundedCornerShape(12.dp),
+                                                shape = RoundedCornerShape(14.dp),
                                                 colors = ButtonDefaults.buttonColors(
                                                     containerColor = if (periodSummary.isPeriodApproved) Color(0xFFB45309) else Color(0xFF047857),
                                                     contentColor = Color.White
                                                 ),
+                                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .testTag("btn_principal_approve_grades")
                                             ) {
-                                                Icon(
-                                                    imageVector = if (periodSummary.isPeriodApproved) Icons.Filled.LockOpen else Icons.Filled.VerifiedUser,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
                                                     text = if (periodSummary.isPeriodApproved) {
-                                                        "إلغاء مصادقة (${selectedApprovalPeriod.arabicTitle}) وفتح القفل للمعلم"
+                                                        "إلغاء مصادقة درجات (${selectedApprovalPeriod.arabicTitle})"
                                                     } else {
-                                                        "مصادقة واعتماد درجات (${selectedApprovalPeriod.arabicTitle}) رسمياً"
+                                                        "مصادقة واعتماد درجات (${selectedApprovalPeriod.arabicTitle})"
                                                     },
                                                     fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 12.sp,
+                                                    fontSize = 13.sp,
                                                     maxLines = 1,
                                                     softWrap = false,
-                                                    overflow = TextOverflow.Ellipsis
+                                                    textAlign = TextAlign.Center
                                                 )
                                             }
                                         }
@@ -4234,19 +4178,11 @@ fun ExamsAndGradesScreen(
                                         color = Color(0xFFFFFBEB),
                                         border = BorderStroke(1.2.dp, Color(0xFFF59E0B))
                                     ) {
-                                        Row(
+                                        Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                .padding(horizontal = 12.dp, vertical = 10.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Lock,
-                                                contentDescription = null,
-                                                tint = Color(0xFFB45309),
-                                                modifier = Modifier.size(18.dp)
-                                            )
                                             Text(
                                                 text = "الفترات المصادق عليها والمقفولة من الإدارة: ${approvedPeriodsList.joinToString("، ") { it.arabicTitle }} (بقية الفترات متاحة للرصد)",
                                                 fontSize = 11.5.sp,
@@ -4362,49 +4298,59 @@ fun ExamsAndGradesScreen(
                                     modifier = Modifier.padding(16.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    // رأس بطاقة الطالب مع شارة الوسام المصغرة المدمجة تحت دائرة الصورة
+                                    // رأس بطاقة الطالب (الاسم في سطر كامل + الصف والشعبة في سطر مستقل كامل بدون كسر (أ) + كبسولة الحالة بدون أيقونات)
                                     val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.weight(1f)
+                                        StudentAvatarWithOverlayBadge(
+                                            base64Data = stu.photoBase64,
+                                            contentDescription = stu.studentName,
+                                            badge = stuAutoBadges.firstOrNull(),
+                                            avatarSize = 54.dp,
+                                            boxWidth = 62.dp,
+                                            fallbackIcon = Icons.Filled.Person
+                                        )
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(5.dp)
                                         ) {
-                                            StudentAvatarWithOverlayBadge(
-                                                base64Data = stu.photoBase64,
-                                                contentDescription = stu.studentName,
-                                                badge = stuAutoBadges.firstOrNull(),
-                                                avatarSize = 54.dp,
-                                                boxWidth = 62.dp,
-                                                fallbackIcon = Icons.Filled.Person
+                                            Text(
+                                                text = stu.fullNameWithFather,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
-                                            Column {
+                                            Text(
+                                                text = "${stu.gradeClass} • شعبة (${stu.sectionName})",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = statusBadgeColor.copy(alpha = 0.14f),
+                                                border = BorderStroke(1.dp, statusBadgeColor.copy(alpha = 0.45f))
+                                            ) {
                                                 Text(
-                                                    text = stu.fullNameWithFather,
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Text(
-                                                    text = "${stu.gradeClass} • شعبة (${stu.sectionName})",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    text = statusBadgeLabel,
+                                                    fontSize = 11.2.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = statusBadgeColor,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                                 )
                                             }
                                         }
-
-                                        NoWrapBadge(
-                                            text = statusBadgeLabel,
-                                            icon = if (!previewGrade.isAllExamsCompleted) Icons.Filled.TrendingUp else Icons.Filled.Verified,
-                                            containerColor = statusBadgeColor.copy(alpha = 0.15f),
-                                            contentColor = statusBadgeColor
-                                        )
                                     }
 
-                                    // شريط علوي زمردي هادئ يعرض ملخص الطالب (المادة، السعي الفصلي، والتقدير/الحالة) في سطرين مريحين بدون أي انكسار عمودي
+                                    // شريط علوي زمردي هادئ يعرض ملخص الطالب (المادة، السعي الفصلي، والتقدير/الحالة) في سطرين مريحين بدون أي انكسار عمودي أو أيقونات كلاسيكية
                                     Surface(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp),
@@ -4417,27 +4363,15 @@ fun ExamsAndGradesScreen(
                                                 .padding(horizontal = 12.dp, vertical = 9.dp),
                                             verticalArrangement = Arrangement.spacedBy(7.dp)
                                         ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.MenuBook,
-                                                    contentDescription = null,
-                                                    tint = DeepEmerald,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "المادة: $selectedSubject (الدرجة من $selectedMaxScale)",
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = DeepForestGreen,
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
+                                            Text(
+                                                text = "المادة: $selectedSubject (الدرجة من $selectedMaxScale)",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -4518,19 +4452,11 @@ fun ExamsAndGradesScreen(
                                             color = Color(0xFFECFDF5),
                                             border = BorderStroke(1.dp, Color(0xFF6EE7B7))
                                         ) {
-                                            Row(
+                                            Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Verified,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFF047857),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
                                                 Text(
                                                     text = "مصادق عليها رسمياً: ${studentApprovedAndRecordedPeriods.joinToString(" • ") { it.arabicTitle }}",
                                                     fontSize = 11.5.sp,
@@ -4546,19 +4472,11 @@ fun ExamsAndGradesScreen(
                                             color = Color(0xFFFFFBEB),
                                             border = BorderStroke(1.dp, Color(0xFFFDE68A))
                                         ) {
-                                            Row(
+                                            Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Lock,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFFB45309),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
                                                 Text(
                                                     text = "الفترات المقفولة من الإدارة: ${studentLockedPeriods.joinToString(" • ") { it.arabicTitle }}",
                                                     fontSize = 11.sp,
@@ -4569,7 +4487,7 @@ fun ExamsAndGradesScreen(
                                         }
                                     }
 
-                                    // أزرار مرنة لإضافة أو إزالة خانات درجات يومية أو شهرية إضافية حسب الحاجة
+                                    // أزرار مرنة لإضافة أو إزالة خانات درجات يومية أو شهرية إضافية حسب الحاجة (كبسولات نصية صافية بدون أيقونات)
                                     if (!areAllPeriodsLockedForTeacher) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
@@ -4587,8 +4505,6 @@ fun ExamsAndGradesScreen(
                                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                                     modifier = Modifier.weight(1f)
                                                 ) {
-                                                    Icon(Icons.Filled.Add, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(15.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
                                                     Text("+ يومي إضافي", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = DeepEmerald)
                                                 }
                                             }
@@ -4604,8 +4520,6 @@ fun ExamsAndGradesScreen(
                                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                                     modifier = Modifier.weight(1f)
                                                 ) {
-                                                    Icon(Icons.Filled.Add, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(15.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
                                                     Text("+ شهر إضافي", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = DeepEmerald)
                                                 }
                                             }
@@ -4762,10 +4676,7 @@ fun ExamsAndGradesScreen(
                                     }
 
                                     if (!areAllPeriodsLockedForTeacher) {
-                                        VectorActionButton(
-                                            text = if (savedToast) "تم حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب بنجاح" else "حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب",
-                                            icon = if (savedToast) Icons.Filled.CheckCircle else Icons.Filled.Save,
-                                            containerColor = if (savedToast) SuccessGreen else MaterialTheme.colorScheme.primary,
+                                        Button(
                                             onClick = {
                                                 val ok = viewModel.saveOrUpdateSubjectGrade(
                                                     student = stu,
@@ -4781,8 +4692,22 @@ fun ExamsAndGradesScreen(
                                                 )
                                                 if (ok) savedToast = true
                                             },
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (savedToast) SuccessGreen else MaterialTheme.colorScheme.primary,
+                                                contentColor = Color.White
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
                                             modifier = Modifier.fillMaxWidth()
-                                        )
+                                        ) {
+                                            Text(
+                                                text = if (savedToast) "تم حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب بنجاح" else "حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
                                     }
 
                                     if (currentUser?.role == UserRole.ADMIN) {
@@ -4802,9 +4727,12 @@ fun ExamsAndGradesScreen(
                                                 .testTag("export_report_card_${stu.id}"),
                                             shape = RoundedCornerShape(12.dp)
                                         ) {
-                                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("تصدير بطاقة الدرجات (الشهادة المدرسية PDF)")
+                                            Text(
+                                                text = "تصدير بطاقة الدرجات (الشهادة المدرسية PDF)",
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
                                         }
                                     }
                                 }
