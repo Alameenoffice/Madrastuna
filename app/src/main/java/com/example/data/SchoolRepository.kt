@@ -685,9 +685,8 @@ class SchoolRepository(context: Context) {
                         schoolId = itemSchoolId,
                         canModerateActivities = o.optBoolean("canModerateActivities", false),
                         canManageCanteen = o.optBoolean("canManageCanteen", false),
-                        gender = o.optString("gender", "MALE").ifBlank { "MALE" },
-                        ageYears = o.optInt("ageYears", 0),
-                        isGenderAgeConfigured = o.optBoolean("isGenderAgeConfigured", true)
+                        gender = o.optString("gender", "ذكر").ifBlank { "ذكر" },
+                        ageYears = o.optInt("ageYears", 0).coerceAtLeast(0)
                     )
                 )
             }
@@ -737,9 +736,8 @@ class SchoolRepository(context: Context) {
                 put("schoolId", schoolId)
                 put("canModerateActivities", acc.canModerateActivities)
                 put("canManageCanteen", acc.canManageCanteen)
-                put("gender", acc.gender.ifBlank { "MALE" })
-                put("ageYears", acc.ageYears)
-                put("isGenderAgeConfigured", acc.isGenderAgeConfigured)
+                put("gender", InputSanitizer.sanitize(acc.normalizedGenderLabel))
+                put("ageYears", acc.ageYears.coerceAtLeast(0))
                 if (acc.role == UserRole.TEACHER) {
                     val teacherSpecificRatings = existingRatings.filter {
                         it.teacherId == acc.id ||
@@ -800,6 +798,7 @@ class SchoolRepository(context: Context) {
                     latestDateKey.isNotEmpty() -> dailyAttMap[latestDateKey].orEmpty()
                     else -> ""
                 }
+                val computedPresentDays = dailyAttMap.values.count { it.equals("PRESENT", ignoreCase = true) }
                 val computedAbsenceDays = if (dailyAttMap.isNotEmpty()) {
                     dailyAttMap.values.count { it.equals("ABSENT", ignoreCase = true) }
                 } else {
@@ -970,9 +969,9 @@ class SchoolRepository(context: Context) {
                         enrollmentOrderNumber = o.optString("enrollmentOrderNumber", ""),
                         enrollmentHistory = parsedEnrollmentHistory,
                         archivedYearlySummaries = parsedArchivedSummaries,
-                        gender = o.optString("gender", "MALE").ifBlank { "MALE" },
-                        ageYears = o.optInt("ageYears", 12).coerceIn(4, 30),
-                        registrationDate = o.optString("registrationDate", "2026-10-01").ifBlank { "2026-10-01" }
+                        gender = o.optString("gender", "ذكر").ifBlank { "ذكر" },
+                        ageYears = o.optInt("ageYears", 0).coerceAtLeast(0),
+                        presentDays = computedPresentDays
                     )
                 )
             }
@@ -1052,9 +1051,12 @@ class SchoolRepository(context: Context) {
                 put("dailyAttendance", dailyAttJson)
                 put("todayStatus", effectiveTodayStatus)
                 put("todayStatusDate", effectiveTodayDate)
+                put("presentDays", normalizedAttMap.values.count { it.equals("PRESENT", ignoreCase = true) })
                 put("absenceDays", calcAbsenceDays)
                 put("excusedDays", calcExcusedDays)
                 put("lateDays", calcLateDays)
+                put("gender", InputSanitizer.sanitize(s.normalizedGenderLabel))
+                put("ageYears", s.ageYears.coerceAtLeast(0))
                 put("walletBalance", s.walletBalance.coerceAtLeast(0))
                 put("dailySpendLimit", s.dailySpendLimit.coerceAtLeast(0))
                 put("walletBarcode", s.walletBarcode)
@@ -1137,9 +1139,6 @@ class SchoolRepository(context: Context) {
                     })
                 }
                 put("archivedYearlySummaries", archivedJsonArr)
-                put("gender", s.gender.ifBlank { "MALE" })
-                put("ageYears", s.ageYears)
-                put("registrationDate", InputSanitizer.sanitize(s.registrationDate.ifBlank { "2026-10-01" }))
             })
         }
         val jsonStr = arr.toString()

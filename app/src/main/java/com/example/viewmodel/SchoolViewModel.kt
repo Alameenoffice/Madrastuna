@@ -969,12 +969,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun showToastAlert(message: String, isSuccess: Boolean = true) {
-        val alert = ToastAlertMessage(
+        val cleanMsg = message.trim()
+        if (cleanMsg.isBlank()) return
+        val existing = _toastAlert.value
+        val now = System.currentTimeMillis()
+        // Single Active Toast Queue: prevent duplicate stacked alerts for identical rapid actions
+        if (existing != null && existing.message == cleanMsg && (now - existing.timestamp) < 1200L) {
+            return
+        }
+        _toastAlert.value = ToastAlertMessage(
             id = UUID.randomUUID().toString(),
-            message = message,
-            isSuccess = isSuccess
+            message = cleanMsg,
+            isSuccess = isSuccess,
+            timestamp = now
         )
-        _toastAlert.value = alert
     }
 
     fun dismissToastAlert() {
@@ -3027,8 +3035,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         photoBase64: String = "",
         canModerateActivities: Boolean = false,
         canManageCanteen: Boolean = false,
-        gender: String = "MALE",
-        ageYears: Int = 30
+        gender: String = "ذكر",
+        ageYears: Int = 0
     ): UserAccount? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val staffLabel = _schoolConfig.value.schoolStage.staffTitleSingular
@@ -3066,8 +3074,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
         val primaryClass = parsedPairs.firstOrNull()?.first ?: availableClasses.firstOrNull().orEmpty()
         val primarySec = parsedPairs.firstOrNull()?.second?.takeIf { it.isNotBlank() } ?: "أ"
-        val cleanGender = if (gender.uppercase().contains("FEM") || gender.contains("أنثى")) "FEMALE" else "MALE"
-        val cleanAge = ageYears.coerceIn(18, 75)
+        val cleanGender = if (gender.trim() == "أنثى" || gender.trim() == "انثى") "أنثى" else "ذكر"
 
         val newTeacher = UserAccount(
             id = "tch_${UUID.randomUUID().toString().take(6)}",
@@ -3087,8 +3094,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             canModerateActivities = canModerateActivities,
             canManageCanteen = canManageCanteen,
             gender = cleanGender,
-            ageYears = cleanAge,
-            isGenderAgeConfigured = true
+            ageYears = ageYears.coerceAtLeast(0)
         )
         val updated = listOf(newTeacher) + _accounts.value
         _accounts.value = updated
@@ -3138,10 +3144,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val updated = _accounts.value.map { acc ->
             if (acc.id == teacherId && acc.role == UserRole.TEACHER) {
-                val resolvedGender = if (gender != null) {
-                    if (gender.uppercase().contains("FEM") || gender.contains("أنثى")) "FEMALE" else "MALE"
-                } else acc.gender
-                val resolvedAge = ageYears?.coerceIn(18, 75) ?: acc.ageYears
+                val resolvedGender = gender?.let { if (it.trim() == "أنثى" || it.trim() == "انثى") "أنثى" else "ذكر" } ?: acc.gender
+                val resolvedAge = ageYears?.coerceAtLeast(0) ?: acc.ageYears
                 acc.copy(
                     fullName = InputSanitizer.sanitize(fullName).ifBlank { acc.fullName },
                     specialty = InputSanitizer.sanitize(specialty),
@@ -3156,8 +3160,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     canModerateActivities = canModerateActivities ?: acc.canModerateActivities,
                     canManageCanteen = canManageCanteen ?: acc.canManageCanteen,
                     gender = resolvedGender,
-                    ageYears = resolvedAge,
-                    isGenderAgeConfigured = true
+                    ageYears = resolvedAge
                 )
             } else acc
         }
@@ -3169,220 +3172,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         showToastAlert("تم تحديث بيانات وصلاحيات $staffLabel بنجاح", isSuccess = true)
-    }
-
-    fun updateTeacherSubjectsAndClasses(
-        teacherId: String,
-        subjectsList: List<String>,
-        assignedClassesStr: String,
-        gender: String? = null,
-        ageYears: Int? = null
-    ) {
-        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
-        val sid = _schoolConfig.value.schoolId
-        val cleanSubjects = subjectsList.map { InputSanitizer.sanitize(it) }.filter { it.isNotBlank() }.distinct()
-        val specialtyStr = cleanSubjects.joinToString("، ")
-
-        val tempHolder = UserAccount(
-            id = "temp",
-            username = "",
-            password = "",
-            fullName = "",
-            role = UserRole.TEACHER,
-            assignedClasses = InputSanitizer.sanitize(assignedClassesStr)
-        )
-        val parsedPairs = tempHolder.parsedClassAndSectionEntries
-        val normalizedAssignedStr = if (parsedPairs.isNotEmpty()) {
-            parsedPairs.joinToString(" | ") { (cls, sec) ->
-                if (sec.isBlank()) cls else "$cls - $sec"
-            }
-        } else {
-            InputSanitizer.sanitize(assignedClassesStr)
-        }
-        val primaryClass = parsedPairs.firstOrNull()?.first
-        val primarySec = parsedPairs.firstOrNull()?.second?.takeIf { it.isNotBlank() }
-
-        val updated = _accounts.value.map { acc ->
-            if (acc.id == teacherId && acc.role == UserRole.TEACHER) {
-                val resolvedGender = if (gender != null) {
-                    if (gender.uppercase().contains("FEM") || gender.contains("أنثى")) "FEMALE" else "MALE"
-                } else acc.gender
-                val resolvedAge = ageYears?.coerceIn(18, 75) ?: acc.ageYears
-                acc.copy(
-                    specialty = specialtyStr.ifBlank { acc.specialty },
-                    assignedClasses = normalizedAssignedStr.ifBlank { acc.assignedClasses },
-                    gradeClass = primaryClass ?: acc.gradeClass,
-                    sectionName = primarySec ?: acc.sectionName,
-                    gender = resolvedGender,
-                    ageYears = resolvedAge,
-                    isGenderAgeConfigured = true
-                )
-            } else acc
-        }
-        _accounts.value = updated
-        repo.saveAccounts(updated, sid)
-        _currentUser.value?.let { curr ->
-            if (curr.id == teacherId) {
-                _currentUser.value = updated.firstOrNull { it.id == teacherId } ?: curr
-            }
-        }
-        showToastAlert("تم حفظ تحديث المواد والصفوف المسندة بنجاح", isSuccess = true)
-    }
-
-    fun updateCurrentUserGenderAndAge(
-        gender: String,
-        ageYears: Int
-    ) {
-        val curr = _currentUser.value ?: return
-        val sid = _schoolConfig.value.schoolId
-        val resolvedGender = if (gender.uppercase().contains("FEM") || gender.contains("أنثى")) "FEMALE" else "MALE"
-        val resolvedAge = ageYears.coerceIn(5, 75)
-
-        val updatedAccounts = _accounts.value.map { acc ->
-            if (acc.id == curr.id) {
-                acc.copy(
-                    gender = resolvedGender,
-                    ageYears = resolvedAge,
-                    isGenderAgeConfigured = true
-                )
-            } else acc
-        }
-        _accounts.value = updatedAccounts
-        repo.saveAccounts(updatedAccounts, sid)
-
-        if (curr.role == UserRole.STUDENT || curr.role == UserRole.PARENT) {
-            val targetStuId = if (curr.role == UserRole.PARENT) {
-                _selectedParentChildId.value.ifBlank { curr.linkedStudentId }
-            } else {
-                curr.linkedStudentId
-            }
-            if (targetStuId.isNotBlank()) {
-                val updatedStudents = _students.value.map { s ->
-                    if (s.id == targetStuId) {
-                        s.copy(
-                            gender = resolvedGender,
-                            ageYears = resolvedAge
-                        )
-                    } else s
-                }
-                _students.value = updatedStudents
-                repo.saveStudents(updatedStudents, sid)
-            }
-        }
-
-        _currentUser.value = updatedAccounts.firstOrNull { it.id == curr.id } ?: curr.copy(
-            gender = resolvedGender,
-            ageYears = resolvedAge,
-            isGenderAgeConfigured = true
-        )
-        val themeMsg = if (resolvedGender == "FEMALE") {
-            "تم تحديث بيانات الحساب وتفعيل الهوية اللونية الراقية (Royal Feminine Palette)"
-        } else {
-            "تم تحديث بيانات الجنس والعمر وتفعيل الهوية الملكية الرسمية"
-        }
-        showToastAlert(themeMsg, isSuccess = true)
-    }
-
-    fun transferStudentClassAndSection(
-        studentId: String,
-        newGradeClass: String,
-        newSectionName: String,
-        updatedFullName: String? = null,
-        updatedGender: String? = null,
-        updatedAgeYears: Int? = null,
-        updatedDailyLimitIqd: Long? = null
-    ) {
-        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
-        val sid = _schoolConfig.value.schoolId
-        val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
-            newGradeClass,
-            newSectionName
-        )
-        val targetStu = _students.value.firstOrNull { it.id == studentId } ?: return
-        val finalName = updatedFullName?.let { InputSanitizer.sanitize(it) }?.takeIf { it.isNotBlank() } ?: targetStu.studentName
-        val finalGender = if (updatedGender != null) {
-            if (updatedGender.uppercase().contains("FEM") || updatedGender.contains("أنثى")) "FEMALE" else "MALE"
-        } else targetStu.gender
-        val finalAge = updatedAgeYears?.coerceIn(5, 25) ?: targetStu.ageYears
-        val finalDailyLimit = updatedDailyLimitIqd?.toInt()?.coerceAtLeast(0) ?: targetStu.dailySpendLimit
-
-        val updatedStudents = _students.value.map { s ->
-            if (s.id == studentId) {
-                s.copy(
-                    studentName = finalName,
-                    gradeClass = pureGradeClass,
-                    sectionName = pureSectionName,
-                    gender = finalGender,
-                    ageYears = finalAge,
-                    dailySpendLimit = finalDailyLimit,
-                    schoolId = sid
-                )
-            } else s
-        }
-        _students.value = updatedStudents
-        repo.saveStudents(updatedStudents, sid)
-
-        val updatedAccounts = _accounts.value.map { acc ->
-            if (acc.role == UserRole.STUDENT && acc.linkedStudentId == studentId) {
-                acc.copy(
-                    fullName = finalName,
-                    gradeClass = pureGradeClass,
-                    sectionName = pureSectionName,
-                    gender = finalGender,
-                    ageYears = finalAge,
-                    isGenderAgeConfigured = true,
-                    schoolId = sid
-                )
-            } else if (acc.role == UserRole.PARENT && acc.linkedStudentId == studentId) {
-                acc.copy(
-                    gradeClass = pureGradeClass,
-                    sectionName = pureSectionName,
-                    schoolId = sid
-                )
-            } else acc
-        }
-        _accounts.value = updatedAccounts
-        repo.saveAccounts(updatedAccounts, sid)
-
-        val updatedTuitions = _tuitions.value.map { t ->
-            if (t.studentId == studentId) {
-                t.copy(
-                    studentName = finalName,
-                    gradeClass = pureGradeClass,
-                    sectionName = pureSectionName
-                )
-            } else t
-        }
-        _tuitions.value = updatedTuitions
-        repo.saveTuitions(updatedTuitions, sid)
-
-        val updatedAttendance = _attendance.value.map { att ->
-            if (att.studentId == studentId) {
-                att.copy(
-                    studentName = finalName,
-                    gradeClass = pureGradeClass,
-                    sectionName = pureSectionName
-                )
-            } else att
-        }
-        _attendance.value = updatedAttendance
-        repo.saveAttendance(updatedAttendance, sid)
-
-        val updatedGrades = _grades.value.map { gr ->
-            if (gr.studentId == studentId) {
-                gr.copy(
-                    studentName = finalName,
-                    gradeClass = pureGradeClass
-                )
-            } else gr
-        }
-        _grades.value = updatedGrades
-        repo.saveGrades(updatedGrades, sid)
-
-        showToastAlert(
-            "تم نقل وتحديث سجل ($finalName) فوراً إلى ($pureGradeClass - شعبة $pureSectionName)",
-            isSuccess = true
-        )
     }
 
     fun canUserManageCanteen(user: UserAccount? = _currentUser.value): Boolean {
@@ -3505,8 +3294,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         studentPassword: String,
         parentUsername: String,
         parentPassword: String,
-        gender: String = "MALE",
-        ageYears: Int = 12
+        gender: String = "ذكر",
+        ageYears: Int = 0
     ): StudentRecord? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val cleanStuName = InputSanitizer.sanitize(studentName)
@@ -3531,9 +3320,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             gradeClass,
             sectionName
         )
-        val cleanGender = if (gender.uppercase().contains("FEM") || gender.contains("أنثى")) "FEMALE" else "MALE"
-        val cleanAge = ageYears.coerceIn(5, 25)
-        val todayIso = com.example.ui.components.ArabicCalendarDateHelper.todayIsoDate()
+        val cleanGender = if (gender.trim() == "أنثى" || gender.trim() == "انثى") "أنثى" else "ذكر"
 
         val newStudent = StudentRecord(
             id = stuId,
@@ -3551,11 +3338,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             photoBase64 = photoBase64,
             excellencePoints = 92,
             isOnHonorRoll = false,
-            honorTitle = "طالب مجتهد",
+            honorTitle = if (cleanGender == "أنثى") "طالبة مجتهدة" else "طالب مجتهد",
             schoolId = sid,
             gender = cleanGender,
-            ageYears = cleanAge,
-            registrationDate = todayIso
+            ageYears = ageYears.coerceAtLeast(0),
+            presentDays = 0
         )
 
         val updatedStudents = listOf(newStudent) + _students.value
@@ -3584,8 +3371,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             photoBase64 = photoBase64,
             schoolId = sid,
             gender = cleanGender,
-            ageYears = cleanAge,
-            isGenderAgeConfigured = true
+            ageYears = ageYears.coerceAtLeast(0)
         )
 
         val updatedAccounts = if (existingParentAcc != null) {
@@ -3606,8 +3392,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 photoBase64 = photoBase64,
                 schoolId = sid,
                 gender = cleanGender,
-                ageYears = 38,
-                isGenderAgeConfigured = true
+                ageYears = ageYears.coerceAtLeast(0)
             )
             listOf(parentAcc, studentAcc) + _accounts.value
         }
@@ -3631,9 +3416,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveTuitions(updatedTuitions, sid)
 
         val msg = if (existingParentAcc != null) {
-            "تمت إضافة الطالب ($cleanStuName) وربطه تلقائياً بحساب ولي الأمر الحالي ($pUser) مع إخوته بنجاح"
+            "تمت إضافة ($cleanStuName) وربطه تلقائياً بحساب ولي الأمر الحالي ($pUser) مع إخوته بنجاح"
         } else {
-            "تمت إضافة الطالب ($cleanStuName) • المستخدم: ($sUser) وولي الأمر: ($pUser)"
+            "تمت إضافة ($cleanStuName) • المستخدم: ($sUser) وولي الأمر: ($pUser)"
         }
         showToastAlert(msg, isSuccess = true)
         return newStudent
@@ -3668,14 +3453,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val targetOldStudent = _students.value.firstOrNull { it.id == studentId }
         val oldParentUsername = targetOldStudent?.parentUsername.orEmpty()
+        val resolvedGender = gender?.let { if (it.trim() == "أنثى" || it.trim() == "انثى") "أنثى" else "ذكر" }
 
         // Strictly update gradeClass and sectionName ONLY on the target studentId — never overwrite siblings!
         val updatedStudents = _students.value.map { s ->
             if (s.id == studentId) {
-                val resolvedGender = if (gender != null) {
-                    if (gender.uppercase().contains("FEM") || gender.contains("أنثى")) "FEMALE" else "MALE"
-                } else s.gender
-                val resolvedAge = ageYears?.coerceIn(5, 25) ?: s.ageYears
                 s.copy(
                     studentName = InputSanitizer.sanitize(studentName).ifBlank { s.studentName },
                     gradeClass = pureGradeClass,
@@ -3689,8 +3471,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     parentPassword = InputSanitizer.sanitize(parentPassword).ifBlank { s.parentPassword },
                     photoBase64 = photoBase64.ifBlank { s.photoBase64 },
                     schoolId = sid,
-                    gender = resolvedGender,
-                    ageYears = resolvedAge
+                    gender = resolvedGender ?: s.gender,
+                    ageYears = ageYears?.coerceAtLeast(0) ?: s.ageYears
                 )
             } else s
         }
@@ -3699,10 +3481,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val updatedAccounts = _accounts.value.map { acc ->
             if (acc.role == UserRole.STUDENT && acc.linkedStudentId == studentId) {
-                val resolvedGender = if (gender != null) {
-                    if (gender.uppercase().contains("FEM") || gender.contains("أنثى")) "FEMALE" else "MALE"
-                } else acc.gender
-                val resolvedAge = ageYears?.coerceIn(5, 25) ?: acc.ageYears
                 acc.copy(
                     fullName = InputSanitizer.sanitize(studentName).ifBlank { acc.fullName },
                     username = prefixedStuUser.ifBlank { acc.username },
@@ -3713,9 +3491,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     address = ArabicTextNormalizer.cleanDefaultAddress(InputSanitizer.sanitize(address)),
                     photoBase64 = photoBase64.ifBlank { acc.photoBase64 },
                     schoolId = sid,
-                    gender = resolvedGender,
-                    ageYears = resolvedAge,
-                    isGenderAgeConfigured = true
+                    gender = resolvedGender ?: acc.gender,
+                    ageYears = ageYears?.coerceAtLeast(0) ?: acc.ageYears
                 )
             } else if (acc.role == UserRole.PARENT &&
                 (acc.linkedStudentId == studentId ||
@@ -9051,6 +8828,223 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         return getTeacherEvaluationSummaries(accountsList, ratingsList, currentUserAccount)
             .filter { it.totalRatingsCount > 0 }
             .take(limit)
+    }
+
+    // =========================================================================
+    // FULL-SYSTEM GENDER-ADAPTIVE THEME & REAL ADMIN METRICS ENGINE
+    // =========================================================================
+
+    /**
+     * Determines whether the active session should display the Royal Feminine Identity
+     * (Rose Quartz, Soft Lavender & Rose Gold) across 100% of the app.
+     */
+    fun isSessionFeminineTheme(
+        user: UserAccount? = _currentUser.value,
+        allStudents: List<StudentRecord> = _students.value,
+        schoolConfig: SchoolConfig = _schoolConfig.value,
+        selectedParentChildId: String = _selectedParentChildId.value
+    ): Boolean {
+        if (user == null) {
+            return schoolConfig.schoolGenderType.contains("بنات")
+        }
+        return when (user.role) {
+            UserRole.STUDENT -> {
+                val linkedStu = allStudents.firstOrNull { it.id == user.linkedStudentId }
+                user.isFemale || linkedStu?.isFemale == true || schoolConfig.schoolGenderType.contains("بنات")
+            }
+            UserRole.PARENT -> {
+                val children = getChildrenForParent(user)
+                val activeChild = children.firstOrNull { it.id == selectedParentChildId } ?: children.firstOrNull()
+                activeChild?.isFemale == true || user.isFemale || schoolConfig.schoolGenderType.contains("بنات")
+            }
+            UserRole.TEACHER, UserRole.ADMIN -> {
+                user.isFemale || schoolConfig.schoolGenderType.contains("بنات")
+            }
+        }
+    }
+
+    /**
+     * Updates the gender ("ذكر" / "أنثى") and age (in years) for the currently logged-in user
+     * (and their linked StudentRecord / selected child) and immediately persists to storage.
+     */
+    fun updateCurrentUserGenderAndAge(gender: String, ageYears: Int) {
+        val curr = _currentUser.value ?: return
+        val sid = _schoolConfig.value.schoolId
+        val cleanGender = if (gender.trim() == "أنثى" || gender.trim() == "انثى") "أنثى" else "ذكر"
+        val cleanAge = ageYears.coerceAtLeast(0)
+
+        val targetStuId = when (curr.role) {
+            UserRole.STUDENT -> curr.linkedStudentId
+            UserRole.PARENT -> {
+                val children = getChildrenForParent(curr)
+                (children.firstOrNull { it.id == _selectedParentChildId.value } ?: children.firstOrNull())?.id.orEmpty()
+            }
+            else -> ""
+        }
+
+        val updatedAccounts = _accounts.value.map { acc ->
+            if (acc.id == curr.id || (targetStuId.isNotBlank() && acc.role == UserRole.STUDENT && acc.linkedStudentId == targetStuId)) {
+                acc.copy(gender = cleanGender, ageYears = if (cleanAge > 0) cleanAge else acc.ageYears)
+            } else acc
+        }
+        _accounts.value = updatedAccounts
+        repo.saveAccounts(updatedAccounts, sid)
+        _currentUser.value = updatedAccounts.firstOrNull { it.id == curr.id } ?: curr.copy(gender = cleanGender, ageYears = cleanAge)
+
+        if (targetStuId.isNotBlank()) {
+            val updatedStudents = _students.value.map { s ->
+                if (s.id == targetStuId) {
+                    s.copy(gender = cleanGender, ageYears = if (cleanAge > 0) cleanAge else s.ageYears)
+                } else s
+            }
+            _students.value = updatedStudents
+            repo.saveStudents(updatedStudents, sid)
+        }
+
+        val themeName = if (cleanGender == "أنثى") "الهوية اللونية الوردية الملكية" else "الهوية اللونية الزمردية الملكية"
+        showToastAlert("تم حفظ الجنس والعمر وتفعيل $themeName فوراً", isSuccess = true)
+    }
+
+    /**
+     * Exact Real Count of students supervised by a teacher based strictly on the real registered
+     * students in the school whose class & section match the teacher's assigned classes/sections.
+     * Never returns any mock or hardcoded number (like 28).
+     */
+    fun getTeacherSupervisedStudentsCount(
+        teacher: UserAccount,
+        allStudents: List<StudentRecord> = _students.value
+    ): Int {
+        val sid = _schoolConfig.value.schoolId
+        val schoolStudents = allStudents.filter {
+            (it.schoolId.isEmpty() || it.schoolId == sid) &&
+                it.enrollmentStatus == StudentEnrollmentStatus.ACTIVE
+        }
+        return schoolStudents.count { stu ->
+            teacher.canTeacherAccessClassSection(stu.gradeClass, stu.sectionName)
+        }
+    }
+
+    /**
+     * Real-time technical performance and activity metrics for a teacher in the Admin Teaching Staff drawer.
+     * Computes actual supervised students, attendance actions, homework published, and grades recorded.
+     */
+    fun getTeacherRealPerformanceMetrics(teacher: UserAccount): TeacherRealPerformanceMetrics {
+        val sid = _schoolConfig.value.schoolId
+        val supervisedStudents = _students.value.filter {
+            (it.schoolId.isEmpty() || it.schoolId == sid) &&
+                it.enrollmentStatus == StudentEnrollmentStatus.ACTIVE &&
+                teacher.canTeacherAccessClassSection(it.gradeClass, it.sectionName)
+        }
+        val supervisedIds = supervisedStudents.map { it.id }.toSet()
+        val teacherSubs = teacher.teacherSubjectsList
+
+        val matchingGrades = _grades.value.filter { g ->
+            g.studentId in supervisedIds &&
+                (g.dailyScore > 0 || g.month1Score > 0 || g.month2Score > 0 || g.midYearScore > 0 || g.finalExamScore > 0) &&
+                (teacherSubs.isEmpty() || teacherSubs.any { ArabicTextNormalizer.normalizeText(it) == ArabicTextNormalizer.normalizeText(g.subjectName) })
+        }
+        val matchingHomework = _homeworks.value.filter { hw ->
+            teacher.canTeacherAccessClassSection(hw.gradeClass, hw.sectionName) &&
+                (teacherSubs.isEmpty() || teacherSubs.any { ArabicTextNormalizer.normalizeText(it) == ArabicTextNormalizer.normalizeText(hw.subjectName) })
+        }
+        val recordedAttendanceActions = supervisedStudents.sumOf { it.dailyAttendance.size }
+        val ratingsSummary = getTeacherEvaluationSummaries().firstOrNull { it.teacher.id == teacher.id }
+
+        val gradeCommitmentScore = when {
+            supervisedStudents.isEmpty() -> 0
+            matchingGrades.isNotEmpty() -> (matchingGrades.size * 100 / (supervisedStudents.size.coerceAtLeast(1))).coerceIn(25, 100)
+            else -> 0
+        }
+        val ratingScore = if (ratingsSummary != null && ratingsSummary.totalRatingsCount > 0) {
+            (ratingsSummary.averageRating * 20f).toInt().coerceIn(0, 100)
+        } else 0
+
+        val commitmentPercent = when {
+            gradeCommitmentScore > 0 && ratingScore > 0 -> ((gradeCommitmentScore + ratingScore) / 2).coerceIn(0, 100)
+            gradeCommitmentScore > 0 -> gradeCommitmentScore
+            ratingScore > 0 -> ratingScore
+            recordedAttendanceActions > 0 -> 80
+            supervisedStudents.isNotEmpty() -> 70
+            else -> 0
+        }
+
+        val activityPercent = when {
+            matchingHomework.isNotEmpty() || matchingGrades.isNotEmpty() || recordedAttendanceActions > 0 ->
+                ((matchingHomework.size * 20) + (matchingGrades.size * 8) + (recordedAttendanceActions * 4)).coerceIn(25, 100)
+            supervisedStudents.isNotEmpty() -> 50
+            else -> 0
+        }
+
+        return TeacherRealPerformanceMetrics(
+            supervisedStudentsCount = supervisedStudents.size,
+            commitmentRatePercent = commitmentPercent,
+            interactiveActivityPercent = activityPercent,
+            recordedAttendanceActionsCount = recordedAttendanceActions,
+            publishedHomeworksCount = matchingHomework.size,
+            gradedStudentsCount = matchingGrades.size
+        )
+    }
+
+    /**
+     * أداة نقل الطالب الفورية (تغيير الصف أو الشعبة):
+     * Immediately transfers a student to a new class and/or section, updates linked accounts and tuition records,
+     * and automatically refreshes section & teacher student counts.
+     */
+    fun transferStudentClassAndSection(
+        studentId: String,
+        newGradeClass: String,
+        newSectionName: String,
+        newGender: String? = null,
+        newAgeYears: Int? = null
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val targetStu = _students.value.firstOrNull { it.id == studentId } ?: return
+        val (pureClass, pureSection) = ArabicTextNormalizer.normalizeAndExtractClass(
+            newGradeClass.ifBlank { targetStu.gradeClass },
+            newSectionName.ifBlank { targetStu.sectionName }
+        )
+        val resolvedGender = newGender?.let { if (it.trim() == "أنثى" || it.trim() == "انثى") "أنثى" else "ذكر" } ?: targetStu.gender
+        val resolvedAge = newAgeYears?.coerceAtLeast(0) ?: targetStu.ageYears
+
+        val updatedStudents = _students.value.map { s ->
+            if (s.id == studentId) {
+                s.copy(
+                    gradeClass = pureClass,
+                    sectionName = pureSection,
+                    gender = resolvedGender,
+                    ageYears = resolvedAge
+                )
+            } else s
+        }
+        _students.value = updatedStudents
+        repo.saveStudents(updatedStudents, sid)
+
+        val updatedAccounts = _accounts.value.map { acc ->
+            if (acc.linkedStudentId == studentId) {
+                acc.copy(
+                    gradeClass = pureClass,
+                    sectionName = pureSection,
+                    gender = if (acc.role == UserRole.STUDENT) resolvedGender else acc.gender,
+                    ageYears = if (acc.role == UserRole.STUDENT) resolvedAge else acc.ageYears
+                )
+            } else acc
+        }
+        _accounts.value = updatedAccounts
+        repo.saveAccounts(updatedAccounts, sid)
+
+        val updatedTuitions = _tuitions.value.map { t ->
+            if (t.studentId == studentId) {
+                t.copy(gradeClass = pureClass, sectionName = pureSection)
+            } else t
+        }
+        _tuitions.value = updatedTuitions
+        repo.saveTuitions(updatedTuitions, sid)
+
+        showToastAlert(
+            "تم نقل (${targetStu.studentName}) فوراً إلى الصف $pureClass - شعبة $pureSection بنجاح",
+            isSuccess = true
+        )
     }
 }
 

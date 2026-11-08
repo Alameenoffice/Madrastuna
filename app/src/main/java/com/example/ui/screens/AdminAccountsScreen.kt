@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,10 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,13 +39,18 @@ import com.example.viewmodel.SchoolViewModel
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AdminAccountsScreen(
-    viewModel: SchoolViewModel
+    viewModel: SchoolViewModel,
+    initialForcedTab: Int? = null
 ) {
     val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val featureSettings by viewModel.featureSettings.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val students by viewModel.students.collectAsState()
+    val attendance by viewModel.attendance.collectAsState()
+    val homeworks by viewModel.homeworks.collectAsState()
+    val grades by viewModel.grades.collectAsState()
+    val teacherRatings by viewModel.teacherRatings.collectAsState()
     val toastAlert by viewModel.toastAlert.collectAsState()
     val latestAnnualPromotionReport by viewModel.latestAnnualPromotionReport.collectAsState()
     val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
@@ -67,16 +77,24 @@ fun AdminAccountsScreen(
             .distinctBy { ArabicTextNormalizer.normalizeText(it) }
     }
 
-    // Search & Filters (شريط بحث فوري + فلتر حسب الدور + فلتر حسب الصف)
+    // 0 = قسم الكادر التدريسي, 1 = قسم سجل وأسماء الطلاب, 2 = عرض شامل للكل
+    var activeDirectoryTab by remember(initialForcedTab) {
+        mutableStateOf(initialForcedTab ?: 0)
+    }
+
+    // Search & Filters (شريط بحث فوري + فلتر الاختصاص + فلتر الصف + فلتر الشعبة)
     var searchQuery by remember { mutableStateOf("") }
-    var selectedRoleFilter by remember { mutableStateOf("الكل") }
+    var selectedSubjectFilter by remember { mutableStateOf("الكل") }
     var selectedClassFilter by remember { mutableStateOf("الكل") }
+    var selectedSectionFilter by remember { mutableStateOf("الكل") }
 
     var showTeacherDialog by remember { mutableStateOf(false) }
     var editingTeacher by remember { mutableStateOf<UserAccount?>(null) }
+    var selectedTeacherForSlideOver by remember { mutableStateOf<UserAccount?>(null) }
 
     var showStudentDialog by remember { mutableStateOf(false) }
     var editingStudent by remember { mutableStateOf<StudentRecord?>(null) }
+    var selectedStudentForSlideOver by remember { mutableStateOf<StudentRecord?>(null) }
     var studentForDigitalIdCard by remember { mutableStateOf<StudentRecord?>(null) }
     var studentForEnrollmentStatus by remember { mutableStateOf<StudentRecord?>(null) }
     var showAnnualPromotionConfirmDialog by remember { mutableStateOf(false) }
@@ -87,31 +105,34 @@ fun AdminAccountsScreen(
         }
     }
 
-    val teachers = remember(accounts, searchQuery, selectedClassFilter) {
+    val teachers = remember(accounts, searchQuery, selectedClassFilter, selectedSubjectFilter) {
         accounts.filter { acc ->
             acc.role == UserRole.TEACHER &&
                 (searchQuery.isBlank() ||
                     acc.fullName.contains(searchQuery, ignoreCase = true) ||
                     acc.username.contains(searchQuery, ignoreCase = true) ||
                     acc.specialty.contains(searchQuery, ignoreCase = true)) &&
-                (selectedClassFilter == "الكل" || acc.canTeacherAccessClassSection(selectedClassFilter, null))
-        }
+                (selectedClassFilter == "الكل" || acc.canTeacherAccessClassSection(selectedClassFilter, null)) &&
+                (selectedSubjectFilter == "الكل" || acc.canTeacherAccessSubject(selectedSubjectFilter))
+        }.sortedBy { it.fullName }
     }
 
-    val filteredStudents = remember(students, searchQuery, selectedClassFilter) {
+    val filteredStudents = remember(students, searchQuery, selectedClassFilter, selectedSectionFilter) {
         students.filter { stu ->
             val qMatch = searchQuery.isBlank() ||
                 stu.studentName.contains(searchQuery, ignoreCase = true) ||
+                stu.fullNameWithFather.contains(searchQuery, ignoreCase = true) ||
                 stu.parentName.contains(searchQuery, ignoreCase = true) ||
                 stu.studentUsername.contains(searchQuery, ignoreCase = true) ||
                 stu.parentUsername.contains(searchQuery, ignoreCase = true)
             val clsMatch = selectedClassFilter == "الكل" || ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClassFilter)
-            qMatch && clsMatch
-        }
+            val secMatch = selectedSectionFilter == "الكل" || ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSectionFilter)
+            qMatch && clsMatch && secMatch
+        }.sortedBy { it.fullNameWithFather }
     }
 
-    val showTeachersList = selectedRoleFilter == "الكل" || selectedRoleFilter == "معلم" || selectedRoleFilter == "مدرس" || selectedRoleFilter == staffIndefinite
-    val showStudentsParentsList = selectedRoleFilter == "الكل" || selectedRoleFilter == "ولي أمر" || selectedRoleFilter == "طالب"
+    val showTeachersList = activeDirectoryTab == 0 || activeDirectoryTab == 2
+    val showStudentsParentsList = activeDirectoryTab == 1 || activeDirectoryTab == 2
 
     LazyColumn(
         modifier = Modifier
@@ -120,15 +141,25 @@ fun AdminAccountsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // 3D Seamless Wave Hero Header & Unclipped Action Buttons (No overlapping green badge)
+        // 3D Seamless Wave Hero Header & Unclipped Action Buttons
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val heroTitle = when (activeDirectoryTab) {
+                    0 -> "قسم الكادر التدريسي والإشراف الأكاديمي"
+                    1 -> "سجل وأسماء الطلاب والفهرسة حسب الصف والشعبة"
+                    else -> "إدارة الحسابات والمستخدمين"
+                }
+                val heroSubtitle = when (activeDirectoryTab) {
+                    0 -> "استعراض الأساتذة بنمط القائمة المدمجة (Compact View)، إدارة المواد والصفوف المرنة، ومؤشرات الإشراف الفعلي."
+                    1 -> "فرز فوري لأسماء الطلبة حسب الصف والشعبة أبجدياً مع أداة النقل الفوري بين الصفوف والشعب."
+                    else -> "مرتبط ديناميكياً بالصفوف والشعب المسجلة (${registeredClasses.size} صفوف). اختر الصفوف والمواد لـ$staffPlural والطلاب."
+                }
                 ThreeDHeroHeaderCard(
-                    title = "إدارة الحسابات والمستخدمين",
-                    subtitle = "مرتبط ديناميكياً بالصفوف والشعب المسجلة (${registeredClasses.size} صفوف). اختر الصفوف والمواد لـ$staffPlural وأولياء الأمور والطلاب.",
+                    title = heroTitle,
+                    subtitle = heroSubtitle,
                     rightPillText = schoolConfig.schoolStage.arabicLabel,
                     rightPillIcon = Icons.Filled.School,
-                    leftPillText = "${registeredClasses.size} صفوف مسجلة",
+                    leftPillText = "${students.size} طالب • ${accounts.count { it.role == UserRole.TEACHER }} $staffSingular",
                     leftPillIcon = Icons.Filled.Groups,
                     illustrationType = ThreeDIllustrationType.USER_MANAGEMENT_AVATARS_3D
                 )
@@ -247,70 +278,79 @@ fun AdminAccountsScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-
-                        // Quick Navigation to Compact Teaching Staff & Compact Students Directory
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { viewModel.navigateToSection(AppSection.TEACHING_STAFF) },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .testTag("open_compact_teaching_staff_btn"),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary)
-                            ) {
-                                Text(
-                                    text = "قسم الكادر التدريسي",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 1
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = { viewModel.navigateToSection(AppSection.STUDENTS_DIRECTORY) },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .testTag("open_compact_students_directory_btn"),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary)
-                            ) {
-                                Text(
-                                    text = "سجل الطلبة والنقل الفوري",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 1
-                                )
-                            }
-                        }
                     }
                 }
             }
         }
 
-        // Instant Search Bar + Role Filter + Class Filter
+        // Segmented Directory Mode Switcher + Instant Search & Smart Filters
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Segmented Modern Toggle Pills: [الكادر التدريسي] | [سجل وأسماء الطلاب] | [عرض الكل]
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(AdaptiveSoftSurface)
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            0 to "الكادر التدريسي (${accounts.count { it.role == UserRole.TEACHER }})",
+                            1 to "سجل وأسماء الطلاب (${students.size})",
+                            2 to "عرض الشامل"
+                        ).forEach { (tabIdx, tabTitle) ->
+                            val isSelected = activeDirectoryTab == tabIdx
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(11.dp))
+                                    .clickable { activeDirectoryTab = tabIdx }
+                                    .testTag("admin_directory_tab_$tabIdx"),
+                                shape = RoundedCornerShape(11.dp),
+                                color = if (isSelected) RoyalGreen else Color.Transparent,
+                                shadowElevation = if (isSelected) 3.dp else 0.dp
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = tabTitle,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                        color = if (isSelected) Color.White else DeepForestGreen,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Instant Search Bar
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        label = { Text("بحث فوري بالاسم أو اسم المستخدم...") },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        placeholder = {
+                            Text(
+                                if (activeDirectoryTab == 0) "بحث فوري باسم الأستاذ أو المادة..."
+                                else "بحث فوري باسم الطالب أو ولي الأمر..."
+                            )
+                        },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = RoyalGreen) },
                         trailingIcon = {
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { searchQuery = "" }) {
@@ -322,51 +362,90 @@ fun AdminAccountsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("accounts_search_bar"),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(14.dp)
                     )
 
-                    // Role Filter (الكل، معلم، ولي أمر، طالب)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.FilterList,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                    // Subject Specialty Filter when viewing Teaching Staff
+                    if (showTeachersList) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "فرز حسب الاختصاص / المادة الدراسية:",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(listOf("الكل") + registeredSubjects) { subjOption ->
+                                    val isSel = selectedSubjectFilter == subjOption
+                                    FilterChip(
+                                        selected = isSel,
+                                        onClick = { selectedSubjectFilter = subjOption },
+                                        label = {
+                                            Text(
+                                                text = subjOption,
+                                                fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Registered Class Filter (الصف الدراسي)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "فرز حسب الصف الدراسي:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
                         )
-                        Text("الدور:", style = MaterialTheme.typography.labelLarge)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(listOf("الكل", staffIndefinite, "ولي أمر", "طالب")) { roleOption ->
+                            items(listOf("الكل") + registeredClasses) { clsOption ->
+                                val isSel = selectedClassFilter == clsOption
                                 FilterChip(
-                                    selected = selectedRoleFilter == roleOption,
-                                    onClick = { selectedRoleFilter = roleOption },
-                                    label = { Text(roleOption, maxLines = 1, softWrap = false) }
+                                    selected = isSel,
+                                    onClick = { selectedClassFilter = clsOption },
+                                    label = {
+                                        Text(
+                                            text = clsOption,
+                                            fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 )
                             }
                         }
                     }
 
-                    // Registered Class Filter (حسب الصف المسجل)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Class,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text("الصف:", style = MaterialTheme.typography.labelLarge)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(listOf("الكل") + registeredClasses) { clsOption ->
-                                FilterChip(
-                                    selected = selectedClassFilter == clsOption,
-                                    onClick = { selectedClassFilter = clsOption },
-                                    label = { Text(clsOption, maxLines = 1, softWrap = false) }
-                                )
+                    // Section Filter (الشعبة: أ، ب، ج...) when viewing Students Directory
+                    if (showStudentsParentsList) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "فرز حسب الشعبة الدراسية:",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(listOf("الكل") + registeredSections) { secOption ->
+                                    val isSel = selectedSectionFilter == secOption
+                                    FilterChip(
+                                        selected = isSel,
+                                        onClick = { selectedSectionFilter = secOption },
+                                        label = {
+                                            Text(
+                                                text = if (secOption == "الكل") "كل الشعب" else "شعبة $secOption",
+                                                fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -374,412 +453,1113 @@ fun AdminAccountsScreen(
             }
         }
 
-        // Teachers List Section
+        // =========================================================================
+        // 1. قسم "الكادر التدريسي" — Sleek Compact Rows (رابعاً وخامساً)
+        // =========================================================================
         if (showTeachersList) {
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "حسابات $staffPlural (${teachers.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            items(teachers, key = { it.id }) { teacher ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Base64AvatarImage(
-                                    base64Data = teacher.photoBase64,
-                                    fallbackIcon = Icons.Filled.CoPresent,
-                                    contentDescription = teacher.fullName,
-                                    size = 48.dp
-                                )
-                                Column {
-                                    Text(
-                                        text = teacher.fullName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "المواد المسندة: ${teacher.specialty}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "الصفوف والشعب المسندة: ${teacher.formattedAssignedClassesForDisplay}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    if (teacher.canModerateActivities) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        NoWrapBadge(
-                                            text = "مخول بمراجعة نشاطات الطلبة",
-                                            icon = Icons.Filled.VerifiedUser,
-                                            containerColor = DeepEmerald.copy(alpha = 0.14f),
-                                            contentColor = DeepEmerald
-                                        )
-                                    }
-                                    if (teacher.canManageCanteen) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        NoWrapBadge(
-                                            text = "مخول بإدارة كاشير الحانوت وشحن المحفظة",
-                                            icon = Icons.Filled.Storefront,
-                                            containerColor = DeepEmerald.copy(alpha = 0.14f),
-                                            contentColor = DeepEmerald
-                                        )
-                                    }
-                                }
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                IconButton(
-                                    onClick = {
-                                        editingTeacher = teacher
-                                        showTeacherDialog = true
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Edit,
-                                        contentDescription = "تعديل صفوف ومواد المعلم",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Switch(
-                                    checked = teacher.isActive,
-                                    onCheckedChange = { viewModel.toggleAccountActive(teacher.id) }
-                                )
-                            }
-                        }
-
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "المستخدم: ${teacher.username}",
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                                Text(
-                                    text = "كلمة المرور: ${teacher.password}",
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            }
-                        }
-
-                        VectorActionButton(
-                            text = "إرسال بيانات الدخول للمعلم عبر واتساب",
-                            icon = Icons.Filled.Chat,
-                            containerColor = WhatsAppGreen,
-                            onClick = {
-                                val msg = """
-                                    السلام عليكم أستاذنا الفاضل ${teacher.fullName}
-                                    إدارة (${schoolConfig.schoolName}) ترحب بكم في منصة مدرستي.
-                                    بيانات الدخول الخاصة بحساب المعلم:
-                                    • كود المدرسة: ${schoolConfig.schoolId}
-                                    • المواد المسندة: ${teacher.specialty}
-                                    • الصفوف والشعب المسندة: ${teacher.assignedClasses}
-                                    • اسم المستخدم الكامل: ${teacher.username}
-                                    • كلمة المرور: ${teacher.password}
-                                """.trimIndent()
-                                ExternalIntents.sendWhatsAppMessage(context, teacher.phone, msg)
-                            },
-                            modifier = Modifier.fillMaxWidth()
+                    Column {
+                        Text(
+                            text = "سجل الكادر التدريسي (${teachers.size} $staffSingular)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        Text(
+                            text = "اضغط على اسم الأستاذ لفتح البطاقة التفصيلية الشاملة وإدارة مواده وصفوفه ومؤشرات أدائه",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
-        }
 
-        // Parents & Students List Section
-        if (showStudentsParentsList) {
-            item {
-                Text(
-                    text = "حسابات أولياء الأمور والطلاب (${filteredStudents.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-            }
-
-            items(filteredStudents, key = { it.id }) { stu ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+            if (teachers.isEmpty()) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, AdaptiveSoftBorder)
                     ) {
-                        val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
+                        Text(
+                            text = "لا يوجد أساتذة مطابقون لخيارات البحث أو الفرز الحالية.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(24.dp)
+                        )
+                    }
+                }
+            } else {
+                itemsIndexed(teachers, key = { _, t -> "compact_teacher_${t.id}" }) { idx, teacher ->
+                    val realSupervisedCount = remember(students, teacher, schoolConfig.schoolId) {
+                        viewModel.getTeacherSupervisedStudentsCount(teacher)
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { selectedTeacherForSlideOver = teacher }
+                            .testTag("compact_teacher_row_${teacher.id}"),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, AdaptiveSoftBorder.copy(alpha = 0.75f)),
+                        shadowElevation = 2.dp
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            // Right side: Serial number inside geometric circle + Full Name + Gender/Classes subtitle
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                StudentAvatarWithOverlayBadge(
-                                    base64Data = stu.photoBase64,
-                                    contentDescription = stu.studentName,
-                                    badge = stuAutoBadges.firstOrNull(),
-                                    fallbackHonorTitle = stu.honorTitle,
-                                    isOnHonorRoll = stu.isOnHonorRoll,
-                                    fallbackIcon = Icons.Filled.School
-                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = AdaptiveSoftSurface,
+                                    border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "${idx + 1}",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                    }
+                                }
                                 Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(horizontal = 8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
                                     Text(
-                                        text = stu.fullNameWithFather,
-                                        style = MaterialTheme.typography.titleMedium,
+                                        text = teacher.fullName,
+                                        style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "الصف المسجل: ${stu.gradeClass} (شعبة ${stu.sectionName})",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "ولي الأمر: ${stu.parentName} | هاتف: ${stu.parentPhone}",
+                                        text = "${teacher.normalizedGenderLabel}${if (teacher.ageYears > 0) " (${teacher.ageYears} سنة)" else ""} • الصفوف: ${teacher.formattedAssignedClassesForDisplay.ifBlank { "غير محدد" }}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    NoWrapBadge(
-                                        text = "حالة القيد: ${stu.enrollmentStatusEnum.arabicLabel}",
-                                        icon = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) Icons.Filled.VerifiedUser else Icons.Filled.Gavel,
-                                        containerColor = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) DeepEmerald.copy(alpha = 0.14f) else DangerRed.copy(alpha = 0.15f),
-                                        contentColor = if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) DeepEmerald else DangerRed
-                                    )
                                 }
                             }
 
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            // Left side: Compact Subject Badge + Real Supervised Students Count + Chevron
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                IconButton(
-                                    onClick = {
-                                        editingStudent = stu
-                                        showStudentDialog = true
-                                    }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = AdaptiveSoftSurface,
+                                    border = BorderStroke(1.dp, AdaptiveSoftBorder)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Edit,
-                                        contentDescription = "تعديل بيانات الطالب وولي الأمر",
-                                        tint = MaterialTheme.colorScheme.primary
+                                    Text(
+                                        text = teacher.specialty.ifBlank { "عام" }.split("،").firstOrNull()?.trim() ?: "عام",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                     )
                                 }
-                                Switch(
-                                    checked = stu.isActive,
-                                    onCheckedChange = { viewModel.toggleStudentAndParentActive(stu.id) }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = RoyalGreen.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, RoyalGreen.copy(alpha = 0.35f))
+                                ) {
+                                    Text(
+                                        text = "$realSupervisedCount طالب",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = RoyalGreen,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                    contentDescription = "عرض سجل الأستاذ",
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
+                    }
+                }
+            }
+        }
 
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                if (selectedRoleFilter != "طالب") {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "ولي الأمر: ${stu.parentUsername}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "كلمة المرور: ${stu.parentPassword}",
-                                            style = MaterialTheme.typography.labelLarge
-                                        )
-                                    }
-                                }
-                                if (selectedRoleFilter == "الكل") {
-                                    HorizontalDivider()
-                                }
-                                if (selectedRoleFilter != "ولي أمر") {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "الطالب: ${stu.studentUsername}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
-                                        Text(
-                                            text = "كلمة المرور: ${stu.studentPassword}",
-                                            style = MaterialTheme.typography.labelLarge
-                                        )
-                                    }
-                                }
+        // =========================================================================
+        // 2. قسم "سجل وأسماء الطلاب" — Sleek Compact Rows (رابعاً وخامساً)
+        // =========================================================================
+        if (showStudentsParentsList) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        val filterDesc = buildString {
+                            if (selectedClassFilter != "الكل") append("الصف: $selectedClassFilter ")
+                            if (selectedSectionFilter != "الكل") append("(شعبة $selectedSectionFilter)")
+                        }.ifBlank { "جميع الصفوف والشعب" }
+                        Text(
+                            text = "سجل وأسماء الطلاب (${filteredStudents.size} طالب مسجل)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        Text(
+                            text = "$filterDesc — اضغط على اسم الطالب لفتح ملفه الكامل أو نقله الفوري بين الصفوف والشعب",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            if (filteredStudents.isEmpty()) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                    ) {
+                        Text(
+                            text = "لا يوجد طلاب مسجلون في هذا الصف أو الشعبة حالياً.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(24.dp)
+                        )
+                    }
+                }
+            } else {
+                itemsIndexed(filteredStudents, key = { _, s -> "compact_student_${s.id}" }) { idx, stu ->
+                    val realPresentDays = remember(attendance, stu.id, stu.dailyAttendance) {
+                        viewModel.getTotalPresentDays(stu.id)
+                    }
+                    val realAbsentDays = remember(attendance, stu.id, stu.dailyAttendance) {
+                        viewModel.getTotalAbsenceDays(stu.id)
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { selectedStudentForSlideOver = stu }
+                            .testTag("compact_student_row_${stu.id}"),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(
+                            1.dp,
+                            if (stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE) {
+                                AdaptiveSoftBorder.copy(alpha = 0.75f)
+                            } else {
+                                DangerRed.copy(alpha = 0.45f)
                             }
-                        }
-
-                        if (stu.enrollmentStatusEnum != StudentEnrollmentStatus.ACTIVE) {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                color = DangerRed.copy(alpha = 0.09f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f))
+                        ),
+                        shadowElevation = 2.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Right side: Serial number inside geometric circle + Full Name + Attendance/Gender subtitle
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                Surface(
+                                    shape = CircleShape,
+                                    color = AdaptiveSoftSurface,
+                                    border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                                    modifier = Modifier.size(36.dp)
                                 ) {
-                                    Icon(Icons.Filled.Gavel, contentDescription = null, tint = DangerRed, modifier = Modifier.size(16.dp))
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "${idx + 1}",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                    }
+                                }
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
                                     Text(
-                                        text = stu.getEnrollmentBlockBannerText(todayIso).ifBlank {
-                                            "حالة القيد: ${stu.enrollmentStatusEnum.arabicLabel}${if (stu.enrollmentStatusReason.isNotBlank()) " — ${stu.enrollmentStatusReason}" else ""}"
-                                        },
+                                        text = stu.fullNameWithFather,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${stu.normalizedGenderLabel}${if (stu.ageYears > 0) " (${stu.ageYears} سنة)" else ""} • حضور: $realPresentDays يوم • غياب: $realAbsentDays يوم",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = DangerRed,
-                                        fontWeight = FontWeight.ExtraBold
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
-                        }
 
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            // Left side: Compact Class & Section Badge + Status + Chevron
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = AdaptiveSoftSurface,
+                                    border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                ) {
+                                    Text(
+                                        text = "${stu.gradeClass} (${stu.sectionName})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                                if (stu.enrollmentStatusEnum != StudentEnrollmentStatus.ACTIVE) {
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = DangerRed.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.4f))
+                                    ) {
+                                        Text(
+                                            text = stu.enrollmentStatusEnum.arabicLabel,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DangerRed,
+                                            maxLines = 1,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                    contentDescription = "عرض سجل الطالب",
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Slide-Over Detail Drawer Modal 1: سجل الأستاذ الكامل ومؤشرات الإشراف والأداء
+    // =========================================================================
+    selectedTeacherForSlideOver?.let { snapshotTeacher ->
+        val liveTeacher = accounts.firstOrNull { it.id == snapshotTeacher.id } ?: snapshotTeacher
+        val realMetrics = remember(liveTeacher, students, attendance, homeworks, grades, teacherRatings) {
+            viewModel.getTeacherRealPerformanceMetrics(liveTeacher)
+        }
+        var editedGender by remember(liveTeacher.id, liveTeacher.gender) {
+            mutableStateOf(liveTeacher.normalizedGenderLabel)
+        }
+        var editedAge by remember(liveTeacher.id, liveTeacher.ageYears) {
+            mutableStateOf(liveTeacher.ageYears)
+        }
+        var assignedSubjsSet by remember(liveTeacher.id, liveTeacher.specialty) {
+            mutableStateOf(liveTeacher.teacherSubjectsList.toSet())
+        }
+        var assignedClassesSet by remember(liveTeacher.id, liveTeacher.assignedClasses, registeredClasses) {
+            val existingCls = liveTeacher.teacherAssignedClassesOnly
+            mutableStateOf(
+                registeredClasses.filter { regCls ->
+                    existingCls.any { ArabicTextNormalizer.matchesClass(it, regCls) }
+                }.toSet()
+            )
+        }
+        var assignedSectionsSet by remember(liveTeacher.id, liveTeacher.assignedClasses, registeredSections) {
+            val existingSecs = liveTeacher.teacherAssignedSectionsOnly
+            val matched = registeredSections.filter { regSec ->
+                existingSecs.any { ArabicTextNormalizer.matchesSection(it, regSec) }
+            }.toSet()
+            mutableStateOf(if (matched.isEmpty() && existingClsNotEmpty(liveTeacher)) registeredSections.toSet() else matched)
+        }
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { selectedTeacherForSlideOver = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .testTag("teacher_slide_over_detail_modal"),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Top Sticky Bar
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 4.dp,
+                        border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            OutlinedButton(
-                                onClick = { studentForEnrollmentStatus = stu },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("admin_student_enrollment_status_btn_${stu.id}"),
-                                shape = RoundedCornerShape(12.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald)
-                            ) {
-                                Icon(Icons.Filled.Gavel, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(5.dp))
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "تحديث حالة قيد الطالب",
-                                    color = DeepForestGreen,
+                                    text = "الملف التفصيلي للكادر التدريسي",
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = liveTeacher.fullName,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = RoyalGreen,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
-
-                            if (featureSettings.qrAttendanceEnabled) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedButton(
-                                    onClick = { studentForDigitalIdCard = stu },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("admin_open_student_id_${stu.id}"),
-                                    shape = RoundedCornerShape(12.dp)
+                                    onClick = {
+                                        editingTeacher = liveTeacher
+                                        showTeacherDialog = true
+                                    },
+                                    shape = RoundedCornerShape(50),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
-                                    Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text("بطاقة الهوية والـ QR", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                    Text("تعديل الحساب", fontWeight = FontWeight.ExtraBold, fontSize = 11.5.sp)
+                                }
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable { selectedTeacherForSlideOver = null },
+                                    shape = RoundedCornerShape(50),
+                                    color = AdaptiveSoftSurface,
+                                    border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                ) {
+                                    Text(
+                                        text = "إغلاق وعودة",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(top = 14.dp, bottom = 32.dp)
+                    ) {
+                        // 1. لوحة الأداء والنشاط التقني للأستاذ (Real Supervised Count + Real Metrics)
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(
+                                        text = "لوحة الأداء والنشاط التقني للأستاذ",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(
+                                            modifier = Modifier.weight(1.15f),
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = AdaptiveSoftSurface,
+                                            border = BorderStroke(1.2.dp, AdaptiveSoftBorder)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${realMetrics.supervisedStudentsCount} طالب",
+                                                    style = MaterialTheme.typography.headlineSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = RoyalGreen
+                                                )
+                                                Text(
+                                                    text = "إجمالي عدد الطلاب المشرف عليهم فعلياً",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                                Text(
+                                                    text = "محسوب تلقائياً من الصفوف والشعب المسندة",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontSize = 9.5.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                        }
+
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = AdaptiveSoftSurface.copy(alpha = 0.6f),
+                                                border = BorderStroke(1.dp, AdaptiveSoftBorder),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Text(
+                                                        text = "مؤشر الأداء والالتزام: ${realMetrics.commitmentRatePercent}%",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen
+                                                    )
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    LinearProgressIndicator(
+                                                        progress = { (realMetrics.commitmentRatePercent / 100f).coerceIn(0f, 1f) },
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(6.dp)
+                                                            .clip(RoundedCornerShape(50)),
+                                                        color = RoyalGreen,
+                                                        trackColor = AdaptiveSoftContainer
+                                                    )
+                                                }
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = AdaptiveSoftSurface.copy(alpha = 0.6f),
+                                                border = BorderStroke(1.dp, AdaptiveSoftBorder),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Text(
+                                                        text = "مؤشر النشاط التفاعلي: ${realMetrics.interactiveActivityPercent}%",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen
+                                                    )
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    LinearProgressIndicator(
+                                                        progress = { (realMetrics.interactiveActivityPercent / 100f).coerceIn(0f, 1f) },
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(6.dp)
+                                                            .clip(RoundedCornerShape(50)),
+                                                        color = DeepEmerald,
+                                                        trackColor = AdaptiveSoftContainer
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "تفاصيل النشاط الفعلي: رصد حضور (${realMetrics.recordedAttendanceActionsCount}) • واجبات منشورة (${realMetrics.publishedHomeworksCount}) • درجات مرصودة (${realMetrics.gradedStudentsCount})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
 
-                        if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled) {
-                            Row(
+                        // 2. البيانات الأساسية + الجنس والعمر
+                        item {
+                            Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.2.dp, AdaptiveSoftBorder)
                             ) {
-                                FilterChip(
-                                    selected = stu.isBusSubscribed,
-                                    onClick = { viewModel.toggleStudentBusSubscription(stu.id) },
-                                    label = {
-                                        Text(
-                                            text = if (stu.isBusSubscribed) "مشترك بالخط المدرسي" else "غير مشترك بالخط المدرسي",
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Filled.DirectionsBus,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                )
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "البيانات الأساسية وبيانات الدخول",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    Text(
+                                        text = "اسم المستخدم: ${liveTeacher.username}  |  كلمة المرور: ${liveTeacher.password}  |  الهاتف: ${liveTeacher.phone.ifBlank { "غير مسجل" }}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    GenderAndAgeSegmentedSelectorCard(
+                                        selectedGender = editedGender,
+                                        onGenderChange = { newG -> editedGender = newG },
+                                        ageYears = editedAge,
+                                        onAgeYearsChange = { newA -> editedAge = newA },
+                                        title = "تحديد جنس وعمر الأستاذ (يضبط الهوية اللونية لحسابه)"
+                                    )
+                                }
                             }
                         }
 
-                        VectorActionButton(
-                            text = "إرسال بيانات الحساب لولي الأمر عبر واتساب",
-                            icon = Icons.Filled.Chat,
-                            containerColor = WhatsAppGreen,
-                            onClick = {
-                                val msg = """
-                                    السلام عليكم السيد ولي أمر الطالب (${stu.studentName}) المحترم،
-                                    تهديكم إدارة (${schoolConfig.schoolName}) أطيب التحيات.
-                                    تم تفعيل حسابات المتابعة اليومية في منصة مدرستي (كود المدرسة: ${schoolConfig.schoolId}):
-                                    • الصف والشعبة: ${stu.gradeClass} - شعبة (${stu.sectionName})
-                                    • حساب ولي الأمر: المستخدم (${stu.parentUsername}) | الرمز (${stu.parentPassword})
-                                    • حساب الطالب: المستخدم (${stu.studentUsername}) | الرمز (${stu.studentPassword})
-                                """.trimIndent()
-                                ExternalIntents.sendWhatsAppMessage(context, stu.parentPhone, msg)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        // 3. إدارة المواد والصفوف المرنة (إضافة مادة ثانية/ثالثة، تغيير الصفوف والشعب، أو حذف مادة)
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.2.dp, AdaptiveSoftBorder)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(
+                                        text = "إدارة المواد والصفوف والشعب المسندة بمرونة كاملة",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    Text(
+                                        text = "اختر مادة أو أكثر (أو أضف مادة ثانية وثالثة أو ألغِ مادة) وحدد الصفوف والشعب المسندة للأستاذ:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    Text(
+                                        text = "المواد الدراسية المسندة (${assignedSubjsSet.size}):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        registeredSubjects.forEach { subj ->
+                                            val isChecked = subj in assignedSubjsSet
+                                            FilterChip(
+                                                selected = isChecked,
+                                                onClick = {
+                                                    assignedSubjsSet = if (isChecked) assignedSubjsSet - subj else assignedSubjsSet + subj
+                                                },
+                                                label = { Text(subj, fontWeight = if (isChecked) FontWeight.ExtraBold else FontWeight.Normal) }
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "الصفوف الدراسية المسندة (${assignedClassesSet.size}):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        registeredClasses.forEach { cls ->
+                                            val isChecked = cls in assignedClassesSet
+                                            FilterChip(
+                                                selected = isChecked,
+                                                onClick = {
+                                                    assignedClassesSet = if (isChecked) assignedClassesSet - cls else assignedClassesSet + cls
+                                                },
+                                                label = { Text(cls, fontWeight = if (isChecked) FontWeight.ExtraBold else FontWeight.Normal) }
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "الشعب المسندة (${assignedSectionsSet.size}):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        registeredSections.forEach { sec ->
+                                            val isChecked = sec in assignedSectionsSet
+                                            FilterChip(
+                                                selected = isChecked,
+                                                onClick = {
+                                                    assignedSectionsSet = if (isChecked) assignedSectionsSet - sec else assignedSectionsSet + sec
+                                                },
+                                                label = { Text("شعبة $sec", fontWeight = if (isChecked) FontWeight.ExtraBold else FontWeight.Normal) }
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            val specialtyStr = assignedSubjsSet.joinToString("، ")
+                                            val targetSecs = assignedSectionsSet.ifEmpty { registeredSections.toSet() }
+                                            val classesStr = assignedClassesSet.joinToString(" | ") { cls ->
+                                                "${ArabicTextNormalizer.cleanPureClassName(cls)} (${targetSecs.map { ArabicTextNormalizer.cleanPureSectionName(it) }.joinToString("، ")})"
+                                            }
+                                            viewModel.updateTeacherAccount(
+                                                teacherId = liveTeacher.id,
+                                                fullName = liveTeacher.fullName,
+                                                specialty = specialtyStr,
+                                                assignedClasses = classesStr,
+                                                phone = liveTeacher.phone,
+                                                username = liveTeacher.username,
+                                                password = liveTeacher.password,
+                                                photoBase64 = liveTeacher.photoBase64,
+                                                canModerateActivities = liveTeacher.canModerateActivities,
+                                                canManageCanteen = liveTeacher.canManageCanteen,
+                                                gender = editedGender,
+                                                ageYears = editedAge
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .testTag("save_teacher_slide_over_changes_btn"),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = RoyalGreen,
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        Text(
+                                            text = "حفظ وتحديث إسناد المواد والصفوف والبيانات فوراً",
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val msg = """
+                                                السلام عليكم أستاذنا الفاضل ${liveTeacher.fullName}
+                                                إدارة (${schoolConfig.schoolName}) ترحب بكم في منصة مدرستي.
+                                                بيانات الدخول الخاصة بحساب المعلم:
+                                                • كود المدرسة: ${schoolConfig.schoolId}
+                                                • المواد المسندة: ${liveTeacher.specialty}
+                                                • الصفوف والشعب المسندة: ${liveTeacher.assignedClasses}
+                                                • اسم المستخدم الكامل: ${liveTeacher.username}
+                                                • كلمة المرور: ${liveTeacher.password}
+                                            """.trimIndent()
+                                            ExternalIntents.sendWhatsAppMessage(context, liveTeacher.phone, msg)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text("إرسال بيانات الدخول للأستاذ عبر واتساب", fontWeight = FontWeight.ExtraBold, color = DeepForestGreen)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Slide-Over Detail Drawer Modal 2: سجل الطالب الكامل وأداة النقل الفوري بين الصفوف والشعب
+    // =========================================================================
+    selectedStudentForSlideOver?.let { snapshotStudent ->
+        val liveStu = students.firstOrNull { it.id == snapshotStudent.id } ?: snapshotStudent
+        val realPresent = remember(attendance, liveStu.id, liveStu.dailyAttendance) {
+            viewModel.getTotalPresentDays(liveStu.id)
+        }
+        val realAbsent = remember(attendance, liveStu.id, liveStu.dailyAttendance) {
+            viewModel.getTotalAbsenceDays(liveStu.id)
+        }
+        val realExcused = remember(attendance, liveStu.id, liveStu.dailyAttendance) {
+            viewModel.getTotalExcusedDays(liveStu.id)
+        }
+        val realLate = remember(attendance, liveStu.id, liveStu.dailyAttendance) {
+            viewModel.getTotalLateDays(liveStu.id)
+        }
+        var transferTargetClass by remember(liveStu.id, liveStu.gradeClass) {
+            mutableStateOf(liveStu.gradeClass)
+        }
+        var transferTargetSection by remember(liveStu.id, liveStu.sectionName) {
+            mutableStateOf(liveStu.sectionName)
+        }
+        var transferTargetGender by remember(liveStu.id, liveStu.gender) {
+            mutableStateOf(liveStu.normalizedGenderLabel)
+        }
+        var transferTargetAge by remember(liveStu.id, liveStu.ageYears) {
+            mutableStateOf(liveStu.ageYears)
+        }
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { selectedStudentForSlideOver = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .testTag("student_slide_over_detail_modal"),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Top Sticky Bar
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 4.dp,
+                        border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "بطاقة السجل الكامل للطالب",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = "${liveStu.fullNameWithFather} • ${liveStu.gradeClass} (${liveStu.sectionName})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = RoyalGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(
+                                    onClick = {
+                                        editingStudent = liveStu
+                                        showStudentDialog = true
+                                    },
+                                    shape = RoundedCornerShape(50),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("تعديل الحساب", fontWeight = FontWeight.ExtraBold, fontSize = 11.5.sp)
+                                }
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable { selectedStudentForSlideOver = null },
+                                    shape = RoundedCornerShape(50),
+                                    color = AdaptiveSoftSurface,
+                                    border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                ) {
+                                    Text(
+                                        text = "إغلاق وعودة",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(top = 14.dp, bottom = 32.dp)
+                    ) {
+                        // 1. إحصائيات حضور الطالب الفعلية (تبدأ من 0 للطالب الجديد)
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.2.dp, AdaptiveSoftBorder)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "إحصائيات المواظبة الفعلية للطالب (صفر بيانات وهمية)",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        listOf(
+                                            Triple("الحضور الفعلي", "$realPresent يوم", RoyalGreen),
+                                            Triple("الغياب الفعلي", "$realAbsent يوم", DangerRed),
+                                            Triple("الإجازات", "$realExcused يوم", InfoBlue),
+                                            Triple("التأخر", "$realLate يوم", WarningAmber)
+                                        ).forEach { (lbl, valTxt, col) ->
+                                            Surface(
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = col.copy(alpha = 0.09f),
+                                                border = BorderStroke(1.dp, col.copy(alpha = 0.32f))
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Text(
+                                                        text = valTxt,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = col
+                                                    )
+                                                    Text(
+                                                        text = lbl,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = DeepForestGreen,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. أداة نقل الطالب الفورية (تغيير الصف أو الشعبة + الجنس والعمر)
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.4.dp, RoyalGreen.copy(alpha = 0.45f)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(
+                                        text = "أداة نقل الطالب الفورية (تغيير الصف أو الشعبة)",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    Text(
+                                        text = "الصف الحالي: ${liveStu.gradeClass} (شعبة ${liveStu.sectionName}) — اختر الصف الجديد أو الشعبة الجديدة للنقل الفوري:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    Text(
+                                        text = "1. اختر الصف الجديد:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(registeredClasses) { clsOption ->
+                                            val isSel = ArabicTextNormalizer.matchesClass(transferTargetClass, clsOption)
+                                            FilterChip(
+                                                selected = isSel,
+                                                onClick = { transferTargetClass = clsOption },
+                                                label = {
+                                                    Text(
+                                                        text = clsOption,
+                                                        fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.Normal
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "2. اختر الشعبة الجديدة:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(registeredSections) { secOption ->
+                                            val isSel = ArabicTextNormalizer.matchesSection(transferTargetSection, secOption)
+                                            FilterChip(
+                                                selected = isSel,
+                                                onClick = { transferTargetSection = secOption },
+                                                label = {
+                                                    Text(
+                                                        text = "شعبة $secOption",
+                                                        fontWeight = if (isSel) FontWeight.ExtraBold else FontWeight.Normal
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+
+                                    GenderAndAgeSegmentedSelectorCard(
+                                        selectedGender = transferTargetGender,
+                                        onGenderChange = { transferTargetGender = it },
+                                        ageYears = transferTargetAge,
+                                        onAgeYearsChange = { transferTargetAge = it },
+                                        title = "تحديد الجنس والعمر الزمني للطالب"
+                                    )
+
+                                    Button(
+                                        onClick = {
+                                            viewModel.transferStudentClassAndSection(
+                                                studentId = liveStu.id,
+                                                newGradeClass = transferTargetClass,
+                                                newSectionName = transferTargetSection,
+                                                newGender = transferTargetGender,
+                                                newAgeYears = transferTargetAge
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .testTag("confirm_instant_student_transfer_btn"),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = RoyalGreen,
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        Text(
+                                            text = "تأكيد النقل الفوري وتحديث السجل",
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. بيانات الحساب وولي الأمر والقرارات الإدارية
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.2.dp, AdaptiveSoftBorder)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "بيانات الحساب وولي الأمر والقرارات الإدارية",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    Text(
+                                        text = "ولي الأمر: ${liveStu.parentName} • الهاتف: ${liveStu.parentPhone.ifBlank { "غير مسجل" }}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "حساب الطالب: (${liveStu.studentUsername}) رمز (${liveStu.studentPassword})  |  حساب ولي الأمر: (${liveStu.parentUsername}) رمز (${liveStu.parentPassword})",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = DeepEmerald,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { studentForEnrollmentStatus = liveStu },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Text("تحديث حالة القيد (${liveStu.enrollmentStatusEnum.arabicLabel})", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                                        }
+                                        if (featureSettings.qrAttendanceEnabled) {
+                                            OutlinedButton(
+                                                onClick = { studentForDigitalIdCard = liveStu },
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp)
+                                            ) {
+                                                Text("بطاقة الهوية والباركود", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val msg = """
+                                                السلام عليكم السيد ولي أمر الطالب (${liveStu.studentName}) المحترم،
+                                                تهديكم إدارة (${schoolConfig.schoolName}) أطيب التحيات.
+                                                تم تفعيل حسابات المتابعة اليومية في منصة مدرستي (كود المدرسة: ${schoolConfig.schoolId}):
+                                                • الصف والشعبة: ${liveStu.gradeClass} - شعبة (${liveStu.sectionName})
+                                                • حساب ولي الأمر: المستخدم (${liveStu.parentUsername}) | الرمز (${liveStu.parentPassword})
+                                                • حساب الطالب: المستخدم (${liveStu.studentUsername}) | الرمز (${liveStu.studentPassword})
+                                            """.trimIndent()
+                                            ExternalIntents.sendWhatsAppMessage(context, liveStu.parentPhone, msg)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("إرسال بيانات الحساب لولي الأمر عبر واتساب", fontWeight = FontWeight.ExtraBold, color = DeepForestGreen)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -980,12 +1760,8 @@ fun AdminAccountsScreen(
         var teacherPhotoBase64 by remember(currentEditing) { mutableStateOf(currentEditing?.photoBase64 ?: "") }
         var canModerateActivities by remember(currentEditing) { mutableStateOf(currentEditing?.canModerateActivities ?: false) }
         var canManageCanteen by remember(currentEditing) { mutableStateOf(currentEditing?.canManageCanteen ?: false) }
-        var teacherGender by remember(currentEditing) {
-            mutableStateOf(if (currentEditing?.isFemale == true) "FEMALE" else "MALE")
-        }
-        var teacherAgeYears by remember(currentEditing) {
-            mutableStateOf(currentEditing?.effectiveAgeYears ?: 30)
-        }
+        var teacherGender by remember(currentEditing) { mutableStateOf(currentEditing?.normalizedGenderLabel ?: "ذكر") }
+        var teacherAgeYears by remember(currentEditing) { mutableStateOf(currentEditing?.ageYears ?: 0) }
 
         // Multi-select subjects from registeredSubjects
         val initialSubjects = remember(currentEditing) {
@@ -1039,17 +1815,12 @@ fun AdminAccountsScreen(
                         )
                     }
                     item {
-                        SegmentedGenderTogglePills(
+                        GenderAndAgeSegmentedSelectorCard(
                             selectedGender = teacherGender,
-                            onSelectGender = { teacherGender = it }
-                        )
-                    }
-                    item {
-                        SleekAgeYearsSelector(
+                            onGenderChange = { teacherGender = it },
                             ageYears = teacherAgeYears,
-                            minAge = 20,
-                            maxAge = 68,
-                            onAgeChange = { teacherAgeYears = it }
+                            onAgeYearsChange = { teacherAgeYears = it },
+                            title = "تحديد جنس وعمر $staffSingular"
                         )
                     }
                     item {
@@ -1489,16 +2260,12 @@ fun AdminAccountsScreen(
             )
         }
         var pPass by remember(currentStu) { mutableStateOf(currentStu?.parentPassword ?: (1000..9999).random().toString()) }
-        var studentGender by remember(currentStu) {
-            mutableStateOf(if (currentStu?.isFemale == true) "FEMALE" else "MALE")
-        }
-        var studentAgeYears by remember(currentStu) {
-            mutableStateOf(currentStu?.effectiveAgeYears ?: 12)
-        }
 
         var classDropdownExpanded by remember { mutableStateOf(false) }
         var sectionDropdownExpanded by remember { mutableStateOf(false) }
         var isLinkedToExistingParent by remember(currentStu) { mutableStateOf(false) }
+        var studentGender by remember(currentStu) { mutableStateOf(currentStu?.normalizedGenderLabel ?: "ذكر") }
+        var studentAgeYears by remember(currentStu) { mutableStateOf(currentStu?.ageYears ?: 0) }
 
         val matchedParent = remember(studentName, parentName, parentPhone, students, currentStu) {
             viewModel.findExistingParentMatch(
@@ -1536,17 +2303,12 @@ fun AdminAccountsScreen(
                         )
                     }
                     item {
-                        SegmentedGenderTogglePills(
+                        GenderAndAgeSegmentedSelectorCard(
                             selectedGender = studentGender,
-                            onSelectGender = { studentGender = it }
-                        )
-                    }
-                    item {
-                        SleekAgeYearsSelector(
+                            onGenderChange = { studentGender = it },
                             ageYears = studentAgeYears,
-                            minAge = 6,
-                            maxAge = 22,
-                            onAgeChange = { studentAgeYears = it }
+                            onAgeYearsChange = { studentAgeYears = it },
+                            title = "تحديد جنس وعمر الطالب"
                         )
                     }
 
@@ -1893,6 +2655,9 @@ fun AdminAccountsScreen(
         )
     }
 }
+
+private fun existingClsNotEmpty(teacher: UserAccount): Boolean =
+    teacher.teacherAssignedClassesOnly.isNotEmpty()
 
 /**
  * Deliverable 6a: Official Student Enrollment Status Modal Dialog

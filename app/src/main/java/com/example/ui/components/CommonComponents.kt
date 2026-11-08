@@ -63,11 +63,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.ui.theme.AdaptiveHeroEnd
+import com.example.ui.theme.AdaptiveHeroMid
+import com.example.ui.theme.AdaptiveHeroStart
+import com.example.ui.theme.AdaptiveHighlightGlow
+import com.example.ui.theme.AdaptiveSoftBorder
+import com.example.ui.theme.AdaptiveSoftContainer
+import com.example.ui.theme.AdaptiveSoftSurface
+import com.example.ui.theme.AdaptiveWaveRibbon1
+import com.example.ui.theme.AdaptiveWaveRibbon2
 import com.example.ui.theme.DeepEmerald
 import com.example.ui.theme.DeepForestGreen
+import com.example.ui.theme.EmeraldAccent
+import com.example.ui.theme.GenderThemeState
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.GoldDeep
 import com.example.ui.theme.GoldFoil
+import com.example.ui.theme.RoyalGreen
 import com.example.ui.theme.WhatsAppGreen
 import com.example.util.DocumentAndIdExporter
 import com.example.util.ExternalIntents
@@ -1957,16 +1969,6 @@ fun InlineDialogToastBanner(
             runCatching { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
         }
     }
-    val infiniteTransition = rememberInfiniteTransition(label = "inline_toast_pulse")
-    val iconScale by infiniteTransition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.12f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 750, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "inline_toast_icon_scale"
-    )
 
     androidx.compose.animation.AnimatedVisibility(
         visible = toastAlert != null,
@@ -1974,68 +1976,73 @@ fun InlineDialogToastBanner(
         exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
     ) {
         val alert = toastAlert ?: return@AnimatedVisibility
-        val gradientColors = if (alert.isSuccess) {
-            listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
-        } else {
-            listOf(Color(0xFFDC2626), Color(0xFFB91C1C), Color(0xFF7F1D1D))
+        val isWarningOrInfo = !alert.isSuccess && (alert.message.contains("تنبيه") || alert.message.contains("ملاحظة") || alert.message.contains("يرجى"))
+        val bgSurfaceColor = when {
+            alert.isSuccess -> AdaptiveSoftSurface
+            isWarningOrInfo -> Color(0xFFFEF3C7)
+            else -> Color(0xFFFDE8E8)
         }
+        val borderColor = when {
+            alert.isSuccess -> AdaptiveSoftBorder
+            isWarningOrInfo -> Color(0xFFFCD34D)
+            else -> Color(0xFFF8B4B4)
+        }
+        val textColor = when {
+            alert.isSuccess -> DeepForestGreen
+            isWarningOrInfo -> Color(0xFF92400E)
+            else -> Color(0xFF9B1C1C)
+        }
+        val accentBadgeColor = when {
+            alert.isSuccess -> RoyalGreen
+            isWarningOrInfo -> Color(0xFFD97706)
+            else -> Color(0xFFDC2626)
+        }
+
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp)
                 .shadow(
-                    elevation = 10.dp,
-                    shape = RoundedCornerShape(20.dp),
-                    ambientColor = gradientColors.first().copy(alpha = 0.35f),
-                    spotColor = gradientColors.first().copy(alpha = 0.40f)
+                    elevation = 6.dp,
+                    shape = RoundedCornerShape(18.dp),
+                    ambientColor = borderColor.copy(alpha = 0.35f),
+                    spotColor = borderColor.copy(alpha = 0.40f)
                 )
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .clickable { onDismiss() },
-            shape = RoundedCornerShape(20.dp),
-            color = Color.Transparent,
-            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f))
+            shape = RoundedCornerShape(18.dp),
+            color = bgSurfaceColor.copy(alpha = 0.96f),
+            border = BorderStroke(1.2.dp, borderColor)
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Brush.horizontalGradient(gradientColors))
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.22f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .size(30.dp)
-                            .graphicsLayer {
-                                scaleX = iconScale
-                                scaleY = iconScale
-                            }
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Icon(
-                                imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
-                                contentDescription = "إشعار الإجراء",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                    Text(
-                        text = alert.message,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(accentBadgeColor)
+                )
+                Text(
+                    text = alert.message,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = textColor,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "إغلاق",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor.copy(alpha = 0.75f)
+                )
             }
         }
     }
@@ -2069,9 +2076,9 @@ fun CompactStudentBadgeCapsule(
         .trim()
         .ifBlank { "الالتزام الذهبي" }
 
-    val badgeBg = if (effectiveOnLight) Color(0xFF059669) else Color.White
-    val badgeBorder = if (effectiveOnLight) Color.White else Color(0xFF059669).copy(alpha = 0.45f)
-    val badgeTextColor = if (effectiveOnLight) Color.White else Color(0xFF047857)
+    val badgeBg = if (effectiveOnLight) RoyalGreen else Color.White
+    val badgeBorder = if (effectiveOnLight) Color.White else RoyalGreen.copy(alpha = 0.45f)
+    val badgeTextColor = if (effectiveOnLight) Color.White else DeepEmerald
 
     Surface(
         shape = RoundedCornerShape(50),
@@ -2194,7 +2201,18 @@ fun SoftWaveMeshBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val baseBg = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF4FBF8)
+    val isFem = GenderThemeState.isFeminine
+    val baseBg = when {
+        isDarkMode -> Color(0xFF0F172A)
+        isFem -> Color(0xFFFFF8F9)
+        else -> Color(0xFFF4FBF8)
+    }
+    val wavePrimaryTint = if (isFem) Color(0xFFFFE4E6) else Color(0xFFD1FAE5)
+    val waveSecondaryTint = if (isFem) Color(0xFFFFF1F2) else Color(0xFFE0F7EE)
+    val waveAccentTint = if (isFem) Color(0xFFFECDD3) else Color(0xFFA7F3D0)
+    val darkGlow1 = if (isFem) Color(0xFFE11D48) else Color(0xFF059669)
+    val darkGlow2 = if (isFem) Color(0xFF9333EA) else Color(0xFF0F3D5E)
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -2205,7 +2223,6 @@ fun SoftWaveMeshBackground(
             val h = size.height
 
             if (!isDarkMode) {
-                // Top diagonal soft mint waves
                 val topWave1 = Path().apply {
                     moveTo(0f, 0f)
                     lineTo(w, 0f)
@@ -2221,9 +2238,9 @@ fun SoftWaveMeshBackground(
                     path = topWave1,
                     brush = Brush.linearGradient(
                         colors = listOf(
-                            Color(0xFFD1FAE5).copy(alpha = 0.65f),
-                            Color(0xFFE0F7EE).copy(alpha = 0.45f),
-                            Color(0xFFF4FBF8).copy(alpha = 0.1f)
+                            wavePrimaryTint.copy(alpha = 0.65f),
+                            waveSecondaryTint.copy(alpha = 0.45f),
+                            baseBg.copy(alpha = 0.1f)
                         ),
                         start = Offset(0f, 0f),
                         end = Offset(w, h * 0.28f)
@@ -2247,10 +2264,9 @@ fun SoftWaveMeshBackground(
                 }
                 drawPath(
                     path = topWave2,
-                    color = Color(0xFFE0F7EE).copy(alpha = 0.50f)
+                    color = waveSecondaryTint.copy(alpha = 0.50f)
                 )
 
-                // Bottom soft mint ribbons
                 val bottomWave1 = Path().apply {
                     moveTo(0f, h * 0.78f)
                     cubicTo(
@@ -2266,8 +2282,8 @@ fun SoftWaveMeshBackground(
                     path = bottomWave1,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFFE0F7EE).copy(alpha = 0.40f),
-                            Color(0xFFD1FAE5).copy(alpha = 0.70f)
+                            waveSecondaryTint.copy(alpha = 0.40f),
+                            wavePrimaryTint.copy(alpha = 0.70f)
                         ),
                         startY = h * 0.74f,
                         endY = h
@@ -2287,14 +2303,13 @@ fun SoftWaveMeshBackground(
                 }
                 drawPath(
                     path = bottomWave2,
-                    color = Color(0xFFA7F3D0).copy(alpha = 0.32f)
+                    color = waveAccentTint.copy(alpha = 0.32f)
                 )
             } else {
-                // Dark mode ambient emerald & navy mesh glow
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF059669).copy(alpha = 0.18f),
+                            darkGlow1.copy(alpha = 0.18f),
                             Color.Transparent
                         ),
                         center = Offset(w * 0.85f, h * 0.12f),
@@ -2306,7 +2321,7 @@ fun SoftWaveMeshBackground(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF0F3D5E).copy(alpha = 0.28f),
+                            darkGlow2.copy(alpha = 0.28f),
                             Color.Transparent
                         ),
                         center = Offset(w * 0.18f, h * 0.82f),
@@ -4613,9 +4628,9 @@ fun DeveloperSystemBroadcastBanner(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0xFFD1FAE5),
-                        Color(0xFFE0F7EE),
-                        Color(0xFFA7F3D0)
+                        AdaptiveSoftContainer,
+                        AdaptiveSoftSurface,
+                        AdaptiveSoftBorder
                     )
                 )
             )
@@ -4639,9 +4654,9 @@ fun DeveloperSystemBroadcastBanner(
                 path = ribbonPath,
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0xFF10B981).copy(alpha = 0.14f),
-                        Color(0xFF059669).copy(alpha = 0.08f),
-                        Color(0xFF34D399).copy(alpha = 0.16f)
+                        EmeraldAccent.copy(alpha = 0.14f),
+                        RoyalGreen.copy(alpha = 0.08f),
+                        AdaptiveHighlightGlow.copy(alpha = 0.16f)
                     )
                 )
             )
@@ -4659,7 +4674,6 @@ fun DeveloperSystemBroadcastBanner(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Right side in RTL: Circular dark-emerald action/dismiss icon + vertical emerald bar + text
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -4669,7 +4683,7 @@ fun DeveloperSystemBroadcastBanner(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF047857))
+                        .background(DeepEmerald)
                         .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
@@ -4686,7 +4700,7 @@ fun DeveloperSystemBroadcastBanner(
                         .width(2.5.dp)
                         .height(44.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF059669).copy(alpha = 0.75f))
+                        .background(RoyalGreen.copy(alpha = 0.75f))
                 )
 
                 Column(
@@ -4697,7 +4711,7 @@ fun DeveloperSystemBroadcastBanner(
                         text = badgeText,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF047857),
+                        color = DeepEmerald,
                         maxLines = 1
                     )
                     Text(
@@ -4705,7 +4719,7 @@ fun DeveloperSystemBroadcastBanner(
                         style = MaterialTheme.typography.titleMedium,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF065F46),
+                        color = DeepForestGreen,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -4723,7 +4737,6 @@ fun DeveloperSystemBroadcastBanner(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Left side in RTL: Dynamic 3D Animated Illustration selected by Developer
             ThreeDIllustrationBox(
                 type = illustrationType,
                 modifier = Modifier.size(72.dp)
@@ -4732,10 +4745,6 @@ fun DeveloperSystemBroadcastBanner(
     }
 }
 
-/**
- * 2) مقطع إعلان إدارة المدرسة المدمج بأمواج انسيابية بعرض الشاشة بدون أي صندوق أو إطار
- * (Seamless Full-Width Wave Principal Announcement Section - Matches Reference Image Strictly)
- */
 @Composable
 fun ThreeDMegaphoneAnnouncementBanner(
     title: String,
@@ -4756,9 +4765,9 @@ fun ThreeDMegaphoneAnnouncementBanner(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0xFFD1FAE5),
-                        Color(0xFFE0F7EE),
-                        Color(0xFFA7F3D0)
+                        AdaptiveSoftContainer,
+                        AdaptiveSoftSurface,
+                        AdaptiveSoftBorder
                     )
                 )
             )
@@ -4782,9 +4791,9 @@ fun ThreeDMegaphoneAnnouncementBanner(
                 path = waveOverlay,
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0xFF10B981).copy(alpha = 0.14f),
-                        Color(0xFF34D399).copy(alpha = 0.08f),
-                        Color(0xFF059669).copy(alpha = 0.14f)
+                        EmeraldAccent.copy(alpha = 0.14f),
+                        AdaptiveHighlightGlow.copy(alpha = 0.08f),
+                        RoyalGreen.copy(alpha = 0.14f)
                     )
                 )
             )
@@ -4811,12 +4820,11 @@ fun ThreeDMegaphoneAnnouncementBanner(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    // Right circular dark-emerald button with white arrow (matching reference image)
                     Box(
                         modifier = Modifier
                             .size(30.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF047857)),
+                            .background(DeepEmerald),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -4827,13 +4835,12 @@ fun ThreeDMegaphoneAnnouncementBanner(
                         )
                     }
 
-                    // Emerald vertical divider line
                     Box(
                         modifier = Modifier
                             .width(2.5.dp)
                             .height(42.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF059669).copy(alpha = 0.78f))
+                            .background(RoyalGreen.copy(alpha = 0.78f))
                     )
 
                     Column(
@@ -4845,7 +4852,7 @@ fun ThreeDMegaphoneAnnouncementBanner(
                             style = MaterialTheme.typography.titleMedium,
                             fontSize = 16.5.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF047857),
+                            color = DeepEmerald,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -4863,14 +4870,12 @@ fun ThreeDMegaphoneAnnouncementBanner(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Left side (in RTL): 3D Animated Megaphone Illustration
                 ThreeDIllustrationBox(
                     type = ThreeDIllustrationType.MEGAPHONE,
                     modifier = Modifier.size(72.dp)
                 )
             }
 
-            // Compact inline control chips when an urgent school alert is active
             if (isUrgentActive) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -4880,7 +4885,7 @@ fun ThreeDMegaphoneAnnouncementBanner(
                     if (isAdmin && onEditUrgent != null) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = Color(0xFF047857).copy(alpha = 0.14f),
+                            color = DeepEmerald.copy(alpha = 0.14f),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .clickable { onEditUrgent() }
@@ -4891,8 +4896,8 @@ fun ThreeDMegaphoneAnnouncementBanner(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Icon(Icons.Filled.Edit, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(13.dp))
-                                Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
+                                Icon(Icons.Filled.Edit, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(13.dp))
+                                Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = DeepForestGreen)
                             }
                         }
                     }
@@ -4940,10 +4945,6 @@ fun ThreeDMegaphoneAnnouncementBanner(
     }
 }
 
-/**
- * 3) المقطع المتموج لتكريم أفضل 3 أساتذة تقييماً بالتناوب التلقائي في الشاشة الرئيسية بدون أي صندوق أو إطار
- * (Top 3 Auto-Rotating Rated Teachers Seamless Full-Width Wave Spotlight Section - Zero Box BorderStroke)
- */
 @Composable
 fun SeamlessWaveTeacherSpotlightSection(
     teacherName: String = "",
@@ -5021,9 +5022,9 @@ fun SeamlessWaveTeacherSpotlightSection(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0xFF064E3B),
-                        Color(0xFF047857),
-                        Color(0xFF0F3D5E)
+                        DeepForestGreen,
+                        DeepEmerald,
+                        AdaptiveHeroEnd
                     )
                 )
             )
@@ -5049,7 +5050,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                 brush = Brush.horizontalGradient(
                     listOf(
                         Color(0xFFFBBF24).copy(alpha = 0.22f),
-                        Color(0xFF34D399).copy(alpha = 0.14f),
+                        AdaptiveHighlightGlow.copy(alpha = 0.14f),
                         Color(0xFFF59E0B).copy(alpha = 0.24f)
                     )
                 )
@@ -5106,7 +5107,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                                 text = "نخبة الكادر التدريسي",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFA7F3D0),
+                                color = AdaptiveSoftBorder,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -5140,7 +5141,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                                 text = slide.subjects,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFD1FAE5),
+                                color = AdaptiveSoftContainer,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -5209,7 +5210,6 @@ fun SeamlessWaveTeacherSpotlightSection(
                         }
                     }
 
-                    // 3 Glowing Indicator Dots for the Top 3 Teachers
                     if (slides.size > 1) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -5264,14 +5264,6 @@ fun SeamlessWaveTeacherSpotlightSection(
     }
 }
 
-/**
- * القسم الترحيبي / الترويسي الملكي ثلاثي الأبعاد المدمج بأمواج انسيابية مع جسم الصفحة
- * (Seamless Wave-Curved 3D Royal Hero Section)
- * يطابق الصورة المرجعية حرفياً:
- * - حافة علوية وسفلية منحنية بموجة Bezier ناعمة بدلاً من الصندوق المستطيل ذي الإطار
- * - تدرج زمردي إلى كحلي عميق + شبكة نقاط مضيئة (Halftone Dot Matrix)
- * - كبسولات زجاجية علوية + مجسم ثلاثي الأبعاد متحرك على اليسار + شريط زر زجاجي سفلي اختياري.
- */
 @Composable
 fun ThreeDHeroHeaderCard(
     title: String,
@@ -5288,7 +5280,6 @@ fun ThreeDHeroHeaderCard(
     modifier: Modifier = Modifier,
     extraBottomContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
-    // Custom Bezier Wave Shape: curved wave top & curved wave bottom matching reference image
     val waveHeroShape = remember {
         GenericShape { size, _ ->
             val w = size.width
@@ -5311,34 +5302,37 @@ fun ThreeDHeroHeaderCard(
         }
     }
 
+    val heroStart = AdaptiveHeroStart
+    val heroMid = AdaptiveHeroMid
+    val heroEnd = AdaptiveHeroEnd
+    val glowHighlight = AdaptiveHighlightGlow
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
                 elevation = 12.dp,
                 shape = waveHeroShape,
-                ambientColor = Color(0xFF047857).copy(alpha = 0.32f),
-                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.38f)
+                ambientColor = heroMid.copy(alpha = 0.32f),
+                spotColor = heroEnd.copy(alpha = 0.38f)
             )
             .clip(waveHeroShape)
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFF059669),
-                        Color(0xFF047857),
-                        Color(0xFF0F3D5E)
+                        heroStart,
+                        heroMid,
+                        heroEnd
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(950f, 680f)
                 )
             )
     ) {
-        // Halftone Dot Matrix, Wave Highlights & Radial Glow Overlay
         Canvas(modifier = Modifier.matchParentSize()) {
             val w = size.width
             val h = size.height
 
-            // Soft internal wave sheen
             val innerWave = Path().apply {
                 moveTo(0f, h * 0.72f)
                 cubicTo(
@@ -5352,14 +5346,13 @@ fun ThreeDHeroHeaderCard(
             }
             drawPath(
                 path = innerWave,
-                color = Color(0xFF0F3D5E).copy(alpha = 0.28f)
+                color = heroEnd.copy(alpha = 0.28f)
             )
 
-            // Radial emerald highlight behind the 3D illustration (left side in RTL)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF34D399).copy(alpha = 0.32f),
+                        glowHighlight.copy(alpha = 0.32f),
                         Color.Transparent
                     ),
                     center = Offset(w * 0.22f, h * 0.48f),
@@ -5369,7 +5362,6 @@ fun ThreeDHeroHeaderCard(
                 center = Offset(w * 0.22f, h * 0.48f)
             )
 
-            // Halftone dot matrix in top-left and bottom-right corners
             val step = 11.dp.toPx()
             val dotRadius = 1.6.dp.toPx()
             for (row in 0..6) {
@@ -5395,7 +5387,6 @@ fun ThreeDHeroHeaderCard(
                 .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Top Row: Two Frosted Glass Pills (Guaranteed non-clipping for academic year & role badges)
             if (rightPillText.isNotBlank() || leftPillText.isNotBlank()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -5468,7 +5459,6 @@ fun ThreeDHeroHeaderCard(
                 }
             }
 
-            // Middle Row: Welcome Title & Subtitle on Right + 3D Animated Illustration on Left
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -5502,7 +5492,6 @@ fun ThreeDHeroHeaderCard(
                 )
             }
 
-            // Optional Bottom Glassmorphic Capsule Action Bar
             if (bottomActionText != null && onBottomActionClick != null) {
                 Surface(
                     modifier = Modifier
@@ -5555,15 +5544,14 @@ fun ThreeDHeroHeaderCard(
     }
 }
 
-/**
- * عنوان قسم الإحصائيات الفاصل مع الخطوط الجانبية وأيقونة الأعمدة الملونة
- * (Section Divider Header: ── 📊 لوحة الإحصائيات العامة للمدرسة ──)
- */
 @Composable
 fun SectionDividerHeaderWithLines(
     title: String,
     modifier: Modifier = Modifier
 ) {
+    val accentLineColor = EmeraldAccent
+    val midDiamondColor = DeepEmerald
+    val endDiamondColor = AdaptiveHeroEnd
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -5578,7 +5566,7 @@ fun SectionDividerHeaderWithLines(
                 .clip(RoundedCornerShape(50))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color.Transparent, Color(0xFF10B981))
+                        listOf(Color.Transparent, accentLineColor)
                     )
                 )
         )
@@ -5587,7 +5575,6 @@ fun SectionDividerHeaderWithLines(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 3D Royal Emerald & Gold Diamond Emblem (replaces mini bar chart)
             Canvas(modifier = Modifier.size(22.dp)) {
                 val w = size.width
                 val h = size.height
@@ -5601,7 +5588,7 @@ fun SectionDividerHeaderWithLines(
                 drawPath(
                     path = outerDiamond,
                     brush = Brush.linearGradient(
-                        listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF0F3D5E))
+                        listOf(accentLineColor, midDiamondColor, endDiamondColor)
                     )
                 )
                 val innerDiamond = Path().apply {
@@ -5636,17 +5623,13 @@ fun SectionDividerHeaderWithLines(
                 .clip(RoundedCornerShape(50))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color(0xFF10B981), Color.Transparent)
+                        listOf(accentLineColor, Color.Transparent)
                     )
                 )
         )
     }
 }
 
-/**
- * بطاقة "موجز الدوام وحركة البوابة اليومية" الزمردية ثلاثية الأبعاد (مع الكرة المضيئة و 5 كبسولات زجاجية)
- * تطابق الصورة المرجعية مع الحفاظ الصارم على المصطلحات التربوية المعتمدة (موجز الدوام وحركة البوابة اليومية / عرض التفاصيل).
- */
 @Composable
 fun ThreeDDailyAttendanceGateSummaryCard(
     title: String = "موجز الدوام وحركة البوابة اليومية",
@@ -5667,8 +5650,8 @@ fun ThreeDDailyAttendanceGateSummaryCard(
             .shadow(
                 elevation = 12.dp,
                 shape = RoundedCornerShape(26.dp),
-                ambientColor = Color(0xFF059669).copy(alpha = 0.32f),
-                spotColor = Color(0xFF047857).copy(alpha = 0.36f)
+                ambientColor = RoyalGreen.copy(alpha = 0.32f),
+                spotColor = DeepEmerald.copy(alpha = 0.36f)
             )
             .clip(RoundedCornerShape(26.dp))
             .clickable { onClick() }
@@ -5683,9 +5666,9 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            Color(0xFF059669),
-                            Color(0xFF047857),
-                            Color(0xFF065F46)
+                            RoyalGreen,
+                            DeepEmerald,
+                            DeepForestGreen
                         )
                     )
                 )
@@ -5695,7 +5678,6 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Top Row: Wide Comfortable Title & Unclipped Description on Right + 3D Smart Gate & ID Card on Left
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -5727,7 +5709,6 @@ fun ThreeDDailyAttendanceGateSummaryCard(
 
                     Spacer(modifier = Modifier.width(10.dp))
 
-                    // Vertical translucent white divider
                     Box(
                         modifier = Modifier
                             .width(1.dp)
@@ -5737,14 +5718,12 @@ fun ThreeDDailyAttendanceGateSummaryCard(
 
                     Spacer(modifier = Modifier.width(10.dp))
 
-                    // Left side (in RTL): 3D Smart Gate & Digital ID Card (76.dp)
                     ThreeDIllustrationBox(
                         type = ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK,
                         modifier = Modifier.size(76.dp)
                     )
                 }
 
-                // Middle Row: 5 Frosted Glass Emerald Capsules in a single balanced row (Zero truncation on "متواجدون: 1")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -5782,7 +5761,6 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                     }
                 }
 
-                // Bottom Row: Wide Sleek Pure White & Emerald Action Button ("عرض التفاصيل <") below the 5 capsules
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = Color.White,
@@ -5804,7 +5782,7 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                             style = MaterialTheme.typography.labelLarge,
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF047857),
+                            color = DeepEmerald,
                             maxLines = 1,
                             softWrap = false
                         )
@@ -5812,7 +5790,7 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                             contentDescription = null,
-                            tint = Color(0xFF047857),
+                            tint = DeepEmerald,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -5841,10 +5819,10 @@ fun WaveStatCard3D(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val waveColor1 = if (isBlueTheme) Color(0xFFDBEAFE) else Color(0xFFCCFBF1)
-    val waveColor2 = if (isBlueTheme) Color(0xFFBFDBFE) else Color(0xFFA7F3D0)
-    val circleBg = if (isBlueTheme) Color(0xFFDBEAFE) else Color(0xFFD1FAE5)
-    val iconTint = if (isBlueTheme) Color(0xFF2563EB) else Color(0xFF059669)
+    val waveColor1 = if (isBlueTheme) Color(0xFFDBEAFE) else AdaptiveWaveRibbon1
+    val waveColor2 = if (isBlueTheme) Color(0xFFBFDBFE) else AdaptiveWaveRibbon2
+    val circleBg = if (isBlueTheme) Color(0xFFDBEAFE) else AdaptiveSoftContainer
+    val iconTint = if (isBlueTheme) Color(0xFF2563EB) else RoyalGreen
 
     Card(
         modifier = modifier
@@ -5865,7 +5843,6 @@ fun WaveStatCard3D(
                 .fillMaxWidth()
                 .heightIn(min = 148.dp)
         ) {
-            // Double smooth water wave drawn at the bottom of the card
             Canvas(modifier = Modifier.matchParentSize()) {
                 val w = size.width
                 val h = size.height
@@ -5909,7 +5886,6 @@ fun WaveStatCard3D(
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Row: Large tinted icon circle on Right (in RTL) + small chevron circle on Left
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -5950,7 +5926,6 @@ fun WaveStatCard3D(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Value & Titles aligned cleanly above the bottom wave
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.Start,
@@ -5991,11 +5966,6 @@ fun WaveStatCard3D(
     }
 }
 
-/**
- * بطاقة الأقسام التعليمية والإدارية ثلاثية الأبعاد ذات الأمواج السفلية
- * (3D Wave Quick-Access Section Card)
- * تمنع اقتصاص العناوين الطويلة (مثل: "السجل الأكاديمي الشامل") وتمنح كل قسم عمقاً ثلاثي الأبعاد.
- */
 @Composable
 fun SectionWaveQuickCard3D(
     title: String,
@@ -6006,10 +5976,10 @@ fun SectionWaveQuickCard3D(
     modifier: Modifier = Modifier,
     testTag: String = ""
 ) {
-    val waveColor1 = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFCCFBF1)
-    val waveColor2 = if (isBlueAccent) Color(0xFFBFDBFE) else Color(0xFFA7F3D0)
-    val iconCircleBg = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFD1FAE5)
-    val iconTint = if (isBlueAccent) Color(0xFF1D4ED8) else Color(0xFF059669)
+    val waveColor1 = if (isBlueAccent) Color(0xFFDBEAFE) else AdaptiveWaveRibbon1
+    val waveColor2 = if (isBlueAccent) Color(0xFFBFDBFE) else AdaptiveWaveRibbon2
+    val iconCircleBg = if (isBlueAccent) Color(0xFFDBEAFE) else AdaptiveSoftContainer
+    val iconTint = if (isBlueAccent) Color(0xFF1D4ED8) else RoyalGreen
 
     Card(
         modifier = modifier
@@ -6031,7 +6001,6 @@ fun SectionWaveQuickCard3D(
                 .fillMaxWidth()
                 .heightIn(min = 132.dp)
         ) {
-            // Double smooth water wave drawn at the bottom of the card
             Canvas(modifier = Modifier.matchParentSize()) {
                 val w = size.width
                 val h = size.height
@@ -6132,29 +6101,30 @@ fun SectionWaveQuickCard3D(
     }
 }
 
-/**
- * سطح ترويسة متموج ثلاثي الأبعاد متعدد الطبقات (WaveLayeredHeaderSurface)
- * يمنح ترويسة موحدة فاخرة بتدرج زمردي ملكي مع أمواج مائية وشبكة نقاط مضيئة
- * لاحتواء العنوان والمجسم الثلاثي الأبعاد وأزرار التبويبات الفرعية بسلاسة تامة.
- */
 @Composable
 fun WaveLayeredHeaderSurface(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 26.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val startGrad = AdaptiveHeroStart
+    val midGrad = AdaptiveHeroMid
+    val deepGrad = DeepForestGreen
+    val endGrad = AdaptiveHeroEnd
+    val glowHighlight = AdaptiveHighlightGlow
+
     Card(
         modifier = modifier
             .shadow(
                 elevation = 12.dp,
                 shape = RoundedCornerShape(cornerRadius),
-                ambientColor = Color(0xFF047857).copy(alpha = 0.28f),
-                spotColor = Color(0xFF047857).copy(alpha = 0.34f)
+                ambientColor = midGrad.copy(alpha = 0.28f),
+                spotColor = midGrad.copy(alpha = 0.34f)
             )
             .clip(RoundedCornerShape(cornerRadius)),
         shape = RoundedCornerShape(cornerRadius),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF047857)),
-        border = BorderStroke(1.2.dp, Color(0xFF34D399).copy(alpha = 0.45f))
+        colors = CardDefaults.cardColors(containerColor = midGrad),
+        border = BorderStroke(1.2.dp, glowHighlight.copy(alpha = 0.45f))
     ) {
         Box(
             modifier = Modifier
@@ -6162,10 +6132,10 @@ fun WaveLayeredHeaderSurface(
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            Color(0xFF059669),
-                            Color(0xFF047857),
-                            Color(0xFF065F46),
-                            Color(0xFF0F3D5E)
+                            startGrad,
+                            midGrad,
+                            deepGrad,
+                            endGrad
                         ),
                         start = Offset(0f, 0f),
                         end = Offset(900f, 700f)
@@ -6176,11 +6146,10 @@ fun WaveLayeredHeaderSurface(
                 val w = size.width
                 val h = size.height
 
-                // Ambient emerald-gold glow
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF34D399).copy(alpha = 0.25f),
+                            glowHighlight.copy(alpha = 0.25f),
                             Color.Transparent
                         ),
                         center = Offset(w * 0.22f, h * 0.28f),
@@ -6190,7 +6159,6 @@ fun WaveLayeredHeaderSurface(
                     center = Offset(w * 0.22f, h * 0.28f)
                 )
 
-                // Subtle 3D dot matrix on top right & left corners
                 val step = 16.dp.toPx()
                 for (row in 0..5) {
                     for (col in 0..6) {
@@ -6202,7 +6170,6 @@ fun WaveLayeredHeaderSurface(
                     }
                 }
 
-                // Multi-layer flowing wave ribbons along the bottom
                 val waveBack = Path().apply {
                     moveTo(0f, h * 0.68f)
                     cubicTo(
@@ -6218,8 +6185,8 @@ fun WaveLayeredHeaderSurface(
                     path = waveBack,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFF10B981).copy(alpha = 0.20f),
-                            Color(0xFF042F2E).copy(alpha = 0.42f)
+                            glowHighlight.copy(alpha = 0.20f),
+                            deepGrad.copy(alpha = 0.42f)
                         ),
                         startY = h * 0.56f,
                         endY = h
@@ -6247,6 +6214,162 @@ fun WaveLayeredHeaderSurface(
         }
     }
 }
+
+/**
+ * أزرار الاختيار المدمجة للجنس والعمر (Segmented Modern Toggle Pills for Gender & Age — Zero Emojis)
+ * تُستخدم في إعدادات الحساب، وإضافة/تعديل الطلاب والأساتذة، وتُفعّل التحول اللوني الفوري.
+ */
+@Composable
+fun GenderAndAgeSegmentedSelectorCard(
+    selectedGender: String,
+    onGenderSelected: ((String) -> Unit)? = null,
+    onGenderChange: ((String) -> Unit)? = null,
+    ageYears: Int = 0,
+    onAgeChanged: ((Int) -> Unit)? = null,
+    onAgeYearsChange: ((Int) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    titleLabel: String = "الجنس والعمر (تخصيص الهوية اللونية للنظام)",
+    title: String = ""
+) {
+    val effectiveTitle = title.ifBlank { titleLabel }
+    val handleGender: (String) -> Unit = { g ->
+        onGenderSelected?.invoke(g)
+        onGenderChange?.invoke(g)
+    }
+    val handleAge: (Int) -> Unit = { a ->
+        onAgeChanged?.invoke(a)
+        onAgeYearsChange?.invoke(a)
+    }
+    val normalizedGender = if (selectedGender.trim() == "أنثى" || selectedGender.trim() == "انثى") "أنثى" else "ذكر"
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = AdaptiveSoftSurface,
+        border = BorderStroke(1.dp, AdaptiveSoftBorder),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = effectiveTitle,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = DeepForestGreen
+            )
+
+            // Segmented Modern Toggle Pills: ذكر | أنثى
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("ذكر" to "ذكر (الثيم الزمردي الملكي)", "أنثى" to "أنثى (الثيم الوردي الملكي)").forEach { (genderKey, genderLabel) ->
+                    val isSelected = normalizedGender == genderKey
+                    val activeColor = if (genderKey == "أنثى") Color(0xFFE11D48) else Color(0xFF047857)
+                    Surface(
+                        onClick = { handleGender(genderKey) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) activeColor else Color.White,
+                        border = BorderStroke(
+                            width = 1.2.dp,
+                            color = if (isSelected) GoldAccent else Color(0xFFCBD5E1)
+                        ),
+                        shadowElevation = if (isSelected) 3.dp else 0.dp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .testTag("gender_pill_$genderKey")
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        ) {
+                            Text(
+                                text = genderLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isSelected) Color.White else Color(0xFF1E293B),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Age selector row (numeric stepper + quick pills)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "العمر (بالسنوات):",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = DeepForestGreen
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        onClick = {
+                            val next = if (ageYears <= 5) 6 else (ageYears - 1).coerceAtLeast(5)
+                            handleAge(next)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, AdaptiveSoftBorder),
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("-", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = DeepForestGreen)
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                        modifier = Modifier.widthIn(min = 76.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = if (ageYears > 0) "$ageYears سنة" else "غير محدد",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = {
+                            val next = if (ageYears <= 0) 12 else (ageYears + 1).coerceAtMost(75)
+                            handleAge(next)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, AdaptiveSoftBorder),
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("+", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = DeepForestGreen)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 
 
