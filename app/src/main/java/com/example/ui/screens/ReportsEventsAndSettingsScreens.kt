@@ -2211,12 +2211,12 @@ fun SettingsScreen(
                 .shadow(
                     elevation = 8.dp,
                     shape = RoundedCornerShape(24.dp),
-                    ambientColor = RoyalGreen.copy(alpha = 0.16f),
-                    spotColor = DeepForestGreen.copy(alpha = 0.18f)
+                    ambientColor = Color(0xFF059669).copy(alpha = 0.16f),
+                    spotColor = Color(0xFF0F3D5E).copy(alpha = 0.18f)
                 ),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.2.dp, AdaptiveSoftBorder)
+            border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
         ) {
             Column(
                 modifier = Modifier.padding(14.dp),
@@ -2229,7 +2229,7 @@ fun SettingsScreen(
                     Icon(
                         imageVector = Icons.Filled.Category,
                         contentDescription = null,
-                        tint = RoyalGreen,
+                        tint = Color(0xFF059669),
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
@@ -2258,7 +2258,7 @@ fun SettingsScreen(
                                 color = if (isSelected) Color.Transparent else Color(0xFFF8FAFC),
                                 border = BorderStroke(
                                     width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) RoyalGreen else Color(0xFFE2E8F0)
+                                    color = if (isSelected) Color(0xFF059669) else Color(0xFFE2E8F0)
                                 ),
                                 shadowElevation = if (isSelected) 4.dp else 1.dp
                             ) {
@@ -2269,7 +2269,7 @@ fun SettingsScreen(
                                             if (isSelected) {
                                                 Modifier.background(
                                                     Brush.horizontalGradient(
-                                                        listOf(RoyalGreen, DeepEmerald)
+                                                        listOf(Color(0xFF059669), Color(0xFF047857))
                                                     )
                                                 )
                                             } else {
@@ -2282,14 +2282,14 @@ fun SettingsScreen(
                                 ) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = if (isSelected) Color.White.copy(alpha = 0.22f) else AdaptiveSoftContainer,
+                                        color = if (isSelected) Color.White.copy(alpha = 0.22f) else Color(0xFFD1FAE5),
                                         modifier = Modifier.size(30.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                             Icon(
                                                 imageVector = catIcon,
                                                 contentDescription = catTitle,
-                                                tint = if (isSelected) Color.White else DeepEmerald,
+                                                tint = if (isSelected) Color.White else Color(0xFF047857),
                                                 modifier = Modifier.size(16.dp)
                                             )
                                         }
@@ -2313,17 +2313,10 @@ fun SettingsScreen(
 
         // Category 0: الحساب والملف الشخصي
         if (selectedSettingsCategory == 0) {
-            var currentGenderSelection by remember(currentUser?.id, currentUser?.gender) {
-                mutableStateOf(currentUser?.normalizedGenderLabel ?: "ذكر")
-            }
-            var currentAgeSelection by remember(currentUser?.id, currentUser?.ageYears) {
-                mutableStateOf(currentUser?.ageYears ?: 0)
-            }
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
                 elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
                 Column(
@@ -2362,21 +2355,6 @@ fun SettingsScreen(
                             )
                         }
                     }
-
-                    // محرك الهوية اللونية الذكي حسب الجنس والعمر (Gender-Adaptive Theme Engine)
-                    GenderAndAgeSegmentedSelectorCard(
-                        selectedGender = currentGenderSelection,
-                        onGenderChange = { newG ->
-                            currentGenderSelection = newG
-                            viewModel.updateCurrentUserGenderAndAge(newG, currentAgeSelection)
-                        },
-                        ageYears = currentAgeSelection,
-                        onAgeYearsChange = { newA ->
-                            currentAgeSelection = newA
-                            viewModel.updateCurrentUserGenderAndAge(currentGenderSelection, newA)
-                        },
-                        title = "تخصيص الجنس والعمر والهوية اللونية الذكية للمنصة"
-                    )
 
                     VectorActionButton(
                         text = "تسجيل الخروج من الحساب",

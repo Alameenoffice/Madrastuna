@@ -1426,6 +1426,29 @@ fun UnifiedLoginScreen(
                                         )
                                     }
                                 }
+                            } else if (loginError != null) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.GppBad,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = loginError!!,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    }
+                                }
                             }
 
                             if (remainingLockoutSec > 0L) {
@@ -2397,184 +2420,6 @@ fun DeveloperControlPanelScreen(
                             modifier = Modifier.weight(1f),
                             testTag = "dev_stop_app_update_btn"
                         )
-                    }
-                }
-            }
-
-            // Developer Upgrade B-0: مُبدّل أيقونة التطبيق على سطح المكتب ومواسم المناسبات (Dynamic Desktop App Icon & Seasonal Switcher)
-            val activeSeasonalDesktopPreset = com.example.util.AppIconSwitcherHelper.activeSeasonalPreset
-            var seasonalIconStatusNote by remember { mutableStateOf<String?>(null) }
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("dev_desktop_launcher_icon_switcher_card"),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = null,
-                            tint = DeepEmerald
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "أيقونة سطح المكتب والمناسبات الموسمية (App Launcher Icon)",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                text = "معاينة حية بدقة Vector وتحديث ديناميكي لأيقونة سطح المكتب وشعار الإقلاع والشريط العلوي",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    // Active Icon Status Banner
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFECFDF5),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            com.example.util.SeasonalDesktopIconVectorBadge(
-                                preset = activeSeasonalDesktopPreset,
-                                size = 54.dp
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "الأيقونة المفعّلة حالياً على النظام وسطح المكتب:",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF047857),
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = activeSeasonalDesktopPreset.arabicTitle,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF064E3B)
-                                )
-                                Text(
-                                    text = activeSeasonalDesktopPreset.arabicSubtitle,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF065F46)
-                                )
-                            }
-                        }
-                    }
-
-                    seasonalIconStatusNote?.let { note ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFFFFBEB),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = note,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF92400E),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                            )
-                        }
-                    }
-
-                    // 6 Visual Cards Grid (2 columns x 3 rows) with Live Vector Previews
-                    val presets = com.example.util.SeasonalDesktopIconPreset.entries
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        presets.chunked(2).forEach { rowPresets ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                rowPresets.forEach { preset ->
-                                    val isSelected = activeSeasonalDesktopPreset == preset
-                                    Surface(
-                                        onClick = {
-                                            com.example.util.AppIconSwitcherHelper.activateSeasonalDesktopIcon(
-                                                context = context,
-                                                preset = preset
-                                            )
-                                            seasonalIconStatusNote =
-                                                "تم تفعيل (${preset.arabicTitle}) وتحديث أيقونة سطح المكتب وشعار الإقلاع والشريط العلوي وحفظها بشكل دائم."
-                                        },
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = if (isSelected) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
-                                        border = androidx.compose.foundation.BorderStroke(
-                                            width = if (isSelected) 2.dp else 1.dp,
-                                            color = if (isSelected) DeepEmerald else Color(0xFFCBD5E1)
-                                        ),
-                                        shadowElevation = if (isSelected) 4.dp else 1.dp,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("dev_seasonal_icon_card_${preset.key}")
-                                    ) {
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(12.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            com.example.util.SeasonalDesktopIconVectorBadge(
-                                                preset = preset,
-                                                size = 68.dp
-                                            )
-                                            Text(
-                                                text = preset.arabicTitle,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = if (isSelected) Color(0xFF064E3B) else Color(0xFF0F172A),
-                                                textAlign = TextAlign.Center,
-                                                minLines = 2,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = preset.arabicSubtitle,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF475569),
-                                                textAlign = TextAlign.Center,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Surface(
-                                                shape = RoundedCornerShape(50),
-                                                color = if (isSelected) DeepEmerald else Color(0xFFE2E8F0),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Text(
-                                                    text = if (isSelected) "مفعّلة حالياً ✓" else "تفعيل الأيقونة",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = if (isSelected) Color.White else Color(0xFF1E293B),
-                                                    textAlign = TextAlign.Center,
-                                                    modifier = Modifier.padding(vertical = 6.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }

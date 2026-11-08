@@ -27,7 +27,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import com.example.model.OccasionIconKey
 import com.example.model.TeacherEvaluationSummary
-import com.example.util.drawSeasonalIconVectorContent
 import kotlinx.coroutines.delay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -63,23 +62,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.example.ui.theme.AdaptiveHeroEnd
-import com.example.ui.theme.AdaptiveHeroMid
-import com.example.ui.theme.AdaptiveHeroStart
-import com.example.ui.theme.AdaptiveHighlightGlow
-import com.example.ui.theme.AdaptiveSoftBorder
-import com.example.ui.theme.AdaptiveSoftContainer
-import com.example.ui.theme.AdaptiveSoftSurface
-import com.example.ui.theme.AdaptiveWaveRibbon1
-import com.example.ui.theme.AdaptiveWaveRibbon2
 import com.example.ui.theme.DeepEmerald
 import com.example.ui.theme.DeepForestGreen
-import com.example.ui.theme.EmeraldAccent
-import com.example.ui.theme.GenderThemeState
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.GoldDeep
 import com.example.ui.theme.GoldFoil
-import com.example.ui.theme.RoyalGreen
 import com.example.ui.theme.WhatsAppGreen
 import com.example.util.DocumentAndIdExporter
 import com.example.util.ExternalIntents
@@ -921,8 +908,6 @@ fun ChoreographedRoyalEmblemAnimation(
     size: Dp = 228.dp,
     replayKey: Any = Unit
 ) {
-    val activeSeasonalPreset = com.example.util.AppIconSwitcherHelper.activeSeasonalPreset
-
     val elapsedSec = remember(replayKey) { Animatable(0f) }
     LaunchedEffect(replayKey) {
         elapsedSec.snapTo(0f)
@@ -953,53 +938,56 @@ fun ChoreographedRoyalEmblemAnimation(
     )
 
     val t = elapsedSec.value
-    val stage1Raw = (t / 0.45f).coerceIn(0f, 1f)
+
+    // Stage 1 (0.0s - 0.5s): Book pages & Hands of Giving stroke draw + page unfolding
+    val stage1Raw = (t / 0.50f).coerceIn(0f, 1f)
     val bookProgress = FastOutSlowInEasing.transform(stage1Raw)
-    val capAlpha = ((t - 0.35f) / 0.25f).coerceIn(0f, 1f)
 
-    val tasselTime = (t - 0.45f).coerceAtLeast(0f)
+    // Stage 2 (0.4s - 0.9s): Golden Laurel stems + staggered 6 pairs of leaves
+    val stemRaw = ((t - 0.38f) / 0.36f).coerceIn(0f, 1f)
+    val stemProgress = FastOutSlowInEasing.transform(stemRaw)
+
+    // Stage 3 (0.7s - 1.3s): Graduation Cap drop + Pendulum Tassel Swing + Shimmer Pass
+    val capRaw = ((t - 0.68f) / 0.42f).coerceIn(0f, 1f)
+    // Spring overshoot curve for the cap landing
+    val capLandingEase = if (capRaw < 1f) {
+        val u = 1f - capRaw
+        1f - u * u * (2.6f * u - 1.6f)
+    } else 1f
+    val capAlpha = ((t - 0.68f) / 0.18f).coerceIn(0f, 1f)
+
+    // Real Damped Pendulum Physics for the Golden Tassel (starts swinging as cap lands at t=0.72s)
+    val tasselTime = (t - 0.72f).coerceAtLeast(0f)
     val dampedImpulseDeg = if (tasselTime > 0f) {
-        (24f * exp(-2.4f * tasselTime) * sin(10.5f * tasselTime))
+        (34f * exp(-2.4f * tasselTime) * sin(10.5f * tasselTime))
     } else 0f
-    val ambientPendulumDeg = if (t >= 1.15f) {
-        (4.5f * sin(continuousWave.toDouble())).toFloat()
+    val ambientPendulumDeg = if (t >= 1.25f) {
+        (5.5f * sin(continuousWave.toDouble())).toFloat()
     } else 0f
-    val totalTasselSwingRad = Math.toRadians((dampedImpulseDeg + ambientPendulumDeg).toDouble()).toFloat()
+    val totalTasselSwingDeg = dampedImpulseDeg + ambientPendulumDeg
 
+    // Initial shimmer pass (0.82s - 1.38s), then continuous soft shimmer pass
     val activeShimmerPos = if (t < 1.42f) {
-        ((t - 0.75f) / 0.60f).coerceIn(-0.4f, 1.5f)
+        ((t - 0.80f) / 0.58f).coerceIn(-0.4f, 1.5f)
     } else {
         shimmerSweepLoop
-    }
-
-    val cornerRadius = (size.value * 0.22f).dp
-    val bgGradientColors = when (activeSeasonalPreset) {
-        com.example.util.SeasonalDesktopIconPreset.NEW_YEAR_2027 -> listOf(
-            Color(0xFF1E3A8A),
-            Color(0xFF172554),
-            Color(0xFF090D16)
-        )
-        com.example.util.SeasonalDesktopIconPreset.RAMADAN_KARIM -> listOf(
-            Color(0xFF065F46),
-            Color(0xFF042F24),
-            Color(0xFF011510)
-        )
-        else -> listOf(
-            Color(0xFF0F705B),
-            Color(0xFF0A4F40),
-            Color(0xFF03221B)
-        )
     }
 
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(cornerRadius))
+            .clip(RoundedCornerShape(38.dp))
             .background(
-                Brush.radialGradient(colors = bgGradientColors)
+                Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF0F705B),
+                        Color(0xFF0A4F40),
+                        Color(0xFF03221B)
+                    )
+                )
             )
             .border(
-                width = 2.dp,
+                width = 1.8.dp,
                 brush = Brush.linearGradient(
                     colors = listOf(
                         Color(0xFFFFF3B0),
@@ -1007,73 +995,75 @@ fun ChoreographedRoyalEmblemAnimation(
                         Color(0xFF9A6F18)
                     )
                 ),
-                shape = RoundedCornerShape(cornerRadius)
+                shape = RoundedCornerShape(38.dp)
             ),
         contentAlignment = Alignment.Center
     ) {
-        // 100% Native Screen Pixel Pure Vector Canvas (Zero Bitmap Scaling / Zero Blur)
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = this.size.width
             val h = this.size.height
             val cx = w / 2f
             val cy = h / 2f
             val unit = this.size.minDimension / 240f
+            val pathMeasure = PathMeasure()
 
-            if (activeSeasonalPreset != com.example.util.SeasonalDesktopIconPreset.OFFICIAL_ROYAL) {
-                drawSeasonalIconVectorContent(activeSeasonalPreset)
-            } else {
-                // Ambient Royal Emerald & Golden Glow
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF34D399).copy(alpha = 0.25f * bookProgress),
-                            Color(0xFFD4AF37).copy(alpha = 0.14f * bookProgress),
-                            Color.Transparent
-                        ),
-                        center = Offset(cx, cy),
-                        radius = w * 0.48f
+            // Ambient Royal Emerald & Golden Glow
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF34D399).copy(alpha = 0.24f * bookProgress),
+                        Color(0xFFD4AF37).copy(alpha = 0.12f * bookProgress),
+                        Color.Transparent
                     ),
-                    radius = w * 0.48f,
-                    center = Offset(cx, cy)
-                )
-
-                // Outer Crisp Geometric Golden Ring
-                drawCircle(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xCCFFF3B0),
-                            Color(0x88D4AF37),
-                            Color(0xAA9A6F18)
-                        ),
-                        start = Offset(w * 0.10f, h * 0.10f),
-                        end = Offset(w * 0.90f, h * 0.90f)
-                    ),
-                    radius = w * 0.43f,
                     center = Offset(cx, cy),
-                    style = Stroke(width = 2.0f * unit)
-                )
+                    radius = w * 0.48f
+                ),
+                radius = w * 0.48f,
+                center = Offset(cx, cy)
+            )
 
-                // =====================================================================
-                // 1. ULTRA-HD 3D ROYAL ACADEMIC SHIELD (1:1 Direct Geometric Coordinates)
-                // =====================================================================
+            // Outer Thin Glowing Golden Ring
+            drawCircle(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0x99FFF3B0),
+                        Color(0x55D4AF37),
+                        Color(0x889A6F18)
+                    ),
+                    start = Offset(w * 0.12f, h * 0.12f),
+                    end = Offset(w * 0.88f, h * 0.88f)
+                ),
+                radius = w * 0.42f,
+                center = Offset(cx, cy),
+                style = Stroke(width = 1.6f * unit)
+            )
+
+            // =====================================================================
+            // 1. 3D ROYAL ACADEMIC SHIELD (Golden Frame #FFF3B0 -> #D4AF37 -> #9A6F18 + Emerald Glass Core)
+            // =====================================================================
+            val shieldScale = (0.86f + 0.14f * bookProgress).coerceIn(0.1f, 1f)
+            withTransform({
+                scale(scaleX = shieldScale, scaleY = shieldScale, pivot = Offset(cx, cy))
+            }) {
                 val outerShieldPath = Path().apply {
-                    moveTo(cx, cy - 80f * unit)
-                    lineTo(cx + 65f * unit, cy - 59f * unit)
-                    lineTo(cx + 65f * unit, cy - 2f * unit)
+                    moveTo(cx, cy - 78f * unit)
+                    lineTo(cx + 64f * unit, cy - 58f * unit)
+                    lineTo(cx + 64f * unit, cy - 2f * unit)
                     cubicTo(
-                        cx + 65f * unit, cy + 39f * unit,
-                        cx + 37f * unit, cy + 66f * unit,
-                        cx, cy + 82f * unit
+                        cx + 64f * unit, cy + 38f * unit,
+                        cx + 36f * unit, cy + 65f * unit,
+                        cx, cy + 80f * unit
                     )
                     cubicTo(
-                        cx - 37f * unit, cy + 66f * unit,
-                        cx - 65f * unit, cy + 39f * unit,
-                        cx - 65f * unit, cy - 2f * unit
+                        cx - 36f * unit, cy + 65f * unit,
+                        cx - 64f * unit, cy + 38f * unit,
+                        cx - 64f * unit, cy - 2f * unit
                     )
-                    lineTo(cx - 65f * unit, cy - 59f * unit)
+                    lineTo(cx - 64f * unit, cy - 58f * unit)
                     close()
                 }
 
+                // 3D Golden Shield Frame
                 drawPath(
                     path = outerShieldPath,
                     brush = Brush.linearGradient(
@@ -1083,26 +1073,27 @@ fun ChoreographedRoyalEmblemAnimation(
                             Color(0xFFD4AF37),
                             Color(0xFF9A6F18)
                         ),
-                        start = Offset(cx - 65f * unit, cy - 80f * unit),
-                        end = Offset(cx + 65f * unit, cy + 82f * unit)
+                        start = Offset(cx - 64f * unit, cy - 78f * unit),
+                        end = Offset(cx + 64f * unit, cy + 80f * unit)
                     )
                 )
 
+                // Inner Shield Deep Emerald Core
                 val innerShieldPath = Path().apply {
-                    moveTo(cx, cy - 71f * unit)
-                    lineTo(cx + 56f * unit, cy - 52f * unit)
-                    lineTo(cx + 56f * unit, cy - 3f * unit)
+                    moveTo(cx, cy - 69f * unit)
+                    lineTo(cx + 55f * unit, cy - 51f * unit)
+                    lineTo(cx + 55f * unit, cy - 3f * unit)
                     cubicTo(
-                        cx + 56f * unit, cy + 33f * unit,
-                        cx + 32f * unit, cy + 57f * unit,
-                        cx, cy + 72f * unit
+                        cx + 55f * unit, cy + 32f * unit,
+                        cx + 31f * unit, cy + 56f * unit,
+                        cx, cy + 70f * unit
                     )
                     cubicTo(
-                        cx - 32f * unit, cy + 57f * unit,
-                        cx - 56f * unit, cy + 33f * unit,
-                        cx - 56f * unit, cy - 3f * unit
+                        cx - 31f * unit, cy + 56f * unit,
+                        cx - 55f * unit, cy + 32f * unit,
+                        cx - 55f * unit, cy - 3f * unit
                     )
-                    lineTo(cx - 56f * unit, cy - 52f * unit)
+                    lineTo(cx - 55f * unit, cy - 51f * unit)
                     close()
                 }
 
@@ -1115,24 +1106,17 @@ fun ChoreographedRoyalEmblemAnimation(
                             Color(0xFF03261E)
                         ),
                         center = Offset(cx, cy - 8f * unit),
-                        radius = 80f * unit
+                        radius = 78f * unit
                     )
-                )
-
-                // Crisp Inner Golden Shield Hairline
-                drawPath(
-                    path = innerShieldPath,
-                    color = Color(0x66FFF3B0),
-                    style = Stroke(width = 1.4f * unit, join = StrokeJoin.Round)
                 )
 
                 // Glassmorphic Diagonal Shield Reflection
                 val glassReflectionPath = Path().apply {
-                    moveTo(cx, cy - 71f * unit)
-                    lineTo(cx - 56f * unit, cy - 52f * unit)
-                    lineTo(cx - 56f * unit, cy - 3f * unit)
+                    moveTo(cx, cy - 69f * unit)
+                    lineTo(cx - 55f * unit, cy - 51f * unit)
+                    lineTo(cx - 55f * unit, cy - 3f * unit)
                     cubicTo(
-                        cx - 56f * unit, cy + 24f * unit,
+                        cx - 55f * unit, cy + 24f * unit,
                         cx - 36f * unit, cy + 46f * unit,
                         cx - 10f * unit, cy + 62f * unit
                     )
@@ -1143,95 +1127,103 @@ fun ChoreographedRoyalEmblemAnimation(
                     path = glassReflectionPath,
                     brush = Brush.linearGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.22f),
+                            Color.White.copy(alpha = 0.20f),
                             Color(0xFFA7F3D0).copy(alpha = 0.08f),
                             Color.Transparent
                         ),
-                        start = Offset(cx - 56f * unit, cy - 65f * unit),
+                        start = Offset(cx - 55f * unit, cy - 65f * unit),
                         end = Offset(cx + 10f * unit, cy + 40f * unit)
                     )
                 )
+            }
 
-                // =====================================================================
-                // 2. OPEN BOOK OF KNOWLEDGE (Direct 1:1 Vector Coordinates - Zero Scale Matrix)
-                // =====================================================================
-                if (bookProgress > 0.01f) {
-                    val spineBottomY = cy + 45f * unit
-                    val spineTopY = cy + 12f * unit
-                    val spread = bookProgress
+            // =====================================================================
+            // 2. OPEN BOOK OF KNOWLEDGE (Pearl-White & Gold Pages + Rising Illumination)
+            // =====================================================================
+            if (bookProgress > 0.01f) {
+                val spineBottomY = cy + 44f * unit
+                val spineTopY = cy + 12f * unit
 
-                    // Soft Golden Illumination Rays Rising from the Open Book
-                    val lightConePath = Path().apply {
-                        moveTo(cx, spineTopY + 4f * unit)
-                        lineTo(cx - 40f * unit * spread, cy - 26f * unit)
-                        lineTo(cx + 40f * unit * spread, cy - 26f * unit)
-                        close()
-                    }
-                    drawPath(
-                        path = lightConePath,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color(0xFFFDE68A).copy(alpha = 0.18f * bookProgress),
-                                Color(0xFFFFF3B0).copy(alpha = 0.38f * bookProgress)
-                            ),
-                            startY = cy - 26f * unit,
-                            endY = spineTopY + 4f * unit
-                        )
+                // Soft Golden Illumination Rays Rising from the Open Book Toward the Cap
+                val lightConePath = Path().apply {
+                    moveTo(cx, spineTopY + 4f * unit)
+                    lineTo(cx - 40f * unit, cy - 26f * unit)
+                    lineTo(cx + 40f * unit, cy - 26f * unit)
+                    close()
+                }
+                drawPath(
+                    path = lightConePath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xFFFDE68A).copy(alpha = 0.16f * bookProgress),
+                            Color(0xFFFFF3B0).copy(alpha = 0.36f * bookProgress)
+                        ),
+                        startY = cy - 26f * unit,
+                        endY = spineTopY + 4f * unit
                     )
+                )
 
-                    // Golden Book Base Cover
-                    val coverBasePath = Path().apply {
-                        moveTo(cx, spineTopY + 5f * unit)
-                        cubicTo(
-                            cx - 16f * unit * spread, spineTopY - 3f * unit,
-                            cx - 32f * unit * spread, spineTopY - 4f * unit,
-                            cx - 44f * unit * spread, spineTopY
-                        )
-                        lineTo(cx - 41f * unit * spread, spineBottomY + 4f * unit)
-                        cubicTo(
-                            cx - 28f * unit * spread, spineBottomY,
-                            cx - 14f * unit * spread, spineBottomY + 1f * unit,
-                            cx, spineBottomY + 9f * unit
-                        )
-                        cubicTo(
-                            cx + 14f * unit * spread, spineBottomY + 1f * unit,
-                            cx + 28f * unit * spread, spineBottomY,
-                            cx + 41f * unit * spread, spineBottomY + 4f * unit
-                        )
-                        lineTo(cx + 44f * unit * spread, spineTopY)
-                        cubicTo(
-                            cx + 32f * unit * spread, spineTopY - 4f * unit,
-                            cx + 16f * unit * spread, spineTopY - 3f * unit,
-                            cx, spineTopY + 5f * unit
-                        )
-                        close()
-                    }
-                    drawPath(
-                        path = coverBasePath,
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFFB8860B),
-                                Color(0xFFFFF3B0),
-                                Color(0xFF9A6F18)
-                            ),
-                            start = Offset(cx - 44f * unit, spineTopY),
-                            end = Offset(cx + 44f * unit, spineBottomY)
-                        )
+                // Golden Book Base Cover
+                val coverBasePath = Path().apply {
+                    moveTo(cx, spineTopY + 5f * unit)
+                    cubicTo(
+                        cx - 16f * unit, spineTopY - 3f * unit,
+                        cx - 32f * unit, spineTopY - 4f * unit,
+                        cx - 44f * unit, spineTopY
                     )
+                    lineTo(cx - 41f * unit, spineBottomY + 4f * unit)
+                    cubicTo(
+                        cx - 28f * unit, spineBottomY,
+                        cx - 14f * unit, spineBottomY + 1f * unit,
+                        cx, spineBottomY + 9f * unit
+                    )
+                    cubicTo(
+                        cx + 14f * unit, spineBottomY + 1f * unit,
+                        cx + 28f * unit, spineBottomY,
+                        cx + 41f * unit, spineBottomY + 4f * unit
+                    )
+                    lineTo(cx + 44f * unit, spineTopY)
+                    cubicTo(
+                        cx + 32f * unit, spineTopY - 4f * unit,
+                        cx + 16f * unit, spineTopY - 3f * unit,
+                        cx, spineTopY + 5f * unit
+                    )
+                    close()
+                }
+                drawPath(
+                    path = coverBasePath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFB8860B),
+                            Color(0xFFFFF3B0),
+                            Color(0xFF9A6F18)
+                        ),
+                        start = Offset(cx - 44f * unit, spineTopY),
+                        end = Offset(cx + 44f * unit, spineBottomY)
+                    )
+                )
 
-                    // Left Pearl-White Page (Direct Vector Path)
+                val pageScaleX = 0.25f + 0.75f * bookProgress
+                val leftPageRot = (1f - bookProgress) * 14f
+                val rightPageRot = -(1f - bookProgress) * 14f
+
+                // Left Pearl-White Page
+                withTransform({
+                    rotate(degrees = leftPageRot, pivot = Offset(cx, spineBottomY))
+                    scale(scaleX = pageScaleX, scaleY = bookProgress, pivot = Offset(cx, spineBottomY))
+                }) {
                     val leftPage = Path().apply {
                         moveTo(cx - 1f * unit, spineTopY)
                         cubicTo(
-                            cx - 15f * unit * spread, spineTopY - 8f * unit,
-                            cx - 30f * unit * spread, spineTopY - 9f * unit,
-                            cx - 41f * unit * spread, spineTopY - 4f * unit
+                            cx - 15f * unit, spineTopY - 8f * unit,
+                            cx - 30f * unit, spineTopY - 9f * unit,
+                            cx - 41f * unit, spineTopY - 4f * unit
                         )
-                        lineTo(cx - 39f * unit * spread, spineBottomY - 2f * unit)
+                        lineTo(cx - 39f * unit, spineBottomY - 2f * unit)
                         cubicTo(
-                            cx - 27f * unit * spread, spineBottomY - 6f * unit,
-                            cx - 14f * unit * spread, spineBottomY - 5f * unit,
+                            cx - 27f * unit, spineBottomY - 6f * unit,
+                            cx - 14f * unit, spineBottomY - 5f * unit,
                             cx - 1f * unit, spineBottomY + 3f * unit
                         )
                         close()
@@ -1248,19 +1240,34 @@ fun ChoreographedRoyalEmblemAnimation(
                             end = Offset(cx, spineBottomY)
                         )
                     )
+                    for (row in 0..2) {
+                        val ly = spineTopY + (6f + row * 7.5f) * unit
+                        drawLine(
+                            color = Color(0xFFC8961E).copy(alpha = 0.78f * bookProgress),
+                            start = Offset(cx - 8f * unit, ly - 1f * unit),
+                            end = Offset(cx - 32f * unit, ly - 3.5f * unit),
+                            strokeWidth = 2.0f * unit,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
 
-                    // Right Pearl-White Page (Direct Vector Path)
+                // Right Pearl-White Page
+                withTransform({
+                    rotate(degrees = rightPageRot, pivot = Offset(cx, spineBottomY))
+                    scale(scaleX = pageScaleX, scaleY = bookProgress, pivot = Offset(cx, spineBottomY))
+                }) {
                     val rightPage = Path().apply {
                         moveTo(cx + 1f * unit, spineTopY)
                         cubicTo(
-                            cx + 15f * unit * spread, spineTopY - 8f * unit,
-                            cx + 30f * unit * spread, spineTopY - 9f * unit,
-                            cx + 41f * unit * spread, spineTopY - 4f * unit
+                            cx + 15f * unit, spineTopY - 8f * unit,
+                            cx + 30f * unit, spineTopY - 9f * unit,
+                            cx + 41f * unit, spineTopY - 4f * unit
                         )
-                        lineTo(cx + 39f * unit * spread, spineBottomY - 2f * unit)
+                        lineTo(cx + 39f * unit, spineBottomY - 2f * unit)
                         cubicTo(
-                            cx + 27f * unit * spread, spineBottomY - 6f * unit,
-                            cx + 14f * unit * spread, spineBottomY - 5f * unit,
+                            cx + 27f * unit, spineBottomY - 6f * unit,
+                            cx + 14f * unit, spineBottomY - 5f * unit,
                             cx + 1f * unit, spineBottomY + 3f * unit
                         )
                         close()
@@ -1277,42 +1284,41 @@ fun ChoreographedRoyalEmblemAnimation(
                             end = Offset(cx, spineBottomY)
                         )
                     )
-
                     for (row in 0..2) {
                         val ly = spineTopY + (6f + row * 7.5f) * unit
                         drawLine(
-                            color = Color(0xFFC8961E).copy(alpha = 0.82f * bookProgress),
-                            start = Offset(cx - 8f * unit * spread, ly - 1f * unit),
-                            end = Offset(cx - 32f * unit * spread, ly - 3.5f * unit),
-                            strokeWidth = 2.0f * unit,
-                            cap = StrokeCap.Round
-                        )
-                        drawLine(
-                            color = Color(0xFFC8961E).copy(alpha = 0.82f * bookProgress),
-                            start = Offset(cx + 8f * unit * spread, ly - 1f * unit),
-                            end = Offset(cx + 32f * unit * spread, ly - 3.5f * unit),
+                            color = Color(0xFFC8961E).copy(alpha = 0.78f * bookProgress),
+                            start = Offset(cx + 8f * unit, ly - 1f * unit),
+                            end = Offset(cx + 32f * unit, ly - 3.5f * unit),
                             strokeWidth = 2.0f * unit,
                             cap = StrokeCap.Round
                         )
                     }
-
-                    // Center Golden Book Spine
-                    drawLine(
-                        color = Color(0xFFD4AF37),
-                        start = Offset(cx, spineTopY - 1f * unit),
-                        end = Offset(cx, spineBottomY + 7f * unit),
-                        strokeWidth = 3.2f * unit,
-                        cap = StrokeCap.Round
-                    )
                 }
 
-                // =====================================================================
-                // 3. LUXURY 3D GRADUATION CAP & GOLDEN TASSEL (Direct 1:1 Vector Coordinates)
-                // =====================================================================
-                if (capAlpha > 0.01f) {
-                    val capCy = cy - 26f * unit
+                // Center Golden Book Spine
+                drawLine(
+                    color = Color(0xFFD4AF37),
+                    start = Offset(cx, spineTopY - 1f * unit),
+                    end = Offset(cx, spineBottomY + 7f * unit),
+                    strokeWidth = 3.2f * unit,
+                    cap = StrokeCap.Round
+                )
+            }
 
-                    // 3D Skullcap Base
+            // =====================================================================
+            // 3. LUXURY 3D GRADUATION CAP / MORTARBOARD & GOLDEN TASSEL
+            // =====================================================================
+            if (capAlpha > 0.01f) {
+                val capTargetCy = cy - 26f * unit
+                val dropOffsetY = (1f - capLandingEase) * (-36f * unit)
+                val capCy = capTargetCy + dropOffsetY
+                val capScale = (0.78f + 0.22f * capLandingEase).coerceAtLeast(0.1f)
+
+                withTransform({
+                    scale(scaleX = capScale, scaleY = capScale, pivot = Offset(cx, capCy))
+                }) {
+                    // 3D Skullcap Base (Deep Royal Navy-Emerald with Golden Rim)
                     val capBasePath = Path().apply {
                         moveTo(cx - 28f * unit, capCy + 5f * unit)
                         lineTo(cx - 26f * unit, capCy + 21f * unit)
@@ -1344,12 +1350,12 @@ fun ChoreographedRoyalEmblemAnimation(
 
                     // 3D Mortarboard Lower Golden Edge Rim
                     val rimEdgePath = Path().apply {
-                        moveTo(cx - 53f * unit, capCy - 2f * unit)
-                        lineTo(cx, capCy + 16.5f * unit)
-                        lineTo(cx + 53f * unit, capCy - 2f * unit)
-                        lineTo(cx + 53f * unit, capCy + 2.8f * unit)
-                        lineTo(cx, capCy + 21f * unit)
-                        lineTo(cx - 53f * unit, capCy + 2.8f * unit)
+                        moveTo(cx - 52f * unit, capCy - 2f * unit)
+                        lineTo(cx, capCy + 16f * unit)
+                        lineTo(cx + 52f * unit, capCy - 2f * unit)
+                        lineTo(cx + 52f * unit, capCy + 2.5f * unit)
+                        lineTo(cx, capCy + 20.5f * unit)
+                        lineTo(cx - 52f * unit, capCy + 2.5f * unit)
                         close()
                     }
                     drawPath(
@@ -1360,17 +1366,17 @@ fun ChoreographedRoyalEmblemAnimation(
                                 Color(0xFFFFF3B0).copy(alpha = capAlpha),
                                 Color(0xFF855E12).copy(alpha = capAlpha)
                             ),
-                            startX = cx - 53f * unit,
-                            endX = cx + 53f * unit
+                            startX = cx - 52f * unit,
+                            endX = cx + 52f * unit
                         )
                     )
 
                     // 3D Mortarboard Diamond Top Surface
                     val diamondPath = Path().apply {
-                        moveTo(cx, capCy - 20.5f * unit)
-                        lineTo(cx + 53f * unit, capCy - 2f * unit)
-                        lineTo(cx, capCy + 16.5f * unit)
-                        lineTo(cx - 53f * unit, capCy - 2f * unit)
+                        moveTo(cx, capCy - 20f * unit)
+                        lineTo(cx + 52f * unit, capCy - 2f * unit)
+                        lineTo(cx, capCy + 16f * unit)
+                        lineTo(cx - 52f * unit, capCy - 2f * unit)
                         close()
                     }
                     drawPath(
@@ -1381,8 +1387,8 @@ fun ChoreographedRoyalEmblemAnimation(
                                 Color(0xFF062820).copy(alpha = capAlpha),
                                 Color(0xFF0A2E46).copy(alpha = capAlpha)
                             ),
-                            start = Offset(cx - 53f * unit, capCy - 20f * unit),
-                            end = Offset(cx + 53f * unit, capCy + 16f * unit)
+                            start = Offset(cx - 52f * unit, capCy - 20f * unit),
+                            end = Offset(cx + 52f * unit, capCy + 16f * unit)
                         )
                     )
 
@@ -1419,13 +1425,13 @@ fun ChoreographedRoyalEmblemAnimation(
                                 Color(0xFF9A6F18).copy(alpha = capAlpha)
                             ),
                             center = Offset(pivotX, pivotY),
-                            radius = 5.4f * unit
+                            radius = 5.2f * unit
                         ),
-                        radius = 5.0f * unit,
+                        radius = 4.8f * unit,
                         center = Offset(pivotX, pivotY)
                     )
 
-                    // Golden Tassel Cord & Pendulum Fringe (Direct Trigonometric Vector Coordinates)
+                    // Golden Tassel Cord & Pendulum Fringe
                     val tasselAnchorX = cx + 36f * unit
                     val tasselAnchorY = capCy + 5f * unit
                     drawLine(
@@ -1436,46 +1442,51 @@ fun ChoreographedRoyalEmblemAnimation(
                         cap = StrokeCap.Round
                     )
 
-                    val cordLen = 22f * unit
-                    val tasselEndX = tasselAnchorX + sin(totalTasselSwingRad) * cordLen
-                    val tasselEndY = tasselAnchorY + kotlin.math.cos(totalTasselSwingRad) * cordLen
-
-                    drawLine(
-                        color = Color(0xFFFFF3B0).copy(alpha = capAlpha),
-                        start = Offset(tasselAnchorX, tasselAnchorY),
-                        end = Offset(tasselEndX, tasselEndY),
-                        strokeWidth = 2.6f * unit,
-                        cap = StrokeCap.Round
-                    )
-
-                    val fringePath = Path().apply {
-                        moveTo(tasselEndX - 5.2f * unit, tasselEndY + 11f * unit)
-                        lineTo(tasselEndX + 5.2f * unit, tasselEndY + 11f * unit)
-                        lineTo(tasselEndX + 2.6f * unit, tasselEndY)
-                        lineTo(tasselEndX - 2.6f * unit, tasselEndY)
-                        close()
-                    }
-                    drawPath(
-                        path = fringePath,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFFFFF3B0).copy(alpha = capAlpha),
-                                Color(0xFFD4AF37).copy(alpha = capAlpha),
-                                Color(0xFF9A6F18).copy(alpha = capAlpha)
-                            ),
-                            startY = tasselEndY,
-                            endY = tasselEndY + 11f * unit
+                    withTransform({
+                        rotate(
+                            degrees = totalTasselSwingDeg,
+                            pivot = Offset(tasselAnchorX, tasselAnchorY)
                         )
-                    )
-                    drawCircle(
-                        color = Color(0xFFD4AF37).copy(alpha = capAlpha),
-                        radius = 3.2f * unit,
-                        center = Offset(tasselEndX, tasselEndY)
-                    )
+                    }) {
+                        val tasselEndY = tasselAnchorY + 22f * unit
+                        drawLine(
+                            color = Color(0xFFFFF3B0).copy(alpha = capAlpha),
+                            start = Offset(tasselAnchorX, tasselAnchorY),
+                            end = Offset(tasselAnchorX, tasselEndY),
+                            strokeWidth = 2.6f * unit,
+                            cap = StrokeCap.Round
+                        )
+                        val fringePath = Path().apply {
+                            moveTo(tasselAnchorX - 5.2f * unit, tasselEndY + 11f * unit)
+                            lineTo(tasselAnchorX + 5.2f * unit, tasselEndY + 11f * unit)
+                            lineTo(tasselAnchorX + 2.6f * unit, tasselEndY)
+                            lineTo(tasselAnchorX - 2.6f * unit, tasselEndY)
+                            close()
+                        }
+                        drawPath(
+                            path = fringePath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFFFFF3B0).copy(alpha = capAlpha),
+                                    Color(0xFFD4AF37).copy(alpha = capAlpha),
+                                    Color(0xFF9A6F18).copy(alpha = capAlpha)
+                                ),
+                                startY = tasselEndY,
+                                endY = tasselEndY + 11f * unit
+                            )
+                        )
+                        drawCircle(
+                            color = Color(0xFFD4AF37).copy(alpha = capAlpha),
+                            radius = 3.2f * unit,
+                            center = Offset(tasselAnchorX, tasselEndY)
+                        )
+                    }
                 }
             }
 
-            // Diagonal Light Sweep Shimmer Pass
+            // =====================================================================
+            // SHIMMER PASS: Diagonal Light Sweep Across the Formed Emblem
+            // =====================================================================
             if (activeShimmerPos in -0.3f..1.4f) {
                 val bandCenter = w * activeShimmerPos
                 val bandWidth = w * 0.35f
@@ -1483,8 +1494,8 @@ fun ChoreographedRoyalEmblemAnimation(
                     brush = Brush.linearGradient(
                         colors = listOf(
                             Color.Transparent,
-                            Color.White.copy(alpha = 0.20f),
-                            Color(0xFFFFF3B0).copy(alpha = 0.25f),
+                            Color.White.copy(alpha = 0.22f),
+                            Color(0xFFFFF3B0).copy(alpha = 0.28f),
                             Color.Transparent
                         ),
                         start = Offset(bandCenter - bandWidth, 0f),
@@ -1562,10 +1573,9 @@ fun RoyalAcademicCrestBrandHeader(
 }
 
 /**
- * Full-Screen Choreographed Splash Screen (شاشة تشغيل التطبيق الترحيبية فائقة الدقة Ultra-HD):
+ * Full-Screen Choreographed Splash Screen (شاشة تشغيل التطبيق الترحيبية):
  * - Renders the razor-sharp 3D Royal Academic Shield + Graduation Cap + Open Book of Knowledge
- *   (or active Seasonal Occasion Emblem) directly via Compose Canvas at 1:1 native screen pixel
- *   resolution (Zero Bitmap Scaling / Zero Blur Filters).
+ *   directly via Compose Canvas at full screen vector resolution (Zero Bitmap Scaling).
  * - Writes underneath in live crisp Text: "منصة مدرستي الذكية" and "MADRASATI".
  */
 @Composable
@@ -1575,16 +1585,18 @@ fun ChoreographedSplashScreen(
     isDarkMode: Boolean,
     onSplashFinished: () -> Unit
 ) {
-    val activeSeasonalPreset = com.example.util.AppIconSwitcherHelper.activeSeasonalPreset
     val textRevealProgress = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(420)
+        kotlinx.coroutines.delay(520)
         textRevealProgress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 480, easing = FastOutSlowInEasing)
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
         )
-        kotlinx.coroutines.delay(980)
+        kotlinx.coroutines.delay(1050)
         onSplashFinished()
     }
 
@@ -1615,7 +1627,7 @@ fun ChoreographedSplashScreen(
             .testTag("choreographed_splash_screen"),
         contentAlignment = Alignment.Center
     ) {
-        // Crisp ambient vector radial glows (no blur filters)
+        // Soft ambient radial glows
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 brush = Brush.radialGradient(
@@ -1650,24 +1662,26 @@ fun ChoreographedSplashScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 28.dp)
         ) {
-            // Ultra-HD 1:1 Native Vector Crest (Zero Scaling Transform)
-            ChoreographedRoyalEmblemAnimation(size = 224.dp)
+            // Razor-Sharp Full-Resolution Native Compose Vector Crest
+            ChoreographedRoyalEmblemAnimation(size = 216.dp)
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            // Live Razor-Sharp Typography: "منصة مدرستي الذكية" & "MADRASATI" (No scaleX/scaleY rasterization)
+            // Live Razor-Sharp Typography: "منصة مدرستي الذكية" & "MADRASATI"
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .graphicsLayer(
                         alpha = reveal.coerceIn(0f, 1f),
-                        translationY = (1f - reveal) * 20f
+                        scaleX = 0.88f + 0.12f * reveal,
+                        scaleY = 0.88f + 0.12f * reveal,
+                        translationY = (1f - reveal) * 28f
                     )
                     .testTag("splash_discovered_school_card")
             ) {
                 Text(
                     text = "منصة مدرستي الذكية",
-                    fontSize = 24.sp,
+                    fontSize = 23.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = if (isDarkMode) Color.White else Color(0xFF03221B),
                     textAlign = TextAlign.Center
@@ -1683,23 +1697,6 @@ fun ChoreographedSplashScreen(
                     color = if (isDarkMode) Color(0xFFFFF3B0) else Color(0xFFB8860B),
                     textAlign = TextAlign.Center
                 )
-
-                if (activeSeasonalPreset != com.example.util.SeasonalDesktopIconPreset.OFFICIAL_ROYAL) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFF065F46).copy(alpha = 0.88f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD4AF37))
-                    ) {
-                        Text(
-                            text = activeSeasonalPreset.arabicTitle,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFFFF3B0),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
-                    }
-                }
 
                 Box(
                     modifier = Modifier
@@ -1969,6 +1966,16 @@ fun InlineDialogToastBanner(
             runCatching { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
         }
     }
+    val infiniteTransition = rememberInfiniteTransition(label = "inline_toast_pulse")
+    val iconScale by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 750, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "inline_toast_icon_scale"
+    )
 
     androidx.compose.animation.AnimatedVisibility(
         visible = toastAlert != null,
@@ -1976,73 +1983,68 @@ fun InlineDialogToastBanner(
         exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
     ) {
         val alert = toastAlert ?: return@AnimatedVisibility
-        val isWarningOrInfo = !alert.isSuccess && (alert.message.contains("تنبيه") || alert.message.contains("ملاحظة") || alert.message.contains("يرجى"))
-        val bgSurfaceColor = when {
-            alert.isSuccess -> AdaptiveSoftSurface
-            isWarningOrInfo -> Color(0xFFFEF3C7)
-            else -> Color(0xFFFDE8E8)
+        val gradientColors = if (alert.isSuccess) {
+            listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
+        } else {
+            listOf(Color(0xFFDC2626), Color(0xFFB91C1C), Color(0xFF7F1D1D))
         }
-        val borderColor = when {
-            alert.isSuccess -> AdaptiveSoftBorder
-            isWarningOrInfo -> Color(0xFFFCD34D)
-            else -> Color(0xFFF8B4B4)
-        }
-        val textColor = when {
-            alert.isSuccess -> DeepForestGreen
-            isWarningOrInfo -> Color(0xFF92400E)
-            else -> Color(0xFF9B1C1C)
-        }
-        val accentBadgeColor = when {
-            alert.isSuccess -> RoyalGreen
-            isWarningOrInfo -> Color(0xFFD97706)
-            else -> Color(0xFFDC2626)
-        }
-
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp)
                 .shadow(
-                    elevation = 6.dp,
-                    shape = RoundedCornerShape(18.dp),
-                    ambientColor = borderColor.copy(alpha = 0.35f),
-                    spotColor = borderColor.copy(alpha = 0.40f)
+                    elevation = 10.dp,
+                    shape = RoundedCornerShape(20.dp),
+                    ambientColor = gradientColors.first().copy(alpha = 0.35f),
+                    spotColor = gradientColors.first().copy(alpha = 0.40f)
                 )
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(20.dp))
                 .clickable { onDismiss() },
-            shape = RoundedCornerShape(18.dp),
-            color = bgSurfaceColor.copy(alpha = 0.96f),
-            border = BorderStroke(1.2.dp, borderColor)
+            shape = RoundedCornerShape(20.dp),
+            color = Color.Transparent,
+            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f))
         ) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .background(Brush.horizontalGradient(gradientColors))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .width(4.dp)
-                        .height(28.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(accentBadgeColor)
-                )
-                Text(
-                    text = alert.message,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = textColor,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "إغلاق",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor.copy(alpha = 0.75f)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.22f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .size(30.dp)
+                            .graphicsLayer {
+                                scaleX = iconScale
+                                scaleY = iconScale
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                                contentDescription = "إشعار الإجراء",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = alert.message,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -2076,9 +2078,9 @@ fun CompactStudentBadgeCapsule(
         .trim()
         .ifBlank { "الالتزام الذهبي" }
 
-    val badgeBg = if (effectiveOnLight) RoyalGreen else Color.White
-    val badgeBorder = if (effectiveOnLight) Color.White else RoyalGreen.copy(alpha = 0.45f)
-    val badgeTextColor = if (effectiveOnLight) Color.White else DeepEmerald
+    val badgeBg = if (effectiveOnLight) Color(0xFF059669) else Color.White
+    val badgeBorder = if (effectiveOnLight) Color.White else Color(0xFF059669).copy(alpha = 0.45f)
+    val badgeTextColor = if (effectiveOnLight) Color.White else Color(0xFF047857)
 
     Surface(
         shape = RoundedCornerShape(50),
@@ -2201,18 +2203,7 @@ fun SoftWaveMeshBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val isFem = GenderThemeState.isFeminine
-    val baseBg = when {
-        isDarkMode -> Color(0xFF0F172A)
-        isFem -> Color(0xFFFFF8F9)
-        else -> Color(0xFFF4FBF8)
-    }
-    val wavePrimaryTint = if (isFem) Color(0xFFFFE4E6) else Color(0xFFD1FAE5)
-    val waveSecondaryTint = if (isFem) Color(0xFFFFF1F2) else Color(0xFFE0F7EE)
-    val waveAccentTint = if (isFem) Color(0xFFFECDD3) else Color(0xFFA7F3D0)
-    val darkGlow1 = if (isFem) Color(0xFFE11D48) else Color(0xFF059669)
-    val darkGlow2 = if (isFem) Color(0xFF9333EA) else Color(0xFF0F3D5E)
-
+    val baseBg = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF4FBF8)
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -2223,6 +2214,7 @@ fun SoftWaveMeshBackground(
             val h = size.height
 
             if (!isDarkMode) {
+                // Top diagonal soft mint waves
                 val topWave1 = Path().apply {
                     moveTo(0f, 0f)
                     lineTo(w, 0f)
@@ -2238,9 +2230,9 @@ fun SoftWaveMeshBackground(
                     path = topWave1,
                     brush = Brush.linearGradient(
                         colors = listOf(
-                            wavePrimaryTint.copy(alpha = 0.65f),
-                            waveSecondaryTint.copy(alpha = 0.45f),
-                            baseBg.copy(alpha = 0.1f)
+                            Color(0xFFD1FAE5).copy(alpha = 0.65f),
+                            Color(0xFFE0F7EE).copy(alpha = 0.45f),
+                            Color(0xFFF4FBF8).copy(alpha = 0.1f)
                         ),
                         start = Offset(0f, 0f),
                         end = Offset(w, h * 0.28f)
@@ -2264,9 +2256,10 @@ fun SoftWaveMeshBackground(
                 }
                 drawPath(
                     path = topWave2,
-                    color = waveSecondaryTint.copy(alpha = 0.50f)
+                    color = Color(0xFFE0F7EE).copy(alpha = 0.50f)
                 )
 
+                // Bottom soft mint ribbons
                 val bottomWave1 = Path().apply {
                     moveTo(0f, h * 0.78f)
                     cubicTo(
@@ -2282,8 +2275,8 @@ fun SoftWaveMeshBackground(
                     path = bottomWave1,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            waveSecondaryTint.copy(alpha = 0.40f),
-                            wavePrimaryTint.copy(alpha = 0.70f)
+                            Color(0xFFE0F7EE).copy(alpha = 0.40f),
+                            Color(0xFFD1FAE5).copy(alpha = 0.70f)
                         ),
                         startY = h * 0.74f,
                         endY = h
@@ -2303,13 +2296,14 @@ fun SoftWaveMeshBackground(
                 }
                 drawPath(
                     path = bottomWave2,
-                    color = waveAccentTint.copy(alpha = 0.32f)
+                    color = Color(0xFFA7F3D0).copy(alpha = 0.32f)
                 )
             } else {
+                // Dark mode ambient emerald & navy mesh glow
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            darkGlow1.copy(alpha = 0.18f),
+                            Color(0xFF059669).copy(alpha = 0.18f),
                             Color.Transparent
                         ),
                         center = Offset(w * 0.85f, h * 0.12f),
@@ -2321,7 +2315,7 @@ fun SoftWaveMeshBackground(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            darkGlow2.copy(alpha = 0.28f),
+                            Color(0xFF0F3D5E).copy(alpha = 0.28f),
                             Color.Transparent
                         ),
                         center = Offset(w * 0.18f, h * 0.82f),
@@ -4628,9 +4622,9 @@ fun DeveloperSystemBroadcastBanner(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        AdaptiveSoftContainer,
-                        AdaptiveSoftSurface,
-                        AdaptiveSoftBorder
+                        Color(0xFFD1FAE5),
+                        Color(0xFFE0F7EE),
+                        Color(0xFFA7F3D0)
                     )
                 )
             )
@@ -4654,9 +4648,9 @@ fun DeveloperSystemBroadcastBanner(
                 path = ribbonPath,
                 brush = Brush.horizontalGradient(
                     listOf(
-                        EmeraldAccent.copy(alpha = 0.14f),
-                        RoyalGreen.copy(alpha = 0.08f),
-                        AdaptiveHighlightGlow.copy(alpha = 0.16f)
+                        Color(0xFF10B981).copy(alpha = 0.14f),
+                        Color(0xFF059669).copy(alpha = 0.08f),
+                        Color(0xFF34D399).copy(alpha = 0.16f)
                     )
                 )
             )
@@ -4674,6 +4668,7 @@ fun DeveloperSystemBroadcastBanner(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // Right side in RTL: Circular dark-emerald action/dismiss icon + vertical emerald bar + text
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -4683,7 +4678,7 @@ fun DeveloperSystemBroadcastBanner(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(DeepEmerald)
+                        .background(Color(0xFF047857))
                         .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
@@ -4700,7 +4695,7 @@ fun DeveloperSystemBroadcastBanner(
                         .width(2.5.dp)
                         .height(44.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(RoyalGreen.copy(alpha = 0.75f))
+                        .background(Color(0xFF059669).copy(alpha = 0.75f))
                 )
 
                 Column(
@@ -4711,7 +4706,7 @@ fun DeveloperSystemBroadcastBanner(
                         text = badgeText,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = DeepEmerald,
+                        color = Color(0xFF047857),
                         maxLines = 1
                     )
                     Text(
@@ -4719,7 +4714,7 @@ fun DeveloperSystemBroadcastBanner(
                         style = MaterialTheme.typography.titleMedium,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = DeepForestGreen,
+                        color = Color(0xFF065F46),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -4737,6 +4732,7 @@ fun DeveloperSystemBroadcastBanner(
 
             Spacer(modifier = Modifier.width(8.dp))
 
+            // Left side in RTL: Dynamic 3D Animated Illustration selected by Developer
             ThreeDIllustrationBox(
                 type = illustrationType,
                 modifier = Modifier.size(72.dp)
@@ -4745,6 +4741,10 @@ fun DeveloperSystemBroadcastBanner(
     }
 }
 
+/**
+ * 2) مقطع إعلان إدارة المدرسة المدمج بأمواج انسيابية بعرض الشاشة بدون أي صندوق أو إطار
+ * (Seamless Full-Width Wave Principal Announcement Section - Matches Reference Image Strictly)
+ */
 @Composable
 fun ThreeDMegaphoneAnnouncementBanner(
     title: String,
@@ -4765,9 +4765,9 @@ fun ThreeDMegaphoneAnnouncementBanner(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        AdaptiveSoftContainer,
-                        AdaptiveSoftSurface,
-                        AdaptiveSoftBorder
+                        Color(0xFFD1FAE5),
+                        Color(0xFFE0F7EE),
+                        Color(0xFFA7F3D0)
                     )
                 )
             )
@@ -4791,9 +4791,9 @@ fun ThreeDMegaphoneAnnouncementBanner(
                 path = waveOverlay,
                 brush = Brush.horizontalGradient(
                     listOf(
-                        EmeraldAccent.copy(alpha = 0.14f),
-                        AdaptiveHighlightGlow.copy(alpha = 0.08f),
-                        RoyalGreen.copy(alpha = 0.14f)
+                        Color(0xFF10B981).copy(alpha = 0.14f),
+                        Color(0xFF34D399).copy(alpha = 0.08f),
+                        Color(0xFF059669).copy(alpha = 0.14f)
                     )
                 )
             )
@@ -4820,11 +4820,12 @@ fun ThreeDMegaphoneAnnouncementBanner(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
+                    // Right circular dark-emerald button with white arrow (matching reference image)
                     Box(
                         modifier = Modifier
                             .size(30.dp)
                             .clip(CircleShape)
-                            .background(DeepEmerald),
+                            .background(Color(0xFF047857)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -4835,12 +4836,13 @@ fun ThreeDMegaphoneAnnouncementBanner(
                         )
                     }
 
+                    // Emerald vertical divider line
                     Box(
                         modifier = Modifier
                             .width(2.5.dp)
                             .height(42.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(RoyalGreen.copy(alpha = 0.78f))
+                            .background(Color(0xFF059669).copy(alpha = 0.78f))
                     )
 
                     Column(
@@ -4852,7 +4854,7 @@ fun ThreeDMegaphoneAnnouncementBanner(
                             style = MaterialTheme.typography.titleMedium,
                             fontSize = 16.5.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = DeepEmerald,
+                            color = Color(0xFF047857),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -4870,12 +4872,14 @@ fun ThreeDMegaphoneAnnouncementBanner(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
+                // Left side (in RTL): 3D Animated Megaphone Illustration
                 ThreeDIllustrationBox(
                     type = ThreeDIllustrationType.MEGAPHONE,
                     modifier = Modifier.size(72.dp)
                 )
             }
 
+            // Compact inline control chips when an urgent school alert is active
             if (isUrgentActive) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -4885,7 +4889,7 @@ fun ThreeDMegaphoneAnnouncementBanner(
                     if (isAdmin && onEditUrgent != null) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = DeepEmerald.copy(alpha = 0.14f),
+                            color = Color(0xFF047857).copy(alpha = 0.14f),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .clickable { onEditUrgent() }
@@ -4896,8 +4900,8 @@ fun ThreeDMegaphoneAnnouncementBanner(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Icon(Icons.Filled.Edit, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(13.dp))
-                                Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = DeepForestGreen)
+                                Icon(Icons.Filled.Edit, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(13.dp))
+                                Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
                             }
                         }
                     }
@@ -4945,6 +4949,10 @@ fun ThreeDMegaphoneAnnouncementBanner(
     }
 }
 
+/**
+ * 3) المقطع المتموج لتكريم أفضل 3 أساتذة تقييماً بالتناوب التلقائي في الشاشة الرئيسية بدون أي صندوق أو إطار
+ * (Top 3 Auto-Rotating Rated Teachers Seamless Full-Width Wave Spotlight Section - Zero Box BorderStroke)
+ */
 @Composable
 fun SeamlessWaveTeacherSpotlightSection(
     teacherName: String = "",
@@ -5022,9 +5030,9 @@ fun SeamlessWaveTeacherSpotlightSection(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        DeepForestGreen,
-                        DeepEmerald,
-                        AdaptiveHeroEnd
+                        Color(0xFF064E3B),
+                        Color(0xFF047857),
+                        Color(0xFF0F3D5E)
                     )
                 )
             )
@@ -5050,7 +5058,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                 brush = Brush.horizontalGradient(
                     listOf(
                         Color(0xFFFBBF24).copy(alpha = 0.22f),
-                        AdaptiveHighlightGlow.copy(alpha = 0.14f),
+                        Color(0xFF34D399).copy(alpha = 0.14f),
                         Color(0xFFF59E0B).copy(alpha = 0.24f)
                     )
                 )
@@ -5107,7 +5115,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                                 text = "نخبة الكادر التدريسي",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = AdaptiveSoftBorder,
+                                color = Color(0xFFA7F3D0),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -5141,7 +5149,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                                 text = slide.subjects,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = AdaptiveSoftContainer,
+                                color = Color(0xFFD1FAE5),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -5210,6 +5218,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                         }
                     }
 
+                    // 3 Glowing Indicator Dots for the Top 3 Teachers
                     if (slides.size > 1) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -5264,6 +5273,14 @@ fun SeamlessWaveTeacherSpotlightSection(
     }
 }
 
+/**
+ * القسم الترحيبي / الترويسي الملكي ثلاثي الأبعاد المدمج بأمواج انسيابية مع جسم الصفحة
+ * (Seamless Wave-Curved 3D Royal Hero Section)
+ * يطابق الصورة المرجعية حرفياً:
+ * - حافة علوية وسفلية منحنية بموجة Bezier ناعمة بدلاً من الصندوق المستطيل ذي الإطار
+ * - تدرج زمردي إلى كحلي عميق + شبكة نقاط مضيئة (Halftone Dot Matrix)
+ * - كبسولات زجاجية علوية + مجسم ثلاثي الأبعاد متحرك على اليسار + شريط زر زجاجي سفلي اختياري.
+ */
 @Composable
 fun ThreeDHeroHeaderCard(
     title: String,
@@ -5280,6 +5297,7 @@ fun ThreeDHeroHeaderCard(
     modifier: Modifier = Modifier,
     extraBottomContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
+    // Custom Bezier Wave Shape: curved wave top & curved wave bottom matching reference image
     val waveHeroShape = remember {
         GenericShape { size, _ ->
             val w = size.width
@@ -5302,37 +5320,34 @@ fun ThreeDHeroHeaderCard(
         }
     }
 
-    val heroStart = AdaptiveHeroStart
-    val heroMid = AdaptiveHeroMid
-    val heroEnd = AdaptiveHeroEnd
-    val glowHighlight = AdaptiveHighlightGlow
-
     Box(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
                 elevation = 12.dp,
                 shape = waveHeroShape,
-                ambientColor = heroMid.copy(alpha = 0.32f),
-                spotColor = heroEnd.copy(alpha = 0.38f)
+                ambientColor = Color(0xFF047857).copy(alpha = 0.32f),
+                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.38f)
             )
             .clip(waveHeroShape)
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        heroStart,
-                        heroMid,
-                        heroEnd
+                        Color(0xFF059669),
+                        Color(0xFF047857),
+                        Color(0xFF0F3D5E)
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(950f, 680f)
                 )
             )
     ) {
+        // Halftone Dot Matrix, Wave Highlights & Radial Glow Overlay
         Canvas(modifier = Modifier.matchParentSize()) {
             val w = size.width
             val h = size.height
 
+            // Soft internal wave sheen
             val innerWave = Path().apply {
                 moveTo(0f, h * 0.72f)
                 cubicTo(
@@ -5346,13 +5361,14 @@ fun ThreeDHeroHeaderCard(
             }
             drawPath(
                 path = innerWave,
-                color = heroEnd.copy(alpha = 0.28f)
+                color = Color(0xFF0F3D5E).copy(alpha = 0.28f)
             )
 
+            // Radial emerald highlight behind the 3D illustration (left side in RTL)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        glowHighlight.copy(alpha = 0.32f),
+                        Color(0xFF34D399).copy(alpha = 0.32f),
                         Color.Transparent
                     ),
                     center = Offset(w * 0.22f, h * 0.48f),
@@ -5362,6 +5378,7 @@ fun ThreeDHeroHeaderCard(
                 center = Offset(w * 0.22f, h * 0.48f)
             )
 
+            // Halftone dot matrix in top-left and bottom-right corners
             val step = 11.dp.toPx()
             val dotRadius = 1.6.dp.toPx()
             for (row in 0..6) {
@@ -5387,6 +5404,7 @@ fun ThreeDHeroHeaderCard(
                 .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Top Row: Two Frosted Glass Pills (Guaranteed non-clipping for academic year & role badges)
             if (rightPillText.isNotBlank() || leftPillText.isNotBlank()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -5459,6 +5477,7 @@ fun ThreeDHeroHeaderCard(
                 }
             }
 
+            // Middle Row: Welcome Title & Subtitle on Right + 3D Animated Illustration on Left
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -5492,6 +5511,7 @@ fun ThreeDHeroHeaderCard(
                 )
             }
 
+            // Optional Bottom Glassmorphic Capsule Action Bar
             if (bottomActionText != null && onBottomActionClick != null) {
                 Surface(
                     modifier = Modifier
@@ -5544,14 +5564,15 @@ fun ThreeDHeroHeaderCard(
     }
 }
 
+/**
+ * عنوان قسم الإحصائيات الفاصل مع الخطوط الجانبية وأيقونة الأعمدة الملونة
+ * (Section Divider Header: ── 📊 لوحة الإحصائيات العامة للمدرسة ──)
+ */
 @Composable
 fun SectionDividerHeaderWithLines(
     title: String,
     modifier: Modifier = Modifier
 ) {
-    val accentLineColor = EmeraldAccent
-    val midDiamondColor = DeepEmerald
-    val endDiamondColor = AdaptiveHeroEnd
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -5566,7 +5587,7 @@ fun SectionDividerHeaderWithLines(
                 .clip(RoundedCornerShape(50))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color.Transparent, accentLineColor)
+                        listOf(Color.Transparent, Color(0xFF10B981))
                     )
                 )
         )
@@ -5575,6 +5596,7 @@ fun SectionDividerHeaderWithLines(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 3D Royal Emerald & Gold Diamond Emblem (replaces mini bar chart)
             Canvas(modifier = Modifier.size(22.dp)) {
                 val w = size.width
                 val h = size.height
@@ -5588,7 +5610,7 @@ fun SectionDividerHeaderWithLines(
                 drawPath(
                     path = outerDiamond,
                     brush = Brush.linearGradient(
-                        listOf(accentLineColor, midDiamondColor, endDiamondColor)
+                        listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF0F3D5E))
                     )
                 )
                 val innerDiamond = Path().apply {
@@ -5623,13 +5645,17 @@ fun SectionDividerHeaderWithLines(
                 .clip(RoundedCornerShape(50))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(accentLineColor, Color.Transparent)
+                        listOf(Color(0xFF10B981), Color.Transparent)
                     )
                 )
         )
     }
 }
 
+/**
+ * بطاقة "موجز الدوام وحركة البوابة اليومية" الزمردية ثلاثية الأبعاد (مع الكرة المضيئة و 5 كبسولات زجاجية)
+ * تطابق الصورة المرجعية مع الحفاظ الصارم على المصطلحات التربوية المعتمدة (موجز الدوام وحركة البوابة اليومية / عرض التفاصيل).
+ */
 @Composable
 fun ThreeDDailyAttendanceGateSummaryCard(
     title: String = "موجز الدوام وحركة البوابة اليومية",
@@ -5650,8 +5676,8 @@ fun ThreeDDailyAttendanceGateSummaryCard(
             .shadow(
                 elevation = 12.dp,
                 shape = RoundedCornerShape(26.dp),
-                ambientColor = RoyalGreen.copy(alpha = 0.32f),
-                spotColor = DeepEmerald.copy(alpha = 0.36f)
+                ambientColor = Color(0xFF059669).copy(alpha = 0.32f),
+                spotColor = Color(0xFF047857).copy(alpha = 0.36f)
             )
             .clip(RoundedCornerShape(26.dp))
             .clickable { onClick() }
@@ -5666,9 +5692,9 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            RoyalGreen,
-                            DeepEmerald,
-                            DeepForestGreen
+                            Color(0xFF059669),
+                            Color(0xFF047857),
+                            Color(0xFF065F46)
                         )
                     )
                 )
@@ -5678,6 +5704,7 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Top Row: Wide Comfortable Title & Unclipped Description on Right + 3D Smart Gate & ID Card on Left
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -5709,6 +5736,7 @@ fun ThreeDDailyAttendanceGateSummaryCard(
 
                     Spacer(modifier = Modifier.width(10.dp))
 
+                    // Vertical translucent white divider
                     Box(
                         modifier = Modifier
                             .width(1.dp)
@@ -5718,12 +5746,14 @@ fun ThreeDDailyAttendanceGateSummaryCard(
 
                     Spacer(modifier = Modifier.width(10.dp))
 
+                    // Left side (in RTL): 3D Smart Gate & Digital ID Card (76.dp)
                     ThreeDIllustrationBox(
                         type = ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK,
                         modifier = Modifier.size(76.dp)
                     )
                 }
 
+                // Middle Row: 5 Frosted Glass Emerald Capsules in a single balanced row (Zero truncation on "متواجدون: 1")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -5761,6 +5791,7 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                     }
                 }
 
+                // Bottom Row: Wide Sleek Pure White & Emerald Action Button ("عرض التفاصيل <") below the 5 capsules
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = Color.White,
@@ -5782,7 +5813,7 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                             style = MaterialTheme.typography.labelLarge,
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = DeepEmerald,
+                            color = Color(0xFF047857),
                             maxLines = 1,
                             softWrap = false
                         )
@@ -5790,7 +5821,7 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                             contentDescription = null,
-                            tint = DeepEmerald,
+                            tint = Color(0xFF047857),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -5819,10 +5850,10 @@ fun WaveStatCard3D(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val waveColor1 = if (isBlueTheme) Color(0xFFDBEAFE) else AdaptiveWaveRibbon1
-    val waveColor2 = if (isBlueTheme) Color(0xFFBFDBFE) else AdaptiveWaveRibbon2
-    val circleBg = if (isBlueTheme) Color(0xFFDBEAFE) else AdaptiveSoftContainer
-    val iconTint = if (isBlueTheme) Color(0xFF2563EB) else RoyalGreen
+    val waveColor1 = if (isBlueTheme) Color(0xFFDBEAFE) else Color(0xFFCCFBF1)
+    val waveColor2 = if (isBlueTheme) Color(0xFFBFDBFE) else Color(0xFFA7F3D0)
+    val circleBg = if (isBlueTheme) Color(0xFFDBEAFE) else Color(0xFFD1FAE5)
+    val iconTint = if (isBlueTheme) Color(0xFF2563EB) else Color(0xFF059669)
 
     Card(
         modifier = modifier
@@ -5843,6 +5874,7 @@ fun WaveStatCard3D(
                 .fillMaxWidth()
                 .heightIn(min = 148.dp)
         ) {
+            // Double smooth water wave drawn at the bottom of the card
             Canvas(modifier = Modifier.matchParentSize()) {
                 val w = size.width
                 val h = size.height
@@ -5886,6 +5918,7 @@ fun WaveStatCard3D(
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
+                // Top Row: Large tinted icon circle on Right (in RTL) + small chevron circle on Left
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -5926,6 +5959,7 @@ fun WaveStatCard3D(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Value & Titles aligned cleanly above the bottom wave
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.Start,
@@ -5966,6 +6000,11 @@ fun WaveStatCard3D(
     }
 }
 
+/**
+ * بطاقة الأقسام التعليمية والإدارية ثلاثية الأبعاد ذات الأمواج السفلية
+ * (3D Wave Quick-Access Section Card)
+ * تمنع اقتصاص العناوين الطويلة (مثل: "السجل الأكاديمي الشامل") وتمنح كل قسم عمقاً ثلاثي الأبعاد.
+ */
 @Composable
 fun SectionWaveQuickCard3D(
     title: String,
@@ -5976,10 +6015,10 @@ fun SectionWaveQuickCard3D(
     modifier: Modifier = Modifier,
     testTag: String = ""
 ) {
-    val waveColor1 = if (isBlueAccent) Color(0xFFDBEAFE) else AdaptiveWaveRibbon1
-    val waveColor2 = if (isBlueAccent) Color(0xFFBFDBFE) else AdaptiveWaveRibbon2
-    val iconCircleBg = if (isBlueAccent) Color(0xFFDBEAFE) else AdaptiveSoftContainer
-    val iconTint = if (isBlueAccent) Color(0xFF1D4ED8) else RoyalGreen
+    val waveColor1 = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFCCFBF1)
+    val waveColor2 = if (isBlueAccent) Color(0xFFBFDBFE) else Color(0xFFA7F3D0)
+    val iconCircleBg = if (isBlueAccent) Color(0xFFDBEAFE) else Color(0xFFD1FAE5)
+    val iconTint = if (isBlueAccent) Color(0xFF1D4ED8) else Color(0xFF059669)
 
     Card(
         modifier = modifier
@@ -6001,6 +6040,7 @@ fun SectionWaveQuickCard3D(
                 .fillMaxWidth()
                 .heightIn(min = 132.dp)
         ) {
+            // Double smooth water wave drawn at the bottom of the card
             Canvas(modifier = Modifier.matchParentSize()) {
                 val w = size.width
                 val h = size.height
@@ -6101,30 +6141,29 @@ fun SectionWaveQuickCard3D(
     }
 }
 
+/**
+ * سطح ترويسة متموج ثلاثي الأبعاد متعدد الطبقات (WaveLayeredHeaderSurface)
+ * يمنح ترويسة موحدة فاخرة بتدرج زمردي ملكي مع أمواج مائية وشبكة نقاط مضيئة
+ * لاحتواء العنوان والمجسم الثلاثي الأبعاد وأزرار التبويبات الفرعية بسلاسة تامة.
+ */
 @Composable
 fun WaveLayeredHeaderSurface(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 26.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val startGrad = AdaptiveHeroStart
-    val midGrad = AdaptiveHeroMid
-    val deepGrad = DeepForestGreen
-    val endGrad = AdaptiveHeroEnd
-    val glowHighlight = AdaptiveHighlightGlow
-
     Card(
         modifier = modifier
             .shadow(
                 elevation = 12.dp,
                 shape = RoundedCornerShape(cornerRadius),
-                ambientColor = midGrad.copy(alpha = 0.28f),
-                spotColor = midGrad.copy(alpha = 0.34f)
+                ambientColor = Color(0xFF047857).copy(alpha = 0.28f),
+                spotColor = Color(0xFF047857).copy(alpha = 0.34f)
             )
             .clip(RoundedCornerShape(cornerRadius)),
         shape = RoundedCornerShape(cornerRadius),
-        colors = CardDefaults.cardColors(containerColor = midGrad),
-        border = BorderStroke(1.2.dp, glowHighlight.copy(alpha = 0.45f))
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF047857)),
+        border = BorderStroke(1.2.dp, Color(0xFF34D399).copy(alpha = 0.45f))
     ) {
         Box(
             modifier = Modifier
@@ -6132,10 +6171,10 @@ fun WaveLayeredHeaderSurface(
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            startGrad,
-                            midGrad,
-                            deepGrad,
-                            endGrad
+                            Color(0xFF059669),
+                            Color(0xFF047857),
+                            Color(0xFF065F46),
+                            Color(0xFF0F3D5E)
                         ),
                         start = Offset(0f, 0f),
                         end = Offset(900f, 700f)
@@ -6146,10 +6185,11 @@ fun WaveLayeredHeaderSurface(
                 val w = size.width
                 val h = size.height
 
+                // Ambient emerald-gold glow
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            glowHighlight.copy(alpha = 0.25f),
+                            Color(0xFF34D399).copy(alpha = 0.25f),
                             Color.Transparent
                         ),
                         center = Offset(w * 0.22f, h * 0.28f),
@@ -6159,6 +6199,7 @@ fun WaveLayeredHeaderSurface(
                     center = Offset(w * 0.22f, h * 0.28f)
                 )
 
+                // Subtle 3D dot matrix on top right & left corners
                 val step = 16.dp.toPx()
                 for (row in 0..5) {
                     for (col in 0..6) {
@@ -6170,6 +6211,7 @@ fun WaveLayeredHeaderSurface(
                     }
                 }
 
+                // Multi-layer flowing wave ribbons along the bottom
                 val waveBack = Path().apply {
                     moveTo(0f, h * 0.68f)
                     cubicTo(
@@ -6185,8 +6227,8 @@ fun WaveLayeredHeaderSurface(
                     path = waveBack,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            glowHighlight.copy(alpha = 0.20f),
-                            deepGrad.copy(alpha = 0.42f)
+                            Color(0xFF10B981).copy(alpha = 0.20f),
+                            Color(0xFF042F2E).copy(alpha = 0.42f)
                         ),
                         startY = h * 0.56f,
                         endY = h
@@ -6214,162 +6256,6 @@ fun WaveLayeredHeaderSurface(
         }
     }
 }
-
-/**
- * أزرار الاختيار المدمجة للجنس والعمر (Segmented Modern Toggle Pills for Gender & Age — Zero Emojis)
- * تُستخدم في إعدادات الحساب، وإضافة/تعديل الطلاب والأساتذة، وتُفعّل التحول اللوني الفوري.
- */
-@Composable
-fun GenderAndAgeSegmentedSelectorCard(
-    selectedGender: String,
-    onGenderSelected: ((String) -> Unit)? = null,
-    onGenderChange: ((String) -> Unit)? = null,
-    ageYears: Int = 0,
-    onAgeChanged: ((Int) -> Unit)? = null,
-    onAgeYearsChange: ((Int) -> Unit)? = null,
-    modifier: Modifier = Modifier,
-    titleLabel: String = "الجنس والعمر (تخصيص الهوية اللونية للنظام)",
-    title: String = ""
-) {
-    val effectiveTitle = title.ifBlank { titleLabel }
-    val handleGender: (String) -> Unit = { g ->
-        onGenderSelected?.invoke(g)
-        onGenderChange?.invoke(g)
-    }
-    val handleAge: (Int) -> Unit = { a ->
-        onAgeChanged?.invoke(a)
-        onAgeYearsChange?.invoke(a)
-    }
-    val normalizedGender = if (selectedGender.trim() == "أنثى" || selectedGender.trim() == "انثى") "أنثى" else "ذكر"
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = AdaptiveSoftSurface,
-        border = BorderStroke(1.dp, AdaptiveSoftBorder),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = effectiveTitle,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = DeepForestGreen
-            )
-
-            // Segmented Modern Toggle Pills: ذكر | أنثى
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf("ذكر" to "ذكر (الثيم الزمردي الملكي)", "أنثى" to "أنثى (الثيم الوردي الملكي)").forEach { (genderKey, genderLabel) ->
-                    val isSelected = normalizedGender == genderKey
-                    val activeColor = if (genderKey == "أنثى") Color(0xFFE11D48) else Color(0xFF047857)
-                    Surface(
-                        onClick = { handleGender(genderKey) },
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isSelected) activeColor else Color.White,
-                        border = BorderStroke(
-                            width = 1.2.dp,
-                            color = if (isSelected) GoldAccent else Color(0xFFCBD5E1)
-                        ),
-                        shadowElevation = if (isSelected) 3.dp else 0.dp,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
-                            .testTag("gender_pill_$genderKey")
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        ) {
-                            Text(
-                                text = genderLabel,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isSelected) Color.White else Color(0xFF1E293B),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Age selector row (numeric stepper + quick pills)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "العمر (بالسنوات):",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = DeepForestGreen
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Surface(
-                        onClick = {
-                            val next = if (ageYears <= 5) 6 else (ageYears - 1).coerceAtLeast(5)
-                            handleAge(next)
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, AdaptiveSoftBorder),
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("-", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = DeepForestGreen)
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
-                        modifier = Modifier.widthIn(min = 76.dp)
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = if (ageYears > 0) "$ageYears سنة" else "غير محدد",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = DeepForestGreen
-                            )
-                        }
-                    }
-
-                    Surface(
-                        onClick = {
-                            val next = if (ageYears <= 0) 12 else (ageYears + 1).coerceAtMost(75)
-                            handleAge(next)
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, AdaptiveSoftBorder),
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("+", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = DeepForestGreen)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 
 
 
