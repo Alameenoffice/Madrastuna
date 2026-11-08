@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -15,8 +14,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
-import com.example.util.AppLocalizationEngine
-import com.example.util.LocalAppLanguage
 
 @Composable
 fun Text(
@@ -38,12 +35,8 @@ fun Text(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
     style: TextStyle = LocalTextStyle.current
 ) {
-    val activeLang = LocalAppLanguage.current
-    val localized = remember(text, activeLang) {
-        AppLocalizationEngine.localize(text, activeLang)
-    }
     androidx.compose.material3.Text(
-        text = localized,
+        text = text,
         modifier = modifier,
         color = color,
         fontSize = fontSize,
@@ -84,16 +77,8 @@ fun Text(
     onTextLayout: (TextLayoutResult) -> Unit = {},
     style: TextStyle = LocalTextStyle.current
 ) {
-    val activeLang = LocalAppLanguage.current
-    val localized = remember(text, activeLang) {
-        if (activeLang == com.example.util.AppLanguage.ARABIC) {
-            text
-        } else {
-            AnnotatedString(AppLocalizationEngine.localize(text.text, activeLang))
-        }
-    }
     androidx.compose.material3.Text(
-        text = localized,
+        text = text,
         modifier = modifier,
         color = color,
         fontSize = fontSize,

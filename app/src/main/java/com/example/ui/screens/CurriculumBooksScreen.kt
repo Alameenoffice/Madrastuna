@@ -542,168 +542,76 @@ object IraqiCurriculumCatalog {
 
     val allBooks: List<CurriculumBookItem> = listOf(
         // =========================================================================
-        // أولاً: المرحلة الابتدائية
+        // المرحلة الابتدائية (56 كتاباً منهجياً رسمياً)
         // =========================================================================
-        // 1) الصف الأول الابتدائي
-        CurriculumBookItem("pri_1_islamic", "التربية الإسلامية", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1881.pdf"),
-        CurriculumBookItem("pri_1_reading", "القراءة العربية (قراءتي)", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1880.pdf"),
-        CurriculumBookItem("pri_1_math", "الرياضيات", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1882.pdf"),
-        CurriculumBookItem("pri_1_math_act", "التمارين والأنشطة", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1878.pdf"),
-        CurriculumBookItem("pri_1_science", "العلوم", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1879.pdf"),
-        CurriculumBookItem("pri_1_sci_act", "نشاط العلوم", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1877.pdf"),
-        CurriculumBookItem("pri_1_ethics", "التربية الأخلاقية", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1876.pdf"),
 
-        // 2) الصف الثاني الابتدائي
-        CurriculumBookItem("pri_2_islamic", "التربية الإسلامية", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1872.pdf"),
-        CurriculumBookItem("pri_2_reading", "القراءة العربية (قراءتي)", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1871.pdf"),
-        CurriculumBookItem("pri_2_math", "الرياضيات", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1874.pdf"),
-        CurriculumBookItem("pri_2_math_act", "التمارين والأنشطة", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1873.pdf"),
-        CurriculumBookItem("pri_2_science", "العلوم", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1869.pdf"),
-        CurriculumBookItem("pri_2_sci_act", "نشاط العلوم", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1875.pdf"),
-        CurriculumBookItem("pri_2_ethics", "التربية الأخلاقية", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1870.pdf"),
+        // 1. الصف الأول الابتدائي (9 كتب)
+        CurriculumBookItem("pri_1_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1nVM1dhoZJJ2kwYwMLRMlFfo3a70rOKrD/view?usp=sharing"),
+        CurriculumBookItem("pri_1_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1zM3D1AUpzxzhiytq3vVmyYOnSGJqM4lP/view?usp=sharing"),
+        CurriculumBookItem("pri_1_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1AXlhEx5zeA2PUfiDsxJGQXaksFyQiVsc/view?usp=sharing"),
+        CurriculumBookItem("pri_1_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1-FLrmZmDfOLoxh47eYCPnWCK1f4CcDR3/view?usp=sharing"),
+        CurriculumBookItem("pri_1_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1w0_8y7osEzGCST5Kj_b8HtL9gRnHqBcu/view?usp=sharing"),
+        CurriculumBookItem("pri_1_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1e1TGmQX5RVQgyEeb7gHslt328UEpwJFX/view?usp=sharing"),
+        CurriculumBookItem("pri_1_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1ohJZlWvvnZ-d_fQSVL7iTjdEY5EeaQU6/view?usp=sharing"),
+        CurriculumBookItem("pri_1_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1SSmMfZYvWCkEDfk-lfCWT3ni4LbrZl-a/view?usp=sharing"),
+        CurriculumBookItem("pri_1_ethics", "كتاب الاخلاقية", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1ugtWInqi8S-reTElSAd5r2AXmFUoEQQ2/view?usp=sharing"),
 
-        // 3) الصف الثالث الابتدائي
-        CurriculumBookItem("pri_3_islamic", "التربية الإسلامية", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1867.pdf"),
-        CurriculumBookItem("pri_3_reading", "القراءة العربية (قراءتي)", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1866.pdf"),
-        CurriculumBookItem("pri_3_math", "الرياضيات", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1864.pdf"),
-        CurriculumBookItem("pri_3_math_act", "التمارين والأنشطة", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1863.pdf"),
-        CurriculumBookItem("pri_3_science", "العلوم", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1865.pdf"),
-        CurriculumBookItem("pri_3_sci_act", "نشاط العلوم", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1868.pdf"),
+        // 2. الصف الثاني الابتدائي (8 كتب)
+        CurriculumBookItem("pri_2_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1vPIz7JbjlfZBAXJQe95jBAypa_YuSxr8/view?usp=sharing"),
+        CurriculumBookItem("pri_2_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1JIa29yJ_Ld9A_Oe31n7lgScUSiCAEhYG/view?usp=sharing"),
+        CurriculumBookItem("pri_2_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1fLZBPEG9bgczvcZvxN2jBSuNR0pMMne9/view?usp=sharing"),
+        CurriculumBookItem("pri_2_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1qcYh1Vx3W5Qs6VAnDo0biC2Pf3Fl66em/view?usp=sharing"),
+        CurriculumBookItem("pri_2_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/10h-L5LKKVQM9XvqknVtzhPPUXIjhqviF/view?usp=sharing"),
+        CurriculumBookItem("pri_2_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/117MuokgO4X-sri5OP69GX4hQXSxawFDZ/view?usp=sharing"),
+        CurriculumBookItem("pri_2_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1VQy3aIsgXYrP9TBibfV6TKM570AmqFtj/view?usp=sharing"),
+        CurriculumBookItem("pri_2_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1SFE2frCT3DtwuNgp2vyIhEV5-VM836YT/view?usp=sharing"),
 
-        // 4) الصف الرابع الابتدائي
-        CurriculumBookItem("pri_4_islamic", "التربية الإسلامية", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1857.pdf"),
-        CurriculumBookItem("pri_4_reading", "القراءة العربية", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1860.pdf"),
-        CurriculumBookItem("pri_4_math", "الرياضيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1914.pdf"),
-        CurriculumBookItem("pri_4_grammar", "قواعد اللغة العربية", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1861.pdf"),
-        CurriculumBookItem("pri_4_science", "العلوم", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1859.pdf"),
-        CurriculumBookItem("pri_4_social", "الاجتماعيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1856.pdf"),
-        CurriculumBookItem("pri_4_sci_act", "نشاط العلوم", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1862.pdf"),
-        CurriculumBookItem("pri_4_math_act", "التمارين والأنشطة", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1858.pdf"),
+        // 3. الصف الثالث الابتدائي (8 كتب)
+        CurriculumBookItem("pri_3_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1iIoCA9vUMjsYLGcYB3bG9ghH1yJTtA3j/view?usp=sharing"),
+        CurriculumBookItem("pri_3_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1hX263Pr8NUNHLUokm_dxklapZNbsWwey/view?usp=sharing"),
+        CurriculumBookItem("pri_3_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1gjmF4BkLbfDNQ4aSBps2YLwkJ8Whlb6A/view?usp=sharing"),
+        CurriculumBookItem("pri_3_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1uUqy4egLScXQ618bc0ynoi-UQdSdrvWO/view?usp=sharing"),
+        CurriculumBookItem("pri_3_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1L_LHQS1Q8S-1R4J7h3-SlDl4IvZMv0ry/view?usp=sharing"),
+        CurriculumBookItem("pri_3_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1gNkRMv0ToIJEeEfLpdpQZ4Aex1P4r-bV/view?usp=sharing"),
+        CurriculumBookItem("pri_3_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1x2XtEK97fBrP-Fuw1fzRtbXVI5mHQfw9/view?usp=sharing"),
+        CurriculumBookItem("pri_3_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1rMFsFuJSbDLYO17R-4_wzx5Dj_01dJvD/view?usp=sharing"),
 
-        // 5) الصف الخامس الابتدائي
-        CurriculumBookItem("pri_5_islamic", "التربية الإسلامية", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1847.pdf"),
-        CurriculumBookItem("pri_5_reading", "القراءة العربية", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1848.pdf"),
-        CurriculumBookItem("pri_5_math", "الرياضيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1850.pdf"),
-        CurriculumBookItem("pri_5_grammar", "قواعد اللغة العربية", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1849.pdf"),
-        CurriculumBookItem("pri_5_science", "العلوم", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1854.pdf"),
-        CurriculumBookItem("pri_5_social", "الاجتماعيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1852.pdf"),
-        CurriculumBookItem("pri_5_sci_act", "نشاط العلوم", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1855.pdf"),
-        CurriculumBookItem("pri_5_math_act", "التمارين والأنشطة", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1853.pdf"),
+        // 4. الصف الرابع الابتدائي (10 كتب)
+        CurriculumBookItem("pri_4_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Qa6FOlInBlFlafEon5rtHvU4DWbQEdhn/view?usp=sharing"),
+        CurriculumBookItem("pri_4_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Ea8lcedAR_7JPhiwVGLu1J4QizhxXDIR/view?usp=sharing"),
+        CurriculumBookItem("pri_4_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1D0H2HFkgFtrUkfu9_jfqPlDSPuqV8gHv/view?usp=sharing"),
+        CurriculumBookItem("pri_4_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1_Rs159GJB3UKzjHjAoDmDfx3nAHEYcC0/view?usp=sharing"),
+        CurriculumBookItem("pri_4_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Ph31Q_l9dSpq50dUQgOAVFYQxyBLIzZf/view?usp=sharing"),
+        CurriculumBookItem("pri_4_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/10N1acdhtc1HPkvPKjyeKfsy-WQ_q4GUk/view?usp=sharing"),
+        CurriculumBookItem("pri_4_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1rJ-2jjQM5LdQNmWMq0kjpJfZW9IuoEQj/view?usp=sharing"),
+        CurriculumBookItem("pri_4_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1ciJBefTfDhpQ5aScaHmd218ME7Wpkb_q/view?usp=sharing"),
+        CurriculumBookItem("pri_4_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1g0_IfvcDt8OUi5u_66B_CzIgbuCobbog/view?usp=sharing"),
+        CurriculumBookItem("pri_4_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1XxlWljt1fhXPBtoWg4wYdm_pQtI4z6Tc/view?usp=sharing"),
 
-        // 6) الصف السادس الابتدائي
-        CurriculumBookItem("pri_6_islamic", "التربية الإسلامية", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1773.pdf"),
-        CurriculumBookItem("pri_6_reading", "القراءة العربية", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1780.pdf"),
-        CurriculumBookItem("pri_6_math", "الرياضيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1778.pdf"),
-        CurriculumBookItem("pri_6_grammar", "قواعد اللغة العربية", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1774.pdf"),
-        CurriculumBookItem("pri_6_science", "العلوم", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1775.pdf"),
-        CurriculumBookItem("pri_6_social", "الاجتماعيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1777.pdf"),
-        CurriculumBookItem("pri_6_sci_act", "نشاط العلوم", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1776.pdf"),
-        CurriculumBookItem("pri_6_math_act", "التمارين والأنشطة", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://manahj.edu.iq/upload/upfile/ar/1779.pdf"),
+        // 5. الصف الخامس الابتدائي (10 كتب)
+        CurriculumBookItem("pri_5_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1QD4MKjg-JRNzmyDUOvAXsArKqU1FWSoD/view?usp=sharing"),
+        CurriculumBookItem("pri_5_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1S9P_4htwstxFyk5RKoccW4bnN9DPlwo6/view?usp=sharing"),
+        CurriculumBookItem("pri_5_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1KLKUU-6NqSLk68txNZOvrjXZQMYAsI92/view?usp=sharing"),
+        CurriculumBookItem("pri_5_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1sbFi8uAP35zFSjav93bXoCDoEjOYZa0h/view?usp=sharing"),
+        CurriculumBookItem("pri_5_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1WClbsxm9zoFvFm_g7tp8O8kNDzMNOdB0/view?usp=sharing"),
+        CurriculumBookItem("pri_5_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/19GKZ3aOWyBZlPipgK7tVdIWXuHNEbM4u/view?usp=sharing"),
+        CurriculumBookItem("pri_5_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1cSZp8Uszg1hKZb7te8FbNZY0r6eZyqSM/view?usp=sharing"),
+        CurriculumBookItem("pri_5_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1z43l3wERXzT-egGjs_2puQM54lVaAQ30/view?usp=sharing"),
+        CurriculumBookItem("pri_5_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1T7b4sdD0-3TQvub0M-HH3gCDNnGtNm3z/view?usp=sharing"),
+        CurriculumBookItem("pri_5_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1RVz091kMA7w-XEn0f19WjTxMKzY4WE1g/view?usp=sharing"),
 
-        // =========================================================================
-        // ثانياً: المرحلة المتوسطة
-        // =========================================================================
-        // 1) الأول متوسط
-        CurriculumBookItem("mid_1_islamic", "التربية الإسلامية", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1837.pdf"),
-        CurriculumBookItem("mid_1_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1838.pdf"),
-        CurriculumBookItem("mid_1_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1839.pdf"),
-        CurriculumBookItem("mid_1_math", "الرياضيات", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1840.pdf"),
-        CurriculumBookItem("mid_1_physics", "الفيزياء", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1841.pdf"),
-        CurriculumBookItem("mid_1_biology", "الأحياء", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1842.pdf"),
-        CurriculumBookItem("mid_1_computer", "الحاسوب", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1843.pdf"),
-        CurriculumBookItem("mid_1_social", "الاجتماعيات", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1844.pdf"),
-        CurriculumBookItem("mid_1_chemistry", "الكيمياء", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1845.pdf"),
-        CurriculumBookItem("mid_1_french", "اللغة الفرنسية", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1910.pdf"),
-        CurriculumBookItem("mid_1_french_act", "نشاط اللغة الفرنسية", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1912.pdf"),
-        CurriculumBookItem("mid_1_ethics", "التربية الأخلاقية", CurriculumStageTab.MIDDLE, "الأول متوسط", "https://manahj.edu.iq/upload/upfile/ar/1846.pdf"),
-
-        // 2) الثاني متوسط
-        CurriculumBookItem("mid_2_islamic", "التربية الإسلامية", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1828.pdf"),
-        CurriculumBookItem("mid_2_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1831.pdf"),
-        CurriculumBookItem("mid_2_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1832.pdf"),
-        CurriculumBookItem("mid_2_math", "الرياضيات", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1834.pdf"),
-        CurriculumBookItem("mid_2_physics", "الفيزياء", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1835.pdf"),
-        CurriculumBookItem("mid_2_biology", "الأحياء", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1827.pdf"),
-        CurriculumBookItem("mid_2_computer", "الحاسوب", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1836.pdf"),
-        CurriculumBookItem("mid_2_social", "الاجتماعيات", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1829.pdf"),
-        CurriculumBookItem("mid_2_chemistry", "الكيمياء", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1830.pdf"),
-        CurriculumBookItem("mid_2_french", "اللغة الفرنسية", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1911.pdf"),
-        CurriculumBookItem("mid_2_french_act", "نشاط اللغة الفرنسية", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1913.pdf"),
-        CurriculumBookItem("mid_2_ethics", "التربية الأخلاقية", CurriculumStageTab.MIDDLE, "الثاني متوسط", "https://manahj.edu.iq/upload/upfile/ar/1833.pdf"),
-
-        // 3) الثالث متوسط
-        CurriculumBookItem("mid_3_islamic", "التربية الإسلامية", CurriculumStageTab.MIDDLE, "الثالث متوسط", "https://manahj.edu.iq/upload/upfile/ar/1787.pdf"),
-        CurriculumBookItem("mid_3_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.MIDDLE, "الثالث متوسط", "https://manahj.edu.iq/upload/upfile/ar/1783.pdf"),
-        CurriculumBookItem("mid_3_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.MIDDLE, "الثالث متوسط", "https://manahj.edu.iq/upload/upfile/ar/1784.pdf"),
-        CurriculumBookItem("mid_3_math", "الرياضيات", CurriculumStageTab.MIDDLE, "الثالث متوسط", "https://manahj.edu.iq/upload/upfile/ar/1785.pdf"),
-        CurriculumBookItem("mid_3_physics", "الفيزياء", CurriculumStageTab.MIDDLE, "الثالث متوسط", "https://manahj.edu.iq/upload/upfile/ar/1786.pdf"),
-        CurriculumBookItem("mid_3_biology", "الأحياء", CurriculumStageTab.MIDDLE, "الثالث متوسط", "https://manahj.edu.iq/upload/upfile/ar/1782.pdf"),
-        CurriculumBookItem("mid_3_social", "الاجتماعيات", CurriculumStageTab.MIDDLE, "الثالث متوسط", "https://manahj.edu.iq/upload/upfile/ar/1781.pdf"),
-        CurriculumBookItem("mid_3_chemistry", "الكيمياء", CurriculumStageTab.MIDDLE, "الثالث متوسط", "https://manahj.edu.iq/upload/upfile/ar/1788.pdf"),
-
-        // =========================================================================
-        // ثالثاً: المرحلة الإعدادية
-        // =========================================================================
-        // 1) الرابع العلمي
-        CurriculumBookItem("prep_4s_islamic", "التربية الإسلامية", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1824.pdf"),
-        CurriculumBookItem("prep_4s_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1814.pdf"),
-        CurriculumBookItem("prep_4s_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1815.pdf"),
-        CurriculumBookItem("prep_4s_computer", "الحاسوب", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1818.pdf"),
-        CurriculumBookItem("prep_4s_biology", "الأحياء", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1812.pdf"),
-        CurriculumBookItem("prep_4s_physics", "الفيزياء", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1822.pdf"),
-        CurriculumBookItem("prep_4s_chemistry", "الكيمياء", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1823.pdf"),
-        CurriculumBookItem("prep_4s_math", "الرياضيات", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1820.pdf"),
-        CurriculumBookItem("prep_4s_crimes", "جرائم حزب البعث", CurriculumStageTab.PREPARATORY, "الرابع العلمي", "https://manahj.edu.iq/upload/upfile/ar/1817.pdf"),
-
-        // 2) الرابع الأدبي
-        CurriculumBookItem("prep_4l_islamic", "التربية الإسلامية", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1824.pdf"),
-        CurriculumBookItem("prep_4l_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1814.pdf"),
-        CurriculumBookItem("prep_4l_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1815.pdf"),
-        CurriculumBookItem("prep_4l_computer", "الحاسوب", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1818.pdf"),
-        CurriculumBookItem("prep_4l_geo", "أساسيات الجغرافيا", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1825.pdf"),
-        CurriculumBookItem("prep_4l_history", "التاريخ", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1816.pdf"),
-        CurriculumBookItem("prep_4l_math", "الرياضيات", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1819.pdf"),
-        CurriculumBookItem("prep_4l_sociology", "علم الاجتماع", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1821.pdf"),
-        CurriculumBookItem("prep_4l_crimes", "جرائم حزب البعث", CurriculumStageTab.PREPARATORY, "الرابع الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1817.pdf"),
-
-        // 3) الخامس العلمي
-        CurriculumBookItem("prep_5s_islamic", "التربية الإسلامية", CurriculumStageTab.PREPARATORY, "الخامس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1800.pdf"),
-        CurriculumBookItem("prep_5s_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.PREPARATORY, "الخامس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1801.pdf"),
-        CurriculumBookItem("prep_5s_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.PREPARATORY, "الخامس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1802.pdf"),
-        CurriculumBookItem("prep_5s_computer", "الحاسوب", CurriculumStageTab.PREPARATORY, "الخامس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1803.pdf"),
-        CurriculumBookItem("prep_5s_biology", "الأحياء", CurriculumStageTab.PREPARATORY, "الخامس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1808.pdf"),
-        CurriculumBookItem("prep_5s_math", "الرياضيات", CurriculumStageTab.PREPARATORY, "الخامس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1811.pdf"),
-        CurriculumBookItem("prep_5s_physics", "الفيزياء", CurriculumStageTab.PREPARATORY, "الخامس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1915.pdf"),
-        CurriculumBookItem("prep_5s_chemistry", "الكيمياء", CurriculumStageTab.PREPARATORY, "الخامس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1826.pdf"),
-
-        // 4) الخامس الأدبي
-        CurriculumBookItem("prep_5l_islamic", "التربية الإسلامية", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1800.pdf"),
-        CurriculumBookItem("prep_5l_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1801.pdf"),
-        CurriculumBookItem("prep_5l_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1802.pdf"),
-        CurriculumBookItem("prep_5l_computer", "الحاسوب", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1803.pdf"),
-        CurriculumBookItem("prep_5l_history", "التاريخ", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1804.pdf"),
-        CurriculumBookItem("prep_5l_geo", "الجغرافيا", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1810.pdf"),
-        CurriculumBookItem("prep_5l_math", "الرياضيات", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1805.pdf"),
-        CurriculumBookItem("prep_5l_philosophy", "الفلسفة وعلم النفس", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1806.pdf"),
-        CurriculumBookItem("prep_5l_economics", "الاقتصاد", CurriculumStageTab.PREPARATORY, "الخامس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1807.pdf"),
-
-        // 5) السادس العلمي
-        CurriculumBookItem("prep_6s_islamic", "التربية الإسلامية", CurriculumStageTab.PREPARATORY, "السادس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1789.pdf"),
-        CurriculumBookItem("prep_6s_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.PREPARATORY, "السادس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1790.pdf"),
-        CurriculumBookItem("prep_6s_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.PREPARATORY, "السادس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1791.pdf"),
-        CurriculumBookItem("prep_6s_math", "الرياضيات", CurriculumStageTab.PREPARATORY, "السادس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1796.pdf"),
-        CurriculumBookItem("prep_6s_biology", "الأحياء", CurriculumStageTab.PREPARATORY, "السادس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1799.pdf"),
-        CurriculumBookItem("prep_6s_physics", "الفيزياء", CurriculumStageTab.PREPARATORY, "السادس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1797.pdf"),
-        CurriculumBookItem("prep_6s_chemistry", "الكيمياء", CurriculumStageTab.PREPARATORY, "السادس العلمي", "https://manahj.edu.iq/upload/upfile/ar/1798.pdf"),
-
-        // 6) السادس الأدبي
-        CurriculumBookItem("prep_6l_islamic", "التربية الإسلامية", CurriculumStageTab.PREPARATORY, "السادس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1789.pdf"),
-        CurriculumBookItem("prep_6l_arabic1", "اللغة العربية (الجزء الأول)", CurriculumStageTab.PREPARATORY, "السادس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1790.pdf"),
-        CurriculumBookItem("prep_6l_arabic2", "اللغة العربية (الجزء الثاني)", CurriculumStageTab.PREPARATORY, "السادس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1791.pdf"),
-        CurriculumBookItem("prep_6l_math", "الرياضيات", CurriculumStageTab.PREPARATORY, "السادس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1795.pdf"),
-        CurriculumBookItem("prep_6l_history", "التاريخ", CurriculumStageTab.PREPARATORY, "السادس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1793.pdf"),
-        CurriculumBookItem("prep_6l_geo", "الجغرافيا", CurriculumStageTab.PREPARATORY, "السادس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1794.pdf"),
-        CurriculumBookItem("prep_6l_economics", "الاقتصاد", CurriculumStageTab.PREPARATORY, "السادس الأدبي", "https://manahj.edu.iq/upload/upfile/ar/1792.pdf")
+        // 6. الصف السادس الابتدائي (11 كتاباً)
+        CurriculumBookItem("pri_6_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1a_VcmloZrQIJv9D7dmOXKOubK3sSI5Zb/view?usp=sharing"),
+        CurriculumBookItem("pri_6_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1YsbcKHGfzCO6d1d0aXykdh1SOFsTnnH6/view?usp=sharing"),
+        CurriculumBookItem("pri_6_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1POyExJU-KWzrWTNtXBNb4V5QaXKTnIZJ/view?usp=sharing"),
+        CurriculumBookItem("pri_6_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1nGn8_KxVs2y-xWFqqUBcaHE3Z9k5AzzE/view?usp=sharing"),
+        CurriculumBookItem("pri_6_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1yEWy4uW6sjY-SPJB2cpE4S4_YiCiNXZ0/view?usp=sharing"),
+        CurriculumBookItem("pri_6_english_solved", "كتاب النشاط محلول", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1pjX1iSOA0QX9p-36KhJYdBIIDeak35Jy/view?usp=sharing"),
+        CurriculumBookItem("pri_6_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/13zLlyffzFlZn6B5Z-qsZWleBp1c3KwGd/view?usp=sharing"),
+        CurriculumBookItem("pri_6_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1t410bKRHPExvnBgs9iPu1JjHhEoOOHmq/view?usp=sharing"),
+        CurriculumBookItem("pri_6_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1qvYJnF__-cQg47cagZAXgIXV1EoZo_27/view?usp=sharing"),
+        CurriculumBookItem("pri_6_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1eWnIMdPE901ff1owadlzwuHNH_rElBYg/view?usp=sharing"),
+        CurriculumBookItem("pri_6_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1qB5kJuih2TrN-4IL4pIM8MploPnOX0BD/view?usp=sharing")
     )
 
     fun resolveStageAndClass(rawStudentClass: String?, schoolStage: SchoolStage): Pair<CurriculumStageTab, String> {
@@ -857,8 +765,9 @@ fun CurriculumBooksScreen(
                 inClass
             } else {
                 IraqiCurriculumCatalog.allBooks.filter {
-                    ArabicTextNormalizer.normalizeText(it.subjectTitle).contains(cleanQuery) ||
-                        ArabicTextNormalizer.normalizeText(it.gradeClass).contains(cleanQuery)
+                    it.stage == selectedStage &&
+                        (ArabicTextNormalizer.normalizeText(it.subjectTitle).contains(cleanQuery) ||
+                            ArabicTextNormalizer.normalizeText(it.gradeClass).contains(cleanQuery))
                 }
             }
         }
@@ -942,7 +851,7 @@ fun CurriculumBooksScreen(
         item(key = "curriculum_hero_header") {
             ThreeDHeroHeaderCard(
                 title = "المناهج الدراسية الرسمية",
-                subtitle = "المكتبة المنهجية الرسمية لوزارة التربية مع ميزة الالتقاط التلقائي والقراءة الفورية داخل التطبيق.",
+                subtitle = "المكتبة المنهجية الرسمية لوزارة التربية مع إمكانية الفتح المباشر السريع لجميع الكتب الدراسية المعتمدة.",
                 rightPillText = selectedStage.arabicTitle,
                 rightPillIcon = Icons.Filled.AutoStories,
                 leftPillText = "$selectedClass (${displayedBooks.size} كتاب)",
@@ -1018,7 +927,7 @@ fun CurriculumBooksScreen(
             }
         }
 
-        // 3) شريط اختيار المراحل الدراسية والصفوف والبحث الفوري (Zero Classic Icons)
+        // 3) شريط اختيار المراحل الدراسية والصفوف والبحث الفوري
         item(key = "curriculum_stages_and_classes_selector") {
             Card(
                 modifier = Modifier
@@ -1219,8 +1128,66 @@ fun CurriculumBooksScreen(
             )
         }
 
-        // 5) قائمة بطاقات الكتب بتصميم مدرسي رسمي هادئ ونظيف
-        if (displayedBooks.isEmpty()) {
+        // 5) حالة المراحل الدراسية (الابتدائية المفعّلة مقابل المتوسطة والإعدادية قيد الرفع والتحديث)
+        if (selectedStage == CurriculumStageTab.MIDDLE || selectedStage == CurriculumStageTab.PREPARATORY) {
+            item(key = "stage_under_upload_notice_card") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("stage_coming_soon_card"),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                        ),
+                        border = BorderStroke(
+                            1.2.dp,
+                            if (isDarkMode) Color(0xFF10B981).copy(alpha = 0.45f) else Color(0xFF6EE7B7)
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 34.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.7f) else Color(0xFFECFDF5),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.5f) else Color(0xFF6EE7B7)
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MenuBook,
+                                    contentDescription = "أيقونة الكتاب",
+                                    tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                    modifier = Modifier
+                                        .padding(16.dp)
+                                        .size(38.dp)
+                                )
+                            }
+
+                            Text(
+                                text = "مناهج هذه المرحلة قيد الرفع والتحديث.. ستتوفر قريباً",
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        } else if (displayedBooks.isEmpty()) {
             item(key = "empty_curriculum_search") {
                 Card(
                     modifier = Modifier
@@ -1245,7 +1212,7 @@ fun CurriculumBooksScreen(
                             color = if (isDarkMode) Color.White else Color(0xFF0F172A)
                         )
                         Text(
-                            text = "جرب كتابة اسم المادة مثل: الرياضيات، الفيزياء، القراءة، أو التربية الإسلامية.",
+                            text = "جرب كتابة اسم المادة مثل: الرياضيات، العلوم، القراءة، أو الاسلامية.",
                             fontSize = 12.sp,
                             color = Color(0xFF64748B),
                             textAlign = TextAlign.Center
@@ -1264,31 +1231,13 @@ fun CurriculumBooksScreen(
                     isDarkMode = isDarkMode,
                     isAvailableLocally = isAvailableLocally,
                     fileSizeLabel = fileSizeLabel,
-                    onPrimaryBookClick = {
-                        coroutineScope.launch {
-                            val existingFile = autoFindAndImportBookPdf(context, book)
-                            if (existingFile != null && isValidDownloadedCurriculumPdf(existingFile)) {
-                                cacheRefreshTick += 1
-                                activeReaderSession = ActiveReaderSessionRequest(
-                                    book = book,
-                                    launchBrowserOnOpenIfMissing = false
-                                )
-                            } else {
-                                // الحالة (2): إذا لم يكن الكتاب نازلاً بعد، يفتح رابط الكتاب مباشرة في المتصفح لتنزيله،
-                                // ويشغّل نافذة الكتاب ومراقب ON_RESUME لالتقاطه وفتحه تلقائياً فور اكتمال تنزيله!
-                                pendingAutoOpenBook = book
-                                activeReaderSession = ActiveReaderSessionRequest(
-                                    book = book,
-                                    launchBrowserOnOpenIfMissing = true
-                                )
-                            }
-                        }
-                    },
-                    onBrowserDownloadClick = {
-                        pendingAutoOpenBook = book
-                        activeReaderSession = ActiveReaderSessionRequest(
+                    onDirectOpenClick = {
+                        launchBrowserForBookDownload(
+                            context = context,
                             book = book,
-                            launchBrowserOnOpenIfMissing = true
+                            onError = { errMsg ->
+                                viewModel.showToastAlert(message = errMsg, isSuccess = false)
+                            }
                         )
                     }
                 )
@@ -1317,9 +1266,9 @@ fun CurriculumBooksScreen(
 }
 
 /**
- * بطاقة الكتاب المنهجي بتصميم مدرسي رسمي هادئ، نظيف، ومرتب (Zero Classic Icons Policy).
- * - تعرض شارة خضراء أنيقة `متوفر للقراءة الفورية` إذا كان الكتاب محفوظاً أو تم التقاطه من التنزيلات.
- * - تعرض رقم ملف الكتاب الرسمي (`ملف رقم 1881.pdf`) لتسهيل معرفته.
+ * بطاقة الكتاب المنهجي بتصميم مدرسي رسمي هادئ، نظيف، ومرتب:
+ * - تعرض شارة أنيقة توضح صيغة الملف (`PDF رسمي`).
+ * - تحتوي على زر أخضر واحد يمتد بعرض البطاقة بالكامل بنص **"فتح مباشر"** يفتح رابط الكتاب مباشرة ليتم عرضه أو تنزيله بسلاسة.
  */
 @Composable
 private fun CurriculumBookOfficialCard(
@@ -1327,14 +1276,13 @@ private fun CurriculumBookOfficialCard(
     isDarkMode: Boolean,
     isAvailableLocally: Boolean,
     fileSizeLabel: String,
-    onPrimaryBookClick: () -> Unit,
-    onBrowserDownloadClick: () -> Unit
+    onDirectOpenClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp)
-            .clickable { onPrimaryBookClick() }
+            .clickable { onDirectOpenClick() }
             .testTag("curriculum_book_card_${book.id}"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
@@ -1375,32 +1323,17 @@ private fun CurriculumBookOfficialCard(
                         .padding(end = 8.dp)
                 )
 
-                // شارة الحالة الهادئة والواضحة
+                // شارة أنيقة توضح صيغة الملف (PDF رسمي)
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = if (isAvailableLocally) {
-                        if (isDarkMode) Color(0xFF065F46) else Color(0xFFDCFCE7)
-                    } else {
-                        if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF1F5F9)
-                    },
-                    border = BorderStroke(
-                        0.9.dp,
-                        if (isAvailableLocally) Color(0xFF10B981) else Color(0xFF94A3B8).copy(alpha = 0.4f)
-                    )
+                    color = if (isDarkMode) Color(0xFF065F46) else Color(0xFFDCFCE7),
+                    border = BorderStroke(0.9.dp, Color(0xFF10B981))
                 ) {
                     Text(
-                        text = if (isAvailableLocally) {
-                            "متوفر للقراءة الفورية"
-                        } else {
-                            "ملف ${book.remoteFileName}"
-                        },
+                        text = "PDF رسمي",
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isAvailableLocally) {
-                            if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
-                        } else {
-                            if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
-                        },
+                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         maxLines = 1,
                         softWrap = false
@@ -1439,72 +1372,32 @@ private fun CurriculumBookOfficialCard(
                 }
             }
 
-            // أزرار التحكم النصية الصافية (Zero Classic Icons)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // زر "فتح مباشر" الأخضر يمتد بعرض البطاقة بالكامل بشكل متناسق
+            Surface(
+                onClick = onDirectOpenClick,
+                shape = RoundedCornerShape(50),
+                color = Color(0xFF059669),
+                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.6f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(50))
+                    .testTag("btn_super_reader_${book.id}")
             ) {
-                Surface(
-                    onClick = onPrimaryBookClick,
-                    shape = RoundedCornerShape(50),
-                    color = Color(0xFF059669),
-                    border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.6f)),
+                Box(
                     modifier = Modifier
-                        .weight(1.3f)
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(50))
-                        .testTag("btn_super_reader_${book.id}")
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (isAvailableLocally) {
-                                "فتح وقراءة الكتاب الآن"
-                            } else {
-                                "تنزيل وفتح الكتاب تلقائياً"
-                            },
-                            fontSize = 11.8.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                Surface(
-                    onClick = onBrowserDownloadClick,
-                    shape = RoundedCornerShape(50),
-                    color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isDarkMode) Color(0xFF475569) else Color(0xFFCBD5E1)
-                    ),
-                    modifier = Modifier
-                        .weight(0.85f)
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(50))
-                        .testTag("btn_redownload_book_${book.id}")
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (isAvailableLocally) "إعادة تنزيل / تحديث" else "فتح في المتصفح",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF334155),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
+                    Text(
+                        text = "فتح مباشر",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
             }
         }
