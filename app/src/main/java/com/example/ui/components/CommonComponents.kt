@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import com.example.model.OccasionIconKey
 import com.example.model.TeacherEvaluationSummary
+import com.example.util.drawSeasonalIconVectorContent
 import kotlinx.coroutines.delay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -908,6 +909,8 @@ fun ChoreographedRoyalEmblemAnimation(
     size: Dp = 228.dp,
     replayKey: Any = Unit
 ) {
+    val activeSeasonalPreset = com.example.util.AppIconSwitcherHelper.activeSeasonalPreset
+
     val elapsedSec = remember(replayKey) { Animatable(0f) }
     LaunchedEffect(replayKey) {
         elapsedSec.snapTo(0f)
@@ -938,56 +941,53 @@ fun ChoreographedRoyalEmblemAnimation(
     )
 
     val t = elapsedSec.value
-
-    // Stage 1 (0.0s - 0.5s): Book pages & Hands of Giving stroke draw + page unfolding
-    val stage1Raw = (t / 0.50f).coerceIn(0f, 1f)
+    val stage1Raw = (t / 0.45f).coerceIn(0f, 1f)
     val bookProgress = FastOutSlowInEasing.transform(stage1Raw)
+    val capAlpha = ((t - 0.35f) / 0.25f).coerceIn(0f, 1f)
 
-    // Stage 2 (0.4s - 0.9s): Golden Laurel stems + staggered 6 pairs of leaves
-    val stemRaw = ((t - 0.38f) / 0.36f).coerceIn(0f, 1f)
-    val stemProgress = FastOutSlowInEasing.transform(stemRaw)
-
-    // Stage 3 (0.7s - 1.3s): Graduation Cap drop + Pendulum Tassel Swing + Shimmer Pass
-    val capRaw = ((t - 0.68f) / 0.42f).coerceIn(0f, 1f)
-    // Spring overshoot curve for the cap landing
-    val capLandingEase = if (capRaw < 1f) {
-        val u = 1f - capRaw
-        1f - u * u * (2.6f * u - 1.6f)
-    } else 1f
-    val capAlpha = ((t - 0.68f) / 0.18f).coerceIn(0f, 1f)
-
-    // Real Damped Pendulum Physics for the Golden Tassel (starts swinging as cap lands at t=0.72s)
-    val tasselTime = (t - 0.72f).coerceAtLeast(0f)
+    val tasselTime = (t - 0.45f).coerceAtLeast(0f)
     val dampedImpulseDeg = if (tasselTime > 0f) {
-        (34f * exp(-2.4f * tasselTime) * sin(10.5f * tasselTime))
+        (24f * exp(-2.4f * tasselTime) * sin(10.5f * tasselTime))
     } else 0f
-    val ambientPendulumDeg = if (t >= 1.25f) {
-        (5.5f * sin(continuousWave.toDouble())).toFloat()
+    val ambientPendulumDeg = if (t >= 1.15f) {
+        (4.5f * sin(continuousWave.toDouble())).toFloat()
     } else 0f
-    val totalTasselSwingDeg = dampedImpulseDeg + ambientPendulumDeg
+    val totalTasselSwingRad = Math.toRadians((dampedImpulseDeg + ambientPendulumDeg).toDouble()).toFloat()
 
-    // Initial shimmer pass (0.82s - 1.38s), then continuous soft shimmer pass
     val activeShimmerPos = if (t < 1.42f) {
-        ((t - 0.80f) / 0.58f).coerceIn(-0.4f, 1.5f)
+        ((t - 0.75f) / 0.60f).coerceIn(-0.4f, 1.5f)
     } else {
         shimmerSweepLoop
+    }
+
+    val cornerRadius = (size.value * 0.22f).dp
+    val bgGradientColors = when (activeSeasonalPreset) {
+        com.example.util.SeasonalDesktopIconPreset.NEW_YEAR_2027 -> listOf(
+            Color(0xFF1E3A8A),
+            Color(0xFF172554),
+            Color(0xFF090D16)
+        )
+        com.example.util.SeasonalDesktopIconPreset.RAMADAN_KARIM -> listOf(
+            Color(0xFF065F46),
+            Color(0xFF042F24),
+            Color(0xFF011510)
+        )
+        else -> listOf(
+            Color(0xFF0F705B),
+            Color(0xFF0A4F40),
+            Color(0xFF03221B)
+        )
     }
 
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(38.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF0F705B),
-                        Color(0xFF0A4F40),
-                        Color(0xFF03221B)
-                    )
-                )
+                Brush.radialGradient(colors = bgGradientColors)
             )
             .border(
-                width = 1.8.dp,
+                width = 2.dp,
                 brush = Brush.linearGradient(
                     colors = listOf(
                         Color(0xFFFFF3B0),
@@ -995,75 +995,73 @@ fun ChoreographedRoyalEmblemAnimation(
                         Color(0xFF9A6F18)
                     )
                 ),
-                shape = RoundedCornerShape(38.dp)
+                shape = RoundedCornerShape(cornerRadius)
             ),
         contentAlignment = Alignment.Center
     ) {
+        // 100% Native Screen Pixel Pure Vector Canvas (Zero Bitmap Scaling / Zero Blur)
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = this.size.width
             val h = this.size.height
             val cx = w / 2f
             val cy = h / 2f
             val unit = this.size.minDimension / 240f
-            val pathMeasure = PathMeasure()
 
-            // Ambient Royal Emerald & Golden Glow
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF34D399).copy(alpha = 0.24f * bookProgress),
-                        Color(0xFFD4AF37).copy(alpha = 0.12f * bookProgress),
-                        Color.Transparent
+            if (activeSeasonalPreset != com.example.util.SeasonalDesktopIconPreset.OFFICIAL_ROYAL) {
+                drawSeasonalIconVectorContent(activeSeasonalPreset)
+            } else {
+                // Ambient Royal Emerald & Golden Glow
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = 0.25f * bookProgress),
+                            Color(0xFFD4AF37).copy(alpha = 0.14f * bookProgress),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = w * 0.48f
                     ),
+                    radius = w * 0.48f,
+                    center = Offset(cx, cy)
+                )
+
+                // Outer Crisp Geometric Golden Ring
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xCCFFF3B0),
+                            Color(0x88D4AF37),
+                            Color(0xAA9A6F18)
+                        ),
+                        start = Offset(w * 0.10f, h * 0.10f),
+                        end = Offset(w * 0.90f, h * 0.90f)
+                    ),
+                    radius = w * 0.43f,
                     center = Offset(cx, cy),
-                    radius = w * 0.48f
-                ),
-                radius = w * 0.48f,
-                center = Offset(cx, cy)
-            )
+                    style = Stroke(width = 2.0f * unit)
+                )
 
-            // Outer Thin Glowing Golden Ring
-            drawCircle(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0x99FFF3B0),
-                        Color(0x55D4AF37),
-                        Color(0x889A6F18)
-                    ),
-                    start = Offset(w * 0.12f, h * 0.12f),
-                    end = Offset(w * 0.88f, h * 0.88f)
-                ),
-                radius = w * 0.42f,
-                center = Offset(cx, cy),
-                style = Stroke(width = 1.6f * unit)
-            )
-
-            // =====================================================================
-            // 1. 3D ROYAL ACADEMIC SHIELD (Golden Frame #FFF3B0 -> #D4AF37 -> #9A6F18 + Emerald Glass Core)
-            // =====================================================================
-            val shieldScale = (0.86f + 0.14f * bookProgress).coerceIn(0.1f, 1f)
-            withTransform({
-                scale(scaleX = shieldScale, scaleY = shieldScale, pivot = Offset(cx, cy))
-            }) {
+                // =====================================================================
+                // 1. ULTRA-HD 3D ROYAL ACADEMIC SHIELD (1:1 Direct Geometric Coordinates)
+                // =====================================================================
                 val outerShieldPath = Path().apply {
-                    moveTo(cx, cy - 78f * unit)
-                    lineTo(cx + 64f * unit, cy - 58f * unit)
-                    lineTo(cx + 64f * unit, cy - 2f * unit)
+                    moveTo(cx, cy - 80f * unit)
+                    lineTo(cx + 65f * unit, cy - 59f * unit)
+                    lineTo(cx + 65f * unit, cy - 2f * unit)
                     cubicTo(
-                        cx + 64f * unit, cy + 38f * unit,
-                        cx + 36f * unit, cy + 65f * unit,
-                        cx, cy + 80f * unit
+                        cx + 65f * unit, cy + 39f * unit,
+                        cx + 37f * unit, cy + 66f * unit,
+                        cx, cy + 82f * unit
                     )
                     cubicTo(
-                        cx - 36f * unit, cy + 65f * unit,
-                        cx - 64f * unit, cy + 38f * unit,
-                        cx - 64f * unit, cy - 2f * unit
+                        cx - 37f * unit, cy + 66f * unit,
+                        cx - 65f * unit, cy + 39f * unit,
+                        cx - 65f * unit, cy - 2f * unit
                     )
-                    lineTo(cx - 64f * unit, cy - 58f * unit)
+                    lineTo(cx - 65f * unit, cy - 59f * unit)
                     close()
                 }
 
-                // 3D Golden Shield Frame
                 drawPath(
                     path = outerShieldPath,
                     brush = Brush.linearGradient(
@@ -1073,27 +1071,26 @@ fun ChoreographedRoyalEmblemAnimation(
                             Color(0xFFD4AF37),
                             Color(0xFF9A6F18)
                         ),
-                        start = Offset(cx - 64f * unit, cy - 78f * unit),
-                        end = Offset(cx + 64f * unit, cy + 80f * unit)
+                        start = Offset(cx - 65f * unit, cy - 80f * unit),
+                        end = Offset(cx + 65f * unit, cy + 82f * unit)
                     )
                 )
 
-                // Inner Shield Deep Emerald Core
                 val innerShieldPath = Path().apply {
-                    moveTo(cx, cy - 69f * unit)
-                    lineTo(cx + 55f * unit, cy - 51f * unit)
-                    lineTo(cx + 55f * unit, cy - 3f * unit)
+                    moveTo(cx, cy - 71f * unit)
+                    lineTo(cx + 56f * unit, cy - 52f * unit)
+                    lineTo(cx + 56f * unit, cy - 3f * unit)
                     cubicTo(
-                        cx + 55f * unit, cy + 32f * unit,
-                        cx + 31f * unit, cy + 56f * unit,
-                        cx, cy + 70f * unit
+                        cx + 56f * unit, cy + 33f * unit,
+                        cx + 32f * unit, cy + 57f * unit,
+                        cx, cy + 72f * unit
                     )
                     cubicTo(
-                        cx - 31f * unit, cy + 56f * unit,
-                        cx - 55f * unit, cy + 32f * unit,
-                        cx - 55f * unit, cy - 3f * unit
+                        cx - 32f * unit, cy + 57f * unit,
+                        cx - 56f * unit, cy + 33f * unit,
+                        cx - 56f * unit, cy - 3f * unit
                     )
-                    lineTo(cx - 55f * unit, cy - 51f * unit)
+                    lineTo(cx - 56f * unit, cy - 52f * unit)
                     close()
                 }
 
@@ -1106,17 +1103,24 @@ fun ChoreographedRoyalEmblemAnimation(
                             Color(0xFF03261E)
                         ),
                         center = Offset(cx, cy - 8f * unit),
-                        radius = 78f * unit
+                        radius = 80f * unit
                     )
+                )
+
+                // Crisp Inner Golden Shield Hairline
+                drawPath(
+                    path = innerShieldPath,
+                    color = Color(0x66FFF3B0),
+                    style = Stroke(width = 1.4f * unit, join = StrokeJoin.Round)
                 )
 
                 // Glassmorphic Diagonal Shield Reflection
                 val glassReflectionPath = Path().apply {
-                    moveTo(cx, cy - 69f * unit)
-                    lineTo(cx - 55f * unit, cy - 51f * unit)
-                    lineTo(cx - 55f * unit, cy - 3f * unit)
+                    moveTo(cx, cy - 71f * unit)
+                    lineTo(cx - 56f * unit, cy - 52f * unit)
+                    lineTo(cx - 56f * unit, cy - 3f * unit)
                     cubicTo(
-                        cx - 55f * unit, cy + 24f * unit,
+                        cx - 56f * unit, cy + 24f * unit,
                         cx - 36f * unit, cy + 46f * unit,
                         cx - 10f * unit, cy + 62f * unit
                     )
@@ -1127,103 +1131,95 @@ fun ChoreographedRoyalEmblemAnimation(
                     path = glassReflectionPath,
                     brush = Brush.linearGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.20f),
+                            Color.White.copy(alpha = 0.22f),
                             Color(0xFFA7F3D0).copy(alpha = 0.08f),
                             Color.Transparent
                         ),
-                        start = Offset(cx - 55f * unit, cy - 65f * unit),
+                        start = Offset(cx - 56f * unit, cy - 65f * unit),
                         end = Offset(cx + 10f * unit, cy + 40f * unit)
                     )
                 )
-            }
 
-            // =====================================================================
-            // 2. OPEN BOOK OF KNOWLEDGE (Pearl-White & Gold Pages + Rising Illumination)
-            // =====================================================================
-            if (bookProgress > 0.01f) {
-                val spineBottomY = cy + 44f * unit
-                val spineTopY = cy + 12f * unit
+                // =====================================================================
+                // 2. OPEN BOOK OF KNOWLEDGE (Direct 1:1 Vector Coordinates - Zero Scale Matrix)
+                // =====================================================================
+                if (bookProgress > 0.01f) {
+                    val spineBottomY = cy + 45f * unit
+                    val spineTopY = cy + 12f * unit
+                    val spread = bookProgress
 
-                // Soft Golden Illumination Rays Rising from the Open Book Toward the Cap
-                val lightConePath = Path().apply {
-                    moveTo(cx, spineTopY + 4f * unit)
-                    lineTo(cx - 40f * unit, cy - 26f * unit)
-                    lineTo(cx + 40f * unit, cy - 26f * unit)
-                    close()
-                }
-                drawPath(
-                    path = lightConePath,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color(0xFFFDE68A).copy(alpha = 0.16f * bookProgress),
-                            Color(0xFFFFF3B0).copy(alpha = 0.36f * bookProgress)
-                        ),
-                        startY = cy - 26f * unit,
-                        endY = spineTopY + 4f * unit
+                    // Soft Golden Illumination Rays Rising from the Open Book
+                    val lightConePath = Path().apply {
+                        moveTo(cx, spineTopY + 4f * unit)
+                        lineTo(cx - 40f * unit * spread, cy - 26f * unit)
+                        lineTo(cx + 40f * unit * spread, cy - 26f * unit)
+                        close()
+                    }
+                    drawPath(
+                        path = lightConePath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0xFFFDE68A).copy(alpha = 0.18f * bookProgress),
+                                Color(0xFFFFF3B0).copy(alpha = 0.38f * bookProgress)
+                            ),
+                            startY = cy - 26f * unit,
+                            endY = spineTopY + 4f * unit
+                        )
                     )
-                )
 
-                // Golden Book Base Cover
-                val coverBasePath = Path().apply {
-                    moveTo(cx, spineTopY + 5f * unit)
-                    cubicTo(
-                        cx - 16f * unit, spineTopY - 3f * unit,
-                        cx - 32f * unit, spineTopY - 4f * unit,
-                        cx - 44f * unit, spineTopY
+                    // Golden Book Base Cover
+                    val coverBasePath = Path().apply {
+                        moveTo(cx, spineTopY + 5f * unit)
+                        cubicTo(
+                            cx - 16f * unit * spread, spineTopY - 3f * unit,
+                            cx - 32f * unit * spread, spineTopY - 4f * unit,
+                            cx - 44f * unit * spread, spineTopY
+                        )
+                        lineTo(cx - 41f * unit * spread, spineBottomY + 4f * unit)
+                        cubicTo(
+                            cx - 28f * unit * spread, spineBottomY,
+                            cx - 14f * unit * spread, spineBottomY + 1f * unit,
+                            cx, spineBottomY + 9f * unit
+                        )
+                        cubicTo(
+                            cx + 14f * unit * spread, spineBottomY + 1f * unit,
+                            cx + 28f * unit * spread, spineBottomY,
+                            cx + 41f * unit * spread, spineBottomY + 4f * unit
+                        )
+                        lineTo(cx + 44f * unit * spread, spineTopY)
+                        cubicTo(
+                            cx + 32f * unit * spread, spineTopY - 4f * unit,
+                            cx + 16f * unit * spread, spineTopY - 3f * unit,
+                            cx, spineTopY + 5f * unit
+                        )
+                        close()
+                    }
+                    drawPath(
+                        path = coverBasePath,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFB8860B),
+                                Color(0xFFFFF3B0),
+                                Color(0xFF9A6F18)
+                            ),
+                            start = Offset(cx - 44f * unit, spineTopY),
+                            end = Offset(cx + 44f * unit, spineBottomY)
+                        )
                     )
-                    lineTo(cx - 41f * unit, spineBottomY + 4f * unit)
-                    cubicTo(
-                        cx - 28f * unit, spineBottomY,
-                        cx - 14f * unit, spineBottomY + 1f * unit,
-                        cx, spineBottomY + 9f * unit
-                    )
-                    cubicTo(
-                        cx + 14f * unit, spineBottomY + 1f * unit,
-                        cx + 28f * unit, spineBottomY,
-                        cx + 41f * unit, spineBottomY + 4f * unit
-                    )
-                    lineTo(cx + 44f * unit, spineTopY)
-                    cubicTo(
-                        cx + 32f * unit, spineTopY - 4f * unit,
-                        cx + 16f * unit, spineTopY - 3f * unit,
-                        cx, spineTopY + 5f * unit
-                    )
-                    close()
-                }
-                drawPath(
-                    path = coverBasePath,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFFB8860B),
-                            Color(0xFFFFF3B0),
-                            Color(0xFF9A6F18)
-                        ),
-                        start = Offset(cx - 44f * unit, spineTopY),
-                        end = Offset(cx + 44f * unit, spineBottomY)
-                    )
-                )
 
-                val pageScaleX = 0.25f + 0.75f * bookProgress
-                val leftPageRot = (1f - bookProgress) * 14f
-                val rightPageRot = -(1f - bookProgress) * 14f
-
-                // Left Pearl-White Page
-                withTransform({
-                    rotate(degrees = leftPageRot, pivot = Offset(cx, spineBottomY))
-                    scale(scaleX = pageScaleX, scaleY = bookProgress, pivot = Offset(cx, spineBottomY))
-                }) {
+                    // Left Pearl-White Page (Direct Vector Path)
                     val leftPage = Path().apply {
                         moveTo(cx - 1f * unit, spineTopY)
                         cubicTo(
-                            cx - 15f * unit, spineTopY - 8f * unit,
-                            cx - 30f * unit, spineTopY - 9f * unit,
-                            cx - 41f * unit, spineTopY - 4f * unit
+                            cx - 15f * unit * spread, spineTopY - 8f * unit,
+                            cx - 30f * unit * spread, spineTopY - 9f * unit,
+                            cx - 41f * unit * spread, spineTopY - 4f * unit
                         )
-                        lineTo(cx - 39f * unit, spineBottomY - 2f * unit)
+                        lineTo(cx - 39f * unit * spread, spineBottomY - 2f * unit)
                         cubicTo(
-                            cx - 27f * unit, spineBottomY - 6f * unit,
-                            cx - 14f * unit, spineBottomY - 5f * unit,
+                            cx - 27f * unit * spread, spineBottomY - 6f * unit,
+                            cx - 14f * unit * spread, spineBottomY - 5f * unit,
                             cx - 1f * unit, spineBottomY + 3f * unit
                         )
                         close()
@@ -1240,34 +1236,19 @@ fun ChoreographedRoyalEmblemAnimation(
                             end = Offset(cx, spineBottomY)
                         )
                     )
-                    for (row in 0..2) {
-                        val ly = spineTopY + (6f + row * 7.5f) * unit
-                        drawLine(
-                            color = Color(0xFFC8961E).copy(alpha = 0.78f * bookProgress),
-                            start = Offset(cx - 8f * unit, ly - 1f * unit),
-                            end = Offset(cx - 32f * unit, ly - 3.5f * unit),
-                            strokeWidth = 2.0f * unit,
-                            cap = StrokeCap.Round
-                        )
-                    }
-                }
 
-                // Right Pearl-White Page
-                withTransform({
-                    rotate(degrees = rightPageRot, pivot = Offset(cx, spineBottomY))
-                    scale(scaleX = pageScaleX, scaleY = bookProgress, pivot = Offset(cx, spineBottomY))
-                }) {
+                    // Right Pearl-White Page (Direct Vector Path)
                     val rightPage = Path().apply {
                         moveTo(cx + 1f * unit, spineTopY)
                         cubicTo(
-                            cx + 15f * unit, spineTopY - 8f * unit,
-                            cx + 30f * unit, spineTopY - 9f * unit,
-                            cx + 41f * unit, spineTopY - 4f * unit
+                            cx + 15f * unit * spread, spineTopY - 8f * unit,
+                            cx + 30f * unit * spread, spineTopY - 9f * unit,
+                            cx + 41f * unit * spread, spineTopY - 4f * unit
                         )
-                        lineTo(cx + 39f * unit, spineBottomY - 2f * unit)
+                        lineTo(cx + 39f * unit * spread, spineBottomY - 2f * unit)
                         cubicTo(
-                            cx + 27f * unit, spineBottomY - 6f * unit,
-                            cx + 14f * unit, spineBottomY - 5f * unit,
+                            cx + 27f * unit * spread, spineBottomY - 6f * unit,
+                            cx + 14f * unit * spread, spineBottomY - 5f * unit,
                             cx + 1f * unit, spineBottomY + 3f * unit
                         )
                         close()
@@ -1284,41 +1265,42 @@ fun ChoreographedRoyalEmblemAnimation(
                             end = Offset(cx, spineBottomY)
                         )
                     )
+
                     for (row in 0..2) {
                         val ly = spineTopY + (6f + row * 7.5f) * unit
                         drawLine(
-                            color = Color(0xFFC8961E).copy(alpha = 0.78f * bookProgress),
-                            start = Offset(cx + 8f * unit, ly - 1f * unit),
-                            end = Offset(cx + 32f * unit, ly - 3.5f * unit),
+                            color = Color(0xFFC8961E).copy(alpha = 0.82f * bookProgress),
+                            start = Offset(cx - 8f * unit * spread, ly - 1f * unit),
+                            end = Offset(cx - 32f * unit * spread, ly - 3.5f * unit),
+                            strokeWidth = 2.0f * unit,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = Color(0xFFC8961E).copy(alpha = 0.82f * bookProgress),
+                            start = Offset(cx + 8f * unit * spread, ly - 1f * unit),
+                            end = Offset(cx + 32f * unit * spread, ly - 3.5f * unit),
                             strokeWidth = 2.0f * unit,
                             cap = StrokeCap.Round
                         )
                     }
+
+                    // Center Golden Book Spine
+                    drawLine(
+                        color = Color(0xFFD4AF37),
+                        start = Offset(cx, spineTopY - 1f * unit),
+                        end = Offset(cx, spineBottomY + 7f * unit),
+                        strokeWidth = 3.2f * unit,
+                        cap = StrokeCap.Round
+                    )
                 }
 
-                // Center Golden Book Spine
-                drawLine(
-                    color = Color(0xFFD4AF37),
-                    start = Offset(cx, spineTopY - 1f * unit),
-                    end = Offset(cx, spineBottomY + 7f * unit),
-                    strokeWidth = 3.2f * unit,
-                    cap = StrokeCap.Round
-                )
-            }
+                // =====================================================================
+                // 3. LUXURY 3D GRADUATION CAP & GOLDEN TASSEL (Direct 1:1 Vector Coordinates)
+                // =====================================================================
+                if (capAlpha > 0.01f) {
+                    val capCy = cy - 26f * unit
 
-            // =====================================================================
-            // 3. LUXURY 3D GRADUATION CAP / MORTARBOARD & GOLDEN TASSEL
-            // =====================================================================
-            if (capAlpha > 0.01f) {
-                val capTargetCy = cy - 26f * unit
-                val dropOffsetY = (1f - capLandingEase) * (-36f * unit)
-                val capCy = capTargetCy + dropOffsetY
-                val capScale = (0.78f + 0.22f * capLandingEase).coerceAtLeast(0.1f)
-
-                withTransform({
-                    scale(scaleX = capScale, scaleY = capScale, pivot = Offset(cx, capCy))
-                }) {
-                    // 3D Skullcap Base (Deep Royal Navy-Emerald with Golden Rim)
+                    // 3D Skullcap Base
                     val capBasePath = Path().apply {
                         moveTo(cx - 28f * unit, capCy + 5f * unit)
                         lineTo(cx - 26f * unit, capCy + 21f * unit)
@@ -1350,12 +1332,12 @@ fun ChoreographedRoyalEmblemAnimation(
 
                     // 3D Mortarboard Lower Golden Edge Rim
                     val rimEdgePath = Path().apply {
-                        moveTo(cx - 52f * unit, capCy - 2f * unit)
-                        lineTo(cx, capCy + 16f * unit)
-                        lineTo(cx + 52f * unit, capCy - 2f * unit)
-                        lineTo(cx + 52f * unit, capCy + 2.5f * unit)
-                        lineTo(cx, capCy + 20.5f * unit)
-                        lineTo(cx - 52f * unit, capCy + 2.5f * unit)
+                        moveTo(cx - 53f * unit, capCy - 2f * unit)
+                        lineTo(cx, capCy + 16.5f * unit)
+                        lineTo(cx + 53f * unit, capCy - 2f * unit)
+                        lineTo(cx + 53f * unit, capCy + 2.8f * unit)
+                        lineTo(cx, capCy + 21f * unit)
+                        lineTo(cx - 53f * unit, capCy + 2.8f * unit)
                         close()
                     }
                     drawPath(
@@ -1366,17 +1348,17 @@ fun ChoreographedRoyalEmblemAnimation(
                                 Color(0xFFFFF3B0).copy(alpha = capAlpha),
                                 Color(0xFF855E12).copy(alpha = capAlpha)
                             ),
-                            startX = cx - 52f * unit,
-                            endX = cx + 52f * unit
+                            startX = cx - 53f * unit,
+                            endX = cx + 53f * unit
                         )
                     )
 
                     // 3D Mortarboard Diamond Top Surface
                     val diamondPath = Path().apply {
-                        moveTo(cx, capCy - 20f * unit)
-                        lineTo(cx + 52f * unit, capCy - 2f * unit)
-                        lineTo(cx, capCy + 16f * unit)
-                        lineTo(cx - 52f * unit, capCy - 2f * unit)
+                        moveTo(cx, capCy - 20.5f * unit)
+                        lineTo(cx + 53f * unit, capCy - 2f * unit)
+                        lineTo(cx, capCy + 16.5f * unit)
+                        lineTo(cx - 53f * unit, capCy - 2f * unit)
                         close()
                     }
                     drawPath(
@@ -1387,8 +1369,8 @@ fun ChoreographedRoyalEmblemAnimation(
                                 Color(0xFF062820).copy(alpha = capAlpha),
                                 Color(0xFF0A2E46).copy(alpha = capAlpha)
                             ),
-                            start = Offset(cx - 52f * unit, capCy - 20f * unit),
-                            end = Offset(cx + 52f * unit, capCy + 16f * unit)
+                            start = Offset(cx - 53f * unit, capCy - 20f * unit),
+                            end = Offset(cx + 53f * unit, capCy + 16f * unit)
                         )
                     )
 
@@ -1425,13 +1407,13 @@ fun ChoreographedRoyalEmblemAnimation(
                                 Color(0xFF9A6F18).copy(alpha = capAlpha)
                             ),
                             center = Offset(pivotX, pivotY),
-                            radius = 5.2f * unit
+                            radius = 5.4f * unit
                         ),
-                        radius = 4.8f * unit,
+                        radius = 5.0f * unit,
                         center = Offset(pivotX, pivotY)
                     )
 
-                    // Golden Tassel Cord & Pendulum Fringe
+                    // Golden Tassel Cord & Pendulum Fringe (Direct Trigonometric Vector Coordinates)
                     val tasselAnchorX = cx + 36f * unit
                     val tasselAnchorY = capCy + 5f * unit
                     drawLine(
@@ -1442,51 +1424,46 @@ fun ChoreographedRoyalEmblemAnimation(
                         cap = StrokeCap.Round
                     )
 
-                    withTransform({
-                        rotate(
-                            degrees = totalTasselSwingDeg,
-                            pivot = Offset(tasselAnchorX, tasselAnchorY)
-                        )
-                    }) {
-                        val tasselEndY = tasselAnchorY + 22f * unit
-                        drawLine(
-                            color = Color(0xFFFFF3B0).copy(alpha = capAlpha),
-                            start = Offset(tasselAnchorX, tasselAnchorY),
-                            end = Offset(tasselAnchorX, tasselEndY),
-                            strokeWidth = 2.6f * unit,
-                            cap = StrokeCap.Round
-                        )
-                        val fringePath = Path().apply {
-                            moveTo(tasselAnchorX - 5.2f * unit, tasselEndY + 11f * unit)
-                            lineTo(tasselAnchorX + 5.2f * unit, tasselEndY + 11f * unit)
-                            lineTo(tasselAnchorX + 2.6f * unit, tasselEndY)
-                            lineTo(tasselAnchorX - 2.6f * unit, tasselEndY)
-                            close()
-                        }
-                        drawPath(
-                            path = fringePath,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFFFFF3B0).copy(alpha = capAlpha),
-                                    Color(0xFFD4AF37).copy(alpha = capAlpha),
-                                    Color(0xFF9A6F18).copy(alpha = capAlpha)
-                                ),
-                                startY = tasselEndY,
-                                endY = tasselEndY + 11f * unit
-                            )
-                        )
-                        drawCircle(
-                            color = Color(0xFFD4AF37).copy(alpha = capAlpha),
-                            radius = 3.2f * unit,
-                            center = Offset(tasselAnchorX, tasselEndY)
-                        )
+                    val cordLen = 22f * unit
+                    val tasselEndX = tasselAnchorX + sin(totalTasselSwingRad) * cordLen
+                    val tasselEndY = tasselAnchorY + kotlin.math.cos(totalTasselSwingRad) * cordLen
+
+                    drawLine(
+                        color = Color(0xFFFFF3B0).copy(alpha = capAlpha),
+                        start = Offset(tasselAnchorX, tasselAnchorY),
+                        end = Offset(tasselEndX, tasselEndY),
+                        strokeWidth = 2.6f * unit,
+                        cap = StrokeCap.Round
+                    )
+
+                    val fringePath = Path().apply {
+                        moveTo(tasselEndX - 5.2f * unit, tasselEndY + 11f * unit)
+                        lineTo(tasselEndX + 5.2f * unit, tasselEndY + 11f * unit)
+                        lineTo(tasselEndX + 2.6f * unit, tasselEndY)
+                        lineTo(tasselEndX - 2.6f * unit, tasselEndY)
+                        close()
                     }
+                    drawPath(
+                        path = fringePath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFFFFF3B0).copy(alpha = capAlpha),
+                                Color(0xFFD4AF37).copy(alpha = capAlpha),
+                                Color(0xFF9A6F18).copy(alpha = capAlpha)
+                            ),
+                            startY = tasselEndY,
+                            endY = tasselEndY + 11f * unit
+                        )
+                    )
+                    drawCircle(
+                        color = Color(0xFFD4AF37).copy(alpha = capAlpha),
+                        radius = 3.2f * unit,
+                        center = Offset(tasselEndX, tasselEndY)
+                    )
                 }
             }
 
-            // =====================================================================
-            // SHIMMER PASS: Diagonal Light Sweep Across the Formed Emblem
-            // =====================================================================
+            // Diagonal Light Sweep Shimmer Pass
             if (activeShimmerPos in -0.3f..1.4f) {
                 val bandCenter = w * activeShimmerPos
                 val bandWidth = w * 0.35f
@@ -1494,8 +1471,8 @@ fun ChoreographedRoyalEmblemAnimation(
                     brush = Brush.linearGradient(
                         colors = listOf(
                             Color.Transparent,
-                            Color.White.copy(alpha = 0.22f),
-                            Color(0xFFFFF3B0).copy(alpha = 0.28f),
+                            Color.White.copy(alpha = 0.20f),
+                            Color(0xFFFFF3B0).copy(alpha = 0.25f),
                             Color.Transparent
                         ),
                         start = Offset(bandCenter - bandWidth, 0f),
@@ -1573,9 +1550,10 @@ fun RoyalAcademicCrestBrandHeader(
 }
 
 /**
- * Full-Screen Choreographed Splash Screen (شاشة تشغيل التطبيق الترحيبية):
+ * Full-Screen Choreographed Splash Screen (شاشة تشغيل التطبيق الترحيبية فائقة الدقة Ultra-HD):
  * - Renders the razor-sharp 3D Royal Academic Shield + Graduation Cap + Open Book of Knowledge
- *   directly via Compose Canvas at full screen vector resolution (Zero Bitmap Scaling).
+ *   (or active Seasonal Occasion Emblem) directly via Compose Canvas at 1:1 native screen pixel
+ *   resolution (Zero Bitmap Scaling / Zero Blur Filters).
  * - Writes underneath in live crisp Text: "منصة مدرستي الذكية" and "MADRASATI".
  */
 @Composable
@@ -1585,18 +1563,16 @@ fun ChoreographedSplashScreen(
     isDarkMode: Boolean,
     onSplashFinished: () -> Unit
 ) {
+    val activeSeasonalPreset = com.example.util.AppIconSwitcherHelper.activeSeasonalPreset
     val textRevealProgress = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(520)
+        kotlinx.coroutines.delay(420)
         textRevealProgress.animateTo(
             targetValue = 1f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            )
+            animationSpec = tween(durationMillis = 480, easing = FastOutSlowInEasing)
         )
-        kotlinx.coroutines.delay(1050)
+        kotlinx.coroutines.delay(980)
         onSplashFinished()
     }
 
@@ -1627,7 +1603,7 @@ fun ChoreographedSplashScreen(
             .testTag("choreographed_splash_screen"),
         contentAlignment = Alignment.Center
     ) {
-        // Soft ambient radial glows
+        // Crisp ambient vector radial glows (no blur filters)
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 brush = Brush.radialGradient(
@@ -1662,26 +1638,24 @@ fun ChoreographedSplashScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 28.dp)
         ) {
-            // Razor-Sharp Full-Resolution Native Compose Vector Crest
-            ChoreographedRoyalEmblemAnimation(size = 216.dp)
+            // Ultra-HD 1:1 Native Vector Crest (Zero Scaling Transform)
+            ChoreographedRoyalEmblemAnimation(size = 224.dp)
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            // Live Razor-Sharp Typography: "منصة مدرستي الذكية" & "MADRASATI"
+            // Live Razor-Sharp Typography: "منصة مدرستي الذكية" & "MADRASATI" (No scaleX/scaleY rasterization)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .graphicsLayer(
                         alpha = reveal.coerceIn(0f, 1f),
-                        scaleX = 0.88f + 0.12f * reveal,
-                        scaleY = 0.88f + 0.12f * reveal,
-                        translationY = (1f - reveal) * 28f
+                        translationY = (1f - reveal) * 20f
                     )
                     .testTag("splash_discovered_school_card")
             ) {
                 Text(
                     text = "منصة مدرستي الذكية",
-                    fontSize = 23.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = if (isDarkMode) Color.White else Color(0xFF03221B),
                     textAlign = TextAlign.Center
@@ -1697,6 +1671,23 @@ fun ChoreographedSplashScreen(
                     color = if (isDarkMode) Color(0xFFFFF3B0) else Color(0xFFB8860B),
                     textAlign = TextAlign.Center
                 )
+
+                if (activeSeasonalPreset != com.example.util.SeasonalDesktopIconPreset.OFFICIAL_ROYAL) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFF065F46).copy(alpha = 0.88f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD4AF37))
+                    ) {
+                        Text(
+                            text = activeSeasonalPreset.arabicTitle,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFFFF3B0),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                }
 
                 Box(
                     modifier = Modifier

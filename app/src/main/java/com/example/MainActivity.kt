@@ -167,6 +167,8 @@ fun MadrasatiRootApp(
     ) { _ -> }
 
     LaunchedEffect(Unit) {
+        com.example.util.AppIconSwitcherHelper.init(context)
+        com.example.ui.screens.IraqiCurriculumCatalog.init(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 context,
@@ -183,13 +185,6 @@ fun MadrasatiRootApp(
             delay(3600)
             viewModel.dismissToastAlert()
         }
-    }
-
-    LaunchedEffect(occasionThemeConfig.themeType, occasionThemeConfig.launcherAliasName) {
-        com.example.util.AppIconSwitcherHelper.changeLauncherIcon(
-            context,
-            occasionThemeConfig.effectiveAliasName.ifBlank { occasionThemeConfig.themeType.name }
-        )
     }
 
     val activeDiscoveredSchoolName = remember(
@@ -1522,26 +1517,39 @@ fun AuthenticatedMainPlatform(
                                 }
                             }
 
-                            Surface(
-                                shape = CircleShape,
-                                color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFD1FAE5),
-                                border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
-                                shadowElevation = 3.dp,
-                                modifier = Modifier
-                                    .requiredSize(42.dp)
-                                    .aspectRatio(1f)
-                                    .clip(CircleShape)
+                            val activeHeaderPreset = com.example.util.AppIconSwitcherHelper.activeSeasonalPreset
+                            val headerCustomPhoto = currentUser?.photoBase64?.ifBlank { schoolConfig.logoBase64 }
+                                ?: schoolConfig.logoBase64
+
+                            if (headerCustomPhoto.isNotBlank() &&
+                                activeHeaderPreset == com.example.util.SeasonalDesktopIconPreset.OFFICIAL_ROYAL
                             ) {
-                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                    Base64AvatarImage(
-                                        base64Data = currentUser?.photoBase64?.ifBlank { schoolConfig.logoBase64 }
-                                            ?: schoolConfig.logoBase64,
-                                        fallbackIcon = Icons.Filled.Person,
-                                        contentDescription = currentUser?.fullName ?: schoolConfig.schoolName,
-                                        size = 38.dp,
-                                        tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
-                                    )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFD1FAE5),
+                                    border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                                    shadowElevation = 3.dp,
+                                    modifier = Modifier
+                                        .requiredSize(42.dp)
+                                        .aspectRatio(1f)
+                                        .clip(CircleShape)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Base64AvatarImage(
+                                            base64Data = headerCustomPhoto,
+                                            fallbackIcon = Icons.Filled.Person,
+                                            contentDescription = currentUser?.fullName ?: schoolConfig.schoolName,
+                                            size = 38.dp,
+                                            tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
+                                        )
+                                    }
                                 }
+                            } else {
+                                com.example.util.SeasonalDesktopIconVectorBadge(
+                                    preset = activeHeaderPreset,
+                                    size = 42.dp,
+                                    modifier = Modifier.testTag("top_header_seasonal_emblem")
+                                )
                             }
 
                             Column(
