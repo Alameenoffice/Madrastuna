@@ -2,7 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Light Mode Palette - Clean Royal Emerald & Academic Slate
+// Light Mode Palette - Clean Royal Emerald & Academic Slate (Male / Official Default)
 val PrimaryLight = Color(0xFF059669)       // Emerald 600
 val OnPrimaryLight = Color(0xFFFFFFFF)
 val PrimaryContainerLight = Color(0xFFD1FAE5)
@@ -50,6 +50,56 @@ val SurfaceVariantDark = Color(0xFF1E293B)
 val OnSurfaceVariantDark = Color(0xFF94A3B8)
 val OutlineDark = Color(0xFF334155)
 
+// ============================================================
+// Royal Feminine Palette (ثيم الجنس اللطيف - Rose Quartz, Soft Blush, Soft Lavender & Rose Gold)
+// ============================================================
+val FemininePrimaryLight = Color(0xFFE11D74)           // Rose Quartz Deep
+val FeminineOnPrimaryLight = Color(0xFFFFFFFF)
+val FemininePrimaryContainerLight = Color(0xFFFFE4E6)  // Soft Blush Mist
+val FeminineOnPrimaryContainerLight = Color(0xFF881337)
+
+val FeminineSecondaryLight = Color(0xFF9333EA)         // Soft Lavender Royal
+val FeminineOnSecondaryLight = Color(0xFFFFFFFF)
+val FeminineSecondaryContainerLight = Color(0xFFF3E8FF)
+val FeminineOnSecondaryContainerLight = Color(0xFF581C87)
+
+val FeminineTertiaryLight = Color(0xFFD48C70)          // Rose Gold
+val FeminineOnTertiaryLight = Color(0xFFFFFFFF)
+val FeminineTertiaryContainerLight = Color(0xFFFCE7F3)
+val FeminineOnTertiaryContainerLight = Color(0xFF831843)
+
+val FeminineBackgroundLight = Color(0xFFFFF8FA)        // Soft Rose White
+val FeminineOnBackgroundLight = Color(0xFF2D1222)
+val FeminineSurfaceLight = Color(0xFFFFFFFF)
+val FeminineOnSurfaceLight = Color(0xFF2D1222)
+val FeminineSurfaceVariantLight = Color(0xFFFFF1F5)
+val FeminineOnSurfaceVariantLight = Color(0xFF6B324E)
+val FeminineOutlineLight = Color(0xFFFBCFE8)
+
+// Dark Mode Royal Feminine Palette
+val FemininePrimaryDark = Color(0xFFFB7185)            // Soft Rose Glow
+val FeminineOnPrimaryDark = Color(0xFF4C0519)
+val FemininePrimaryContainerDark = Color(0xFF881337)
+val FeminineOnPrimaryContainerDark = Color(0xFFFFE4E6)
+
+val FeminineSecondaryDark = Color(0xFFC084FC)          // Soft Lavender Glow
+val FeminineOnSecondaryDark = Color(0xFF3B0764)
+val FeminineSecondaryContainerDark = Color(0xFF4C1D95)
+val FeminineOnSecondaryContainerDark = Color(0xFFF3E8FF)
+
+val FeminineTertiaryDark = Color(0xFFE6A88A)           // Rose Gold Shimmer
+val FeminineOnTertiaryDark = Color(0xFF431407)
+val FeminineTertiaryContainerDark = Color(0xFF7C2D12)
+val FeminineOnTertiaryContainerDark = Color(0xFFFFEDD5)
+
+val FeminineBackgroundDark = Color(0xFF1F0D18)         // Deep Rose Night
+val FeminineOnBackgroundDark = Color(0xFFFFF1F5)
+val FeminineSurfaceDark = Color(0xFF2D1222)
+val FeminineOnSurfaceDark = Color(0xFFFFF1F5)
+val FeminineSurfaceVariantDark = Color(0xFF3D1A2F)
+val FeminineOnSurfaceVariantDark = Color(0xFFF9A8D4)
+val FeminineOutlineDark = Color(0xFF702459)
+
 // Semantic Accents
 val GoldAccent = Color(0xFFF59E0B)
 val GoldDeep = Color(0xFFB45309)
@@ -71,3 +121,9 @@ val WarmGoldLight = Color(0xFFFEF3C7)
 val CardSurfaceWhite = Color(0xFFFFFFFF)
 val TextMutedGreen = Color(0xFF334155)
 
+// Royal Feminine Accent Helpers
+val RoseQuartzDeep = Color(0xFFBE185D)
+val RoseQuartzPrimary = Color(0xFFE11D74)
+val SoftBlushSurface = Color(0xFFFFF1F5)
+val SoftLavenderAccent = Color(0xFFA855F7)
+val RoseGoldAccent = Color(0xFFD48C70)

@@ -247,6 +247,48 @@ fun AdminAccountsScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+
+                        // Quick Navigation to Compact Teaching Staff & Compact Students Directory
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.navigateToSection(AppSection.TEACHING_STAFF) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .testTag("open_compact_teaching_staff_btn"),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text(
+                                    text = "قسم الكادر التدريسي",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { viewModel.navigateToSection(AppSection.STUDENTS_DIRECTORY) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .testTag("open_compact_students_directory_btn"),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text(
+                                    text = "سجل الطلبة والنقل الفوري",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -938,6 +980,12 @@ fun AdminAccountsScreen(
         var teacherPhotoBase64 by remember(currentEditing) { mutableStateOf(currentEditing?.photoBase64 ?: "") }
         var canModerateActivities by remember(currentEditing) { mutableStateOf(currentEditing?.canModerateActivities ?: false) }
         var canManageCanteen by remember(currentEditing) { mutableStateOf(currentEditing?.canManageCanteen ?: false) }
+        var teacherGender by remember(currentEditing) {
+            mutableStateOf(if (currentEditing?.isFemale == true) "FEMALE" else "MALE")
+        }
+        var teacherAgeYears by remember(currentEditing) {
+            mutableStateOf(currentEditing?.effectiveAgeYears ?: 30)
+        }
 
         // Multi-select subjects from registeredSubjects
         val initialSubjects = remember(currentEditing) {
@@ -988,6 +1036,20 @@ fun AdminAccountsScreen(
                             label = { Text("اسم $staffSingular الثلاثي") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    item {
+                        SegmentedGenderTogglePills(
+                            selectedGender = teacherGender,
+                            onSelectGender = { teacherGender = it }
+                        )
+                    }
+                    item {
+                        SleekAgeYearsSelector(
+                            ageYears = teacherAgeYears,
+                            minAge = 20,
+                            maxAge = 68,
+                            onAgeChange = { teacherAgeYears = it }
                         )
                     }
                     item {
@@ -1357,7 +1419,9 @@ fun AdminAccountsScreen(
                                         password = password,
                                         photoBase64 = teacherPhotoBase64,
                                         canModerateActivities = canModerateActivities,
-                                        canManageCanteen = canManageCanteen
+                                        canManageCanteen = canManageCanteen,
+                                        gender = teacherGender,
+                                        ageYears = teacherAgeYears
                                     )
                                 } else {
                                     viewModel.updateTeacherAccount(
@@ -1370,7 +1434,9 @@ fun AdminAccountsScreen(
                                         password = password,
                                         photoBase64 = teacherPhotoBase64,
                                         canModerateActivities = canModerateActivities,
-                                        canManageCanteen = canManageCanteen
+                                        canManageCanteen = canManageCanteen,
+                                        gender = teacherGender,
+                                        ageYears = teacherAgeYears
                                     )
                                 }
                                 showTeacherDialog = false
@@ -1423,6 +1489,12 @@ fun AdminAccountsScreen(
             )
         }
         var pPass by remember(currentStu) { mutableStateOf(currentStu?.parentPassword ?: (1000..9999).random().toString()) }
+        var studentGender by remember(currentStu) {
+            mutableStateOf(if (currentStu?.isFemale == true) "FEMALE" else "MALE")
+        }
+        var studentAgeYears by remember(currentStu) {
+            mutableStateOf(currentStu?.effectiveAgeYears ?: 12)
+        }
 
         var classDropdownExpanded by remember { mutableStateOf(false) }
         var sectionDropdownExpanded by remember { mutableStateOf(false) }
@@ -1461,6 +1533,20 @@ fun AdminAccountsScreen(
                             label = { Text("اسم الطالب الرباعي الكامل") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    item {
+                        SegmentedGenderTogglePills(
+                            selectedGender = studentGender,
+                            onSelectGender = { studentGender = it }
+                        )
+                    }
+                    item {
+                        SleekAgeYearsSelector(
+                            ageYears = studentAgeYears,
+                            minAge = 6,
+                            maxAge = 22,
+                            onAgeChange = { studentAgeYears = it }
                         )
                     }
 
@@ -1773,7 +1859,9 @@ fun AdminAccountsScreen(
                                         studentUsername = sUser,
                                         studentPassword = sPass,
                                         parentUsername = pUser,
-                                        parentPassword = pPass
+                                        parentPassword = pPass,
+                                        gender = studentGender,
+                                        ageYears = studentAgeYears
                                     )
                                 } else {
                                     viewModel.updateStudentAndParentAccounts(
@@ -1788,7 +1876,9 @@ fun AdminAccountsScreen(
                                         studentPassword = sPass,
                                         parentUsername = pUser,
                                         parentPassword = pPass,
-                                        photoBase64 = photoBase64
+                                        photoBase64 = photoBase64,
+                                        gender = studentGender,
+                                        ageYears = studentAgeYears
                                     )
                                 }
                                 showStudentDialog = false

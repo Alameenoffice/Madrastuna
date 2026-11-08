@@ -10,12 +10,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,16 +19,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -47,7 +38,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.SchoolStage
-import com.example.model.UserRole
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepEmerald
 import com.example.ui.theme.DeepForestGreen
@@ -62,11 +52,13 @@ import org.json.JSONObject
 enum class CurriculumAcademicStage(
     val arabicTitle: String,
     val shortBadge: String,
+    val capsuleStageWord: String,
     val gradeClasses: List<String>
 ) {
     PRIMARY(
         arabicTitle = "المرحلة الابتدائية",
         shortBadge = "الابتدائية",
+        capsuleStageWord = "ابتدائي",
         gradeClasses = listOf(
             "الأول الابتدائي",
             "الثاني الابتدائي",
@@ -79,6 +71,7 @@ enum class CurriculumAcademicStage(
     INTERMEDIATE(
         arabicTitle = "المرحلة المتوسطة",
         shortBadge = "المتوسطة",
+        capsuleStageWord = "متوسط",
         gradeClasses = listOf(
             "الأول المتوسط",
             "الثاني المتوسط",
@@ -88,6 +81,7 @@ enum class CurriculumAcademicStage(
     PREPARATORY(
         arabicTitle = "المرحلة الإعدادية",
         shortBadge = "الإعدادية",
+        capsuleStageWord = "إعدادي",
         gradeClasses = listOf(
             "الرابع العلمي",
             "الرابع الأدبي",
@@ -119,19 +113,19 @@ data class CurriculumBookItem(
 )
 
 object IraqiCurriculumCatalog {
-    private const val PREFS_NAME = "madrasati_curriculum_catalog_v2_prefs"
-    private const val KEY_BOOKS_JSON = "curriculum_books_json_v2"
+    // Force reset storage key v12 so any legacy cached links are immediately ignored
+    private const val PREFS_NAME = "madrasati_verified_books_v12"
+    private const val KEY_BOOKS_JSON = "madrasati_verified_books_v12"
 
     /**
-     * Extracts FILE_ID from any Google Drive link (even if it ends with /view?usp=sharing, /view, id=..., etc.)
-     * and converts it automatically to the embedded /preview format:
+     * Extracts FILE_ID from any Google Drive link (preserving every '-' and '_')
+     * and converts it to the exact embedded /preview format:
      * https://drive.google.com/file/d/FILE_ID/preview
      */
     fun formatToGoogleDrivePreviewUrl(rawUrl: String): String {
         val trimmed = rawUrl.trim()
         if (trimmed.isBlank()) return ""
 
-        // 1. Pattern: /file/d/FILE_ID/...
         val fileDRegex = Regex("""/file/d/([a-zA-Z0-9_-]+)""")
         fileDRegex.find(trimmed)?.groupValues?.getOrNull(1)?.let { fileId ->
             if (fileId.isNotBlank()) {
@@ -139,7 +133,6 @@ object IraqiCurriculumCatalog {
             }
         }
 
-        // 2. Pattern: [?&]id=FILE_ID
         val queryIdRegex = Regex("""[?&]id=([a-zA-Z0-9_-]+)""")
         queryIdRegex.find(trimmed)?.groupValues?.getOrNull(1)?.let { fileId ->
             if (fileId.isNotBlank()) {
@@ -147,7 +140,6 @@ object IraqiCurriculumCatalog {
             }
         }
 
-        // 3. Pattern: /d/FILE_ID
         val shortDRegex = Regex("""/d/([a-zA-Z0-9_-]+)""")
         shortDRegex.find(trimmed)?.groupValues?.getOrNull(1)?.let { fileId ->
             if (fileId.isNotBlank()) {
@@ -155,12 +147,10 @@ object IraqiCurriculumCatalog {
             }
         }
 
-        // 4. Bare FILE_ID (alphanumeric/dash/underscore 20+ chars without slashes)
         if (!trimmed.contains("/") && trimmed.length >= 18) {
             return "https://drive.google.com/file/d/$trimmed/preview"
         }
 
-        // 5. Fallback if already a URL
         return if (trimmed.endsWith("/view") || trimmed.contains("/view?")) {
             trimmed.substringBefore("/view") + "/preview"
         } else {
@@ -170,190 +160,197 @@ object IraqiCurriculumCatalog {
 
     val defaultPrimaryBooks: List<CurriculumBookItem> = listOf(
         // ============================================================
-        // 1. الصف الأول الابتدائي (9 كتب)
+        // 1. الصف الأول الابتدائي
         // ============================================================
         CurriculumBookItem(
             id = "p1_islamic",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "التربية الإسلامية",
-            previewUrl = "https://drive.google.com/file/d/1y3h7L_Y6I-tF7R19U3_hN8L44dU94K7L/preview"
+            subjectTitle = "كتاب الاسلامية",
+            previewUrl = "https://drive.google.com/file/d/1CwXiZoTtixhcU1LYKvv5DKVvXo2Lqgzo/preview"
         ),
         CurriculumBookItem(
-            id = "p1_qiraati",
+            id = "p1_qiraa",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "قراءتي",
-            previewUrl = "https://drive.google.com/file/d/1G_0M02qN6v6I7H4-g5bH5R3u8mF9uP8T/preview"
+            subjectTitle = "كتاب القراءة",
+            previewUrl = "https://drive.google.com/file/d/1SBZuYDeNnZA-vKImP7e7eF_MS1_fvqKH/preview"
+        ),
+        CurriculumBookItem(
+            id = "p1_qiraa_ab",
+            stage = CurriculumAcademicStage.PRIMARY,
+            gradeClass = "الأول الابتدائي",
+            subjectTitle = "كتاب نشاط القراءة",
+            previewUrl = "https://drive.google.com/file/d/1d_GNbjjNfEVHyKI280-HfCwA5kzZenjY/preview"
         ),
         CurriculumBookItem(
             id = "p1_english_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب الطالب)",
-            previewUrl = "https://drive.google.com/file/d/1tB-W1i0X4R2C7G-K1u4S8M9P0L3E5V2N/preview"
+            subjectTitle = "كتاب الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1unzZit-bzu0V1Ny09D3lSlyM51DrveY4/preview"
         ),
         CurriculumBookItem(
             id = "p1_english_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1z9Y8X7W6V5U4T3S2R1Q0P9O8N7M6L5K4/preview"
+            subjectTitle = "كتاب نشاط الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1Wmq-bnBuQ_g1NPCVbl0Nsqh5CdMdrNPB/preview"
         ),
         CurriculumBookItem(
             id = "p1_math_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "الرياضيات",
-            previewUrl = "https://drive.google.com/file/d/1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7/preview"
+            subjectTitle = "كتاب الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1OUj0igQwRx59GcRie0aWUyb4pQE5wEnq/preview"
         ),
         CurriculumBookItem(
             id = "p1_math_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "الرياضيات (كتاب التمرينات)",
-            previewUrl = "https://drive.google.com/file/d/1q2W3e4R5t6Y7u8I9o0P1a2S3d4F5g6H7/preview"
+            subjectTitle = "كتاب تمرينات الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1SMeNQfs5DWrlNVOVdjRoW-jkWiFBL2j7/preview"
         ),
         CurriculumBookItem(
             id = "p1_science_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "العلوم",
-            previewUrl = "https://drive.google.com/file/d/1z2X3c4V5b6N7m8Q9w0E1r2T3y4U5i6O7/preview"
+            subjectTitle = "كتاب العلوم",
+            previewUrl = "https://drive.google.com/file/d/15-J2FgKIlPSj7wJivAWAvDXFdUjmLCz2/preview"
         ),
         CurriculumBookItem(
             id = "p1_science_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "العلوم (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1p2O3i4U5y6T7r8E9w0Q1a2S3d4F5g6H8/preview"
+            subjectTitle = "كتاب نشاط العلوم",
+            previewUrl = "https://drive.google.com/file/d/1gLHO-fm4dhkkueJGw5XLlT1bj1zoNU0Z/preview"
         ),
         CurriculumBookItem(
             id = "p1_moral",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الأول الابتدائي",
-            subjectTitle = "التربية الأخلاقية",
-            previewUrl = "https://drive.google.com/file/d/1m2N3b4V5c6X7z8L9k0J1h2G3f4D5s6A7/preview"
+            subjectTitle = "كتاب الاخلاقية",
+            previewUrl = "https://drive.google.com/file/d/1vHLP9ScCf71VlfEuRSgUIFt1ohILZwHQ/preview"
         ),
 
         // ============================================================
-        // 2. الصف الثاني الابتدائي (8 كتب)
+        // 2. الصف الثاني الابتدائي
         // ============================================================
         CurriculumBookItem(
             id = "p2_islamic",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثاني الابتدائي",
-            subjectTitle = "التربية الإسلامية",
-            previewUrl = "https://drive.google.com/file/d/1k2J3h4G5f6D7s8A9p0O1i2U3y4T5r6E7/preview"
+            subjectTitle = "كتاب الاسلامية",
+            previewUrl = "https://drive.google.com/file/d/1tqXQbPZUcaxFlOujjAcgEnFaVLzn3TDN/preview"
         ),
         CurriculumBookItem(
-            id = "p2_qiraati",
+            id = "p2_qiraa",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثاني الابتدائي",
-            subjectTitle = "قراءتي",
-            previewUrl = "https://drive.google.com/file/d/1w2E3r4T5y6U7i8O9p0A1s2D3f4G5h6J7/preview"
+            subjectTitle = "كتاب القراءة",
+            previewUrl = "https://drive.google.com/file/d/1_hNiwMamcGRvHc-LWbIXTeQkXvbH84Z6/preview"
         ),
         CurriculumBookItem(
             id = "p2_english_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثاني الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب الطالب)",
-            previewUrl = "https://drive.google.com/file/d/1l2K3j4H5g6F7d8S9a0Z1x2C3v4B5n6M7/preview"
+            subjectTitle = "كتاب الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1cKHbMM7vNc8eqcQ4J_GAG0lsva2Sp3hF/preview"
         ),
         CurriculumBookItem(
             id = "p2_english_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثاني الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1u2Y3t4R5e6W7q8A9s0D1f2G3h4J5k6L7/preview"
+            subjectTitle = "كتاب نشاط الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/15cJj1eGTHwJKabekweNAbqbAAvJlFlyM/preview"
         ),
         CurriculumBookItem(
             id = "p2_math_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثاني الابتدائي",
-            subjectTitle = "الرياضيات",
-            previewUrl = "https://drive.google.com/file/d/1o2I3u4Y5t6R7e8W9q0Z1x2C3v4B5n6M8/preview"
+            subjectTitle = "كتاب الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/19bt2LoEvw_V5-KoUzmh4XCCplHn2AhiK/preview"
         ),
         CurriculumBookItem(
             id = "p2_math_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثاني الابتدائي",
-            subjectTitle = "الرياضيات (كتاب التمرينات)",
-            previewUrl = "https://drive.google.com/file/d/1d2F3g4H5j6K7l8P9o0I1u2Y3t4R5e6W7/preview"
+            subjectTitle = "كتاب تمرينات الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1Xyh4H2DIXMkF6ujpe5mXdkr7EohfkK4K/preview"
         ),
         CurriculumBookItem(
             id = "p2_science_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثاني الابتدائي",
-            subjectTitle = "العلوم",
-            previewUrl = "https://drive.google.com/file/d/1c2V3b4N5m6Q7w8E9r0T1y2U3i4O5p6A7/preview"
+            subjectTitle = "كتاب العلوم",
+            previewUrl = "https://drive.google.com/file/d/1jRHrNCVBOwhea-eL_wwPHxQZF3Vbb4uw/preview"
         ),
         CurriculumBookItem(
             id = "p2_science_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثاني الابتدائي",
-            subjectTitle = "العلوم (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1x2Z3a4S5d6F7g8H9j0K1l2M3n4B5v6C7/preview"
+            subjectTitle = "كتاب نشاط العلوم",
+            previewUrl = "https://drive.google.com/file/d/1ku1QwAD6lRuRJ-_soK4Fp4t9xrMdzJbq/preview"
+        ),
+        CurriculumBookItem(
+            id = "p2_moral",
+            stage = CurriculumAcademicStage.PRIMARY,
+            gradeClass = "الثاني الابتدائي",
+            subjectTitle = "كتاب الاخلاقية",
+            previewUrl = "https://drive.google.com/file/d/1Yg0LTjViam_KtL2rq5BgJJKC0ofm4bCe/preview"
         ),
 
         // ============================================================
-        // 3. الصف الثالث الابتدائي (8 كتب)
+        // 3. الصف الثالث الابتدائي
         // ============================================================
         CurriculumBookItem(
             id = "p3_islamic",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثالث الابتدائي",
-            subjectTitle = "التربية الإسلامية",
-            previewUrl = "https://drive.google.com/file/d/1b2N3m4Q5w6E7r8T9y0U1i2O3p4A5s6D7/preview"
+            subjectTitle = "كتاب الاسلامية",
+            previewUrl = "https://drive.google.com/file/d/17y-N39QiawgjuP7Cwe4cVQMB_IDaJ0Gm/preview"
         ),
         CurriculumBookItem(
-            id = "p3_qiraati",
+            id = "p3_qiraa",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثالث الابتدائي",
-            subjectTitle = "قراءتي",
-            previewUrl = "https://drive.google.com/file/d/1n2M3q4W5e6R7t8Y9u0I1o2P3a4S5d6F7/preview"
+            subjectTitle = "كتاب القراءة",
+            previewUrl = "https://drive.google.com/file/d/1AcNuzBMToNiaZBMt6oFtaoD3KbIICxO9/preview"
         ),
         CurriculumBookItem(
             id = "p3_english_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثالث الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب الطالب)",
-            previewUrl = "https://drive.google.com/file/d/1v2C3x4Z5a6S7d8F9g0H1j2K3l4P5o6I7/preview"
-        ),
-        CurriculumBookItem(
-            id = "p3_english_ab",
-            stage = CurriculumAcademicStage.PRIMARY,
-            gradeClass = "الثالث الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1f2G3h4J5k6L7p8O9i0U1y2T3r4E5w6Q7/preview"
+            subjectTitle = "كتاب الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1iqpDEJoUimDI1dbkR4X6lBIrZHJKJB5Z/preview"
         ),
         CurriculumBookItem(
             id = "p3_math_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثالث الابتدائي",
-            subjectTitle = "الرياضيات",
-            previewUrl = "https://drive.google.com/file/d/1g2H3j4K5l6M7n8B9v0C1x2Z3a4S5d6F8/preview"
+            subjectTitle = "كتاب الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1u2h3i53amPXlc-_bIAv2EfULWOfgrz8t/preview"
         ),
         CurriculumBookItem(
             id = "p3_math_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثالث الابتدائي",
-            subjectTitle = "الرياضيات (كتاب التمرينات)",
-            previewUrl = "https://drive.google.com/file/d/1h2J3k4L5p6O7i8U9y0T1r2E3w4Q5a6S7/preview"
+            subjectTitle = "كتاب تمرينات الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1ctC0ZGiLIZbT-SuCK5OYS8vO2unXmArv/preview"
         ),
         CurriculumBookItem(
             id = "p3_science_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثالث الابتدائي",
-            subjectTitle = "العلوم",
-            previewUrl = "https://drive.google.com/file/d/1j2K3l4M5n6B7v8C9x0Z1a2S3d4F5g6H9/preview"
+            subjectTitle = "كتاب العلوم",
+            previewUrl = "https://drive.google.com/file/d/1kBCR4fP0D9uvEVpXdM1CQb_KkzeqM2uC/preview"
         ),
         CurriculumBookItem(
             id = "p3_science_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الثالث الابتدائي",
-            subjectTitle = "العلوم (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1r2T3y4U5i6O7p8A9s0D1f2G3h4J5k6L8/preview"
+            subjectTitle = "كتاب نشاط العلوم",
+            previewUrl = "https://drive.google.com/file/d/1dBAuIuxmOaknT7B6V7lEH0HOlpFiMZrZ/preview"
         ),
 
         // ============================================================
@@ -363,71 +360,71 @@ object IraqiCurriculumCatalog {
             id = "p4_islamic",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "التربية الإسلامية",
-            previewUrl = "https://drive.google.com/file/d/1e2R3t4Y5u6I7o8P9a0S1d2F3g4H5j6K8/preview"
+            subjectTitle = "كتاب الاسلامية",
+            previewUrl = "https://drive.google.com/file/d/18nnctYHawWZMAvT6PtzidsXf0P6kPEvh/preview"
         ),
         CurriculumBookItem(
-            id = "p4_reading",
+            id = "p4_qiraa",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "القراءة العربية",
-            previewUrl = "https://drive.google.com/file/d/1t2Y3u4I5o6P7a8S9d0F1g2H3j4K5l6M8/preview"
+            subjectTitle = "كتاب القراءة",
+            previewUrl = "https://drive.google.com/file/d/1kDacm2LZS9NJI2Gmg8qRS2eEN3OFOQWK/preview"
         ),
         CurriculumBookItem(
             id = "p4_grammar",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "قواعد اللغة العربية",
-            previewUrl = "https://drive.google.com/file/d/1y2U3i4O5p6A7s8D9f0G1h2J3k4L5m6N8/preview"
+            subjectTitle = "كتاب القواعد",
+            previewUrl = "https://drive.google.com/file/d/1i7ZTlozV1UZj5Q7VZVyuj4tRQL4ytNSC/preview"
         ),
         CurriculumBookItem(
             id = "p4_english_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب الطالب)",
-            previewUrl = "https://drive.google.com/file/d/1i2O3p4A5s6D7f8G9h0J1k2L3z4X5c6V8/preview"
+            subjectTitle = "كتاب الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1hM1RSOGBmh0uGmtBt0FQMN_hc1z79myD/preview"
         ),
         CurriculumBookItem(
             id = "p4_english_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1p2A3s4D5f6G7h8J9k0L1z2X3c4V5b6N8/preview"
+            subjectTitle = "كتاب نشاط الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1-WTOo7uXmibGMg-E4o1Of7XSkrM3nTmB/preview"
         ),
         CurriculumBookItem(
             id = "p4_math_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "الرياضيات",
-            previewUrl = "https://drive.google.com/file/d/1a2S3d4F5g6H7j8K9l0Z1x2C3v4B5n6M9/preview"
+            subjectTitle = "كتاب الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/175Hkdms5gmfM7QJjZRyGVIiGrg-uUILy/preview"
         ),
         CurriculumBookItem(
             id = "p4_math_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "الرياضيات (كتاب التمرينات)",
-            previewUrl = "https://drive.google.com/file/d/1s2D3f4G5h6J7k8L9z0X1c2V3b4N5m6Q8/preview"
+            subjectTitle = "كتاب تمرينات الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/16PtyMCCG3EuIRTe02_PEnPdTPvZ-KHkD/preview"
         ),
         CurriculumBookItem(
             id = "p4_science_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "العلوم",
-            previewUrl = "https://drive.google.com/file/d/1d2F3g4H5j6K7l8Z9x0C1v2B3n4M5q6W8/preview"
+            subjectTitle = "كتاب العلوم",
+            previewUrl = "https://drive.google.com/file/d/1Ll_dwNKWgLfTUJk7eHxJrfTbkU9xxRsS/preview"
         ),
         CurriculumBookItem(
             id = "p4_science_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "العلوم (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1f2G3h4J5k6L7z8X9c0V1b2N3m4Q5w6E8/preview"
+            subjectTitle = "كتاب نشاط العلوم",
+            previewUrl = "https://drive.google.com/file/d/1PbmUFiYH1HCAu6RK5hhyT7BRxWBMEYz7/preview"
         ),
         CurriculumBookItem(
             id = "p4_social",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الرابع الابتدائي",
-            subjectTitle = "الاجتماعيات",
-            previewUrl = "https://drive.google.com/file/d/1g2H3j4K5l6Z7x8C9v0B1n2M3q4W5e6R8/preview"
+            subjectTitle = "كتاب الاجتماعيات",
+            previewUrl = "https://drive.google.com/file/d/1ck0PDkGhCJBF2Bi6S49nAaBLhxqvIUom/preview"
         ),
 
         // ============================================================
@@ -437,152 +434,145 @@ object IraqiCurriculumCatalog {
             id = "p5_islamic",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "التربية الإسلامية",
-            previewUrl = "https://drive.google.com/file/d/1h2J3k4L5z6X7c8V9b0N1m2Q3w4E5r6T8/preview"
+            subjectTitle = "كتاب الاسلامية",
+            previewUrl = "https://drive.google.com/file/d/14kd8vicBKBeGU7RpdGaR3q-7LDbMyB1E/preview"
         ),
         CurriculumBookItem(
-            id = "p5_reading",
+            id = "p5_qiraa",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "القراءة العربية",
-            previewUrl = "https://drive.google.com/file/d/1j2K3l4Z5x6C7v8B9n0M1q2W3e4R5t6Y8/preview"
+            subjectTitle = "كتاب القراءة",
+            previewUrl = "https://drive.google.com/file/d/1nItax-W99MyE9CnKvkOWeDNVZC5fSAiW/preview"
         ),
         CurriculumBookItem(
             id = "p5_grammar",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "قواعد اللغة العربية",
-            previewUrl = "https://drive.google.com/file/d/1k2L3z4X5c6V7b8N9m0Q1w2E3r4T5y6U8/preview"
+            subjectTitle = "كتاب القواعد",
+            previewUrl = "https://drive.google.com/file/d/1LSWC6mFrTH_DHFNQ8rVvYPCf3FHxhx3c/preview"
         ),
         CurriculumBookItem(
             id = "p5_english_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب الطالب)",
-            previewUrl = "https://drive.google.com/file/d/1l2Z3x4C5v6B7n8M9q0W1e2R3t4Y5u6I8/preview"
+            subjectTitle = "كتاب الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1v9Q7FyE7tMddNZdVR2SSfDxu2ATHyS0f/preview"
         ),
         CurriculumBookItem(
             id = "p5_english_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1z2X3c4V5b6N7m8Q9w0E1r2T3y4U5i6O8/preview"
+            subjectTitle = "كتاب نشاط الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1Q-s6t74OCk8jEip2NLsd-RbU_q0Yz25j/preview"
         ),
         CurriculumBookItem(
             id = "p5_math_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "الرياضيات",
-            previewUrl = "https://drive.google.com/file/d/1x2C3v4B5n6M7q8W9e0R1t2Y3u4I5o6P8/preview"
+            subjectTitle = "كتاب الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1OEC1v11aSeb660yzQ83Tpu8C95BCnLyM/preview"
         ),
         CurriculumBookItem(
             id = "p5_math_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "الرياضيات (كتاب التمرينات)",
-            previewUrl = "https://drive.google.com/file/d/1c2V3b4N5m6Q7w8E9r0T1y2U3i4O5p6A8/preview"
+            subjectTitle = "كتاب تمرينات الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1BeziQKPCbVwXU-DZMze_E_efAJL2LHiz/preview"
         ),
         CurriculumBookItem(
             id = "p5_science_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "العلوم",
-            previewUrl = "https://drive.google.com/file/d/1v2B3n4M5q6W7e8R9t0Y1u2I3o4P5a6S8/preview"
+            subjectTitle = "كتاب العلوم",
+            previewUrl = "https://drive.google.com/file/d/1d_NaL3ZXWPg916TR2fl9PW1E_kWFz5-N/preview"
         ),
         CurriculumBookItem(
             id = "p5_science_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "العلوم (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1b2N3m4Q5w6E7r8T9y0U1i2O3p4A5s6D8/preview"
+            subjectTitle = "كتاب نشاط العلوم",
+            previewUrl = "https://drive.google.com/file/d/1WiOgm0jZ1AIUrD3Yh_8c3p8cRmW1MTuc/preview"
         ),
         CurriculumBookItem(
             id = "p5_social",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "الخامس الابتدائي",
-            subjectTitle = "الاجتماعيات",
-            previewUrl = "https://drive.google.com/file/d/1n2M3q4W5e6R7t8Y9u0I1o2P3a4S5d6F8/preview"
+            subjectTitle = "كتاب الاجتماعيات",
+            previewUrl = "https://drive.google.com/file/d/18QTrNWPMTJPdE1KRppEK_RGnzZlCrkpz/preview"
         ),
 
         // ============================================================
-        // 6. الصف السادس الابتدائي (11 كتاباً)
+        // 6. الصف السادس الابتدائي (10 كتب)
         // ============================================================
         CurriculumBookItem(
             id = "p6_islamic",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "التربية الإسلامية",
-            previewUrl = "https://drive.google.com/file/d/1m2Q3w4E5r6T7y8U9i0O1p2A3s4D5f6G8/preview"
+            subjectTitle = "كتاب الاسلامية",
+            previewUrl = "https://drive.google.com/file/d/1eBGERuNCc9tN2nuDoX2-RxettdZEsMEB/preview"
         ),
         CurriculumBookItem(
-            id = "p6_reading",
+            id = "p6_qiraa",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "القراءة العربية",
-            previewUrl = "https://drive.google.com/file/d/1q2W3e4R5t6Y7u8I9o0P1a2S3d4F5g6H9/preview"
+            subjectTitle = "كتاب القراءة",
+            previewUrl = "https://drive.google.com/file/d/1UUOQ-2L3fm7WTXn8BbvrJvMfl65sy-wA/preview"
         ),
         CurriculumBookItem(
             id = "p6_grammar",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "قواعد اللغة العربية",
-            previewUrl = "https://drive.google.com/file/d/1w2E3r4T5y6U7i8O9p0A1s2D3f4G5h6J8/preview"
+            subjectTitle = "كتاب القواعد",
+            previewUrl = "https://drive.google.com/file/d/1hFA-4oXpZlx00j-73VA4Uk1b4fbGp-Wn/preview"
         ),
         CurriculumBookItem(
             id = "p6_english_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب الطالب)",
-            previewUrl = "https://drive.google.com/file/d/1e2R3t4Y5u6I7o8P9a0S1d2F3g4H5j6K9/preview"
+            subjectTitle = "كتاب الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1Q5STI-8XJVg_0de2iFVoHi1vEN6ghn3S/preview"
         ),
         CurriculumBookItem(
             id = "p6_english_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "اللغة الإنكليزية (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1r2T3y4U5i6O7p8A9s0D1f2G3h4J5k6L9/preview"
+            subjectTitle = "كتاب نشاط الانكليزي",
+            previewUrl = "https://drive.google.com/file/d/1UhdM7oBvmc6nU6YIrR0iLGEFPhvNyzZf/preview"
         ),
         CurriculumBookItem(
             id = "p6_math_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "الرياضيات",
-            previewUrl = "https://drive.google.com/file/d/1t2Y3u4I5o6P7a8S9d0F1g2H3j4K5l6M9/preview"
+            subjectTitle = "كتاب الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1XKUwiS0p2SvSvtUyQDu0xERdbFW382S7/preview"
         ),
         CurriculumBookItem(
             id = "p6_math_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "الرياضيات (كتاب التمرينات)",
-            previewUrl = "https://drive.google.com/file/d/1y2U3i4O5p6A7s8D9f0G1h2J3k4L5m6N9/preview"
+            subjectTitle = "كتاب تمرينات الرياضيات",
+            previewUrl = "https://drive.google.com/file/d/1u4uxLEp5an4YT7ELlud36mEn4alDXQEC/preview"
         ),
         CurriculumBookItem(
             id = "p6_science_sb",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "العلوم",
-            previewUrl = "https://drive.google.com/file/d/1u2I3o4P5a6S7d8F9g0H1j2K3l4M5n6B9/preview"
+            subjectTitle = "كتاب العلوم",
+            previewUrl = "https://drive.google.com/file/d/13VFMpKRCNDvX9RmRmvD7kdYUcyURtLkj/preview"
         ),
         CurriculumBookItem(
             id = "p6_science_ab",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "العلوم (كتاب النشاط)",
-            previewUrl = "https://drive.google.com/file/d/1i2O3p4A5s6D7f8G9h0J1k2L3m4N5b6V9/preview"
+            subjectTitle = "كتاب نشاط العلوم",
+            previewUrl = "https://drive.google.com/file/d/1-BEJUHYEPjs_7hB7pvAzvfxGoYRGb7AU/preview"
         ),
         CurriculumBookItem(
             id = "p6_social",
             stage = CurriculumAcademicStage.PRIMARY,
             gradeClass = "السادس الابتدائي",
-            subjectTitle = "الاجتماعيات",
-            previewUrl = "https://drive.google.com/file/d/1o2P3a4S5d6F7g8H9j0K1l2M3n4B5v6C9/preview"
-        ),
-        CurriculumBookItem(
-            id = "p6_moral",
-            stage = CurriculumAcademicStage.PRIMARY,
-            gradeClass = "السادس الابتدائي",
-            subjectTitle = "التربية الأخلاقية",
-            previewUrl = "https://drive.google.com/file/d/1p2A3s4D5f6G7h8J9k0L1m2N3b4V5c6X9/preview"
+            subjectTitle = "كتاب الاجتماعيات",
+            previewUrl = "https://drive.google.com/file/d/1Lrs9Pp_1rNwSIKHS7oVjG8AoHRxNdbbm/preview"
         )
     )
 
@@ -729,8 +719,6 @@ fun CurriculumBooksScreen(
 
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
-    val currentUser by viewModel.currentUser.collectAsState()
-    val isDeveloperAuthenticated by viewModel.isDeveloperAuthenticated.collectAsState()
     val allBooks by IraqiCurriculumCatalog.booksFlow.collectAsState()
 
     val defaultStage = remember(schoolConfig.schoolStage) {
@@ -743,11 +731,7 @@ fun CurriculumBooksScreen(
     }
     var searchQuery by remember { mutableStateOf("") }
 
-    // Active book opened inside the Full-Screen In-App WebView Modal
     var activeBookInViewer by remember { mutableStateOf<CurriculumBookItem?>(null) }
-
-    // Optional quick link manager dialog for Developer
-    var showDeveloperQuickManagerDialog by remember { mutableStateOf(false) }
 
     val displayedBooks = remember(allBooks, selectedStage, selectedGradeClass, searchQuery) {
         val q = searchQuery.trim()
@@ -764,6 +748,8 @@ fun CurriculumBooksScreen(
         }
     }
 
+    val primaryAccent = MaterialTheme.colorScheme.primary
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Column(
             modifier = Modifier
@@ -772,130 +758,9 @@ fun CurriculumBooksScreen(
                 .testTag("curriculum_books_screen"),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Royal Emerald Header Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF042F24),
-                                    Color(0xFF065F46),
-                                    Color(0xFF0F3D5E)
-                                )
-                            )
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = GoldAccent.copy(alpha = 0.55f),
-                            shape = RoundedCornerShape(22.dp)
-                        )
-                        .padding(16.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = GoldAccent.copy(alpha = 0.18f),
-                                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.65f)),
-                                    modifier = Modifier.size(44.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AutoStories,
-                                            contentDescription = "المناهج الدراسية والكتب",
-                                            tint = GoldAccent,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
-                                Column {
-                                    Text(
-                                        text = "المناهج الدراسية الرسمية في العراق",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = "تصفح وقراءة جميع كتب المناهج مباشرة داخل التطبيق بدقة كاملة",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFD1FAE5)
-                                    )
-                                }
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.55f))
-                            ) {
-                                Text(
-                                    text = "${displayedBooks.size} كتاب",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = GoldAccent,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-
-                        if (isDeveloperAuthenticated || currentUser?.role == UserRole.ADMIN) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = GoldAccent.copy(alpha = 0.20f),
-                                    border = BorderStroke(1.dp, GoldAccent),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable { showDeveloperQuickManagerDialog = true }
-                                        .testTag("open_curriculum_links_manager_btn")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Link,
-                                            contentDescription = null,
-                                            tint = Color(0xFFFFF3B0),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "مدير روابط المناهج الدراسية",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFFFFF3B0)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Stage Selector Pills (الابتدائية • المتوسطة • الإعدادية)
+            // 1. Clean Stage Selector Pills (الابتدائية • المتوسطة • الإعدادية) — Zero Icons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -913,7 +778,7 @@ fun CurriculumBooksScreen(
                         },
                         shape = RoundedCornerShape(14.dp),
                         color = if (isSelected) {
-                            DeepEmerald
+                            primaryAccent
                         } else if (isDarkMode) {
                             Color(0xFF1E293B)
                         } else {
@@ -921,17 +786,17 @@ fun CurriculumBooksScreen(
                         },
                         border = BorderStroke(
                             width = 1.dp,
-                            color = if (isSelected) GoldAccent else Color(0xFFCBD5E1).copy(alpha = 0.5f)
+                            color = if (isSelected) primaryAccent else Color(0xFFCBD5E1).copy(alpha = 0.65f)
                         ),
-                        shadowElevation = if (isSelected) 4.dp else 1.dp,
+                        shadowElevation = if (isSelected) 3.dp else 1.dp,
                         modifier = Modifier
                             .weight(1f)
-                            .height(46.dp)
+                            .height(44.dp)
                             .testTag("curriculum_stage_tab_${stage.name}")
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 6.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp)
                         ) {
                             Text(
                                 text = if (stageBookCount > 0) {
@@ -946,7 +811,7 @@ fun CurriculumBooksScreen(
                                 } else if (isDarkMode) {
                                     Color(0xFFE2E8F0)
                                 } else {
-                                    DeepForestGreen
+                                    Color(0xFF0F172A)
                                 },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -956,7 +821,7 @@ fun CurriculumBooksScreen(
                 }
             }
 
-            // Grade Classes Horizontal Selector
+            // 2. Clean Grade Selector Pills — Zero Icons
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -974,15 +839,15 @@ fun CurriculumBooksScreen(
                         },
                         shape = RoundedCornerShape(50),
                         color = if (isGradeSelected) {
-                            Color(0xFF065F46)
+                            primaryAccent
                         } else if (isDarkMode) {
                             Color(0xFF0F172A)
                         } else {
-                            Color(0xFFECFDF5)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                         },
                         border = BorderStroke(
                             width = 1.dp,
-                            color = if (isGradeSelected) GoldAccent else Color(0xFF10B981).copy(alpha = 0.35f)
+                            color = if (isGradeSelected) primaryAccent else primaryAccent.copy(alpha = 0.35f)
                         ),
                         modifier = Modifier
                             .height(38.dp)
@@ -990,7 +855,7 @@ fun CurriculumBooksScreen(
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 14.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp)
                         ) {
                             Text(
                                 text = if (gradeBookCount > 0) {
@@ -1003,9 +868,9 @@ fun CurriculumBooksScreen(
                                 color = if (isGradeSelected) {
                                     Color.White
                                 } else if (isDarkMode) {
-                                    Color(0xFFA7F3D0)
+                                    Color(0xFFE2E8F0)
                                 } else {
-                                    Color(0xFF065F46)
+                                    MaterialTheme.colorScheme.onPrimaryContainer
                                 }
                             )
                         }
@@ -1013,31 +878,28 @@ fun CurriculumBooksScreen(
                 }
             }
 
-            // Search Bar
+            // 3. Clean Search Bar — Typography-only clear affordance, zero classic icons
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 placeholder = {
                     Text(
-                        text = "ابحث عن اسم الكتاب أو الصف الدراسي...",
+                        text = "ابحث باسم المادة أو الكتاب المنهجي...",
                         style = MaterialTheme.typography.bodyMedium
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = "بحث",
-                        tint = DeepEmerald
                     )
                 },
                 trailingIcon = {
                     if (searchQuery.isNotBlank()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(
-                                imageVector = Icons.Filled.Clear,
-                                contentDescription = "مسح البحث"
-                            )
-                        }
+                        Text(
+                            text = "مسح",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = primaryAccent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { searchQuery = "" }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
                     }
                 },
                 singleLine = true,
@@ -1047,7 +909,23 @@ fun CurriculumBooksScreen(
                     .testTag("curriculum_search_input")
             )
 
-            // Books List or Pending Stage Notice
+            // 4. Right-aligned Clean Section Header below Search Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "كتب الصف: $selectedGradeClass (${displayedBooks.size} منهج رسمي)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                )
+            }
+
+            // 5. Books List or Pending Stage Notice
             if (displayedBooks.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -1062,37 +940,21 @@ fun CurriculumBooksScreen(
                             .testTag("curriculum_stage_pending_notice_card"),
                         shape = RoundedCornerShape(22.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF8FAFC)
+                            containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
                         ),
                         border = BorderStroke(
-                            1.2.dp,
-                            if (isDarkMode) Color(0xFF334155) else Color(0xFFA7F3D0)
+                            1.dp,
+                            if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                         ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 24.dp, vertical = 32.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
-                                border = BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.65f)),
-                                modifier = Modifier.size(68.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.MenuBook,
-                                        contentDescription = "مناهج قيد الرفع والتحديث",
-                                        tint = if (isDarkMode) GoldAccent else DeepEmerald,
-                                        modifier = Modifier.size(34.dp)
-                                    )
-                                }
-                            }
-
                             Text(
                                 text = if (searchQuery.isNotBlank()) {
                                     "لا توجد كتب مطابقة لعبارة البحث الحالية"
@@ -1101,16 +963,16 @@ fun CurriculumBooksScreen(
                                 },
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkMode) Color.White else DeepForestGreen,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A),
                                 textAlign = TextAlign.Center
                             )
 
                             if (searchQuery.isBlank()) {
                                 Text(
-                                    text = "${selectedStage.arabicTitle} • $selectedGradeClass",
+                                    text = "${selectedStage.capsuleStageWord} • $selectedGradeClass",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isDarkMode) Color(0xFFA7F3D0) else DeepEmerald,
+                                    color = primaryAccent,
                                     textAlign = TextAlign.Center
                                 )
                             }
@@ -1123,7 +985,7 @@ fun CurriculumBooksScreen(
                         .fillMaxWidth()
                         .weight(1f)
                         .testTag("curriculum_books_list"),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 96.dp)
                 ) {
                     items(displayedBooks, key = { it.id }) { book ->
@@ -1139,7 +1001,7 @@ fun CurriculumBooksScreen(
             }
         }
 
-        // Full-Screen In-App Book Viewer Modal (Exclusively inside the app via /preview)
+        // Full-Screen In-App Book Viewer Modal (Exclusively inside the app via /preview iframe)
         activeBookInViewer?.let { targetBook ->
             InAppGoogleDriveBookViewerModal(
                 book = targetBook,
@@ -1147,64 +1009,15 @@ fun CurriculumBooksScreen(
                 onCloseViewer = { activeBookInViewer = null }
             )
         }
-
-        // Quick Links Manager Modal when opened from Curriculum Screen by Developer/Admin
-        if (showDeveloperQuickManagerDialog) {
-            Dialog(
-                onDismissRequest = { showDeveloperQuickManagerDialog = false },
-                properties = DialogProperties(usePlatformDefaultWidth = false)
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(12.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "مدير روابط المناهج الدراسية المباشر",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkMode) Color.White else DeepForestGreen
-                            )
-                            TextButton(onClick = { showDeveloperQuickManagerDialog = false }) {
-                                Text("إغلاق", fontWeight = FontWeight.ExtraBold, color = DangerRed)
-                            }
-                        }
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            item {
-                                DeveloperCurriculumManagerSection(viewModel = viewModel)
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
 /**
- * Clean Curriculum Book Card:
- * - NO "PDF رسمي" badge, NO file size badge, NO replacement badge on the left.
- * - Contains ONLY:
- *   1. Book Title (`book.subjectTitle`)
- *   2. Stage & Grade (`${book.stage.shortBadge} • ${book.gradeClass}`)
- *   3. Full-width green button ("فتح مباشر") that opens the book inside the app.
+ * Clean White Rounded Book Card (Zero Classic Icons Policy):
+ * Contains ONLY 3 elements ordered right-to-left, top-to-bottom:
+ *   1. Book Name in bold, clear text on the right (e.g., "كتاب الاسلامية").
+ *   2. Below it: a soft light-green capsule badge with a thin border containing: "ابتدائي • الأول الابتدائي".
+ *   3. At the bottom of the card: a solid, sleek full-width green button containing text ONLY: "فتح مباشر".
  */
 @Composable
 private fun CurriculumBookOfficialCard(
@@ -1212,6 +1025,7 @@ private fun CurriculumBookOfficialCard(
     isDarkMode: Boolean,
     onDirectOpenBook: () -> Unit
 ) {
+    val primaryAccent = MaterialTheme.colorScheme.primary
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1229,55 +1043,46 @@ private fun CurriculumBookOfficialCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
-                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.40f)),
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.MenuBook,
-                            contentDescription = book.subjectTitle,
-                            tint = if (isDarkMode) Color(0xFF34D399) else DeepEmerald,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
+            // 1. Book Name in bold clear text on the right
+            Text(
+                text = book.subjectTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                textAlign = TextAlign.Right,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Text(
-                        text = book.subjectTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                    )
-                    Text(
-                        text = "${book.stage.shortBadge} • ${book.gradeClass}",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
-                    )
-                }
+            // 2. Soft light-green capsule badge with thin border: "ابتدائي • الأول الابتدائي"
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.55f) else Color(0xFFECFDF5),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.45f) else Color(0xFFA7F3D0)
+                )
+            ) {
+                Text(
+                    text = "${book.stage.capsuleStageWord} • ${book.gradeClass}",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                )
             }
 
-            // Wide Green Direct Open Button ("فتح مباشر") — Opens exclusively inside the app
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // 3. Solid sleek full-width green button containing text ONLY: "فتح مباشر"
             Button(
                 onClick = onDirectOpenBook,
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DeepEmerald,
+                    containerColor = primaryAccent,
                     contentColor = Color.White
                 ),
                 modifier = Modifier
@@ -1285,12 +1090,6 @@ private fun CurriculumBookOfficialCard(
                     .height(48.dp)
                     .testTag("open_book_btn_${book.id}")
             ) {
-                Icon(
-                    imageVector = Icons.Filled.AutoStories,
-                    contentDescription = null,
-                    modifier = Modifier.size(19.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "فتح مباشر",
                     style = MaterialTheme.typography.titleSmall,
@@ -1303,11 +1102,8 @@ private fun CurriculumBookOfficialCard(
 
 /**
  * Full-Screen In-App Book Viewer Modal (شاشة القراءة المدمجة داخل التطبيق حصراً):
- * - Opens the Google Drive link in `/preview` format (`https://drive.google.com/file/d/FILE_ID/preview`)
- *   inside an embedded full-screen WebView without ever leaving the app or opening an external browser.
- * - Top bar shows the current book name (`book.subjectTitle`) and a clear button
- *   ("إغلاق / رجوع للمناهج") to return to the books list immediately.
- * - Supports pinch-to-zoom, smooth scrolling, and blocks any pop-out / external browser navigation.
+ * - Embeds the exact `/preview` link inside an HTML `<iframe>` (`<iframe src="https://drive.google.com/file/d/FILE_ID/preview" width="100%" height="100%" allow="autoplay" style="border:none;"></iframe>`)
+ *   so Google Drive renders the book cleanly inside the app without any external redirects.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -1318,6 +1114,36 @@ fun InAppGoogleDriveBookViewerModal(
 ) {
     val embedPreviewUrl = remember(book.previewUrl) {
         IraqiCurriculumCatalog.formatToGoogleDrivePreviewUrl(book.previewUrl)
+    }
+    val iframeHtml = remember(embedPreviewUrl) {
+        """
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+            <style>
+                html, body {
+                    margin: 0;
+                    padding: 0;
+                    width: 100%;
+                    height: 100%;
+                    overflow: hidden;
+                    background-color: #0F172A;
+                }
+                iframe {
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                    display: block;
+                }
+            </style>
+        </head>
+        <body>
+            <iframe src="$embedPreviewUrl" width="100%" height="100%" allow="autoplay" style="border:none;"></iframe>
+        </body>
+        </html>
+        """.trimIndent()
     }
     var isLoadingPage by remember(embedPreviewUrl) { mutableStateOf(true) }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
@@ -1340,7 +1166,7 @@ fun InAppGoogleDriveBookViewerModal(
                 color = if (isDarkMode) Color(0xFF061512) else Color(0xFFF8FAFC)
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // Top Bar: Current Book Title + Clear "إغلاق / رجوع للمناهج" Button
+                    // Clean Typography Top Bar (Zero Classic Icons)
                     Surface(
                         color = Color(0xFF042F24),
                         shadowElevation = 6.dp,
@@ -1350,70 +1176,65 @@ fun InAppGoogleDriveBookViewerModal(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .statusBarsPadding()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            Column(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(end = 8.dp)
+                                    .padding(end = 10.dp)
                             ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = GoldAccent.copy(alpha = 0.20f),
-                                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.70f)),
-                                    modifier = Modifier.size(38.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AutoStories,
-                                            contentDescription = null,
-                                            tint = GoldAccent,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                                Column {
-                                    Text(
-                                        text = book.subjectTitle,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "${book.stage.shortBadge} • ${book.gradeClass}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFA7F3D0),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                                Text(
+                                    text = book.subjectTitle,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${book.stage.capsuleStageWord} • ${book.gradeClass}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFA7F3D0),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                IconButton(
+                                Surface(
                                     onClick = {
                                         isLoadingPage = true
-                                        webViewInstance?.loadUrl(embedPreviewUrl)
+                                        webViewInstance?.loadDataWithBaseURL(
+                                            "https://drive.google.com",
+                                            iframeHtml,
+                                            "text/html",
+                                            "UTF-8",
+                                            null
+                                        )
                                     },
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0).copy(alpha = 0.45f)),
                                     modifier = Modifier
-                                        .size(36.dp)
+                                        .height(36.dp)
                                         .testTag("in_app_book_viewer_reload_btn")
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Refresh,
-                                        contentDescription = "إعادة تحميل الكتاب",
-                                        tint = Color(0xFFA7F3D0),
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 12.dp)
+                                    ) {
+                                        Text(
+                                            text = "تحديث",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFA7F3D0)
+                                        )
+                                    }
                                 }
 
                                 Button(
@@ -1423,17 +1244,11 @@ fun InAppGoogleDriveBookViewerModal(
                                         containerColor = Color(0xFF059669),
                                         contentColor = Color.White
                                     ),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                                     modifier = Modifier
                                         .height(38.dp)
                                         .testTag("in_app_book_viewer_close_btn")
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "إغلاق / رجوع للمناهج",
                                         style = MaterialTheme.typography.labelMedium,
@@ -1444,7 +1259,7 @@ fun InAppGoogleDriveBookViewerModal(
                         }
                     }
 
-                    // Full-Screen Embedded WebView for `/preview` Book Reading
+                    // Full-Screen Embedded WebView with `/preview` iframe
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1488,17 +1303,6 @@ fun InAppGoogleDriveBookViewerModal(
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
                                             isLoadingPage = false
-                                            // Hide Google Drive's external "Pop-out" button so the student stays 100% inside the app
-                                            view?.evaluateJavascript(
-                                                """
-                                                (function() {
-                                                    var style = document.createElement('style');
-                                                    style.innerHTML = '.ndfHFb-c4YZDc-Wrql6b { display: none !important; } [aria-label="Pop-out"] { display: none !important; }';
-                                                    document.head.appendChild(style);
-                                                })();
-                                                """.trimIndent(),
-                                                null
-                                            )
                                         }
 
                                         override fun shouldOverrideUrlLoading(
@@ -1507,7 +1311,6 @@ fun InAppGoogleDriveBookViewerModal(
                                         ): Boolean {
                                             val targetUrl = request?.url?.toString().orEmpty()
                                             if (targetUrl.isBlank()) return true
-                                            // Keep all Google Drive / Googleusercontent book rendering strictly inside this WebView
                                             return if (
                                                 targetUrl.contains("drive.google.com") ||
                                                 targetUrl.contains("docs.google.com") ||
@@ -1515,18 +1318,18 @@ fun InAppGoogleDriveBookViewerModal(
                                             ) {
                                                 false
                                             } else {
-                                                // Block any attempt to launch external intents or leave the app
                                                 true
                                             }
                                         }
                                     }
                                     webViewInstance = this
-                                    loadUrl(embedPreviewUrl)
-                                }
-                            },
-                            update = { webView ->
-                                if (webView.url != embedPreviewUrl && webView.originalUrl != embedPreviewUrl) {
-                                    webView.loadUrl(embedPreviewUrl)
+                                    loadDataWithBaseURL(
+                                        "https://drive.google.com",
+                                        iframeHtml,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
+                                    )
                                 }
                             }
                         )
@@ -1566,15 +1369,7 @@ fun InAppGoogleDriveBookViewerModal(
 }
 
 /**
- * 1. مدير روابط المناهج الدراسية (تحديث الروابط المباشر بدون رفع ملفات):
- * - يتيح للمطور اختيار (المرحلة الدراسية) ثم (الصف الدراسي).
- * - يعرض قائمة كتب ذلك الصف، وبجانب كل كتاب حقل نصي يحتوي على رابط Google Drive الخاص به
- *   مع زر (تحديث الرابط) وزر (حذف).
- * - يتيح ميزة (إضافة كتاب جديد للصف) عبر إدخال (اسم الكتاب + لصق رابط Google Drive فقط).
- * - المعالجة الذكية التلقائية: يستخرج النظام تلقائياً معرّف الملف (FILE_ID) من أي رابط Google Drive
- *   يلصقه المطور (حتى لو كان ينتهي بـ /view?usp=sharing) ويحوله برمجياً إلى صيغة التضمين المباشر:
- *   https://drive.google.com/file/d/FILE_ID/preview
- *   ثم يحفظه فوراً في قاعدة البيانات ليظهر التحديث لجميع المستخدمين.
+ * مدير روابط المناهج الدراسية (محفوظ حصراً داخل إعدادات المطور)
  */
 @Composable
 fun DeveloperCurriculumManagerSection(
@@ -1619,28 +1414,17 @@ fun DeveloperCurriculumManagerSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoStories,
-                        contentDescription = null,
-                        tint = DeepEmerald
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "مدير روابط المناهج الدراسية (تحديث الروابط المباشر)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold
                     )
-                    Column {
-                        Text(
-                            text = "مدير روابط المناهج الدراسية (تحديث الروابط المباشر)",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "تحويل تلقائي لأي رابط Google Drive إلى صيغة التضمين المباشر (/preview) داخل التطبيق",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "تحويل تلقائي لأي رابط Google Drive إلى صيغة التضمين المباشر (/preview) داخل التطبيق",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 TextButton(
@@ -1659,7 +1443,6 @@ fun DeveloperCurriculumManagerSection(
                 }
             }
 
-            // 1. اختيار المرحلة الدراسية
             Text(
                 text = "1. اختر المرحلة الدراسية:",
                 style = MaterialTheme.typography.labelLarge,
@@ -1700,7 +1483,6 @@ fun DeveloperCurriculumManagerSection(
                 }
             }
 
-            // 2. اختيار الصف الدراسي
             Text(
                 text = "2. اختر الصف الدراسي:",
                 style = MaterialTheme.typography.labelLarge,
@@ -1760,22 +1542,19 @@ fun DeveloperCurriculumManagerSection(
                             color = Color(0xFF065F46),
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(
-                            onClick = { statusMessage = null },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "إغلاق",
-                                tint = Color(0xFF065F46),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
+                        Text(
+                            text = "×",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF065F46),
+                            modifier = Modifier
+                                .clickable { statusMessage = null }
+                                .padding(horizontal = 8.dp)
+                        )
                     }
                 }
             }
 
-            // 3. إضافة كتاب جديد للصف المختار (اسم الكتاب + لصق رابط Google Drive فقط)
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = Color(0xFFF8FAFC),
@@ -1795,7 +1574,7 @@ fun DeveloperCurriculumManagerSection(
                     OutlinedTextField(
                         value = newBookTitle,
                         onValueChange = { newBookTitle = it },
-                        label = { Text("اسم الكتاب (مثال: الرياضيات)") },
+                        label = { Text("اسم الكتاب (مثال: كتاب الرياضيات)") },
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1836,12 +1615,6 @@ fun DeveloperCurriculumManagerSection(
                             .height(44.dp)
                             .testTag("dev_add_book_submit_btn")
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "إضافة كتاب جديد للصف",
                             style = MaterialTheme.typography.labelLarge,
@@ -1851,7 +1624,6 @@ fun DeveloperCurriculumManagerSection(
                 }
             }
 
-            // 4. قائمة كتب الصف المختار مع حقل تعديل الرابط المباشر وزر (تحديث الرابط)
             Text(
                 text = "كتب $selectedGradeClass الحالية (${gradeBooks.size}):",
                 style = MaterialTheme.typography.labelLarge,
@@ -1912,13 +1684,6 @@ fun DeveloperCurriculumManagerSection(
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                         modifier = Modifier.testTag("dev_delete_book_btn_${book.id}")
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Delete,
-                                            contentDescription = "حذف الكتاب",
-                                            tint = DangerRed,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = "حذف",
                                             style = MaterialTheme.typography.labelSmall,
@@ -1959,12 +1724,6 @@ fun DeveloperCurriculumManagerSection(
                                         .height(40.dp)
                                         .testTag("dev_update_book_link_btn_${book.id}")
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Save,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "تحديث الرابط",
                                         style = MaterialTheme.typography.labelLarge,

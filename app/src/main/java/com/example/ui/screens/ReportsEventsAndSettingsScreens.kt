@@ -2366,6 +2366,8 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            AccountGenderAndAgeSettingsCard(viewModel = viewModel)
         }
 
         // Category 1: الأمان والدخول السريع (Biometric Fingerprint Login Settings Card)

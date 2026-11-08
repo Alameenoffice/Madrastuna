@@ -265,7 +265,10 @@ enum class AppSection(private val rawArabicTitle: String) {
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     CURRICULUM_BOOKS("المناهج الدراسية"),
     EXAMS_GRADES("الامتحانات والدرجات"),
+    STUDENT_PERSONAL_PROFILE("ملف الطالب الشخصي"),
     STUDENT_COMPREHENSIVE_ARCHIVE("السجل الأكاديمي والإحصائي الشامل"),
+    TEACHING_STAFF("الكادر التدريسي"),
+    STUDENTS_DIRECTORY("سجل الطلبة"),
     HONOR_ROLL("لوحة الشرف"),
     TEACHER_EVALUATION("تقييم الكادر التدريسي"),
     STUDENT_ACTIVITIES("نشاطات الطلبة"),
@@ -277,6 +280,22 @@ enum class AppSection(private val rawArabicTitle: String) {
 
     val arabicTitle: String
         get() = com.example.util.AppLocalizationEngine.localize(rawArabicTitle)
+}
+
+enum class PersonGender(val key: String, val arabicLabel: String) {
+    MALE("MALE", "ذكر"),
+    FEMALE("FEMALE", "أنثى");
+
+    companion object {
+        fun fromKey(raw: String): PersonGender {
+            val clean = raw.trim()
+            return if (clean.equals("FEMALE", ignoreCase = true) || clean == "أنثى" || clean == "انثى") {
+                FEMALE
+            } else {
+                MALE
+            }
+        }
+    }
 }
 
 enum class StudentEnrollmentStatus(val key: String, private val rawArabicLabel: String) {
@@ -544,8 +563,19 @@ data class UserAccount(
     val photoBase64: String = "",
     val schoolId: String = "",
     val canModerateActivities: Boolean = false,
-    val canManageCanteen: Boolean = false
+    val canManageCanteen: Boolean = false,
+    val gender: String = "MALE", // "MALE" | "FEMALE"
+    val ageYears: Int = 0,
+    val isGenderAgeConfigured: Boolean = true
 ) {
+    val isFemale: Boolean
+        get() = PersonGender.fromKey(gender) == PersonGender.FEMALE
+
+    val genderArabicLabel: String
+        get() = PersonGender.fromKey(gender).arabicLabel
+
+    val effectiveAgeYears: Int
+        get() = if (ageYears > 0) ageYears else if (role == UserRole.STUDENT) 12 else 30
     val teacherSubjectsList: List<String>
         get() = specialty.split("،", ",", "|")
             .map { it.trim() }
@@ -1008,8 +1038,19 @@ data class StudentRecord(
     val enrollmentDecisionDate: String = "",
     val enrollmentOrderNumber: String = "",
     val enrollmentHistory: List<EnrollmentHistoryEntry> = emptyList(),
-    val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList()
+    val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList(),
+    val gender: String = "MALE", // "MALE" | "FEMALE"
+    val ageYears: Int = 12,
+    val registrationDate: String = "2026-10-01"
 ) {
+    val isFemale: Boolean
+        get() = PersonGender.fromKey(gender) == PersonGender.FEMALE
+
+    val genderArabicLabel: String
+        get() = PersonGender.fromKey(gender).arabicLabel
+
+    val effectiveAgeYears: Int
+        get() = if (ageYears in 4..30) ageYears else 12
     val enrollmentStatusEnum: StudentEnrollmentStatus get() = enrollmentStatus
     val suspensionFromDate: String get() = suspensionStartDate
     val suspensionToDate: String get() = suspensionEndDate

@@ -27,6 +27,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -133,8 +134,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             val schoolViewModel: SchoolViewModel = viewModel()
             val isDarkMode by schoolViewModel.isDarkMode.collectAsState()
+            val currentUser by schoolViewModel.currentUser.collectAsState()
+            val allStudents by schoolViewModel.students.collectAsState()
+            val selectedParentChildId by schoolViewModel.selectedParentChildId.collectAsState()
 
-            MyApplicationTheme(darkTheme = isDarkMode) {
+            val isFeminineTheme = remember(currentUser, allStudents, selectedParentChildId) {
+                val user = currentUser
+                when (user?.role) {
+                    UserRole.STUDENT -> {
+                        val stu = allStudents.firstOrNull {
+                            it.id == user.linkedStudentId ||
+                                it.studentUsername.equals(user.username, ignoreCase = true)
+                        }
+                        stu?.isFemale == true || user.isFemale
+                    }
+                    UserRole.TEACHER -> user.isFemale
+                    UserRole.PARENT -> {
+                        val children = schoolViewModel.getChildrenForParent(user)
+                        val activeChild = children.firstOrNull { it.id == selectedParentChildId }
+                            ?: children.firstOrNull { it.id == user.linkedStudentId }
+                            ?: children.firstOrNull()
+                        activeChild?.isFemale == true
+                    }
+                    else -> false
+                }
+            }
+
+            MyApplicationTheme(
+                darkTheme = isDarkMode,
+                isFeminineTheme = isFeminineTheme
+            ) {
                 MadrasatiRootApp(viewModel = schoolViewModel)
             }
         }
@@ -440,107 +469,12 @@ fun MadrasatiRootApp(
             }
         }
 
-        AnimatedVisibility(
-            visible = toastAlert != null,
-            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
-                .zIndex(Float.MAX_VALUE)
-        ) {
-            val alert = toastAlert
-            if (alert != null) {
-                val toastGradient = if (alert.isSuccess) {
-                    listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
-                } else {
-                    listOf(Color(0xFFDC2626), Color(0xFFB91C1C), Color(0xFF7F1D1D))
-                }
-                Surface(
-                    color = Color.Transparent,
-                    shape = RoundedCornerShape(24.dp),
-                    shadowElevation = 14.dp,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.2.dp,
-                        Color.White.copy(alpha = 0.45f)
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .testTag("global_toast_alert_banner")
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Brush.horizontalGradient(toastGradient))
-                            .padding(horizontal = 14.dp, vertical = 11.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.White.copy(alpha = 0.22f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .graphicsLayer {
-                                            scaleX = toastIconScale
-                                            scaleY = toastIconScale
-                                        }
-                                ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                        Icon(
-                                            imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.Error,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = alert.message,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                            }
-                            IconButton(
-                                onClick = { viewModel.dismissToastAlert() },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "إغلاق التنبيه",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Top-most Window Popup Layer so 3D Glassmorphic Toast ALWAYS appears above open Dialogs / Modals
-        val activeToastForPopup = toastAlert
-        if (activeToastForPopup != null) {
-            val popupToastGradient = if (activeToastForPopup.isSuccess) {
-                listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
-            } else {
-                listOf(Color(0xFFDC2626), Color(0xFFB91C1C), Color(0xFF7F1D1D))
-            }
+        // Unified Single-Instance Soft Pastel & Glassmorphic Floating Toast with Swipe-to-Dismiss (Up / Left / Right)
+        val activeToast = toastAlert
+        if (activeToast != null) {
             androidx.compose.ui.window.Popup(
                 alignment = Alignment.TopCenter,
-                offset = androidx.compose.ui.unit.IntOffset(0, 24),
+                offset = androidx.compose.ui.unit.IntOffset(0, 18),
                 properties = androidx.compose.ui.window.PopupProperties(
                     focusable = false,
                     dismissOnBackPress = false,
@@ -548,87 +482,12 @@ fun MadrasatiRootApp(
                     clippingEnabled = false
                 )
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                        .zIndex(Float.MAX_VALUE),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    Surface(
-                        color = Color.Transparent,
-                        shape = RoundedCornerShape(24.dp),
-                        shadowElevation = 18.dp,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.2.dp,
-                            Color.White.copy(alpha = 0.45f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(24.dp))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Brush.horizontalGradient(popupToastGradient))
-                                .padding(horizontal = 14.dp, vertical = 11.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color.White.copy(alpha = 0.22f),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .graphicsLayer {
-                                                scaleX = toastIconScale
-                                                scaleY = toastIconScale
-                                            }
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                            Icon(
-                                                imageVector = if (activeToastForPopup.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.Error,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = activeToastForPopup.message,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(CircleShape)
-                                        .clickable { viewModel.dismissToastAlert() },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "إغلاق التنبيه",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                SoftPastelSwipeableToastBanner(
+                    alert = activeToast,
+                    isDarkMode = isDarkMode,
+                    pulseScale = toastIconScale,
+                    onDismiss = { viewModel.dismissToastAlert() }
+                )
             }
         }
 
@@ -853,6 +712,151 @@ fun MadrasatiRootApp(
     }
 }
 
+@Composable
+fun SoftPastelSwipeableToastBanner(
+    alert: ToastAlertMessage,
+    isDarkMode: Boolean,
+    pulseScale: Float,
+    onDismiss: () -> Unit
+) {
+    var dragOffsetX by remember(alert.id) { mutableStateOf(0f) }
+    var dragOffsetY by remember(alert.id) { mutableStateOf(0f) }
+    val dragDistance = kotlin.math.abs(dragOffsetX) + kotlin.math.abs(dragOffsetY)
+    val computedAlpha = (1f - (dragDistance / 220f)).coerceIn(0.12f, 1f)
+
+    val isWarningOrInfo = !alert.isSuccess && (
+        alert.message.contains("تنبيه") ||
+            alert.message.contains("ملاحظة") ||
+            alert.message.contains("يرجى")
+        )
+
+    val containerBg = when {
+        alert.isSuccess -> if (isDarkMode) Color(0xFF063E2E).copy(alpha = 0.95f) else Color(0xFFECFDF5).copy(alpha = 0.97f)
+        isWarningOrInfo -> if (isDarkMode) Color(0xFF3B1219).copy(alpha = 0.95f) else Color(0xFFFDE8E8).copy(alpha = 0.97f)
+        else -> if (isDarkMode) Color(0xFF3B1219).copy(alpha = 0.95f) else Color(0xFFFDE8E8).copy(alpha = 0.97f)
+    }
+    val borderStrokeColor = when {
+        alert.isSuccess -> if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.55f) else Color(0xFFA7F3D0)
+        else -> if (isDarkMode) Color(0xFFF87171).copy(alpha = 0.55f) else Color(0xFFF8B4B4)
+    }
+    val textAndIndicatorColor = when {
+        alert.isSuccess -> if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+        else -> if (isDarkMode) Color(0xFFFECDD3) else Color(0xFF9B1C1C)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .zIndex(Float.MAX_VALUE),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Surface(
+            color = containerBg,
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 12.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, borderStrokeColor),
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    translationX = dragOffsetX
+                    translationY = dragOffsetY.coerceAtMost(0f)
+                    alpha = computedAlpha
+                }
+                .pointerInput(alert.id) {
+                    detectDragGestures(
+                        onDragEnd = {
+                            if (dragOffsetY < -40f || kotlin.math.abs(dragOffsetX) > 40f) {
+                                onDismiss()
+                            } else {
+                                dragOffsetX = 0f
+                                dragOffsetY = 0f
+                            }
+                        },
+                        onDragCancel = {
+                            dragOffsetX = 0f
+                            dragOffsetY = 0f
+                        },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            dragOffsetX += dragAmount.x
+                            if (dragOffsetY + dragAmount.y <= 14f) {
+                                dragOffsetY += dragAmount.y
+                            }
+                            if (dragOffsetY < -65f || kotlin.math.abs(dragOffsetX) > 95f) {
+                                onDismiss()
+                            }
+                        }
+                    )
+                }
+                .clip(RoundedCornerShape(20.dp))
+                .testTag("global_toast_alert_banner")
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // Geometric Status Indicator (Zero classic icons)
+                    Surface(
+                        shape = CircleShape,
+                        color = textAndIndicatorColor.copy(alpha = 0.14f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, textAndIndicatorColor.copy(alpha = 0.45f)),
+                        modifier = Modifier
+                            .size(28.dp)
+                            .graphicsLayer {
+                                scaleX = pulseScale
+                                scaleY = pulseScale
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Box(
+                                modifier = Modifier
+                                    .size(9.dp)
+                                    .clip(CircleShape)
+                                    .background(textAndIndicatorColor)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = alert.message,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = textAndIndicatorColor
+                    )
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = textAndIndicatorColor.copy(alpha = 0.12f),
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .clickable { onDismiss() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "×",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = textAndIndicatorColor
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthenticatedMainPlatform(
@@ -947,6 +951,13 @@ fun AuthenticatedMainPlatform(
     val allSections = remember(schoolConfig.schoolType, featureSettings, currentUser) {
         buildList {
             add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
+            if (currentUser?.role == UserRole.STUDENT || currentUser?.role == UserRole.PARENT) {
+                add(AppSection.STUDENT_PERSONAL_PROFILE to Icons.Filled.AccountBox)
+            }
+            if (currentUser?.role == UserRole.ADMIN) {
+                add(AppSection.TEACHING_STAFF to Icons.Filled.Badge)
+                add(AppSection.STUDENTS_DIRECTORY to Icons.Filled.Groups)
+            }
             if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
                 add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
             }
@@ -979,13 +990,21 @@ fun AuthenticatedMainPlatform(
         }
     }
 
-    val bottomNavItems = remember(schoolConfig.schoolType, featureSettings) {
+    val bottomNavItems = remember(schoolConfig.schoolType, featureSettings, currentUser) {
         buildList {
             add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
-            add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
+            if (currentUser?.role == UserRole.STUDENT || currentUser?.role == UserRole.PARENT) {
+                add(AppSection.STUDENT_PERSONAL_PROFILE to Icons.Filled.AccountBox)
+            } else if (currentUser?.role == UserRole.ADMIN) {
+                add(AppSection.STUDENTS_DIRECTORY to Icons.Filled.Groups)
+            } else {
+                add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
+            }
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.MenuBook)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
-            if (featureSettings.studentActivitiesEnabled) {
+            if (currentUser?.role == UserRole.ADMIN) {
+                add(AppSection.TEACHING_STAFF to Icons.Filled.Badge)
+            } else if (featureSettings.studentActivitiesEnabled) {
                 add(AppSection.STUDENT_ACTIVITIES to StudentActivitiesLinearVector)
             } else if (featureSettings.honorRollEnabled) {
                 add(AppSection.HONOR_ROLL to Icons.Filled.EmojiEvents)
@@ -1003,6 +1022,13 @@ fun AuthenticatedMainPlatform(
                 val academicGroupSections = remember(currentUser) {
                     buildList {
                         add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
+                        if (currentUser?.role == UserRole.STUDENT || currentUser?.role == UserRole.PARENT) {
+                            add(AppSection.STUDENT_PERSONAL_PROFILE to Icons.Filled.AccountBox)
+                        }
+                        if (currentUser?.role == UserRole.ADMIN) {
+                            add(AppSection.TEACHING_STAFF to Icons.Filled.Badge)
+                            add(AppSection.STUDENTS_DIRECTORY to Icons.Filled.Groups)
+                        }
                         if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
                             add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
                         }
@@ -1334,6 +1360,30 @@ fun AuthenticatedMainPlatform(
                                                 onClick = {
                                                     coroutineScope.launch { drawerState.close() }
                                                     viewModel.openHolidaysManagementModal()
+                                                }
+                                            )
+                                            LuxuryDrawerMenuItem(
+                                                title = AppSection.TEACHING_STAFF.arabicTitle,
+                                                subtitle = "القائمة المدمجة للكادر التدريسي وإدارة المواد ومؤشرات الأداء",
+                                                icon = Icons.Filled.Badge,
+                                                selected = activeSection == AppSection.TEACHING_STAFF,
+                                                isDarkMode = isDarkMode,
+                                                testTag = "drawer_nav_${AppSection.TEACHING_STAFF.name}",
+                                                onClick = {
+                                                    viewModel.navigateToSection(AppSection.TEACHING_STAFF)
+                                                    coroutineScope.launch { drawerState.close() }
+                                                }
+                                            )
+                                            LuxuryDrawerMenuItem(
+                                                title = AppSection.STUDENTS_DIRECTORY.arabicTitle,
+                                                subtitle = "سجل الطلبة الأبجدي وأداة النقل الفوري بين الصفوف والشعب",
+                                                icon = Icons.Filled.Groups,
+                                                selected = activeSection == AppSection.STUDENTS_DIRECTORY,
+                                                isDarkMode = isDarkMode,
+                                                testTag = "drawer_nav_${AppSection.STUDENTS_DIRECTORY.name}",
+                                                onClick = {
+                                                    viewModel.navigateToSection(AppSection.STUDENTS_DIRECTORY)
+                                                    coroutineScope.launch { drawerState.close() }
                                                 }
                                             )
                                             LuxuryDrawerMenuItem(
@@ -1742,6 +1792,8 @@ fun AuthenticatedMainPlatform(
                         items(allSections, key = { it.first.name }) { (section, icon) ->
                             val selected = activeSection == section
                             val pillIcon = if (section == AppSection.DASHBOARD) Icons.Filled.GridView else icon
+                            val activePrimary = MaterialTheme.colorScheme.primary
+                            val activeSecondary = MaterialTheme.colorScheme.secondary
                             val pillContentColor = when {
                                 selected -> Color.White
                                 isDarkMode -> Color(0xFFE2E8F0)
@@ -1753,7 +1805,7 @@ fun AuthenticatedMainPlatform(
                                 border = androidx.compose.foundation.BorderStroke(
                                     1.dp,
                                     when {
-                                        selected -> Color(0xFF10B981)
+                                        selected -> activePrimary
                                         isDarkMode -> Color(0xFF334155)
                                         else -> Color(0xFFE2E8F0)
                                     }
@@ -1770,7 +1822,7 @@ fun AuthenticatedMainPlatform(
                                             if (selected) {
                                                 Modifier.background(
                                                     Brush.horizontalGradient(
-                                                        listOf(Color(0xFF059669), Color(0xFF047857))
+                                                        listOf(activePrimary, activeSecondary)
                                                     )
                                                 )
                                             } else {
@@ -1803,14 +1855,15 @@ fun AuthenticatedMainPlatform(
                 }
             },
             bottomBar = {
-                // 3D Rounded White Bottom Navigation Bar with Graphical Icons, vertical dividers & glowing mint active indicator
+                // 3D Rounded White Bottom Navigation Bar with Graphical Icons, vertical dividers & adaptive active indicator
+                val activePrimary = MaterialTheme.colorScheme.primary
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(
                             elevation = 16.dp,
                             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                            ambientColor = Color(0xFF059669).copy(alpha = 0.22f),
+                            ambientColor = activePrimary.copy(alpha = 0.22f),
                             spotColor = Color(0xFF0F3D5E).copy(alpha = 0.25f)
                         ),
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -1831,12 +1884,12 @@ fun AuthenticatedMainPlatform(
                         bottomNavItems.forEachIndexed { index, (section, icon) ->
                             val selected = activeSection == section
                             val activeBg = if (isDarkMode) {
-                                Color(0xFF059669).copy(alpha = 0.25f)
+                                activePrimary.copy(alpha = 0.25f)
                             } else {
-                                Color(0xFFD1FAE5)
+                                MaterialTheme.colorScheme.primaryContainer
                             }
                             val textTint = when {
-                                selected -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
+                                selected -> activePrimary
                                 isDarkMode -> Color(0xFFCBD5E1)
                                 else -> Color(0xFF1E293B)
                             }
@@ -1873,14 +1926,13 @@ fun AuthenticatedMainPlatform(
                                         softWrap = false,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    // Bottom thick emerald indicator bar on active tab
                                     Box(
                                         modifier = Modifier
                                             .width(28.dp)
                                             .height(3.dp)
                                             .clip(RoundedCornerShape(50))
                                             .background(
-                                                if (selected) Color(0xFF059669) else Color.Transparent
+                                                if (selected) activePrimary else Color.Transparent
                                             )
                                     )
                                 }
@@ -1939,72 +1991,118 @@ fun AuthenticatedMainPlatform(
                     )
                 }
 
-                // Instant Alert Banner when a new notification arrives
+                // Instant Alert Banner when a new notification arrives (Soft Pastel + Swipe-to-Dismiss)
                 AnimatedVisibility(visible = latestBannerAlert != null) {
                     val alert = latestBannerAlert
                     if (alert != null) {
                         val cleanAlertTitle = com.example.util.InputSanitizer.stripEmojis(alert.title)
                         val cleanAlertBody = com.example.util.InputSanitizer.stripEmojis(alert.body)
-                        val isSecretSuggestion = cleanAlertTitle.contains("صندوق المقترحات") || cleanAlertTitle.contains("سرية")
+                        var bannerDragX by remember(alert.id) { mutableStateOf(0f) }
+                        var bannerDragY by remember(alert.id) { mutableStateOf(0f) }
+                        val bannerAlpha = (1f - (kotlin.math.abs(bannerDragX) + kotlin.math.abs(bannerDragY)) / 240f).coerceIn(0.15f, 1f)
+
                         Surface(
-                            color = MaterialTheme.colorScheme.primary,
+                            color = if (isDarkMode) Color(0xFF063E2E).copy(alpha = 0.94f) else Color(0xFFECFDF5).copy(alpha = 0.96f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.45f) else Color(0xFFA7F3D0)
+                            ),
+                            shadowElevation = 6.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .graphicsLayer {
+                                    translationX = bannerDragX
+                                    translationY = bannerDragY.coerceAtMost(0f)
+                                    alpha = bannerAlpha
+                                }
+                                .pointerInput(alert.id) {
+                                    detectDragGestures(
+                                        onDragEnd = {
+                                            if (bannerDragY < -40f || kotlin.math.abs(bannerDragX) > 40f) {
+                                                viewModel.dismissBannerAlert()
+                                            } else {
+                                                bannerDragX = 0f
+                                                bannerDragY = 0f
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            bannerDragX = 0f
+                                            bannerDragY = 0f
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            bannerDragX += dragAmount.x
+                                            if (bannerDragY + dragAmount.y <= 12f) {
+                                                bannerDragY += dragAmount.y
+                                            }
+                                            if (bannerDragY < -65f || kotlin.math.abs(bannerDragX) > 95f) {
+                                                viewModel.dismissBannerAlert()
+                                            }
+                                        }
+                                    )
+                                }
                                 .clickable {
                                     viewModel.dismissBannerAlert()
                                     viewModel.openNotificationDeepLink(alert)
                                 },
-                            shape = RoundedCornerShape(14.dp)
+                            shape = RoundedCornerShape(16.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(
-                                        imageVector = if (isSecretSuggestion) Icons.Filled.Lock else Icons.Filled.NotificationsActive,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669))
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
                                             text = cleanAlertTitle,
                                             style = MaterialTheme.typography.labelLarge,
-                                            color = Color.White
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
                                         )
                                         Text(
                                             text = cleanAlertBody,
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = Color.White.copy(alpha = 0.9f),
+                                            color = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF047857),
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
-                                IconButton(
-                                    onClick = { viewModel.dismissBannerAlert() },
-                                    modifier = Modifier.size(28.dp)
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFD1FAE5),
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .clip(CircleShape)
+                                        .clickable { viewModel.dismissBannerAlert() }
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "إغلاق",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "×",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // Active Section Screen Content with smooth Lottie-style fade + vertical slide transition
+                // Active Section Screen Content with smooth fade + vertical slide transition
                 Box(modifier = Modifier.weight(1f)) {
                     AnimatedContent(
                         targetState = activeSection,
@@ -2023,6 +2121,9 @@ fun AuthenticatedMainPlatform(
                                     viewModel.markAllNotificationsRead()
                                 }
                             )
+                            AppSection.STUDENT_PERSONAL_PROFILE -> DedicatedStudentPersonalProfileScreen(viewModel = viewModel)
+                            AppSection.TEACHING_STAFF -> TeachingStaffManagementScreen(viewModel = viewModel)
+                            AppSection.STUDENTS_DIRECTORY -> StudentsDirectoryAndTransferScreen(viewModel = viewModel)
                             AppSection.LIVE_OPERATIONS_RADAR -> LiveOperationsRadarScreen(viewModel = viewModel)
                             AppSection.ATTENDANCE -> DailyAttendanceScreen(viewModel = viewModel)
                             AppSection.STUDENT_COMPREHENSIVE_ARCHIVE -> StudentComprehensiveArchiveScreen(viewModel = viewModel)
@@ -2043,6 +2144,28 @@ fun AuthenticatedMainPlatform(
             }
         }
         }
+    }
+
+    // First-time Gender & Age Onboarding Dialog for Student or Teacher accounts
+    val activeUserForGenderOnboarding = currentUser
+    var genderOnboardingDismissedInSession by remember(activeUserForGenderOnboarding?.id) {
+        mutableStateOf(false)
+    }
+    if (activeUserForGenderOnboarding != null &&
+        (activeUserForGenderOnboarding.role == UserRole.STUDENT || activeUserForGenderOnboarding.role == UserRole.TEACHER) &&
+        !activeUserForGenderOnboarding.isGenderAgeConfigured &&
+        !genderOnboardingDismissedInSession
+    ) {
+        FirstTimeGenderAgeOnboardingDialog(
+            user = activeUserForGenderOnboarding,
+            onSave = { chosenGender, chosenAge ->
+                viewModel.updateCurrentUserGenderAndAge(chosenGender, chosenAge)
+                genderOnboardingDismissedInSession = true
+            },
+            onDismiss = {
+                genderOnboardingDismissedInSession = true
+            }
+        )
     }
 
     // Indexed Electronic Leave Requests Modal Dialog (launched from Side Drawer or Dashboard)
