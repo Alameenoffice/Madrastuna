@@ -16,6 +16,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -72,6 +73,7 @@ import com.example.util.DocumentAndIdExporter
 import com.example.util.ExternalIntents
 import com.example.util.ImageCompressor
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.sin
@@ -1966,16 +1968,6 @@ fun InlineDialogToastBanner(
             runCatching { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
         }
     }
-    val infiniteTransition = rememberInfiniteTransition(label = "inline_toast_pulse")
-    val iconScale by infiniteTransition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.12f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 750, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "inline_toast_icon_scale"
-    )
 
     androidx.compose.animation.AnimatedVisibility(
         visible = toastAlert != null,
@@ -1983,68 +1975,88 @@ fun InlineDialogToastBanner(
         exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
     ) {
         val alert = toastAlert ?: return@AnimatedVisibility
-        val gradientColors = if (alert.isSuccess) {
-            listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
-        } else {
-            listOf(Color(0xFFDC2626), Color(0xFFB91C1C), Color(0xFF7F1D1D))
-        }
+        val bgColor = if (alert.isSuccess) Color(0xFFECFDF5) else Color(0xFFFDE8E8)
+        val borderColor = if (alert.isSuccess) Color(0xFFA7F3D0) else Color(0xFFF8B4B4)
+        val contentColor = if (alert.isSuccess) Color(0xFF065F46) else Color(0xFF9B1C1C)
+
+        var dragOffsetX by remember(alert.id) { mutableFloatStateOf(0f) }
+        var dragOffsetY by remember(alert.id) { mutableFloatStateOf(0f) }
+
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp)
-                .shadow(
-                    elevation = 10.dp,
-                    shape = RoundedCornerShape(20.dp),
-                    ambientColor = gradientColors.first().copy(alpha = 0.35f),
-                    spotColor = gradientColors.first().copy(alpha = 0.40f)
-                )
-                .clip(RoundedCornerShape(20.dp))
-                .clickable { onDismiss() },
-            shape = RoundedCornerShape(20.dp),
-            color = Color.Transparent,
-            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Brush.horizontalGradient(gradientColors))
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.22f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .size(30.dp)
-                            .graphicsLayer {
-                                scaleX = iconScale
-                                scaleY = iconScale
+                .graphicsLayer {
+                    translationX = dragOffsetX
+                    translationY = dragOffsetY.coerceAtMost(0f)
+                    alpha = (1f - (abs(dragOffsetX) / 500f) - (abs(dragOffsetY.coerceAtMost(0f)) / 220f)).coerceIn(0.2f, 1f)
+                }
+                .pointerInput(alert.id) {
+                    detectDragGestures(
+                        onDragEnd = {
+                            if (dragOffsetY < -35f || abs(dragOffsetX) > 90f) {
+                                onDismiss()
+                            } else {
+                                dragOffsetX = 0f
+                                dragOffsetY = 0f
                             }
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Icon(
-                                imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
-                                contentDescription = "إشعار الإجراء",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
+                        },
+                        onDragCancel = {
+                            dragOffsetX = 0f
+                            dragOffsetY = 0f
+                        },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            dragOffsetX += dragAmount.x
+                            dragOffsetY = (dragOffsetY + dragAmount.y).coerceAtMost(16f)
+                            if (dragOffsetY < -75f || abs(dragOffsetX) > 190f) {
+                                onDismiss()
+                            }
                         }
-                    }
-                    Text(
-                        text = alert.message,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
                     )
                 }
+                .shadow(
+                    elevation = 4.dp,
+                    shape = RoundedCornerShape(16.dp),
+                    ambientColor = borderColor.copy(alpha = 0.25f),
+                    spotColor = borderColor.copy(alpha = 0.30f)
+                )
+                .clip(RoundedCornerShape(16.dp))
+                .clickable { onDismiss() },
+            shape = RoundedCornerShape(16.dp),
+            color = bgColor,
+            border = BorderStroke(1.dp, borderColor)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = borderColor.copy(alpha = 0.45f),
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                            contentDescription = "إشعار الإجراء",
+                            tint = contentColor,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = alert.message,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = contentColor,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

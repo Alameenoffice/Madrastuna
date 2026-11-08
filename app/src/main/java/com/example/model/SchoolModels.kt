@@ -265,6 +265,7 @@ enum class AppSection(private val rawArabicTitle: String) {
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     CURRICULUM_BOOKS("المناهج الدراسية"),
     EXAMS_GRADES("الامتحانات والدرجات"),
+    STUDENT_PERSONAL_PROFILE("ملف الطالب الشخصي"),
     STUDENT_COMPREHENSIVE_ARCHIVE("السجل الأكاديمي والإحصائي الشامل"),
     HONOR_ROLL("لوحة الشرف"),
     TEACHER_EVALUATION("تقييم الكادر التدريسي"),
@@ -272,6 +273,8 @@ enum class AppSection(private val rawArabicTitle: String) {
     TUITION_FEES("الأقساط الدراسية"),
     REPORTS_CHAT("البلاغات والتواصل"),
     EVENTS_NEWS("الفعاليات والأخبار"),
+    TEACHING_STAFF("الكادر التدريسي"),
+    STUDENTS_DIRECTORY("سجل وأسماء الطلاب"),
     ADMIN_ACCOUNTS("إدارة الحسابات"),
     SETTINGS("الإعدادات");
 
@@ -544,8 +547,18 @@ data class UserAccount(
     val photoBase64: String = "",
     val schoolId: String = "",
     val canModerateActivities: Boolean = false,
-    val canManageCanteen: Boolean = false
+    val canManageCanteen: Boolean = false,
+    val gender: String = "ذكر",
+    val ageYears: Int = 0
 ) {
+    val isFemale: Boolean
+        get() {
+            val g = gender.trim()
+            return g == "أنثى" || g == "انثى" || g.equals("FEMALE", ignoreCase = true) || g.contains("بنات") || g.contains("طالبة") || g.contains("معلمة") || g.contains("أستاذة")
+        }
+
+    val normalizedGenderLabel: String
+        get() = if (isFemale) "أنثى" else "ذكر"
     val teacherSubjectsList: List<String>
         get() = specialty.split("،", ",", "|")
             .map { it.trim() }
@@ -1008,8 +1021,23 @@ data class StudentRecord(
     val enrollmentDecisionDate: String = "",
     val enrollmentOrderNumber: String = "",
     val enrollmentHistory: List<EnrollmentHistoryEntry> = emptyList(),
-    val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList()
+    val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList(),
+    val gender: String = "ذكر",
+    val ageYears: Int = 0,
+    val presentDays: Int = 0
 ) {
+    val isFemale: Boolean
+        get() {
+            val g = gender.trim()
+            return g == "أنثى" || g == "انثى" || g.equals("FEMALE", ignoreCase = true) || g.contains("بنات") || g.contains("طالبة")
+        }
+
+    val normalizedGenderLabel: String
+        get() = if (isFemale) "أنثى" else "ذكر"
+
+    val realPresentDaysCount: Int
+        get() = dailyAttendance.values.count { it.equals("PRESENT", ignoreCase = true) }
+
     val enrollmentStatusEnum: StudentEnrollmentStatus get() = enrollmentStatus
     val suspensionFromDate: String get() = suspensionStartDate
     val suspensionToDate: String get() = suspensionEndDate
@@ -1017,6 +1045,7 @@ data class StudentRecord(
     val transferSchoolName: String get() = transferredToSchoolName
     val dailyGateLogs: Map<String, DailyGateLogEntry> get() = dailyGateLog
     val walletBalanceIqd: Int get() = walletBalance
+    val dailySpendLimitIqd: Int get() = dailySpendLimit
     val overallAverage: String get() = "$excellencePoints%"
 
     val qrCodeValue: String
@@ -1668,6 +1697,17 @@ data class StudentAutoBadge(
     val title: String,
     val subtitle: String,
     val isGoldAttendance: Boolean
+) {
+    val arabicTitle: String get() = title
+}
+
+data class TeacherRealPerformanceMetrics(
+    val supervisedStudentsCount: Int = 0,
+    val commitmentRatePercent: Int = 0,
+    val interactiveActivityPercent: Int = 0,
+    val recordedAttendanceActionsCount: Int = 0,
+    val publishedHomeworksCount: Int = 0,
+    val gradedStudentsCount: Int = 0
 )
 
 object DateCountdownHelper {
@@ -1842,7 +1882,10 @@ data class DailyBehaviorLogItem(
     val teacherName: String,
     val date: String,
     val schoolId: String = ""
-)
+) {
+    val participationLevel: DailyBehaviorType get() = behaviorType
+    val behaviorNote: String get() = note
+}
 
 /**
  * 7.b Photo Homework Submission & Auto-Graded Quick Quizzes (تسليم الواجبات المصور والاختبارات السريعة)

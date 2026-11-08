@@ -1,475 +1,86 @@
 package com.example.ui.screens
 
 import android.annotation.SuppressLint
-import android.app.DownloadManager
-import android.content.ContentUris
-import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
-import android.database.ContentObserver
 import android.graphics.Bitmap
-import android.graphics.pdf.PdfRenderer
-import android.net.Uri
-import android.os.Build
 import android.os.Environment
-import android.os.Handler
-import android.os.Looper
-import android.os.ParcelFileDescriptor
-import android.provider.MediaStore
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.model.*
-import com.example.ui.components.ThreeDHeroHeaderCard
-import com.example.ui.components.ThreeDIllustrationType
+import com.example.model.ArabicTextNormalizer
+import com.example.model.SchoolStage
+import com.example.model.UserRole
 import com.example.ui.theme.DeepEmerald
-import com.example.ui.theme.GoldAccent
 import com.example.viewmodel.SchoolViewModel
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.util.Locale
 
-private const val MIN_VALID_BOOK_BYTES = 50_000L // 50 KB minimum
+private const val MIN_VALID_BOOK_BYTES = 50_000L
 
-/**
- * تنظيف وتوحيد رابط الكتاب:
- * يحول أي بادئة `http://` أو `Https://` إلى `https://`
- */
 private fun normalizeCurriculumPdfUrl(rawUrl: String): String {
     return rawUrl
         .trim()
         .replaceFirst("^http://".toRegex(RegexOption.IGNORE_CASE), "https://")
         .replaceFirst("^Https://".toRegex(), "https://")
-}
-
-/**
- * التحقق من البصمة السحرية لملف الـ PDF (`%PDF` -> `0x25, 0x50, 0x44, 0x46`)
- * وحجم الملف أكبر من 50 KB.
- */
-private fun hasPdfMagicSignature(file: File): Boolean {
-    if (!file.exists() || file.length() <= MIN_VALID_BOOK_BYTES) return false
-    return runCatching {
-        FileInputStream(file).use { fis ->
-            val header = ByteArray(1024)
-            val read = fis.read(header)
-            if (read < 4) return@use false
-            for (i in 0..(read - 4)) {
-                if (header[i] == 0x25.toByte() &&
-                    header[i + 1] == 0x50.toByte() &&
-                    header[i + 2] == 0x44.toByte() &&
-                    header[i + 3] == 0x46.toByte()
-                ) {
-                    return@use true
-                }
-            }
-            false
-        }
-    }.getOrDefault(false)
-}
-
-private fun isValidDownloadedCurriculumPdf(file: File): Boolean {
-    return file.exists() && file.length() > MIN_VALID_BOOK_BYTES && hasPdfMagicSignature(file)
-}
-
-/**
- * يستورد ملف PDF تم اختياره عبر منتقي الملفات (`OpenDocument`) ويحفظه داخل مجلد التطبيق الداخلي للأبد:
- * `File(context.filesDir, "books/book_${book.id}.pdf")`
- */
-private suspend fun importPdfUriToInternalBookStorage(
-    context: Context,
-    sourceUri: Uri,
-    book: CurriculumBookItem
-): File? = withContext(Dispatchers.IO) {
-    val destFile = IraqiCurriculumCatalog.getInternalBookFile(context, book.id)
-    val tempFile = File(destFile.parentFile, "temp_import_${book.id}.pdf")
-    runCatching {
-        if (tempFile.exists()) tempFile.delete()
-        context.contentResolver.openInputStream(sourceUri)?.use { input ->
-            FileOutputStream(tempFile).use { output ->
-                input.copyTo(output, bufferSize = 32 * 1024)
-                output.flush()
-            }
-        } ?: return@withContext null
-
-        if (isValidDownloadedCurriculumPdf(tempFile)) {
-            if (destFile.exists()) destFile.delete()
-            val moved = tempFile.renameTo(destFile)
-            if (!moved) {
-                tempFile.copyTo(destFile, overwrite = true)
-                tempFile.delete()
-            }
-            destFile
-        } else {
-            if (tempFile.exists()) tempFile.delete()
-            null
-        }
-    }.getOrNull()
-}
-
-/**
- * يقوم بجدولة تنزيل مباشر للكتاب داخل التطبيق عبر `android.app.DownloadManager`
- * مع تمرير كوكيز الجلسة الشرعية (`Cookie`) و (`User-Agent`) المستخلصة من `WebView` المدمج،
- * وحفظه مباشرة في: `setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "book_${bookId}.pdf")`.
- */
-private fun enqueueDirectBookDownloadWithSessionCookies(
-    context: Context,
-    book: CurriculumBookItem,
-    downloadUrl: String,
-    cookies: String?,
-    userAgent: String?
-): Long? {
-    return runCatching {
-        val cleanUrl = normalizeCurriculumPdfUrl(downloadUrl.ifBlank { book.normalizedPdfUrl })
-        val appDownloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        if (appDownloadsDir != null) {
-            val targetFile = File(appDownloadsDir, "book_${book.id}.pdf")
-            if (targetFile.exists() && !isValidDownloadedCurriculumPdf(targetFile)) {
-                targetFile.delete()
-            }
-        }
-
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-            ?: return@runCatching null
-
-        val effectiveUa = userAgent?.takeIf { it.isNotBlank() }
-            ?: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-
-        val request = DownloadManager.Request(Uri.parse(cleanUrl)).apply {
-            addRequestHeader("User-Agent", effectiveUa)
-            addRequestHeader("Referer", "https://manahj.edu.iq/")
-            addRequestHeader("Accept", "application/pdf,application/octet-stream,*/*;q=0.8")
-            if (!cookies.isNullOrBlank()) {
-                addRequestHeader("Cookie", cookies)
-            }
-            setTitle("كتاب ${book.subjectTitle} - ${book.gradeClass}")
-            setDescription("جاري تنزيل الكتاب المنهجي لفتحه تلقائياً داخل التطبيق")
-            setMimeType("application/pdf")
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            setAllowedOverMetered(true)
-            setAllowedOverRoaming(true)
-            setDestinationInExternalFilesDir(
-                context,
-                Environment.DIRECTORY_DOWNLOADS,
-                "book_${book.id}.pdf"
-            )
-        }
-        dm.enqueue(request)
-    }.getOrNull()
-}
-
-/**
- * دالة الفحص والبحث التلقائي الذكي في الهاتف (`autoFindAndImportBookPdf`):
- * تبحث عن ملف الكتاب تلقائياً في:
- * 1. مجلد التطبيق الداخلي (`File(context.filesDir, "books/book_${bookId}.pdf")`) ومجلد `getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)`.
- * 2. مجلد تنزيلات الهاتف العام `Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)`
- *    للبحث عن أي ملف PDF يطابق رقم الكتاب في الرابط (مثل `1881.pdf` أو `1881 (1).pdf`) أو أحدث ملف PDF تم تنزيله للتو.
- * 3. استعلام `MediaStore.Downloads` (`contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ...)`)
- *    للبحث عن أحدث ملف PDF في التنزيلات ونسخه بصمت عبر `contentResolver.openInputStream(uri)` إلى مجلد التطبيق الداخلي!
- */
-private suspend fun autoFindAndImportBookPdf(
-    context: Context,
-    book: CurriculumBookItem,
-    acceptRecentPdfSinceMs: Long = 0L
-): File? = withContext(Dispatchers.IO) {
-    val internalFile = IraqiCurriculumCatalog.getInternalBookFile(context, book.id)
-
-    // 1. فحص مجلد التطبيق الداخلي أولاً: File(context.filesDir, "books/book_${bookId}.pdf")
-    if (isValidDownloadedCurriculumPdf(internalFile)) {
-        return@withContext internalFile
-    }
-
-    // 1-ب. فحص مسار DownloadManager المدمج داخل التطبيق: getExternalFilesDir(DIRECTORY_DOWNLOADS)/book_${book.id}.pdf
-    runCatching {
-        val appExtDownloads = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        if (appExtDownloads != null) {
-            val dmFile = File(appExtDownloads, "book_${book.id}.pdf")
-            if (isValidDownloadedCurriculumPdf(dmFile)) {
-                dmFile.copyTo(internalFile, overwrite = true)
-                if (isValidDownloadedCurriculumPdf(internalFile)) {
-                    return@withContext internalFile
-                }
-                return@withContext dmFile
-            }
-        }
-    }
-
-    // فحص المسار المحلي الرديف داخل التطبيق في حال كان محفوظاً من جلسة سابقة
-    val legacyAppExternalFile = IraqiCurriculumCatalog.getLegacyExternalBookFile(context, book.id)
-    if (isValidDownloadedCurriculumPdf(legacyAppExternalFile)) {
-        runCatching {
-            legacyAppExternalFile.copyTo(internalFile, overwrite = true)
-        }
-        return@withContext if (isValidDownloadedCurriculumPdf(internalFile)) internalFile else legacyAppExternalFile
-    }
-
-    val fileNum = book.remoteFileNumber // e.g., "1881"
-    val exactFileName = book.remoteFileName.lowercase(Locale.ROOT) // e.g., "1881.pdf"
-    val cleanSubject = book.subjectTitle.trim()
-
-    fun matchesBookFileName(candidateName: String): Boolean {
-        val lower = candidateName.trim().lowercase(Locale.ROOT)
-        if (!lower.endsWith(".pdf")) return false
-        val baseName = lower.removeSuffix(".pdf").trim()
-        if (fileNum.isNotBlank()) {
-            // يطابق 1881.pdf أو 1881 (1).pdf أو 1881 (2).pdf أو 1881-1.pdf أو 1881_1.pdf أو يبدأ برقم الكتاب
-            if (lower == exactFileName) return true
-            if (baseName == fileNum) return true
-            if (baseName.startsWith("$fileNum ") ||
-                baseName.startsWith("$fileNum(") ||
-                baseName.startsWith("${fileNum}_") ||
-                baseName.startsWith("$fileNum-") ||
-                baseName.contains(fileNum)
-            ) {
-                return true
-            }
-        }
-        if (cleanSubject.length >= 4 && candidateName.contains(cleanSubject)) {
-            return true
-        }
-        return false
-    }
-
-    // 2. فحص مجلد تنزيلات الهاتف العام المباشر Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-    runCatching {
-        @Suppress("DEPRECATION")
-        val publicDownloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (publicDownloadsDir != null && publicDownloadsDir.exists() && publicDownloadsDir.isDirectory) {
-            val allValidPdfs = publicDownloadsDir
-                .listFiles()
-                ?.filter { file ->
-                    file.isFile &&
-                        file.name.lowercase(Locale.ROOT).endsWith(".pdf") &&
-                        file.length() > MIN_VALID_BOOK_BYTES &&
-                        hasPdfMagicSignature(file)
-                }
-                .orEmpty()
-
-            val matchedFile = allValidPdfs
-                .filter { file -> matchesBookFileName(file.name) }
-                .maxByOrNull { it.lastModified() }
-                ?: if (acceptRecentPdfSinceMs > 0L) {
-                    // يلتقط أحدث ملف PDF نزل في مجلد Downloads خلال جلسة التنزيل الحالية
-                    allValidPdfs
-                        .filter { file -> file.lastModified() >= (acceptRecentPdfSinceMs - 20_000L) }
-                        .maxByOrNull { it.lastModified() }
-                } else {
-                    null
-                }
-
-            if (matchedFile != null) {
-                val tempCopy = File(internalFile.parentFile, "scan_copy_${book.id}.pdf")
-                if (tempCopy.exists()) tempCopy.delete()
-                matchedFile.copyTo(tempCopy, overwrite = true)
-                if (isValidDownloadedCurriculumPdf(tempCopy)) {
-                    if (internalFile.exists()) internalFile.delete()
-                    if (!tempCopy.renameTo(internalFile)) {
-                        tempCopy.copyTo(internalFile, overwrite = true)
-                        tempCopy.delete()
-                    }
-                    return@withContext internalFile
-                } else {
-                    tempCopy.delete()
-                }
-            }
-        }
-    }
-
-    // 3. استعلام MediaStore.Downloads للبحث عن أحدث ملف PDF في التنزيلات
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        runCatching {
-            val resolver = context.contentResolver
-            val projection = arrayOf(
-                MediaStore.Downloads._ID,
-                MediaStore.Downloads.DISPLAY_NAME,
-                MediaStore.Downloads.SIZE,
-                MediaStore.Downloads.DATE_MODIFIED
-            )
-            val selection = "${MediaStore.Downloads.SIZE} > ?"
-            val selectionArgs = arrayOf(MIN_VALID_BOOK_BYTES.toString())
-            val sortOrder = "${MediaStore.Downloads.DATE_MODIFIED} DESC"
-
-            resolver.query(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                projection,
-                selection,
-                selectionArgs,
-                sortOrder
-            )?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
-                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
-                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_MODIFIED)
-                var recentFallbackId: Long? = null
-
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idCol)
-                    val displayName = cursor.getString(nameCol).orEmpty()
-                    val dateModifiedMs = cursor.getLong(dateCol) * 1000L
-                    val isPdfName = displayName.lowercase(Locale.ROOT).endsWith(".pdf")
-
-                    if (matchesBookFileName(displayName) || (fileNum.isNotBlank() && displayName.startsWith(fileNum))) {
-                        val contentUri = ContentUris.withAppendedId(
-                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                            id
-                        )
-                        val imported = importPdfUriToInternalBookStorage(context, contentUri, book)
-                        if (imported != null && isValidDownloadedCurriculumPdf(imported)) {
-                            return@withContext imported
-                        }
-                    } else if (acceptRecentPdfSinceMs > 0L && isPdfName && recentFallbackId == null &&
-                        dateModifiedMs >= (acceptRecentPdfSinceMs - 25_000L)
-                    ) {
-                        recentFallbackId = id
-                    }
-                }
-
-                if (recentFallbackId != null) {
-                    val contentUri = ContentUris.withAppendedId(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                        recentFallbackId
-                    )
-                    val imported = importPdfUriToInternalBookStorage(context, contentUri, book)
-                    if (imported != null && isValidDownloadedCurriculumPdf(imported)) {
-                        return@withContext imported
-                    }
-                }
-            }
-        }
-    }
-
-    null
-}
-
-/**
- * فتح رابط الكتاب مباشرة في متصفح الهاتف الرسمي لتنزيله بسرعة وسهولة.
- */
-private fun launchBrowserForBookDownload(
-    context: Context,
-    book: CurriculumBookItem,
-    onError: (String) -> Unit
-) {
-    runCatching {
-        val cleanUrl = book.normalizedPdfUrl
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
-    }.onFailure {
-        onError("تعذر فتح المتصفح على هذا الجهاز")
-    }
-}
-
-/**
- * حفظ نسخة من ملف الكتاب الموجود داخل التطبيق إلى مجلد التنزيلات العام في الهاتف.
- */
-private suspend fun saveBookFileToPublicDownloads(
-    context: Context,
-    sourceFile: File,
-    book: CurriculumBookItem
-): Boolean = withContext(Dispatchers.IO) {
-    if (!isValidDownloadedCurriculumPdf(sourceFile)) return@withContext false
-    val safeSubject = book.subjectTitle
-        .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-        .replace(" ", "_")
-    val safeGrade = book.gradeClass
-        .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-        .replace(" ", "_")
-    val fileName = "كتاب_${safeSubject}_${safeGrade}_${book.remoteFileNumber}.pdf"
-
-    runCatching {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val resolver = context.contentResolver
-            val contentValues = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-                ?: return@runCatching false
-            resolver.openOutputStream(uri)?.use { outStream ->
-                FileInputStream(sourceFile).use { inStream ->
-                    inStream.copyTo(outStream, bufferSize = 16 * 1024)
-                    outStream.flush()
-                }
-            } ?: return@runCatching false
-
-            val completeValues = ContentValues().apply {
-                put(MediaStore.Downloads.IS_PENDING, 0)
-            }
-            resolver.update(uri, completeValues, null, null)
-            true
-        } else {
-            @Suppress("DEPRECATION")
-            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!downloadsDir.exists()) {
-                downloadsDir.mkdirs()
-            }
-            val destFile = File(downloadsDir, fileName)
-            FileInputStream(sourceFile).use { inStream ->
-                FileOutputStream(destFile).use { outStream ->
-                    inStream.copyTo(outStream, bufferSize = 16 * 1024)
-                    outStream.flush()
-                }
-            }
-            true
-        }
-    }.getOrDefault(false)
 }
 
 enum class CurriculumStageTab(
@@ -513,105 +124,95 @@ enum class CurriculumStageTab(
 }
 
 data class CurriculumBookItem(
-    val id: String,
-    val subjectTitle: String,
-    val stage: CurriculumStageTab,
-    val gradeClass: String,
-    val pdfUrl: String
+    val id: String = "",
+    val subjectTitle: String = "",
+    val stage: CurriculumStageTab = CurriculumStageTab.PRIMARY,
+    val gradeClass: String = "الأول الابتدائي",
+    val pdfUrl: String = ""
 ) {
     val normalizedPdfUrl: String
         get() = normalizeCurriculumPdfUrl(pdfUrl)
 
-    /**
-     * اسم ملف الكتاب الأصلي في نهاية الرابط (مثال: `1881.pdf`)
-     */
     val remoteFileName: String
         get() = normalizedPdfUrl.substringAfterLast("/").substringBefore("?").trim()
 
-    /**
-     * رقم ملف الكتاب الأصلي في الرابط (مثال: `1881`)
-     */
     val remoteFileNumber: String
         get() = remoteFileName.substringBeforeLast(".").trim()
 }
 
 /**
- * الفهرس النصي الرسمي الكامل لروابط المناهج العراقية.
+ * الفهرس الرسمي المعتمد لروابط المناهج الدراسية العراقية (56 كتاباً منهجياً رسمياً بصيغة /preview).
  */
 object IraqiCurriculumCatalog {
 
     val allBooks: List<CurriculumBookItem> = listOf(
-        // =========================================================================
-        // المرحلة الابتدائية (56 كتاباً منهجياً رسمياً)
-        // =========================================================================
+        // 1. الأول الابتدائي (9 كتب)
+        CurriculumBookItem("pri_1_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1nVM1dhoZJJ2kwYwMLRMlFfo3a70rOKrD/preview"),
+        CurriculumBookItem("pri_1_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1zM3D1AUpzxzhiytq3vVmyYOnSGJqM4lP/preview"),
+        CurriculumBookItem("pri_1_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1AXlhEx5zeA2PUfiDsxJGQXaksFyQiVsc/preview"),
+        CurriculumBookItem("pri_1_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1-FLrmZmDfOLoxh47eYCPnWCK1f4CcDR3/preview"),
+        CurriculumBookItem("pri_1_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1w0_8y7osEzGCST5Kj_b8HtL9gRnHqBcu/preview"),
+        CurriculumBookItem("pri_1_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1e1TGmQX5RVQgyEeb7gHslt328UEpwJFX/preview"),
+        CurriculumBookItem("pri_1_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1ohJZlWvvnZ-d_fQSVL7iTjdEY5EeaQU6/preview"),
+        CurriculumBookItem("pri_1_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1SSmMfZYvWCkEDfk-lfCWT3ni4LbrZl-a/preview"),
+        CurriculumBookItem("pri_1_ethics", "كتاب الاخلاقية", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1ugtWInqi8S-reTElSAd5r2AXmFUoEQQ2/preview"),
 
-        // 1. الصف الأول الابتدائي (9 كتب)
-        CurriculumBookItem("pri_1_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1nVM1dhoZJJ2kwYwMLRMlFfo3a70rOKrD/view?usp=sharing"),
-        CurriculumBookItem("pri_1_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1zM3D1AUpzxzhiytq3vVmyYOnSGJqM4lP/view?usp=sharing"),
-        CurriculumBookItem("pri_1_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1AXlhEx5zeA2PUfiDsxJGQXaksFyQiVsc/view?usp=sharing"),
-        CurriculumBookItem("pri_1_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1-FLrmZmDfOLoxh47eYCPnWCK1f4CcDR3/view?usp=sharing"),
-        CurriculumBookItem("pri_1_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1w0_8y7osEzGCST5Kj_b8HtL9gRnHqBcu/view?usp=sharing"),
-        CurriculumBookItem("pri_1_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1e1TGmQX5RVQgyEeb7gHslt328UEpwJFX/view?usp=sharing"),
-        CurriculumBookItem("pri_1_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1ohJZlWvvnZ-d_fQSVL7iTjdEY5EeaQU6/view?usp=sharing"),
-        CurriculumBookItem("pri_1_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1SSmMfZYvWCkEDfk-lfCWT3ni4LbrZl-a/view?usp=sharing"),
-        CurriculumBookItem("pri_1_ethics", "كتاب الاخلاقية", CurriculumStageTab.PRIMARY, "الأول الابتدائي", "https://drive.google.com/file/d/1ugtWInqi8S-reTElSAd5r2AXmFUoEQQ2/view?usp=sharing"),
+        // 2. الثاني الابتدائي (8 كتب)
+        CurriculumBookItem("pri_2_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1vPIz7JbjlfZBAXJQe95jBAypa_YuSxr8/preview"),
+        CurriculumBookItem("pri_2_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1JIa29yJ_Ld9A_Oe31n7lgScUSiCAEhYG/preview"),
+        CurriculumBookItem("pri_2_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1fLZBPEG9bgczvcZvxN2jBSuNR0pMMne9/preview"),
+        CurriculumBookItem("pri_2_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1qcYh1Vx3W5Qs6VAnDo0biC2Pf3Fl66em/preview"),
+        CurriculumBookItem("pri_2_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/10h-L5LKKVQM9XvqknVtzhPPUXIjhqviF/preview"),
+        CurriculumBookItem("pri_2_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/117MuokgO4X-sri5OP69GX4hQXSxawFDZ/preview"),
+        CurriculumBookItem("pri_2_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1VQy3aIsgXYrP9TBibfV6TKM570AmqFtj/preview"),
+        CurriculumBookItem("pri_2_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1SFE2frCT3DtwuNgp2vyIhEV5-VM836YT/preview"),
 
-        // 2. الصف الثاني الابتدائي (8 كتب)
-        CurriculumBookItem("pri_2_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1vPIz7JbjlfZBAXJQe95jBAypa_YuSxr8/view?usp=sharing"),
-        CurriculumBookItem("pri_2_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1JIa29yJ_Ld9A_Oe31n7lgScUSiCAEhYG/view?usp=sharing"),
-        CurriculumBookItem("pri_2_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1fLZBPEG9bgczvcZvxN2jBSuNR0pMMne9/view?usp=sharing"),
-        CurriculumBookItem("pri_2_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1qcYh1Vx3W5Qs6VAnDo0biC2Pf3Fl66em/view?usp=sharing"),
-        CurriculumBookItem("pri_2_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/10h-L5LKKVQM9XvqknVtzhPPUXIjhqviF/view?usp=sharing"),
-        CurriculumBookItem("pri_2_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/117MuokgO4X-sri5OP69GX4hQXSxawFDZ/view?usp=sharing"),
-        CurriculumBookItem("pri_2_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1VQy3aIsgXYrP9TBibfV6TKM570AmqFtj/view?usp=sharing"),
-        CurriculumBookItem("pri_2_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الثاني الابتدائي", "https://drive.google.com/file/d/1SFE2frCT3DtwuNgp2vyIhEV5-VM836YT/view?usp=sharing"),
+        // 3. الثالث الابتدائي (8 كتب)
+        CurriculumBookItem("pri_3_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1iIoCA9vUMjsYLGcYB3bG9ghH1yJTtA3j/preview"),
+        CurriculumBookItem("pri_3_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1hX263Pr8NUNHLUokm_dxklapZNbsWwey/preview"),
+        CurriculumBookItem("pri_3_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1gjmF4BkLbfDNQ4aSBps2YLwkJ8Whlb6A/preview"),
+        CurriculumBookItem("pri_3_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1uUqy4egLScXQ618bc0ynoi-UQdSdrvWO/preview"),
+        CurriculumBookItem("pri_3_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1L_LHQS1Q8S-1R4J7h3-SlDl4IvZMv0ry/preview"),
+        CurriculumBookItem("pri_3_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1gNkRMv0ToIJEeEfLpdpQZ4Aex1P4r-bV/preview"),
+        CurriculumBookItem("pri_3_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1x2XtEK97fBrP-Fuw1fzRtbXVI5mHQfw9/preview"),
+        CurriculumBookItem("pri_3_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1rMFsFuJSbDLYO17R-4_wzx5Dj_01dJvD/preview"),
 
-        // 3. الصف الثالث الابتدائي (8 كتب)
-        CurriculumBookItem("pri_3_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1iIoCA9vUMjsYLGcYB3bG9ghH1yJTtA3j/view?usp=sharing"),
-        CurriculumBookItem("pri_3_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1hX263Pr8NUNHLUokm_dxklapZNbsWwey/view?usp=sharing"),
-        CurriculumBookItem("pri_3_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1gjmF4BkLbfDNQ4aSBps2YLwkJ8Whlb6A/view?usp=sharing"),
-        CurriculumBookItem("pri_3_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1uUqy4egLScXQ618bc0ynoi-UQdSdrvWO/view?usp=sharing"),
-        CurriculumBookItem("pri_3_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1L_LHQS1Q8S-1R4J7h3-SlDl4IvZMv0ry/view?usp=sharing"),
-        CurriculumBookItem("pri_3_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1gNkRMv0ToIJEeEfLpdpQZ4Aex1P4r-bV/view?usp=sharing"),
-        CurriculumBookItem("pri_3_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1x2XtEK97fBrP-Fuw1fzRtbXVI5mHQfw9/view?usp=sharing"),
-        CurriculumBookItem("pri_3_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الثالث الابتدائي", "https://drive.google.com/file/d/1rMFsFuJSbDLYO17R-4_wzx5Dj_01dJvD/view?usp=sharing"),
+        // 4. الرابع الابتدائي (10 كتب)
+        CurriculumBookItem("pri_4_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Qa6FOlInBlFlafEon5rtHvU4DWbQEdhn/preview"),
+        CurriculumBookItem("pri_4_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Ea8lcedAR_7JPhiwVGLu1J4QizhxXDIR/preview"),
+        CurriculumBookItem("pri_4_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1D0H2HFkgFtrUkfu9_jfqPlDSPuqV8gHv/preview"),
+        CurriculumBookItem("pri_4_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1_Rs159GJB3UKzjHjAoDmDfx3nAHEYcC0/preview"),
+        CurriculumBookItem("pri_4_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Ph31Q_l9dSpq50dUQgOAVFYQxyBLIzZf/preview"),
+        CurriculumBookItem("pri_4_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/10N1acdhtc1HPkvPKjyeKfsy-WQ_q4GUk/preview"),
+        CurriculumBookItem("pri_4_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1rJ-2jjQM5LdQNmWMq0kjpJfZW9IuoEQj/preview"),
+        CurriculumBookItem("pri_4_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1ciJBefTfDhpQ5aScaHmd218ME7Wpkb_q/preview"),
+        CurriculumBookItem("pri_4_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1g0_IfvcDt8OUi5u_66B_CzIgbuCobbog/preview"),
+        CurriculumBookItem("pri_4_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1XxlWljt1fhXPBtoWg4wYdm_pQtI4z6Tc/preview"),
 
-        // 4. الصف الرابع الابتدائي (10 كتب)
-        CurriculumBookItem("pri_4_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Qa6FOlInBlFlafEon5rtHvU4DWbQEdhn/view?usp=sharing"),
-        CurriculumBookItem("pri_4_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Ea8lcedAR_7JPhiwVGLu1J4QizhxXDIR/view?usp=sharing"),
-        CurriculumBookItem("pri_4_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1D0H2HFkgFtrUkfu9_jfqPlDSPuqV8gHv/view?usp=sharing"),
-        CurriculumBookItem("pri_4_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1_Rs159GJB3UKzjHjAoDmDfx3nAHEYcC0/view?usp=sharing"),
-        CurriculumBookItem("pri_4_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1Ph31Q_l9dSpq50dUQgOAVFYQxyBLIzZf/view?usp=sharing"),
-        CurriculumBookItem("pri_4_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/10N1acdhtc1HPkvPKjyeKfsy-WQ_q4GUk/view?usp=sharing"),
-        CurriculumBookItem("pri_4_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1rJ-2jjQM5LdQNmWMq0kjpJfZW9IuoEQj/view?usp=sharing"),
-        CurriculumBookItem("pri_4_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1ciJBefTfDhpQ5aScaHmd218ME7Wpkb_q/view?usp=sharing"),
-        CurriculumBookItem("pri_4_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1g0_IfvcDt8OUi5u_66B_CzIgbuCobbog/view?usp=sharing"),
-        CurriculumBookItem("pri_4_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "الرابع الابتدائي", "https://drive.google.com/file/d/1XxlWljt1fhXPBtoWg4wYdm_pQtI4z6Tc/view?usp=sharing"),
+        // 5. الخامس الابتدائي (10 كتب)
+        CurriculumBookItem("pri_5_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1QD4MKjg-JRNzmyDUOvAXsArKqU1FWSoD/preview"),
+        CurriculumBookItem("pri_5_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1S9P_4htwstxFyk5RKoccW4bnN9DPlwo6/preview"),
+        CurriculumBookItem("pri_5_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1KLKUU-6NqSLk68txNZOvrjXZQMYAsI92/preview"),
+        CurriculumBookItem("pri_5_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1sbFi8uAP35zFSjav93bXoCDoEjOYZa0h/preview"),
+        CurriculumBookItem("pri_5_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1WClbsxm9zoFvFm_g7tp8O8kNDzMNOdB0/preview"),
+        CurriculumBookItem("pri_5_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/19GKZ3aOWyBZlPipgK7tVdIWXuHNEbM4u/preview"),
+        CurriculumBookItem("pri_5_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1cSZp8Uszg1hKZb7te8FbNZY0r6eZyqSM/preview"),
+        CurriculumBookItem("pri_5_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1z43l3wERXzT-egGjs_2puQM54lVaAQ30/preview"),
+        CurriculumBookItem("pri_5_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1T7b4sdD0-3TQvub0M-HH3gCDNnGtNm3z/preview"),
+        CurriculumBookItem("pri_5_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1RVz091kMA7w-XEn0f19WjTxMKzY4WE1g/preview"),
 
-        // 5. الصف الخامس الابتدائي (10 كتب)
-        CurriculumBookItem("pri_5_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1QD4MKjg-JRNzmyDUOvAXsArKqU1FWSoD/view?usp=sharing"),
-        CurriculumBookItem("pri_5_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1S9P_4htwstxFyk5RKoccW4bnN9DPlwo6/view?usp=sharing"),
-        CurriculumBookItem("pri_5_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1KLKUU-6NqSLk68txNZOvrjXZQMYAsI92/view?usp=sharing"),
-        CurriculumBookItem("pri_5_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1sbFi8uAP35zFSjav93bXoCDoEjOYZa0h/view?usp=sharing"),
-        CurriculumBookItem("pri_5_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1WClbsxm9zoFvFm_g7tp8O8kNDzMNOdB0/view?usp=sharing"),
-        CurriculumBookItem("pri_5_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/19GKZ3aOWyBZlPipgK7tVdIWXuHNEbM4u/view?usp=sharing"),
-        CurriculumBookItem("pri_5_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1cSZp8Uszg1hKZb7te8FbNZY0r6eZyqSM/view?usp=sharing"),
-        CurriculumBookItem("pri_5_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1z43l3wERXzT-egGjs_2puQM54lVaAQ30/view?usp=sharing"),
-        CurriculumBookItem("pri_5_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1T7b4sdD0-3TQvub0M-HH3gCDNnGtNm3z/view?usp=sharing"),
-        CurriculumBookItem("pri_5_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "الخامس الابتدائي", "https://drive.google.com/file/d/1RVz091kMA7w-XEn0f19WjTxMKzY4WE1g/view?usp=sharing"),
-
-        // 6. الصف السادس الابتدائي (11 كتاباً)
-        CurriculumBookItem("pri_6_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1a_VcmloZrQIJv9D7dmOXKOubK3sSI5Zb/view?usp=sharing"),
-        CurriculumBookItem("pri_6_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1YsbcKHGfzCO6d1d0aXykdh1SOFsTnnH6/view?usp=sharing"),
-        CurriculumBookItem("pri_6_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1POyExJU-KWzrWTNtXBNb4V5QaXKTnIZJ/view?usp=sharing"),
-        CurriculumBookItem("pri_6_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1nGn8_KxVs2y-xWFqqUBcaHE3Z9k5AzzE/view?usp=sharing"),
-        CurriculumBookItem("pri_6_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1yEWy4uW6sjY-SPJB2cpE4S4_YiCiNXZ0/view?usp=sharing"),
-        CurriculumBookItem("pri_6_english_solved", "كتاب النشاط محلول", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1pjX1iSOA0QX9p-36KhJYdBIIDeak35Jy/view?usp=sharing"),
-        CurriculumBookItem("pri_6_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/13zLlyffzFlZn6B5Z-qsZWleBp1c3KwGd/view?usp=sharing"),
-        CurriculumBookItem("pri_6_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1t410bKRHPExvnBgs9iPu1JjHhEoOOHmq/view?usp=sharing"),
-        CurriculumBookItem("pri_6_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1qvYJnF__-cQg47cagZAXgIXV1EoZo_27/view?usp=sharing"),
-        CurriculumBookItem("pri_6_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1eWnIMdPE901ff1owadlzwuHNH_rElBYg/view?usp=sharing"),
-        CurriculumBookItem("pri_6_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1qB5kJuih2TrN-4IL4pIM8MploPnOX0BD/view?usp=sharing")
+        // 6. السادس الابتدائي (11 كتاباً)
+        CurriculumBookItem("pri_6_islamic", "كتاب الاسلامية", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1a_VcmloZrQIJv9D7dmOXKOubK3sSI5Zb/preview"),
+        CurriculumBookItem("pri_6_reading", "كتاب القراءة", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1YsbcKHGfzCO6d1d0aXykdh1SOFsTnnH6/preview"),
+        CurriculumBookItem("pri_6_grammar", "كتاب القواعد", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1POyExJU-KWzrWTNtXBNb4V5QaXKTnIZJ/preview"),
+        CurriculumBookItem("pri_6_english", "كتاب الانكليزي", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1nGn8_KxVs2y-xWFqqUBcaHE3Z9k5AzzE/preview"),
+        CurriculumBookItem("pri_6_english_act", "كتاب نشاط الانكليزي", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1yEWy4uW6sjY-SPJB2cpE4S4_YiCiNXZ0/preview"),
+        CurriculumBookItem("pri_6_english_solved", "كتاب النشاط محلول", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1pjX1iSOA0QX9p-36KhJYdBIIDeak35Jy/preview"),
+        CurriculumBookItem("pri_6_science", "كتاب العلوم", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/13zLlyffzFlZn6B5Z-qsZWleBp1c3KwGd/preview"),
+        CurriculumBookItem("pri_6_sci_act", "كتاب نشاط العلوم", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1t410bKRHPExvnBgs9iPu1JjHhEoOOHmq/preview"),
+        CurriculumBookItem("pri_6_math", "كتاب الرياضيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1qvYJnF__-cQg47cagZAXgIXV1EoZo_27/preview"),
+        CurriculumBookItem("pri_6_math_act", "كتاب تمارين الرياضيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1eWnIMdPE901ff1owadlzwuHNH_rElBYg/preview"),
+        CurriculumBookItem("pri_6_social", "كتاب الاجتماعيات", CurriculumStageTab.PRIMARY, "السادس الابتدائي", "https://drive.google.com/file/d/1qB5kJuih2TrN-4IL4pIM8MploPnOX0BD/preview")
     )
 
     fun resolveStageAndClass(rawStudentClass: String?, schoolStage: SchoolStage): Pair<CurriculumStageTab, String> {
@@ -655,14 +256,10 @@ object IraqiCurriculumCatalog {
             SchoolStage.PRIMARY -> CurriculumStageTab.PRIMARY to "الأول الابتدائي"
             SchoolStage.MIDDLE -> CurriculumStageTab.MIDDLE to "الأول متوسط"
             SchoolStage.PREPARATORY -> CurriculumStageTab.PREPARATORY to "الرابع العلمي"
-            SchoolStage.SECONDARY -> CurriculumStageTab.MIDDLE to "الأول متوسط"
+            SchoolStage.SECONDARY -> CurriculumStageTab.PRIMARY to "الأول الابتدائي"
         }
     }
 
-    /**
-     * المسار الداخلي الرسمي لحفظ ملف الكتاب داخل التطبيق:
-     * `File(context.filesDir, "books/book_${bookId}.pdf")`
-     */
     fun getInternalBookFile(context: Context, bookId: String): File {
         val dir = File(context.filesDir, "books")
         if (!dir.exists()) {
@@ -671,9 +268,6 @@ object IraqiCurriculumCatalog {
         return File(dir, "book_${bookId}.pdf")
     }
 
-    /**
-     * المسار المحلي الرديف لفحص أي كتب محفوظة مسبقاً:
-     */
     fun getLegacyExternalBookFile(context: Context, bookId: String): File {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: File(context.filesDir, "books")
@@ -696,25 +290,35 @@ object IraqiCurriculumCatalog {
     }
 }
 
-private data class ActiveReaderSessionRequest(
-    val book: CurriculumBookItem,
-    val launchBrowserOnOpenIfMissing: Boolean = false
-)
+@Composable
+fun CurriculumScreen(
+    viewModel: SchoolViewModel
+) {
+    CurriculumBooksScreen(viewModel = viewModel)
+}
 
 @Composable
 fun CurriculumBooksScreen(
     viewModel: SchoolViewModel
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val coroutineScope = rememberCoroutineScope()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val allStudents by viewModel.students.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
 
-    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
+    // تجاهل وحذف أي بيانات مناهج قديمة مخزنة في SharedPreferences للاعتماد حصرياً على الروابط الـ 56 الرسمية
+    LaunchedEffect(Unit) {
+        runCatching {
+            val prefs = context.getSharedPreferences("madrasati_prefs", Context.MODE_PRIVATE)
+            prefs.edit()
+                .remove("global_curriculum_config")
+                .remove("curriculum_books_override")
+                .remove("custom_curriculum_links")
+                .apply()
+        }
+    }
 
     val activeStudent = remember(allStudents, currentUser, selectedParentChildId) {
         when (currentUser?.role) {
@@ -742,11 +346,7 @@ fun CurriculumBooksScreen(
     var selectedStage by remember(initialSelection) { mutableStateOf(initialSelection.first) }
     var selectedClass by remember(initialSelection) { mutableStateOf(initialSelection.second) }
     var searchQuery by remember { mutableStateOf("") }
-    var cacheRefreshTick by remember { mutableIntStateOf(0) }
-
-    // الكتاب الذي ينتظر التطبيق اكتمال تنزيله من المتصفح ليفتحه تلقائياً فور العودة
-    var pendingAutoOpenBook by remember { mutableStateOf<CurriculumBookItem?>(null) }
-    var activeReaderSession by remember { mutableStateOf<ActiveReaderSessionRequest?>(null) }
+    var activeWebViewBook by remember { mutableStateOf<CurriculumBookItem?>(null) }
 
     val displayedBooks = remember(selectedStage, selectedClass, searchQuery) {
         val cleanQuery = ArabicTextNormalizer.normalizeText(searchQuery.trim())
@@ -773,161 +373,14 @@ fun CurriculumBooksScreen(
         }
     }
 
-    var localSavedBooksMap by remember {
-        mutableStateOf<Map<String, Pair<Boolean, String>>>(emptyMap())
-    }
-
-    // فحص تلقائي لكتب الصف المعروض في الخلفية لتحديث شارة "متوفر للقراءة الفورية"
-    LaunchedEffect(displayedBooks, cacheRefreshTick) {
-        val updated = withContext(Dispatchers.IO) {
-            displayedBooks.associate { book ->
-                val found = autoFindAndImportBookPdf(context, book)
-                val valid = found != null && isValidDownloadedCurriculumPdf(found)
-                val sizeMb = if (valid && found != null) {
-                    String.format(Locale.US, "%.1f MB", found.length() / (1024.0 * 1024.0))
-                } else {
-                    ""
-                }
-                book.id to (valid to sizeMb)
-            }
-        }
-        localSavedBooksMap = updated
-    }
-
-    // مراقب تلقائي فور عودة المستخدم للتطبيق من المتصفح عبر Lifecycle.Event.ON_RESUME
-    DisposableEffect(lifecycleOwner, pendingAutoOpenBook, displayedBooks) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                coroutineScope.launch {
-                    val targetBook = pendingAutoOpenBook
-                    if (targetBook != null) {
-                        val imported = autoFindAndImportBookPdf(context, targetBook)
-                        if (imported != null && isValidDownloadedCurriculumPdf(imported)) {
-                            pendingAutoOpenBook = null
-                            cacheRefreshTick += 1
-                            activeReaderSession = ActiveReaderSessionRequest(
-                                book = targetBook,
-                                launchBrowserOnOpenIfMissing = false
-                            )
-                            return@launch
-                        }
-                    }
-                    cacheRefreshTick += 1
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    // فحص دوري كل ثانية عندما يكون هناك كتاب قيد التنزيل عبر المتصفح لالتقاطه وفتحه تلقائياً
-    LaunchedEffect(pendingAutoOpenBook) {
-        val target = pendingAutoOpenBook ?: return@LaunchedEffect
-        while (isActive && pendingAutoOpenBook?.id == target.id) {
-            val found = autoFindAndImportBookPdf(context, target)
-            if (found != null && isValidDownloadedCurriculumPdf(found)) {
-                pendingAutoOpenBook = null
-                cacheRefreshTick += 1
-                activeReaderSession = ActiveReaderSessionRequest(
-                    book = target,
-                    launchBrowserOnOpenIfMissing = false
-                )
-                break
-            }
-            delay(1000L)
-        }
-    }
-
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .testTag("curriculum_books_screen_list"),
-        contentPadding = PaddingValues(bottom = 96.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1) ترويسة قسم المناهج الدراسية الرسمية
-        item(key = "curriculum_hero_header") {
-            ThreeDHeroHeaderCard(
-                title = "المناهج الدراسية الرسمية",
-                subtitle = "المكتبة المنهجية الرسمية لوزارة التربية مع إمكانية الفتح المباشر السريع لجميع الكتب الدراسية المعتمدة.",
-                rightPillText = selectedStage.arabicTitle,
-                rightPillIcon = Icons.Filled.AutoStories,
-                leftPillText = "$selectedClass (${displayedBooks.size} كتاب)",
-                leftPillIcon = Icons.Filled.MenuBook,
-                illustrationType = ThreeDIllustrationType.DIGITAL_LIBRARY_ILLUMINATED_BOOK_3D,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-            )
-        }
-
-        // 2) إشعار الفلترة التلقائية لحساب الطالب وولي الأمر
-        if (isParentOrStudent && activeStudent != null) {
-            item(key = "student_auto_filter_banner") {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.65f) else Color(0xFFECFDF5),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.45f) else Color(0xFF6EE7B7)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = "مناهج الطالب: ${activeStudent.fullNameWithFather} (${initialSelection.second})",
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkMode) Color.White else Color(0xFF065F46)
-                            )
-                            Text(
-                                text = "تم فتح مرحلة وصف الطالب تلقائياً، ويمكنك تصفح بقية المراحل والصفوف بحرية كاملة.",
-                                fontSize = 11.sp,
-                                color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857)
-                            )
-                        }
-
-                        if (selectedStage != initialSelection.first || selectedClass != initialSelection.second) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFF059669),
-                                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable {
-                                        selectedStage = initialSelection.first
-                                        selectedClass = initialSelection.second
-                                        searchQuery = ""
-                                    }
-                                    .testTag("reset_to_student_class_btn")
-                            ) {
-                                Text(
-                                    text = "العودة لصفي",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3) شريط اختيار المراحل الدراسية والصفوف والبحث الفوري
+        // 1) محدد اختيار المرحلة والصف بتصميم ناعم + حقل البحث
         item(key = "curriculum_stages_and_classes_selector") {
             Card(
                 modifier = Modifier
@@ -941,14 +394,15 @@ fun CurriculumBooksScreen(
                     1.dp,
                     if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                 ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 14.dp),
+                        .padding(horizontal = 12.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // محدد اختيار المرحلة بتصميم ناعم
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -967,34 +421,27 @@ fun CurriculumBooksScreen(
                                     }
                                     .testTag("curriculum_stage_tab_${stageTab.name}"),
                                 shape = RoundedCornerShape(50),
-                                color = if (isSelected) Color.Transparent else if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF1F5F9),
+                                color = if (isSelected) {
+                                    Color(0xFF059669)
+                                } else {
+                                    if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+                                },
                                 border = BorderStroke(
-                                    1.1.dp,
-                                    if (isSelected) Color(0xFF10B981) else if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                    1.dp,
+                                    if (isSelected) Color(0xFF059669) else if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                                 )
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .then(
-                                            if (isSelected) {
-                                                Modifier.background(
-                                                    Brush.horizontalGradient(
-                                                        listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
-                                                    )
-                                                )
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                        .padding(PaddingValues(horizontal = 6.dp, vertical = 10.dp)),
+                                        .padding(horizontal = 6.dp, vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = stageTab.arabicTitle,
-                                        fontSize = 11.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                        color = if (isSelected) Color.White else if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF1E293B),
+                                        color = if (isSelected) Color.White else if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF334155),
                                         maxLines = 1,
                                         softWrap = false,
                                         textAlign = TextAlign.Center
@@ -1004,6 +451,7 @@ fun CurriculumBooksScreen(
                         }
                     }
 
+                    // محدد اختيار الصف بتصميم ناعم
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1011,9 +459,6 @@ fun CurriculumBooksScreen(
                     ) {
                         items(selectedStage.classes, key = { it }) { classTitle ->
                             val isClassSelected = selectedClass == classTitle
-                            val classBooksCount = remember(classTitle) {
-                                IraqiCurriculumCatalog.allBooks.count { it.gradeClass == classTitle }
-                            }
                             Surface(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
@@ -1028,44 +473,28 @@ fun CurriculumBooksScreen(
                                     if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC)
                                 },
                                 border = BorderStroke(
-                                    1.1.dp,
-                                    if (isClassSelected) Color(0xFF059669) else if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                    1.dp,
+                                    if (isClassSelected) Color(0xFF34D399) else if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                                 )
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = classTitle,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isClassSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                        color = if (isClassSelected) {
-                                            if (isDarkMode) Color.White else Color(0xFF065F46)
-                                        } else {
-                                            if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF334155)
-                                        },
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = if (isClassSelected) Color(0xFF059669) else Color(0xFFE2E8F0).copy(alpha = if (isDarkMode) 0.15f else 0.85f)
-                                    ) {
-                                        Text(
-                                            text = "$classBooksCount",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = if (isClassSelected) Color.White else if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = classTitle,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isClassSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                    color = if (isClassSelected) {
+                                        if (isDarkMode) Color.White else Color(0xFF065F46)
+                                    } else {
+                                        if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                                    },
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
                             }
                         }
                     }
 
+                    // حقل البحث (ابحث باسم المادة أو الكتاب المنهجي...)
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -1074,6 +503,14 @@ fun CurriculumBooksScreen(
                             .testTag("curriculum_search_input"),
                         shape = RoundedCornerShape(14.dp),
                         singleLine = true,
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = null,
+                                tint = Color(0xFF059669),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
                         trailingIcon = {
                             if (searchQuery.isNotBlank()) {
                                 Surface(
@@ -1109,26 +546,23 @@ fun CurriculumBooksScreen(
             }
         }
 
-        // 4) عنوان قائمة كتب الصف
+        // 2) عنوان نصي على اليمين مثل: كتب الصف: الأول الابتدائي (9 منهج رسمي)
         item(key = "on_demand_policy_notice") {
             Text(
-                text = if (searchQuery.isBlank()) {
-                    "كتب الصف: $selectedClass (${displayedBooks.size} منهج رسمي)"
-                } else {
-                    "نتائج البحث الفوري (${displayedBooks.size} كتاب)"
-                },
+                text = "كتب الصف: $selectedClass (${displayedBooks.size} منهج رسمي)",
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 18.dp),
-                fontSize = 14.sp,
+                fontSize = 14.5.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                textAlign = TextAlign.Start,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
 
-        // 5) حالة المراحل الدراسية (الابتدائية المفعّلة مقابل المتوسطة والإعدادية قيد الرفع والتحديث)
+        // 3) عرض بطاقات الكتب النظيفة
         if (selectedStage == CurriculumStageTab.MIDDLE || selectedStage == CurriculumStageTab.PREPARATORY) {
             item(key = "stage_under_upload_notice_card") {
                 Box(
@@ -1141,44 +575,32 @@ fun CurriculumBooksScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("stage_coming_soon_card"),
-                        shape = RoundedCornerShape(22.dp),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
                         ),
                         border = BorderStroke(
-                            1.2.dp,
-                            if (isDarkMode) Color(0xFF10B981).copy(alpha = 0.45f) else Color(0xFF6EE7B7)
+                            1.dp,
+                            if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                         ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 34.dp),
+                                .padding(horizontal = 24.dp, vertical = 32.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.7f) else Color(0xFFECFDF5),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.5f) else Color(0xFF6EE7B7)
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.MenuBook,
-                                    contentDescription = "أيقونة الكتاب",
-                                    tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
-                                    modifier = Modifier
-                                        .padding(16.dp)
-                                        .size(38.dp)
-                                )
-                            }
-
+                            Icon(
+                                imageVector = Icons.Filled.MenuBook,
+                                contentDescription = "أيقونة الكتاب",
+                                tint = Color(0xFF059669),
+                                modifier = Modifier.size(36.dp)
+                            )
                             Text(
                                 text = "مناهج هذه المرحلة قيد الرفع والتحديث.. ستتوفر قريباً",
-                                fontSize = 15.5.sp,
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = if (isDarkMode) Color.White else Color(0xFF0F172A),
                                 textAlign = TextAlign.Center
@@ -1196,6 +618,10 @@ fun CurriculumBooksScreen(
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                     )
                 ) {
                     Column(
@@ -1222,60 +648,38 @@ fun CurriculumBooksScreen(
             }
         } else {
             items(displayedBooks, key = { it.id }) { book ->
-                val savedState = localSavedBooksMap[book.id]
-                val isAvailableLocally = savedState?.first == true
-                val fileSizeLabel = savedState?.second.orEmpty()
-
-                CurriculumBookOfficialCard(
+                CurriculumBookCleanCard(
                     book = book,
                     isDarkMode = isDarkMode,
-                    isAvailableLocally = isAvailableLocally,
-                    fileSizeLabel = fileSizeLabel,
                     onDirectOpenClick = {
-                        launchBrowserForBookDownload(
-                            context = context,
-                            book = book,
-                            onError = { errMsg ->
-                                viewModel.showToastAlert(message = errMsg, isSuccess = false)
-                            }
-                        )
+                        activeWebViewBook = book
                     }
                 )
             }
         }
     }
 
-    // شاشة قارئ الكتاب المدمج داخل التطبيق (PdfRenderer + التقاط تلقائي من التنزيلات + اختيار يدوي مساند)
-    val currentSession = activeReaderSession
-    if (currentSession != null) {
-        NativeInAppPdfReaderModal(
-            sessionRequest = currentSession,
-            onDismiss = {
-                activeReaderSession = null
-                cacheRefreshTick += 1
-            },
-            onBookDownloadedReady = {
-                pendingAutoOpenBook = null
-                cacheRefreshTick += 1
-            },
-            onShowToast = { msg, success ->
-                viewModel.showToastAlert(message = msg, isSuccess = success)
-            }
+    // نافذة القراءة المدمجة بكامل الشاشة داخل التطبيق عبر AndroidView(factory = { WebView(it) })
+    val targetBook = activeWebViewBook
+    if (targetBook != null) {
+        InAppGoogleDrivePreviewWebViewDialog(
+            book = targetBook,
+            onDismiss = { activeWebViewBook = null }
         )
     }
 }
 
 /**
- * بطاقة الكتاب المنهجي بتصميم مدرسي رسمي هادئ، نظيف، ومرتب:
- * - تعرض شارة أنيقة توضح صيغة الملف (`PDF رسمي`).
- * - تحتوي على زر أخضر واحد يمتد بعرض البطاقة بالكامل بنص **"فتح مباشر"** يفتح رابط الكتاب مباشرة ليتم عرضه أو تنزيله بسلاسة.
+ * تصميم بطاقة الكتاب النظيفة (Clean Card):
+ * بطاقة بيضاء نظيفة بحواف دائرية ناعمة تحتوي فقط على 3 عناصر:
+ * 1. اسم الكتاب بخط عريض وواضح في اليمين.
+ * 2. تحته شارة كبسولة خضراء فاتحة ناعمة مكتوب بداخلها: `ابتدائي • الأول الابتدائي`.
+ * 3. في أسفل البطاقة: زر أخضر عريض سادة بكامل عرض البطاقة مكتوب فيه نص فقط: `فتح مباشر` (بدون أيقونة).
  */
 @Composable
-private fun CurriculumBookOfficialCard(
+private fun CurriculumBookCleanCard(
     book: CurriculumBookItem,
     isDarkMode: Boolean,
-    isAvailableLocally: Boolean,
-    fileSizeLabel: String,
     onDirectOpenClick: () -> Unit
 ) {
     Card(
@@ -1290,109 +694,67 @@ private fun CurriculumBookOfficialCard(
         ),
         border = BorderStroke(
             1.dp,
-            if (isAvailableLocally) {
-                Color(0xFF10B981).copy(alpha = 0.65f)
-            } else if (isDarkMode) {
-                Color(0xFF334155)
-            } else {
-                Color(0xFFE2E8F0)
-            }
+            if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
+            horizontalAlignment = Alignment.Start,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            // 1. اسم الكتاب بخط عريض وواضح في اليمين
+            Text(
+                text = book.subjectTitle,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                textAlign = TextAlign.Start,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // 2. تحته شارة كبسولة خضراء فاتحة ناعمة مكتوب بداخلها: ابتدائي • الأول الابتدائي
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.65f) else Color(0xFFECFDF5),
+                border = BorderStroke(
+                    0.8.dp,
+                    if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.4f) else Color(0xFFA7F3D0)
+                )
             ) {
                 Text(
-                    text = book.subjectTitle,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                    text = "${book.stage.shortBadge} • ${book.gradeClass}",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp)
+                    softWrap = false
                 )
-
-                // شارة أنيقة توضح صيغة الملف (PDF رسمي)
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (isDarkMode) Color(0xFF065F46) else Color(0xFFDCFCE7),
-                    border = BorderStroke(0.9.dp, Color(0xFF10B981))
-                ) {
-                    Text(
-                        text = "PDF رسمي",
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.6f) else Color(0xFFECFDF5),
-                    border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.4f))
-                ) {
-                    Text(
-                        text = "${book.stage.shortBadge} • ${book.gradeClass}",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-
-                if (isAvailableLocally && fileSizeLabel.isNotBlank()) {
-                    Text(
-                        text = "الحجم: $fileSizeLabel",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
-                    )
-                }
-            }
-
-            // زر "فتح مباشر" الأخضر يمتد بعرض البطاقة بالكامل بشكل متناسق
+            // 3. في أسفل البطاقة: زر أخضر عريض سادة بكامل عرض البطاقة مكتوب فيه نص فقط: فتح مباشر (بدون أيقونة)
             Surface(
                 onClick = onDirectOpenClick,
-                shape = RoundedCornerShape(50),
+                shape = RoundedCornerShape(12.dp),
                 color = Color(0xFF059669),
-                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.6f)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(42.dp)
-                    .clip(RoundedCornerShape(50))
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .testTag("btn_super_reader_${book.id}")
             ) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp),
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "فتح مباشر",
-                        fontSize = 12.5.sp,
+                        fontSize = 13.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
                         maxLines = 1,
@@ -1405,296 +767,24 @@ private fun CurriculumBookOfficialCard(
 }
 
 /**
- * شاشة قارئ كتب الـ PDF الأصلية المدمجة داخل التطبيق (`android.graphics.pdf.PdfRenderer`):
- * - بتصميم مدرسي رسمي هادئ ونظيف بدون أي شاشات مبالغ فيها أو نصوص مصطنعة.
- * - إذا كان الكتاب نازلاً في مجلد التطبيق أو في مجلد التنزيلات `Downloads` (باسم رقمه مثل `1881.pdf` أو `1881 (1).pdf`)،
- *   يلتقطه فوراً ويفتحه بـ `PdfRenderer`.
- * - إذا لم يكن نازلاً بعد، يفتح الرابط في المتصفح لتنزيله ويشغّل مراقب `Lifecycle.Event.ON_RESUME` + فحص دوري كل ثانية
- *   لالتقاط الملف تلقائياً فور نزوله وعرضه مباشرة داخل القارئ!
- * - يوفّر زر `اختيار ملف الكتاب من التنزيلات` (`ActivityResultContracts.OpenDocument`) كخيار مساند يحفظ الكتاب داخل التطبيق للأبد.
+ * قارئ الكتب المدمج بكامل الشاشة داخل التطبيق باستخدام AndroidView(factory = { WebView(it) })
+ * مع تفعيل settings.javaScriptEnabled = true و settings.domStorageEnabled = true
+ * ليفتح رابط Google Drive بصيغة /preview مباشرة داخل التطبيق دون الخروج للمتصفح.
  */
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun NativeInAppPdfReaderModal(
-    sessionRequest: ActiveReaderSessionRequest,
-    onDismiss: () -> Unit,
-    onBookDownloadedReady: () -> Unit,
-    onShowToast: (String, Boolean) -> Unit
+private fun InAppGoogleDrivePreviewWebViewDialog(
+    book: CurriculumBookItem,
+    onDismiss: () -> Unit
 ) {
-    val book = sessionRequest.book
-    val bookId = book.id
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val coroutineScope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
-    val renderMutex = remember { Mutex() }
+    var isLoading by remember(book.id) { mutableStateOf(true) }
 
-    var isScanningOrWaitingForBrowser by remember(bookId) { mutableStateOf(true) }
-    var statusNoticeMessage by remember(bookId) { mutableStateOf<String?>(null) }
-    var inAppBannerMessage by remember(bookId) { mutableStateOf<String?>(null) }
-
-    var pdfFile by remember(bookId) { mutableStateOf<File?>(null) }
-    var pdfRendererHolder by remember(bookId) { mutableStateOf<Pair<ParcelFileDescriptor, PdfRenderer>?>(null) }
-    var pageCount by remember(bookId) { mutableIntStateOf(0) }
-
-    var zoomScale by remember(bookId) { mutableFloatStateOf(1f) }
-    var panOffsetX by remember(bookId) { mutableFloatStateOf(0f) }
-    var showJumpToPageBar by remember(bookId) { mutableStateOf(false) }
-    var jumpPageInput by remember(bookId) { mutableStateOf("") }
-    val sessionStartTimeMs = remember(sessionRequest) { System.currentTimeMillis() }
-    var activeDownloadId by remember(sessionRequest) { mutableStateOf<Long?>(null) }
-
-    LaunchedEffect(inAppBannerMessage) {
-        if (inAppBannerMessage != null) {
-            delay(4000L)
-            inAppBannerMessage = null
-        }
-    }
-
-    fun closeRendererSafely() {
-        val holder = pdfRendererHolder
-        pdfRendererHolder = null
-        if (holder != null) {
-            runCatching { holder.second.close() }
-            runCatching { holder.first.close() }
-        }
-    }
-
-    suspend fun openBookFileInRenderer(targetFile: File): Boolean {
-        return try {
-            val opened = withContext(Dispatchers.IO) {
-                if (!isValidDownloadedCurriculumPdf(targetFile)) {
-                    throw IllegalStateException("Invalid PDF file")
-                }
-                val pfd = ParcelFileDescriptor.open(targetFile, ParcelFileDescriptor.MODE_READ_ONLY)
-                val renderer = PdfRenderer(pfd)
-                pfd to renderer
-            }
-            closeRendererSafely()
-            pdfFile = targetFile
-            pdfRendererHolder = opened
-            pageCount = opened.second.pageCount
-            isScanningOrWaitingForBrowser = false
-            statusNoticeMessage = null
-            onBookDownloadedReady()
-            true
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    // منتقي الملفات الرسمي (ActivityResultContracts.OpenDocument) لزر "اختيار ملف الكتاب من التنزيلات"
-    val openPdfDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { selectedUri: Uri? ->
-        if (selectedUri != null) {
-            coroutineScope.launch {
-                val importedFile = importPdfUriToInternalBookStorage(context, selectedUri, book)
-                if (importedFile != null && openBookFileInRenderer(importedFile)) {
-                    val msg = "تم استيراد وحفظ كتاب ${book.subjectTitle} داخل التطبيق بنجاح"
-                    inAppBannerMessage = msg
-                    onShowToast(msg, true)
-                } else {
-                    val err = "الملف المختار ليس ملف PDF صالحاً"
-                    inAppBannerMessage = err
-                    onShowToast(err, false)
-                }
-            }
-        }
-    }
-
-    // WebView مدمج خفي لتوليد كوكيز الجلسة الشرعية لموقع manahj.edu.iq وتمريرها فوراً إلى DownloadManager
-    if (pdfRendererHolder == null) {
-        @SuppressLint("SetJavaScriptEnabled")
-        AndroidView(
-            modifier = Modifier.size(1.dp),
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                    val cookieManager = CookieManager.getInstance()
-                    cookieManager.setAcceptCookie(true)
-                    cookieManager.setAcceptThirdPartyCookies(this, true)
-
-                    setDownloadListener { url, userAgent, _, _, _ ->
-                        if (activeDownloadId == null) {
-                            val cookies = cookieManager.getCookie(url)
-                                ?: cookieManager.getCookie("https://manahj.edu.iq")
-                            val dlId = enqueueDirectBookDownloadWithSessionCookies(
-                                context = ctx,
-                                book = book,
-                                downloadUrl = url,
-                                cookies = cookies,
-                                userAgent = userAgent
-                            )
-                            if (dlId != null) {
-                                activeDownloadId = dlId
-                            }
-                        }
-                    }
-
-                    webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView?,
-                            request: WebResourceRequest?
-                        ): Boolean {
-                            val targetUrl = request?.url?.toString().orEmpty()
-                            if (targetUrl.lowercase(Locale.ROOT).endsWith(".pdf") && activeDownloadId == null) {
-                                val cookies = cookieManager.getCookie(targetUrl)
-                                    ?: cookieManager.getCookie("https://manahj.edu.iq")
-                                val dlId = enqueueDirectBookDownloadWithSessionCookies(
-                                    context = ctx,
-                                    book = book,
-                                    downloadUrl = targetUrl,
-                                    cookies = cookies,
-                                    userAgent = view?.settings?.userAgentString
-                                )
-                                if (dlId != null) {
-                                    activeDownloadId = dlId
-                                    return true
-                                }
-                            }
-                            return false
-                        }
-
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            if (activeDownloadId == null && !url.isNullOrBlank()) {
-                                val cookies = cookieManager.getCookie(url)
-                                    ?: cookieManager.getCookie("https://manahj.edu.iq")
-                                val dlId = enqueueDirectBookDownloadWithSessionCookies(
-                                    context = ctx,
-                                    book = book,
-                                    downloadUrl = book.normalizedPdfUrl,
-                                    cookies = cookies,
-                                    userAgent = view?.settings?.userAgentString
-                                )
-                                if (dlId != null) {
-                                    activeDownloadId = dlId
-                                }
-                            }
-                        }
-                    }
-
-                    loadUrl(
-                        book.normalizedPdfUrl,
-                        mapOf("Referer" to "https://manahj.edu.iq/")
-                    )
-                }
-            }
-        )
-    }
-
-    // الفحص الأولي + الفحص الدوري كل 800ms لالتقاط الكتاب من DownloadManager أو من التنزيلات تلقائياً
-    LaunchedEffect(sessionRequest) {
-        val existing = autoFindAndImportBookPdf(context, book)
-        if (existing != null && openBookFileInRenderer(existing)) {
-            return@LaunchedEffect
-        }
-
-        isScanningOrWaitingForBrowser = true
-
-        // إذا لم ينطلق DownloadManager خلال أول ثانيتين من الـ WebView، نقوم بجدولة التنزيل المباشر تلقائياً
-        delay(1200L)
-        if (pdfRendererHolder == null && activeDownloadId == null) {
-            val cookies = runCatching {
-                CookieManager.getInstance().getCookie(book.normalizedPdfUrl)
-                    ?: CookieManager.getInstance().getCookie("https://manahj.edu.iq")
-            }.getOrNull()
-            activeDownloadId = enqueueDirectBookDownloadWithSessionCookies(
-                context = context,
-                book = book,
-                downloadUrl = book.normalizedPdfUrl,
-                cookies = cookies,
-                userAgent = null
-            )
-        }
-
-        while (isActive && pdfRendererHolder == null) {
-            val scanned = autoFindAndImportBookPdf(
-                context = context,
-                book = book,
-                acceptRecentPdfSinceMs = sessionStartTimeMs
-            )
-            if (scanned != null && openBookFileInRenderer(scanned)) {
-                val msg = "تم تنزيل وفتح كتاب ${book.subjectTitle} تلقائياً"
-                inAppBannerMessage = msg
-                break
-            }
-            delay(800L)
-        }
-    }
-
-    // مراقب ContentObserver حي على MediaStore.Downloads + مراقب حدث ON_RESUME لفتح الكتاب فوراً
-    DisposableEffect(lifecycleOwner, bookId) {
-        val downloadsObserver = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            object : ContentObserver(Handler(Looper.getMainLooper())) {
-                override fun onChange(selfChange: Boolean) {
-                    if (pdfRendererHolder == null) {
-                        coroutineScope.launch {
-                            val scanned = autoFindAndImportBookPdf(
-                                context = context,
-                                book = book,
-                                acceptRecentPdfSinceMs = sessionStartTimeMs
-                            )
-                            if (scanned != null && openBookFileInRenderer(scanned)) {
-                                inAppBannerMessage = "تم التقاط كتاب ${book.subjectTitle} من التنزيلات وفتحه تلقائياً"
-                            }
-                        }
-                    }
-                }
-            }.also { obs ->
-                runCatching {
-                    context.contentResolver.registerContentObserver(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                        true,
-                        obs
-                    )
-                }
-            }
-        } else {
-            null
-        }
-
-        val lifecycleObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && pdfRendererHolder == null) {
-                coroutineScope.launch {
-                    val scanned = autoFindAndImportBookPdf(
-                        context = context,
-                        book = book,
-                        acceptRecentPdfSinceMs = sessionStartTimeMs
-                    )
-                    if (scanned != null && openBookFileInRenderer(scanned)) {
-                        inAppBannerMessage = "تم التقاط كتاب ${book.subjectTitle} وفتحه تلقائياً"
-                    }
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
-            if (downloadsObserver != null) {
-                runCatching {
-                    context.contentResolver.unregisterContentObserver(downloadsObserver)
-                }
-            }
-            closeRendererSafely()
-        }
-    }
-
-    val currentVisiblePage by remember {
-        derivedStateOf {
-            (listState.firstVisibleItemIndex + 1).coerceAtLeast(1)
-        }
+    BackHandler {
+        onDismiss()
     }
 
     Dialog(
-        onDismissRequest = {
-            closeRendererSafely()
-            onDismiss()
-        },
+        onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false
@@ -1705,585 +795,154 @@ private fun NativeInAppPdfReaderModal(
             color = Color(0xFF0F172A)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // الشريط العلوي الرسمي للقارئ (Zero Classic Icons)
+                // الشريط العلوي لنافذة القراءة المدمجة
                 Surface(
                     color = Color(0xFF064E3B),
-                    shadowElevation = 6.dp
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(top = 24.dp, bottom = 12.dp, start = 14.dp, end = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(end = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Text(
-                                    text = book.subjectTitle,
-                                    fontSize = 15.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = if (pageCount > 0) {
-                                        "${book.stage.arabicTitle} • ${book.gradeClass} • صفحة $currentVisiblePage من $pageCount"
-                                    } else {
-                                        "${book.stage.arabicTitle} • ${book.gradeClass} • ملف (${book.remoteFileName})"
-                                    },
-                                    fontSize = 11.5.sp,
-                                    color = Color(0xFFA7F3D0),
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Surface(
-                                onClick = {
-                                    closeRendererSafely()
-                                    onDismiss()
-                                },
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.16f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
-                                modifier = Modifier.testTag("reader_close_capsule_btn")
-                            ) {
-                                Text(
-                                    text = "إغلاق القارئ",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
+                            Text(
+                                text = book.subjectTitle,
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${book.stage.shortBadge} • ${book.gradeClass}",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFA7F3D0),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
-                        // صف الأزرار المساندة النظيفة في رأس القارئ
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Surface(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.16f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
+                            modifier = Modifier.testTag("reader_close_capsule_btn")
                         ) {
-                            Surface(
-                                onClick = {
-                                    openPdfDocumentLauncher.launch(arrayOf("application/pdf"))
-                                },
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFF059669),
-                                border = BorderStroke(1.dp, Color(0xFFA7F3D0).copy(alpha = 0.7f)),
-                                modifier = Modifier
-                                    .weight(1.15f)
-                                    .height(38.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .testTag("reader_pick_from_downloads_btn")
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 10.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "اختيار ملف الكتاب من التنزيلات",
-                                        fontSize = 10.8.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Surface(
-                                onClick = {
-                                    val currentLocal = pdfFile
-                                    if (currentLocal != null && isValidDownloadedCurriculumPdf(currentLocal)) {
-                                        coroutineScope.launch {
-                                            val savedOk = saveBookFileToPublicDownloads(context, currentLocal, book)
-                                            if (savedOk) {
-                                                val msg = "تم حفظ نسخة من كتاب ${book.subjectTitle} في التنزيلات"
-                                                inAppBannerMessage = msg
-                                                onShowToast(msg, true)
-                                            }
-                                        }
-                                    } else {
-                                        launchBrowserForBookDownload(
-                                            context = context,
-                                            book = book,
-                                            onError = { err -> statusNoticeMessage = err }
-                                        )
-                                    }
-                                },
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, Color(0xFFFEF08A).copy(alpha = 0.55f)),
-                                modifier = Modifier
-                                    .weight(0.95f)
-                                    .height(38.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .testTag("reader_browser_or_save_btn")
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 10.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = if (pdfFile != null) "حفظ نسخة في التنزيلات" else "تنزيل الكتاب عبر المتصفح",
-                                        fontSize = 10.8.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFFEF08A),
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-
-                        AnimatedVisibility(
-                            visible = !inAppBannerMessage.isNullOrBlank(),
-                            enter = fadeIn(),
-                            exit = fadeOut()
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF047857),
-                                border = BorderStroke(1.dp, Color(0xFFFEF08A)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = inAppBannerMessage.orEmpty(),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
-
-                        // شريط الانتقال السريع لأي صفحة
-                        AnimatedVisibility(visible = showJumpToPageBar && pageCount > 0) {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF0F172A).copy(alpha = 0.82f),
-                                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.5f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        OutlinedTextField(
-                                            value = jumpPageInput,
-                                            onValueChange = { raw ->
-                                                jumpPageInput = raw.filter { it.isDigit() }.take(4)
-                                            },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(50.dp),
-                                            shape = RoundedCornerShape(12.dp),
-                                            singleLine = true,
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            placeholder = {
-                                                Text(
-                                                    text = "اكتب رقم الصفحة (1 - $pageCount)",
-                                                    fontSize = 11.5.sp,
-                                                    color = Color(0xFF94A3B8)
-                                                )
-                                            },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = Color(0xFF34D399),
-                                                unfocusedBorderColor = Color(0xFF475569),
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White
-                                            )
-                                        )
-
-                                        Surface(
-                                            onClick = {
-                                                val target = jumpPageInput.toIntOrNull()
-                                                if (target != null && pageCount > 0) {
-                                                    val index = (target - 1).coerceIn(0, pageCount - 1)
-                                                    coroutineScope.launch {
-                                                        listState.scrollToItem(index)
-                                                    }
-                                                    showJumpToPageBar = false
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(50),
-                                            color = Color(0xFF10B981),
-                                            modifier = Modifier.height(44.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier.padding(horizontal = 16.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = "انتقال",
-                                                    fontSize = 11.5.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        val jumpActions = listOf(
-                                            "الأولى" to 0,
-                                            "السابق 10-" to (currentVisiblePage - 11).coerceAtLeast(0),
-                                            "التالي 10+" to (currentVisiblePage + 9).coerceAtMost((pageCount - 1).coerceAtLeast(0)),
-                                            "الأخيرة" to (pageCount - 1).coerceAtLeast(0)
-                                        )
-                                        jumpActions.forEach { (label, targetIdx) ->
-                                            Surface(
-                                                onClick = {
-                                                    coroutineScope.launch {
-                                                        listState.scrollToItem(targetIdx)
-                                                    }
-                                                },
-                                                shape = RoundedCornerShape(50),
-                                                color = Color.White.copy(alpha = 0.12f),
-                                                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.3f)),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Text(
-                                                    text = label,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White,
-                                                    textAlign = TextAlign.Center,
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            Text(
+                                text = "إغلاق",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
 
-                // منطقة عرض صفحات الكتاب أو بطاقة الالتقاط التلقائي النظيفة والهادئة
+                if (isLoading) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF10B981),
+                        trackColor = Color(0xFF064E3B)
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .pointerInput(pageCount) {
-                            if (pageCount > 0) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    val newScale = (zoomScale * zoom).coerceIn(1f, 3.5f)
-                                    zoomScale = newScale
-                                    panOffsetX = if (newScale > 1.02f) {
-                                        (panOffsetX + pan.x).coerceIn(-700f, 700f)
-                                    } else {
-                                        0f
-                                    }
-                                }
-                            }
-                        }
                 ) {
-                    if (pdfRendererHolder != null && pageCount > 0) {
-                        val renderer = pdfRendererHolder!!.second
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    scaleX = zoomScale
-                                    scaleY = zoomScale
-                                    translationX = panOffsetX
+                    AndroidView(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("curriculum_in_app_webview"),
+                        factory = { WebView(it) },
+                        update = { webView ->
+                            webView.settings.apply {
+                                javaScriptEnabled = true
+                                domStorageEnabled = true
+                                loadWithOverviewMode = true
+                                useWideViewPort = true
+                                builtInZoomControls = true
+                                displayZoomControls = false
+                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            }
+                            runCatching {
+                                val cookieManager = CookieManager.getInstance()
+                                cookieManager.setAcceptCookie(true)
+                                cookieManager.setAcceptThirdPartyCookies(webView, true)
+                            }
+                            webView.webViewClient = object : WebViewClient() {
+                                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                    super.onPageStarted(view, url, favicon)
+                                    isLoading = true
                                 }
-                                .testTag("native_pdf_pages_lazy_column"),
-                            contentPadding = PaddingValues(
-                                start = 10.dp,
-                                end = 10.dp,
-                                top = 14.dp,
-                                bottom = 96.dp
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(count = pageCount, key = { pageIndex -> "pdf_page_$pageIndex" }) { pageIndex ->
-                                PdfRendererPageCard(
-                                    renderer = renderer,
-                                    renderMutex = renderMutex,
-                                    pageIndex = pageIndex,
-                                    totalPages = pageCount
-                                )
+
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    isLoading = false
+                                }
+
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): Boolean {
+                                    val url = request?.url?.toString().orEmpty()
+                                    // إبقاء التصفح داخل WebView المدمج ومنع فتح المتصفح الخارجي
+                                    if (url.startsWith("https://") || url.startsWith("http://")) {
+                                        return false
+                                    }
+                                    return true
+                                }
+                            }
+                            val targetUrl = book.normalizedPdfUrl
+                            if (webView.url != targetUrl && webView.originalUrl != targetUrl) {
+                                webView.loadUrl(targetUrl)
                             }
                         }
+                    )
 
-                        // شريط التكبير والتصغير السفلي
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isLoading,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier.align(Alignment.Center)
+                    ) {
                         Surface(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .navigationBarsPadding()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFF064E3B).copy(alpha = 0.95f),
-                            border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.6f)),
-                            shadowElevation = 10.dp
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF0F172A).copy(alpha = 0.85f),
+                            border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.4f))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Surface(
-                                    onClick = {
-                                        zoomScale = (zoomScale + 0.25f).coerceAtMost(3.5f)
-                                    },
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.16f),
-                                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.4f)),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .testTag("pdf_zoom_in_btn")
-                                ) {
-                                    Text(
-                                        text = "تكبير +",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-
-                                Surface(
-                                    onClick = {
-                                        zoomScale = (zoomScale - 0.25f).coerceAtLeast(1f)
-                                        if (zoomScale <= 1.02f) panOffsetX = 0f
-                                    },
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.16f),
-                                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.4f)),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .testTag("pdf_zoom_out_btn")
-                                ) {
-                                    Text(
-                                        text = "تصغير -",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-
-                                Surface(
-                                    onClick = {
-                                        zoomScale = 1f
-                                        panOffsetX = 0f
-                                    },
-                                    shape = RoundedCornerShape(50),
-                                    color = if (zoomScale > 1.02f) Color(0xFFF59E0B) else Color.White.copy(alpha = 0.12f),
-                                    border = BorderStroke(0.8.dp, Color(0xFFFEF08A).copy(alpha = 0.5f)),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .testTag("pdf_fit_screen_btn")
-                                ) {
-                                    Text(
-                                        text = "ملاءمة الشاشة",
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-
-                                Surface(
-                                    onClick = {
-                                        jumpPageInput = currentVisiblePage.toString()
-                                        showJumpToPageBar = !showJumpToPageBar
-                                    },
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFF0F172A).copy(alpha = 0.75f),
-                                    border = BorderStroke(0.9.dp, GoldAccent.copy(alpha = 0.7f)),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .testTag("pdf_page_counter_jump_btn")
-                                ) {
-                                    Text(
-                                        text = "صفحة $currentVisiblePage من $pageCount",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFFEF08A),
-                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        // بطاقة رسمية هادئة ونظيفة أثناء تنزيل الملف من المتصفح أو اختياره من التنزيلات
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(horizontal = 22.dp)
-                                .fillMaxWidth()
-                                .testTag("browser_auto_scan_book_card"),
-                            shape = RoundedCornerShape(22.dp),
-                            color = Color(0xFF1E293B),
-                            border = BorderStroke(1.dp, Color(0xFF334155)),
-                            shadowElevation = 8.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 22.dp, vertical = 24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFF064E3B),
-                                    border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.5f))
-                                ) {
-                                    Text(
-                                        text = "${book.stage.arabicTitle} • ${book.gradeClass}",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFA7F3D0),
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
-                                    )
-                                }
-
-                                Text(
-                                    text = "كتاب ${book.subjectTitle}",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.5.dp,
+                                    color = Color(0xFF10B981)
                                 )
-
-                                if (isScanningOrWaitingForBrowser) {
-                                    CircularProgressIndicator(
-                                        color = Color(0xFF10B981),
-                                        strokeWidth = 3.dp,
-                                        modifier = Modifier
-                                            .padding(vertical = 4.dp)
-                                            .size(36.dp)
-                                    )
-                                }
-
                                 Text(
-                                    text = statusNoticeMessage
-                                        ?: "يتم تنزيل ملف الكتاب (${book.remoteFileName}) عبر المتصفح.\nبمجرد اكتمال التنزيل والعودة للتطبيق، سيقوم التطبيق بالتقاط الملف وفتحه تلقائياً هنا للقراءة الدائمة.",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFCBD5E1),
-                                    textAlign = TextAlign.Center
+                                    text = "جاري فتح ${book.subjectTitle}...",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
                                 )
-
-                                // زر إعادة فتح رابط الكتاب في المتصفح
-                                Surface(
-                                    onClick = {
-                                        launchBrowserForBookDownload(
-                                            context = context,
-                                            book = book,
-                                            onError = { err -> statusNoticeMessage = err }
-                                        )
-                                    },
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFF059669),
-                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(44.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .testTag("open_book_in_browser_btn")
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "تنزيل الكتاب السريع عبر المتصفح (${book.remoteFileName})",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-
-                                // زر مساند: اختيار ملف الكتاب من التنزيلات (ActivityResultContracts.OpenDocument)
-                                Surface(
-                                    onClick = {
-                                        openPdfDocumentLauncher.launch(arrayOf("application/pdf"))
-                                    },
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFF0F172A),
-                                    border = BorderStroke(1.dp, Color(0xFFFEF08A).copy(alpha = 0.65f)),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(44.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .testTag("pick_book_pdf_from_downloads_btn")
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "اختيار ملف الكتاب من التنزيلات",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFFFEF08A)
-                                        )
-                                    }
-                                }
-
-                                Surface(
-                                    onClick = {
-                                        closeRendererSafely()
-                                        onDismiss()
-                                    },
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.08f),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(40.dp)
-                                        .clip(RoundedCornerShape(50))
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "العودة لقائمة الكتب",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
@@ -2293,95 +952,9 @@ private fun NativeInAppPdfReaderModal(
     }
 }
 
-@Composable
-private fun PdfRendererPageCard(
-    renderer: PdfRenderer,
-    renderMutex: Mutex,
-    pageIndex: Int,
-    totalPages: Int
-) {
-    var pageBitmap by remember(pageIndex) { mutableStateOf<Bitmap?>(null) }
-    var aspectRatio by remember(pageIndex) { mutableFloatStateOf(0.707f) }
-
-    LaunchedEffect(renderer, pageIndex) {
-        withContext(Dispatchers.IO) {
-            renderMutex.withLock {
-                runCatching {
-                    renderer.openPage(pageIndex).use { page ->
-                        val w = (page.width * 2).coerceIn(720, 1600)
-                        val h = (page.height * 2).coerceIn(960, 2260)
-                        if (page.height > 0) {
-                            aspectRatio = page.width.toFloat() / page.height.toFloat()
-                        }
-                        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                        bmp.eraseColor(android.graphics.Color.WHITE)
-                        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        pageBitmap = bmp
-                    }
-                }
-            }
-        }
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(aspectRatio.coerceIn(0.55f, 0.90f))
-                .background(Color.White),
-            contentAlignment = Alignment.Center
-        ) {
-            val bmp = pageBitmap
-            if (bmp != null) {
-                Image(
-                    bitmap = bmp.asImageBitmap(),
-                    contentDescription = "صفحة ${pageIndex + 1} من $totalPages",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    CircularProgressIndicator(
-                        color = DeepEmerald,
-                        strokeWidth = 2.5.dp,
-                        modifier = Modifier.size(26.dp)
-                    )
-                    Text(
-                        text = "صفحة ${pageIndex + 1} من $totalPages",
-                        fontSize = 11.sp,
-                        color = Color(0xFF475569),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp),
-                shape = RoundedCornerShape(50),
-                color = Color(0xFF0F172A).copy(alpha = 0.76f)
-            ) {
-                Text(
-                    text = "صفحة ${pageIndex + 1} من $totalPages",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                )
-            }
-        }
-    }
-}
-
+/**
+ * قسم إدارة واستعراض روابط المناهج الدراسية داخل "إعدادات المطور" فقط (DeveloperControlPanelScreen).
+ */
 @Composable
 fun DeveloperCurriculumManagerSection(
     viewModel: SchoolViewModel
@@ -2401,12 +974,12 @@ fun DeveloperCurriculumManagerSection(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "فهرس المناهج الدراسية العراقية الموحد",
+                    text = "مدير روابط المناهج الدراسية (${IraqiCurriculumCatalog.allBooks.size} منهج رسمي)",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
-                    text = "يضم ${IraqiCurriculumCatalog.allBooks.size} كتاباً منهجياً رسمياً مع ميزة الالتقاط التلقائي من التنزيلات والقارئ المدمج داخل التطبيق",
+                    text = "إدارة وفحص روابط المناهج الدراسية العراقية الرسمية (Google Drive /preview) داخل إعدادات المطور فقط",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -2424,7 +997,7 @@ fun DeveloperCurriculumManagerSection(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
-                        text = "استعراض وفحص مكتبة المناهج الرسمية",
+                        text = "فتح مدير روابط المناهج الدراسية",
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
                         fontSize = 13.sp
@@ -2461,10 +1034,10 @@ fun DeveloperCurriculumManagerSection(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "مكتبة المناهج الدراسية العراقية",
+                                text = "مدير روابط المناهج الدراسية (${IraqiCurriculumCatalog.allBooks.size} كتاب)",
                                 color = Color.White,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 15.sp
+                                fontSize = 14.5.sp
                             )
                             Surface(
                                 onClick = { showFullCurriculumModal = false },

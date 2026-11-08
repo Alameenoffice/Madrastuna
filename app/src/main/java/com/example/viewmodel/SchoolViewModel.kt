@@ -974,6 +974,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             message = message,
             isSuccess = isSuccess
         )
+        _latestBannerAlert.value = null
         _toastAlert.value = alert
     }
 

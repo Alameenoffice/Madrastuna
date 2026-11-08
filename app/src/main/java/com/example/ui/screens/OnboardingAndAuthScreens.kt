@@ -883,23 +883,25 @@ fun SchoolSetupScreen(
 
                     if (errorMessage != null) {
                         Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFFDE8E8),
+                            border = BorderStroke(1.dp, Color(0xFFF8B4B4)),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
-                                modifier = Modifier.padding(10.dp),
+                                modifier = Modifier.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.ErrorOutline,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error
+                                    tint = Color(0xFF9B1C1C)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = errorMessage!!,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    color = Color(0xFF9B1C1C),
+                                    fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
@@ -978,7 +980,9 @@ fun UnifiedLoginScreen(
     loginLockoutUntilMs: Long = 0L,
     failedLoginAttemptsCount: Int = 0,
     biometricCredentials: BiometricSavedCredentials? = null,
-    onBiometricLogin: () -> Result<*> = { Result.success(null) }
+    onBiometricLogin: () -> Result<*> = { Result.success(null) },
+    onShowErrorToast: (String) -> Unit = {},
+    hasActiveTopToast: Boolean = false
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -1426,9 +1430,10 @@ fun UnifiedLoginScreen(
                                         )
                                     }
                                 }
-                            } else if (loginError != null) {
+                            } else if (loginError != null && !hasActiveTopToast) {
                                 Surface(
-                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    color = Color(0xFFFDE8E8),
+                                    border = BorderStroke(1.dp, Color(0xFFF8B4B4)),
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -1439,13 +1444,14 @@ fun UnifiedLoginScreen(
                                         Icon(
                                             imageVector = Icons.Filled.GppBad,
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error
+                                            tint = Color(0xFF9B1C1C)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = loginError!!,
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF9B1C1C)
                                         )
                                     }
                                 }
@@ -1453,7 +1459,8 @@ fun UnifiedLoginScreen(
 
                             if (remainingLockoutSec > 0L) {
                                 Surface(
-                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    color = Color(0xFFFDE8E8),
+                                    border = BorderStroke(1.dp, Color(0xFFF8B4B4)),
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -1465,13 +1472,13 @@ fun UnifiedLoginScreen(
                                         Icon(
                                             imageVector = Icons.Filled.LockClock,
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error
+                                            tint = Color(0xFF9B1C1C)
                                         )
                                         Text(
                                             text = "الدرع الأمني مفعل: يرجى الانتظار ${remainingLockoutSec} ثانية قبل المحاولة مجدداً.",
                                             style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                            color = Color(0xFF9B1C1C)
                                         )
                                     }
                                 }
@@ -1482,9 +1489,13 @@ fun UnifiedLoginScreen(
                                 icon = Icons.AutoMirrored.Filled.Login,
                                 enabled = remainingLockoutSec == 0L,
                                 onClick = {
+                                    loginError = null
                                     val res = onLoginAttempt(username, password)
                                     if (res.isFailure) {
-                                        loginError = res.exceptionOrNull()?.message ?: "خطأ في تسجيل الدخول"
+                                        val msg = res.exceptionOrNull()?.message ?: "خطأ في تسجيل الدخول"
+                                        if (msg.startsWith("جاري الاتصال")) {
+                                            loginError = msg
+                                        }
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -1495,13 +1506,18 @@ fun UnifiedLoginScreen(
                                 BiometricQuickLoginButton(
                                     savedCredentials = biometricCredentials,
                                     onBiometricAuthenticated = {
+                                        loginError = null
                                         val res = onBiometricLogin()
                                         if (res.isFailure) {
-                                            loginError = res.exceptionOrNull()?.message ?: "تعذر تسجيل الدخول بالبصمة المحفوظة"
+                                            val msg = res.exceptionOrNull()?.message ?: "تعذر تسجيل الدخول بالبصمة المحفوظة"
+                                            if (msg.startsWith("جاري الاتصال")) {
+                                                loginError = msg
+                                            }
                                         }
                                     },
                                     onBiometricError = { errMsg ->
-                                        loginError = errMsg
+                                        loginError = null
+                                        onShowErrorToast(errMsg)
                                     }
                                 )
                             }

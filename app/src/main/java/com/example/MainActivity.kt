@@ -24,9 +24,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -280,7 +282,9 @@ fun MadrasatiRootApp(
                     loginLockoutUntilMs = loginLockoutUntilMs,
                     failedLoginAttemptsCount = failedLoginAttemptsCount,
                     biometricCredentials = biometricCredentials,
-                    onBiometricLogin = { viewModel.loginWithSavedBiometrics() }
+                    onBiometricLogin = { viewModel.loginWithSavedBiometrics() },
+                    onShowErrorToast = { errMsg -> viewModel.showToastAlert(errMsg, isSuccess = false) },
+                    hasActiveTopToast = toastAlert != null
                 )
             }
             else -> {
@@ -457,180 +461,113 @@ fun MadrasatiRootApp(
         ) {
             val alert = toastAlert
             if (alert != null) {
-                val toastGradient = if (alert.isSuccess) {
-                    listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
+                var dragOffsetX by remember(alert.id) { mutableFloatStateOf(0f) }
+                var dragOffsetY by remember(alert.id) { mutableFloatStateOf(0f) }
+                val animatedOffsetX by animateFloatAsState(
+                    targetValue = dragOffsetX,
+                    animationSpec = tween(durationMillis = 120),
+                    label = "toast_drag_x"
+                )
+                val animatedOffsetY by animateFloatAsState(
+                    targetValue = dragOffsetY,
+                    animationSpec = tween(durationMillis = 120),
+                    label = "toast_drag_y"
+                )
+                val dragAlpha = (1f - ( kotlin.math.abs(animatedOffsetX) / 320f ) - ( kotlin.math.abs(animatedOffsetY.coerceAtMost(0f)) / 140f ))
+                    .coerceIn(0.2f, 1f)
+
+                val toastBgColor = if (alert.isSuccess) {
+                    Color(0xFFECFDF5)
                 } else {
-                    listOf(Color(0xFFDC2626), Color(0xFFB91C1C), Color(0xFF7F1D1D))
+                    Color(0xFFFDE8E8)
                 }
+                val toastBorderColor = if (alert.isSuccess) {
+                    Color(0xFFA7F3D0)
+                } else {
+                    Color(0xFFF8B4B4)
+                }
+                val toastContentColor = if (alert.isSuccess) {
+                    Color(0xFF065F46)
+                } else {
+                    Color(0xFF9B1C1C)
+                }
+
                 Surface(
-                    color = Color.Transparent,
-                    shape = RoundedCornerShape(24.dp),
-                    shadowElevation = 14.dp,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.2.dp,
-                        Color.White.copy(alpha = 0.45f)
-                    ),
+                    color = toastBgColor,
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 6.dp,
+                    border = BorderStroke(1.dp, toastBorderColor),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
+                        .graphicsLayer {
+                            translationX = animatedOffsetX
+                            translationY = animatedOffsetY
+                            alpha = dragAlpha
+                        }
+                        .pointerInput(alert.id) {
+                            detectDragGestures(
+                                onDragEnd = {
+                                    if (dragOffsetY < -36f || kotlin.math.abs(dragOffsetX) > 80f) {
+                                        viewModel.dismissToastAlert()
+                                    } else {
+                                        dragOffsetX = 0f
+                                        dragOffsetY = 0f
+                                    }
+                                },
+                                onDragCancel = {
+                                    dragOffsetX = 0f
+                                    dragOffsetY = 0f
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    dragOffsetX += dragAmount.x
+                                    dragOffsetY = (dragOffsetY + dragAmount.y).coerceAtMost(20f)
+                                }
+                            )
+                        }
+                        .clip(RoundedCornerShape(16.dp))
                         .testTag("global_toast_alert_banner")
                 ) {
-                    Box(
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Brush.horizontalGradient(toastGradient))
-                            .padding(horizontal = 14.dp, vertical = 11.dp)
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.White.copy(alpha = 0.22f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .graphicsLayer {
-                                            scaleX = toastIconScale
-                                            scaleY = toastIconScale
-                                        }
-                                ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                        Icon(
-                                            imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.Error,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(20.dp)
-                                        )
+                            Icon(
+                                imageVector = if (alert.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                                contentDescription = null,
+                                tint = toastContentColor,
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .graphicsLayer {
+                                        scaleX = toastIconScale
+                                        scaleY = toastIconScale
                                     }
-                                }
-                                Text(
-                                    text = alert.message,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                            }
-                            IconButton(
-                                onClick = { viewModel.dismissToastAlert() },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "إغلاق التنبيه",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                            )
+                            Text(
+                                text = alert.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = toastContentColor
+                            )
                         }
-                    }
-                }
-            }
-        }
-
-        // Top-most Window Popup Layer so 3D Glassmorphic Toast ALWAYS appears above open Dialogs / Modals
-        val activeToastForPopup = toastAlert
-        if (activeToastForPopup != null) {
-            val popupToastGradient = if (activeToastForPopup.isSuccess) {
-                listOf(Color(0xFF059669), Color(0xFF047857), Color(0xFF0F3D5E))
-            } else {
-                listOf(Color(0xFFDC2626), Color(0xFFB91C1C), Color(0xFF7F1D1D))
-            }
-            androidx.compose.ui.window.Popup(
-                alignment = Alignment.TopCenter,
-                offset = androidx.compose.ui.unit.IntOffset(0, 24),
-                properties = androidx.compose.ui.window.PopupProperties(
-                    focusable = false,
-                    dismissOnBackPress = false,
-                    dismissOnClickOutside = false,
-                    clippingEnabled = false
-                )
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                        .zIndex(Float.MAX_VALUE),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    Surface(
-                        color = Color.Transparent,
-                        shape = RoundedCornerShape(24.dp),
-                        shadowElevation = 18.dp,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.2.dp,
-                            Color.White.copy(alpha = 0.45f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(24.dp))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Brush.horizontalGradient(popupToastGradient))
-                                .padding(horizontal = 14.dp, vertical = 11.dp)
+                        IconButton(
+                            onClick = { viewModel.dismissToastAlert() },
+                            modifier = Modifier.size(28.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color.White.copy(alpha = 0.22f),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .graphicsLayer {
-                                                scaleX = toastIconScale
-                                                scaleY = toastIconScale
-                                            }
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                            Icon(
-                                                imageVector = if (activeToastForPopup.isSuccess) Icons.Filled.CheckCircle else Icons.Filled.Error,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = activeToastForPopup.message,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(CircleShape)
-                                        .clickable { viewModel.dismissToastAlert() },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "إغلاق التنبيه",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "إغلاق التنبيه",
+                                tint = toastContentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }
@@ -1931,18 +1868,61 @@ fun AuthenticatedMainPlatform(
                     )
                 }
 
-                // Instant Alert Banner when a new notification arrives
-                AnimatedVisibility(visible = latestBannerAlert != null) {
+                // Instant Alert Banner when a new notification arrives (hidden if toastAlert is active to prevent stacking)
+                AnimatedVisibility(visible = latestBannerAlert != null && toastAlert == null) {
                     val alert = latestBannerAlert
                     if (alert != null) {
+                        var bannerDragX by remember(alert.id) { mutableFloatStateOf(0f) }
+                        var bannerDragY by remember(alert.id) { mutableFloatStateOf(0f) }
+                        val animBannerX by animateFloatAsState(
+                            targetValue = bannerDragX,
+                            animationSpec = tween(durationMillis = 120),
+                            label = "banner_drag_x"
+                        )
+                        val animBannerY by animateFloatAsState(
+                            targetValue = bannerDragY,
+                            animationSpec = tween(durationMillis = 120),
+                            label = "banner_drag_y"
+                        )
                         val cleanAlertTitle = com.example.util.InputSanitizer.stripEmojis(alert.title)
                         val cleanAlertBody = com.example.util.InputSanitizer.stripEmojis(alert.body)
                         val isSecretSuggestion = cleanAlertTitle.contains("صندوق المقترحات") || cleanAlertTitle.contains("سرية")
+                        val isWarningAlert = alert.type == NotificationType.ATTENDANCE || alert.type == NotificationType.REPORT
+                        val bannerBg = if (isWarningAlert) Color(0xFFFDE8E8) else Color(0xFFECFDF5)
+                        val bannerBorder = if (isWarningAlert) Color(0xFFF8B4B4) else Color(0xFFA7F3D0)
+                        val bannerText = if (isWarningAlert) Color(0xFF9B1C1C) else Color(0xFF065F46)
+
                         Surface(
-                            color = MaterialTheme.colorScheme.primary,
+                            color = bannerBg,
+                            border = BorderStroke(1.dp, bannerBorder),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .graphicsLayer {
+                                    translationX = animBannerX
+                                    translationY = animBannerY
+                                }
+                                .pointerInput(alert.id) {
+                                    detectDragGestures(
+                                        onDragEnd = {
+                                            if (bannerDragY < -36f || kotlin.math.abs(bannerDragX) > 80f) {
+                                                viewModel.dismissBannerAlert()
+                                            } else {
+                                                bannerDragX = 0f
+                                                bannerDragY = 0f
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            bannerDragX = 0f
+                                            bannerDragY = 0f
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            bannerDragX += dragAmount.x
+                                            bannerDragY = (bannerDragY + dragAmount.y).coerceAtMost(20f)
+                                        }
+                                    )
+                                }
                                 .clickable {
                                     viewModel.dismissBannerAlert()
                                     viewModel.openNotificationDeepLink(alert)
@@ -1961,7 +1941,7 @@ fun AuthenticatedMainPlatform(
                                     Icon(
                                         imageVector = if (isSecretSuggestion) Icons.Filled.Lock else Icons.Filled.NotificationsActive,
                                         contentDescription = null,
-                                        tint = Color.White,
+                                        tint = bannerText,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -1969,12 +1949,13 @@ fun AuthenticatedMainPlatform(
                                         Text(
                                             text = cleanAlertTitle,
                                             style = MaterialTheme.typography.labelLarge,
-                                            color = Color.White
+                                            fontWeight = FontWeight.Bold,
+                                            color = bannerText
                                         )
                                         Text(
                                             text = cleanAlertBody,
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = Color.White.copy(alpha = 0.9f),
+                                            color = bannerText.copy(alpha = 0.9f),
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -1987,7 +1968,7 @@ fun AuthenticatedMainPlatform(
                                     Icon(
                                         imageVector = Icons.Filled.Close,
                                         contentDescription = "إغلاق",
-                                        tint = Color.White,
+                                        tint = bannerText,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }

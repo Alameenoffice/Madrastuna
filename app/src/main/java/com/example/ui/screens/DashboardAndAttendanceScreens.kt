@@ -310,6 +310,7 @@ fun DashboardScreen(
                     viewModel.getStudentStatusForDate(myStudent, todayIso)
                 }
                 val myTotalAbsences = viewModel.getTotalAbsenceDays(myStudent.id)
+                val myTotalPresent = viewModel.getTotalPresentDays(myStudent.id)
                 val myClassHomeworks = homeworks.filter {
                     it.gradeClass == myStudent.gradeClass && it.sectionName == myStudent.sectionName
                 }
@@ -336,7 +337,7 @@ fun DashboardScreen(
                             .padding(bottom = 10.dp)
                             .testTag("dashboard_student_gate_status_card"),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFECFDF5),
+                        color = AdaptiveSoftSurface,
                         border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.45f))
                     ) {
                         Row(
@@ -393,7 +394,7 @@ fun DashboardScreen(
                             .fillMaxWidth()
                             .padding(bottom = 10.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = if (activeCall != null) SuccessGreen.copy(alpha = 0.14f) else Color(0xFFECFDF5),
+                        color = if (activeCall != null) SuccessGreen.copy(alpha = 0.14f) else AdaptiveSoftSurface,
                         border = androidx.compose.foundation.BorderStroke(
                             1.2.dp,
                             if (activeCall != null) SuccessGreen else DeepEmerald.copy(alpha = 0.45f)
@@ -472,7 +473,7 @@ fun DashboardScreen(
                         SmartStatCard(
                             title = "حالة الحضور اليوم",
                             value = if (todayHolidayLabel != null) "عطلة رسمية" else myTodayStatus.arabicLabel,
-                            subtitle = if (todayHolidayLabel != null) todayHolidayLabel else "إجمالي أيام غيابه: $myTotalAbsences يوم",
+                            subtitle = if (todayHolidayLabel != null) todayHolidayLabel else "حضور فعلي: $myTotalPresent يوم • غياب: $myTotalAbsences يوم",
                             icon = Icons.Filled.FactCheck,
                             accentColor = when {
                                 todayHolidayLabel != null || myTodayStatus == AttendanceStatus.HOLIDAY -> GoldAccent
@@ -616,14 +617,21 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        val realTeacherSupervisedCount = remember(students, currentUser, schoolConfig.schoolId) {
+                            val activeTeacher = currentUser
+                            if (isTeacher && activeTeacher != null) viewModel.getTeacherSupervisedStudentsCount(activeTeacher) else scopedStudents.size
+                        }
                         SmartStatCard(
-                            title = if (isTeacher) "طلابي المسندون" else "إجمالي الطلبة",
-                            value = "${scopedStudents.size} طالب",
-                            subtitle = if (isTeacher) "المسجلون في صفوفك وشعبك" else "$staffPluralLabel: $teachersCount",
+                            title = if (isTeacher) "الطلاب المشرف عليهم" else "إجمالي الطلبة",
+                            value = "$realTeacherSupervisedCount طالب",
+                            subtitle = if (isTeacher) "العدد الفعلي المسجل في صفوفك وشعبك" else "$staffPluralLabel: $teachersCount",
                             icon = Icons.Filled.Groups,
                             accentColor = PrimaryLight,
                             modifier = Modifier.weight(1f),
-                            onClick = { viewModel.navigateToSection(AppSection.ATTENDANCE) }
+                            onClick = {
+                                if (isAdmin) viewModel.navigateToSection(AppSection.STUDENTS_DIRECTORY)
+                                else viewModel.navigateToSection(AppSection.ATTENDANCE)
+                            }
                         )
                         SmartStatCard(
                             title = "سجل الحضور اليومي",
@@ -709,8 +717,8 @@ fun DashboardScreen(
                                     .background(
                                         Brush.linearGradient(
                                             colors = listOf(
-                                                Color(0xFF047857),
-                                                Color(0xFF059669)
+                                                DeepEmerald,
+                                                RoyalGreen
                                             )
                                         )
                                     )
@@ -767,13 +775,13 @@ fun DashboardScreen(
                                             Icon(
                                                 imageVector = Icons.Filled.QrCodeScanner,
                                                 contentDescription = null,
-                                                tint = Color(0xFF047857),
+                                                tint = DeepEmerald,
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Text(
                                                 text = "فتح الكاشير",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF047857),
+                                                color = DeepEmerald,
                                                 fontWeight = FontWeight.ExtraBold
                                             )
                                         }
@@ -795,6 +803,13 @@ fun DashboardScreen(
 
             val sectionsList = remember(schoolConfig.schoolType, featureSettings, currentUser) {
                 buildList {
+                    if (isParentOrStudent) {
+                        add(Triple(AppSection.STUDENT_PERSONAL_PROFILE, Icons.Filled.Badge, "ملف الطالب الشخصي الشامل والمواظبة والدرجات"))
+                    }
+                    if (isAdmin) {
+                        add(Triple(AppSection.TEACHING_STAFF, Icons.Filled.Groups, "سجل الكادر التدريسي المدمج ومؤشرات الإشراف"))
+                        add(Triple(AppSection.STUDENTS_DIRECTORY, Icons.Filled.People, "سجل وأسماء الطلاب حسب الصف والشعبة والنقل الفوري"))
+                    }
                     add(Triple(AppSection.ATTENDANCE, Icons.Filled.HowToReg, if (isParentOrStudent) "حالة الحضور وعداد الغياب الخاص" else "رصد الحضور والغياب وتبليغ واتساب"))
                     add(Triple(AppSection.SCHEDULE_HOMEWORK, Icons.Filled.CalendarMonth, "جدول الحصص والتحضير اليومي"))
                     add(Triple(AppSection.CURRICULUM_BOOKS, Icons.Filled.AutoStories, "المناهج العراقية الرسمية وقارئ الكتب الفائق"))
@@ -7831,7 +7846,797 @@ fun LiveOperationsRadarScreen(
     }
 }
 
+/**
+ * ثالثاً: قسم "ملف الطالب الشخصي الشامل" (Comprehensive Student Personal Profile Screen)
+ * مستقل تماماً عن نافذة بطاقة الهوية الرقمية الحالية (DigitalStudentIdDialog)، ويتكيف 100% مع الهوية اللونية الذكية حسب الجنس.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun StudentPersonalProfileScreen(
+    viewModel: SchoolViewModel
+) {
+    val context = LocalContext.current
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
+    val students by viewModel.students.collectAsState()
+    val attendance by viewModel.attendance.collectAsState()
+    val grades by viewModel.grades.collectAsState()
+    val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val toastAlert by viewModel.toastAlert.collectAsState()
+    val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
 
+    val scopedStudents = remember(students, currentUser, selectedParentChildId) {
+        viewModel.getScopedStudentsForUser(currentUser)
+    }
+    var selectedAdminStudentId by remember { mutableStateOf("") }
+    val activeStudent = remember(scopedStudents, students, currentUser, selectedParentChildId, selectedAdminStudentId) {
+        when (currentUser?.role) {
+            UserRole.STUDENT, UserRole.PARENT -> {
+                scopedStudents.firstOrNull()
+                    ?: students.firstOrNull { it.id == currentUser?.linkedStudentId }
+            }
+            else -> {
+                scopedStudents.firstOrNull { it.id == selectedAdminStudentId }
+                    ?: scopedStudents.firstOrNull()
+            }
+        }
+    }
 
+    var showDigitalIdModal by remember { mutableStateOf(false) }
 
+    if (activeStudent == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, AdaptiveSoftBorder)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "ملف الطالب الشخصي الشامل",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                    Text(
+                        text = "لا يوجد سجل طالب مرتبط بهذا الحساب حالياً.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+        return
+    }
 
+    // Real-time Attendance Analytics (100% Real Data, Zero Mock Numbers!)
+    val realPresentDays = remember(attendance, students, activeStudent.id) {
+        viewModel.getTotalPresentDays(activeStudent.id)
+    }
+    val realAbsentDays = remember(attendance, students, activeStudent.id) {
+        viewModel.getTotalAbsenceDays(activeStudent.id)
+    }
+    val realExcusedDays = remember(attendance, students, activeStudent.id) {
+        viewModel.getTotalExcusedDays(activeStudent.id)
+    }
+    val realLateDays = remember(attendance, students, activeStudent.id) {
+        viewModel.getTotalLateDays(activeStudent.id)
+    }
+    val totalRecordedDays = realPresentDays + realAbsentDays + realExcusedDays + realLateDays
+    val attendanceCommitmentPercent = remember(realPresentDays, realExcusedDays, totalRecordedDays) {
+        if (totalRecordedDays <= 0) 0 else (((realPresentDays + realExcusedDays) * 100.0) / totalRecordedDays).toInt().coerceIn(0, 100)
+    }
+    val todayStatus = remember(activeStudent, attendance, todayIso) {
+        viewModel.getStudentStatusForDate(activeStudent, todayIso)
+    }
+
+    // Academic Grades & Subject Progress
+    val studentGrades = remember(grades, activeStudent.id, activeStudent.gradeClass, schoolConfig) {
+        val recorded = grades.filter { it.studentId == activeStudent.id }
+        val configuredSubjects = viewModel.getSubjectsForClass(activeStudent.gradeClass, null)
+        val allSubNames = (configuredSubjects + recorded.map { it.subjectName })
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinctBy { ArabicTextNormalizer.normalizeText(it) }
+        allSubNames.map { subName ->
+            val found = recorded.firstOrNull {
+                ArabicTextNormalizer.normalizeText(it.subjectName) == ArabicTextNormalizer.normalizeText(subName)
+            }
+            val dynamicScale = found?.maxScoreScale ?: viewModel.getDefaultMaxScoreForClassAndSubject(activeStudent.gradeClass, subName)
+            found?.copy(maxScoreScale = dynamicScale) ?: SubjectGrade(
+                id = "prof_${activeStudent.id}_$subName",
+                studentId = activeStudent.id,
+                studentName = activeStudent.studentName,
+                gradeClass = activeStudent.gradeClass,
+                subjectName = subName,
+                dailyScore = 0,
+                month1Score = 0,
+                month2Score = 0,
+                midYearScore = 0,
+                finalExamScore = 0,
+                maxScoreScale = dynamicScale,
+                schoolId = schoolConfig.schoolId
+            )
+        }
+    }
+    val scoredSubjects = remember(studentGrades) {
+        studentGrades.filter {
+            it.dailyScore > 0 || it.month1Score > 0 || it.month2Score > 0 || it.midYearScore > 0 || it.finalExamScore > 0
+        }
+    }
+    val cumulativeAverage = remember(scoredSubjects) {
+        if (scoredSubjects.isEmpty()) 0 else scoredSubjects.map { it.normalizedPercentage }.average().toInt()
+    }
+    val studentBadges = remember(attendance, grades, activeStudent.id) {
+        viewModel.getStudentAutoBadges(activeStudent.id)
+    }
+    val studentBehaviors = remember(dailyBehaviors, activeStudent.id) {
+        dailyBehaviors.filter { it.studentId == activeStudent.id }.sortedByDescending { it.date }
+    }
+
+    var editableGender by remember(activeStudent.id, activeStudent.gender) {
+        mutableStateOf(activeStudent.normalizedGenderLabel)
+    }
+    var editableAge by remember(activeStudent.id, activeStudent.ageYears) {
+        mutableStateOf(activeStudent.ageYears)
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+            .testTag("student_personal_profile_screen"),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
+    ) {
+        // 1. Header Banner Card (Adaptive to Male/Female Theme)
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(26.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    AdaptiveHeroStart,
+                                    AdaptiveHeroMid,
+                                    AdaptiveHeroEnd
+                                )
+                            )
+                        )
+                        .padding(18.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.20f),
+                                border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                                modifier = Modifier.size(68.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Base64AvatarImage(
+                                        base64Data = activeStudent.photoBase64,
+                                        fallbackIcon = Icons.Filled.Person,
+                                        contentDescription = activeStudent.fullNameWithFather,
+                                        size = 62.dp,
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.18f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                                ) {
+                                    Text(
+                                        text = if (activeStudent.isFemale) "ملف الطالبة الشخصي الشامل" else "ملف الطالب الشخصي الشامل",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                    )
+                                }
+                                Text(
+                                    text = activeStudent.fullNameWithFather,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "المرحلة: ${schoolConfig.schoolStage.arabicLabel} • الصف: ${activeStudent.gradeClass} (شعبة ${activeStudent.sectionName})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.94f),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // Metadata Pills Row
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(
+                                "الجنس: ${activeStudent.normalizedGenderLabel}",
+                                if (activeStudent.ageYears > 0) "العمر: ${activeStudent.ageYears} سنة" else "العمر: غير محدد",
+                                "حالة القيد: ${activeStudent.enrollmentStatusEnum.arabicLabel}",
+                                "دوام اليوم: ${todayStatus.arabicLabel}"
+                            ).forEach { pillText ->
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.16f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                                ) {
+                                    Text(
+                                        text = pillText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Button to view existing Digital ID Card without altering it
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { showDigitalIdModal = true }
+                                .testTag("student_profile_open_digital_id_btn"),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White,
+                            shadowElevation = 2.dp
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 10.dp, horizontal = 14.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "عرض بطاقة الهوية المدرسية الرقمية والباركود",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Interactive Gender & Age Selector Card (Triggers 100% Full-System Color Theme Transformation)
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "الهوية الشخصية والسمة اللونية الذكية",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                    Text(
+                        text = "حدد الجنس والعمر لتخصيص الملف الشخصي وتطبيق الهوية اللونية الملائمة على كامل المنصة تلقائياً",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    GenderAndAgeSegmentedSelectorCard(
+                        selectedGender = editableGender,
+                        onGenderChange = { newGender ->
+                            editableGender = newGender
+                            viewModel.transferStudentClassAndSection(
+                                studentId = activeStudent.id,
+                                newGradeClass = activeStudent.gradeClass,
+                                newSectionName = activeStudent.sectionName,
+                                newGender = newGender,
+                                newAgeYears = editableAge
+                            )
+                        },
+                        ageYears = editableAge,
+                        onAgeYearsChange = { newAge ->
+                            editableAge = newAge
+                            viewModel.transferStudentClassAndSection(
+                                studentId = activeStudent.id,
+                                newGradeClass = activeStudent.gradeClass,
+                                newSectionName = activeStudent.sectionName,
+                                newGender = editableGender,
+                                newAgeYears = newAge
+                            )
+                        },
+                        title = "تحديد الجنس والعمر الزمني"
+                    )
+                }
+            }
+        }
+
+        // 3. Real-Time Attendance & Discipline Analytics (Animated Geometric Ring + Real Counters starting at 0)
+        item {
+            val animatedSweep by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = if (totalRecordedDays == 0) 0f else (attendanceCommitmentPercent / 100f) * 360f,
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 650),
+                label = "attendance_ring_sweep"
+            )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "إحصائيات المواظبة والانضباط الحقيقية",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            Text(
+                                text = if (totalRecordedDays == 0) {
+                                    "لم يتم تسجيل أيام دوام بعد (تبدأ العدادات من 0 وتزداد تلقائياً مع كل رصد)"
+                                } else {
+                                    "محسوبة آلياً من سجل الحضور الفعلي للطالب ($totalRecordedDays يوم مرصود)"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        // Geometric Progress Ring
+                        Box(
+                            modifier = Modifier.size(68.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val ringTrackColor = AdaptiveSoftContainer
+                            val ringActiveColor = RoyalGreen
+                            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                                val strokePx = 7.dp.toPx()
+                                drawArc(
+                                    color = ringTrackColor,
+                                    startAngle = 0f,
+                                    sweepAngle = 360f,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokePx)
+                                )
+                                drawArc(
+                                    color = ringActiveColor,
+                                    startAngle = -90f,
+                                    sweepAngle = animatedSweep,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                        width = strokePx,
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+                                )
+                            }
+                            Text(
+                                text = if (totalRecordedDays == 0) "0%" else "$attendanceCommitmentPercent%",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            Triple("أيام الحضور الفعلي", "$realPresentDays يوم", RoyalGreen),
+                            Triple("أيام الغياب الفعلي", "$realAbsentDays يوم", DangerRed),
+                            Triple("الإجازات الرسمية", "$realExcusedDays يوم", InfoBlue),
+                            Triple("مرات التأخر", "$realLateDays يوم", WarningAmber)
+                        ).forEach { (label, valueText, accentCol) ->
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                color = accentCol.copy(alpha = 0.09f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, accentCol.copy(alpha = 0.32f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(
+                                        text = valueText,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = accentCol,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepForestGreen,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 2
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Academic Record & Subject Progress Indicator
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "السجل الأكاديمي ومؤشر التقدم الدراسي",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen
+                            )
+                            Text(
+                                text = "متابعة مستوى التقدم في المواد الدراسية والمعدل التراكمي العام",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = AdaptiveSoftSurface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder)
+                        ) {
+                            Text(
+                                text = if (scoredSubjects.isEmpty()) "المعدل: قيد الرصد" else "المعدل العام: $cumulativeAverage%",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
+                    // Text-only Excellence Badges
+                    if (studentBadges.isNotEmpty() || cumulativeAverage >= 85 || (realPresentDays > 0 && realAbsentDays == 0)) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val badgesTextList = buildList {
+                                if (cumulativeAverage >= 90) add("وسام التفوق الأكاديمي الممتاز")
+                                else if (cumulativeAverage >= 80) add("وسام التميز العلمي الجيد جداً")
+                                if (realPresentDays > 0 && realAbsentDays == 0) add("وسام الانضباط والمواظبة الكاملة")
+                                studentBadges.forEach { add(it.arabicTitle) }
+                            }.distinct()
+                            badgesTextList.forEach { badgeTitle ->
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = AdaptiveSoftContainer,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGreen.copy(alpha = 0.4f))
+                                ) {
+                                    Text(
+                                        text = badgeTitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (studentGrades.isEmpty()) {
+                        Text(
+                            text = "لا توجد مواد مرصودة لهذا الصف حالياً.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            studentGrades.forEach { grade ->
+                                val hasAnyScore = grade.dailyScore > 0 || grade.month1Score > 0 || grade.month2Score > 0 || grade.midYearScore > 0 || grade.finalExamScore > 0
+                                val pct = if (hasAnyScore) grade.normalizedPercentage.coerceIn(0, 100) else 0
+                                val barFraction by androidx.compose.animation.core.animateFloatAsState(
+                                    targetValue = pct / 100f,
+                                    animationSpec = androidx.compose.animation.core.tween(500),
+                                    label = "subject_progress_${grade.subjectName}"
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = AdaptiveSoftSurface.copy(alpha = 0.55f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder.copy(alpha = 0.65f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = grade.subjectName,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = if (hasAnyScore) {
+                                                    "${grade.finalAverage} / ${grade.maxScoreScale} ($pct%)"
+                                                } else {
+                                                    "بانتظار الرصد"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (hasAnyScore) RoyalGreen else Color(0xFF64748B)
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(7.dp)
+                                                .clip(RoundedCornerShape(50))
+                                                .background(AdaptiveSoftContainer)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(barFraction)
+                                                    .fillMaxHeight()
+                                                    .clip(RoundedCornerShape(50))
+                                                    .background(
+                                                        Brush.horizontalGradient(
+                                                            colors = listOf(RoyalGreen, DeepEmerald)
+                                                        )
+                                                    )
+                                            )
+                                        }
+                                        if (hasAnyScore) {
+                                            Text(
+                                                text = "يومي: ${grade.dailyScore} • شهر 1: ${grade.month1Score} • شهر 2: ${grade.month2Score} • نصف السنة: ${grade.midYearScore} • نهائي: ${grade.finalExamScore}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. E-Wallet & Behavioral Log Summary Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "المحفظة المدرسية والسجل السلوكي التربوي",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            color = AdaptiveSoftSurface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "رصيد محفظة الحانوت",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = DeepEmerald,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${activeStudent.walletBalanceIqd} د.ع",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = "السقف اليومي: ${activeStudent.dailySpendLimitIqd} د.ع",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            color = AdaptiveSoftSurface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "الملاحظات التربوية",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = DeepEmerald,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${studentBehaviors.size} ملاحظة موثقة",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = if (studentBehaviors.isEmpty()) "سجل انضباطي ناصع" else "آخر تحديث: ${studentBehaviors.first().date}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    if (studentBehaviors.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            studentBehaviors.take(5).forEach { beh ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = AdaptiveSoftSurface.copy(alpha = 0.55f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "${beh.subjectName.ifBlank { "متابعة عامة" }} — ${beh.teacherName}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = beh.date,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = DeepEmerald,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        Text(
+                                            text = "التقييم: ${beh.participationLevel.arabicLabel} • ${beh.behaviorNote.ifBlank { "انضباط ومشاركة متميزة" }}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDigitalIdModal) {
+        DigitalStudentIdDialog(
+            student = activeStudent,
+            schoolConfig = schoolConfig,
+            badges = studentBadges,
+            todayAttendanceLabel = todayStatus.arabicLabel,
+            todayIso = todayIso,
+            toastAlert = toastAlert,
+            onDismissToast = { viewModel.dismissToastAlert() },
+            onSavePng = {
+                val res = DocumentAndIdExporter.saveStudentIdCardAsHighResPng(
+                    context = context,
+                    student = activeStudent,
+                    schoolConfig = schoolConfig,
+                    badges = studentBadges
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert("تم حفظ الهوية المدرسية بدقة عالية (PNG) في المعرض", isSuccess = true)
+                } else {
+                    viewModel.showToastAlert("تعذر حفظ الصورة: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                }
+            },
+            onExportPdf = {
+                val res = DocumentAndIdExporter.exportStudentIdCardPdf(
+                    context = context,
+                    student = activeStudent,
+                    schoolConfig = schoolConfig,
+                    badges = studentBadges
+                )
+                if (res.isSuccess) {
+                    viewModel.showToastAlert("تم تصدير الهوية المدرسية بصيغة PDF بنجاح", isSuccess = true)
+                } else {
+                    viewModel.showToastAlert("تعذر تصدير PDF: ${res.exceptionOrNull()?.message}", isSuccess = false)
+                }
+            },
+            onDismiss = { showDigitalIdModal = false }
+        )
+    }
+}
