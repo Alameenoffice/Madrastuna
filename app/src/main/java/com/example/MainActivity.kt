@@ -1998,6 +1998,7 @@ fun AuthenticatedMainPlatform(
                             )
                             AppSection.LIVE_OPERATIONS_RADAR -> LiveOperationsRadarScreen(viewModel = viewModel)
                             AppSection.ATTENDANCE -> DailyAttendanceScreen(viewModel = viewModel)
+                            AppSection.STUDENT_PERSONAL_PROFILE -> StudentPersonalProfileScreen(viewModel = viewModel)
                             AppSection.STUDENT_COMPREHENSIVE_ARCHIVE -> StudentComprehensiveArchiveScreen(viewModel = viewModel)
                             AppSection.SCHEDULE_HOMEWORK -> ScheduleAndHomeworkScreen(viewModel = viewModel)
                             AppSection.CURRICULUM_BOOKS -> CurriculumBooksScreen(viewModel = viewModel)
@@ -2008,6 +2009,8 @@ fun AuthenticatedMainPlatform(
                             AppSection.TUITION_FEES -> TuitionFeesScreen(viewModel = viewModel)
                             AppSection.REPORTS_CHAT -> ReportsAndChatScreen(viewModel = viewModel)
                             AppSection.EVENTS_NEWS -> EventsAndNewsScreen(viewModel = viewModel)
+                            AppSection.TEACHING_STAFF -> AdminAccountsScreen(viewModel = viewModel, initialForcedTab = 0)
+                            AppSection.STUDENTS_DIRECTORY -> AdminAccountsScreen(viewModel = viewModel, initialForcedTab = 1)
                             AppSection.ADMIN_ACCOUNTS -> AdminAccountsScreen(viewModel = viewModel)
                             AppSection.SETTINGS -> SettingsScreen(viewModel = viewModel)
                         }

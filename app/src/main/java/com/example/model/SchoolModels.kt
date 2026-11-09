@@ -559,6 +559,12 @@ data class UserAccount(
 
     val normalizedGenderLabel: String
         get() = if (isFemale) "أنثى" else "ذكر"
+
+    val genderArabicLabel: String
+        get() = normalizedGenderLabel
+
+    val effectiveAgeYears: Int
+        get() = ageYears.coerceAtLeast(0)
     val teacherSubjectsList: List<String>
         get() = specialty.split("،", ",", "|")
             .map { it.trim() }
@@ -1034,6 +1040,12 @@ data class StudentRecord(
 
     val normalizedGenderLabel: String
         get() = if (isFemale) "أنثى" else "ذكر"
+
+    val genderArabicLabel: String
+        get() = normalizedGenderLabel
+
+    val effectiveAgeYears: Int
+        get() = ageYears.coerceAtLeast(0)
 
     val realPresentDaysCount: Int
         get() = dailyAttendance.values.count { it.equals("PRESENT", ignoreCase = true) }
