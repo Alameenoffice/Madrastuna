@@ -10,10 +10,26 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,23 +39,30 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,7 +70,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.SchoolStage
-import com.example.model.UserRole
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepEmerald
 import com.example.ui.theme.DeepForestGreen
@@ -58,6 +80,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 enum class CurriculumAcademicStage(
     val arabicTitle: String,
@@ -724,6 +749,504 @@ fun CurriculumScreen(
     CurriculumBooksScreen(viewModel = viewModel)
 }
 
+/**
+ * Custom Animated Canvas Vector Icons for Curriculum Screen (Zero primitive static icons).
+ */
+@Composable
+private fun AnimatedCurriculumCrestCanvasIcon(
+    accentColor: Color,
+    secondaryColor: Color,
+    modifier: Modifier = Modifier.size(28.dp)
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "curriculum_crest_transition")
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "crest_wave_phase"
+    )
+    val glowPulse by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "crest_glow_pulse"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+        val pageFlutter = sin(wavePhase) * (h * 0.045f)
+
+        // Soft glowing aura ring
+        drawCircle(
+            color = accentColor.copy(alpha = 0.18f),
+            radius = (w * 0.44f) * glowPulse,
+            center = Offset(cx, cy)
+        )
+
+        // Left open book wing
+        val leftWing = Path().apply {
+            moveTo(cx, cy + h * 0.24f)
+            cubicTo(
+                cx - w * 0.16f, cy + h * 0.16f,
+                cx - w * 0.34f, cy + h * 0.20f + pageFlutter,
+                cx - w * 0.40f, cy + h * 0.12f + pageFlutter
+            )
+            lineTo(cx - w * 0.38f, cy - h * 0.22f + pageFlutter)
+            cubicTo(
+                cx - w * 0.26f, cy - h * 0.26f + pageFlutter,
+                cx - w * 0.12f, cy - h * 0.18f,
+                cx, cy - h * 0.10f
+            )
+            close()
+        }
+        drawPath(
+            path = leftWing,
+            color = accentColor.copy(alpha = 0.24f)
+        )
+        drawPath(
+            path = leftWing,
+            color = accentColor,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+
+        // Right open book wing
+        val rightWing = Path().apply {
+            moveTo(cx, cy + h * 0.24f)
+            cubicTo(
+                cx + w * 0.16f, cy + h * 0.16f,
+                cx + w * 0.34f, cy + h * 0.20f - pageFlutter,
+                cx + w * 0.40f, cy + h * 0.12f - pageFlutter
+            )
+            lineTo(cx + w * 0.38f, cy - h * 0.22f - pageFlutter)
+            cubicTo(
+                cx + w * 0.26f, cy - h * 0.26f - pageFlutter,
+                cx + w * 0.12f, cy - h * 0.18f,
+                cx, cy - h * 0.10f
+            )
+            close()
+        }
+        drawPath(
+            path = rightWing,
+            color = secondaryColor.copy(alpha = 0.24f)
+        )
+        drawPath(
+            path = rightWing,
+            color = accentColor,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+
+        // Center spine & floating knowledge star above the book
+        drawLine(
+            color = accentColor,
+            start = Offset(cx, cy - h * 0.12f),
+            end = Offset(cx, cy + h * 0.26f),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+        val starY = cy - h * 0.31f + (cos(wavePhase) * h * 0.03f)
+        drawCircle(
+            color = accentColor,
+            radius = 2.6.dp.toPx() * glowPulse,
+            center = Offset(cx, starY)
+        )
+    }
+}
+
+@Composable
+private fun AnimatedStageSelectorCanvasIcon(
+    stage: CurriculumAcademicStage,
+    isSelected: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier.size(18.dp)
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "stage_tab_canvas_${stage.name}")
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.90f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "stage_tab_pulse"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) pulse else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "stage_tab_scale"
+    )
+
+    Canvas(modifier = modifier.scale(scale)) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+        val strokeW = 1.8.dp.toPx()
+
+        when (stage) {
+            CurriculumAcademicStage.PRIMARY -> {
+                // Rising academic star & open book base
+                val starPath = Path().apply {
+                    moveTo(cx, h * 0.12f)
+                    lineTo(cx + w * 0.14f, cy - h * 0.06f)
+                    lineTo(w * 0.86f, cy)
+                    lineTo(cx + w * 0.14f, cy + h * 0.10f)
+                    lineTo(cx, h * 0.86f)
+                    lineTo(cx - w * 0.14f, cy + h * 0.10f)
+                    lineTo(w * 0.14f, cy)
+                    lineTo(cx - w * 0.14f, cy - h * 0.06f)
+                    close()
+                }
+                drawPath(
+                    path = starPath,
+                    color = tint.copy(alpha = if (isSelected) 0.30f else 0.14f)
+                )
+                drawPath(
+                    path = starPath,
+                    color = tint,
+                    style = Stroke(width = strokeW, join = StrokeJoin.Round)
+                )
+            }
+            CurriculumAcademicStage.INTERMEDIATE -> {
+                // Compass / geometric hexagon prism
+                val hexPath = Path().apply {
+                    for (i in 0 until 6) {
+                        val angle = (i * 60.0 - 90.0) * (PI / 180.0)
+                        val px = cx + (w * 0.38f) * cos(angle).toFloat()
+                        val py = cy + (h * 0.38f) * sin(angle).toFloat()
+                        if (i == 0) moveTo(px, py) else lineTo(px, py)
+                    }
+                    close()
+                }
+                drawPath(
+                    path = hexPath,
+                    color = tint.copy(alpha = if (isSelected) 0.26f else 0.10f)
+                )
+                drawPath(
+                    path = hexPath,
+                    color = tint,
+                    style = Stroke(width = strokeW, join = StrokeJoin.Round)
+                )
+                drawCircle(color = tint, radius = 2.dp.toPx(), center = Offset(cx, cy))
+            }
+            CurriculumAcademicStage.PREPARATORY -> {
+                // Academic graduation cap crest
+                val capPath = Path().apply {
+                    moveTo(cx, h * 0.18f)
+                    lineTo(w * 0.90f, cy * 0.88f)
+                    lineTo(cx, cy * 1.32f)
+                    lineTo(w * 0.10f, cy * 0.88f)
+                    close()
+                }
+                drawPath(
+                    path = capPath,
+                    color = tint.copy(alpha = if (isSelected) 0.28f else 0.12f)
+                )
+                drawPath(
+                    path = capPath,
+                    color = tint,
+                    style = Stroke(width = strokeW, join = StrokeJoin.Round)
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.82f, cy * 0.92f),
+                    end = Offset(w * 0.82f, h * 0.82f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnimatedBookSubjectCanvasIcon(
+    subjectTitle: String,
+    accentColor: Color,
+    modifier: Modifier = Modifier.size(28.dp)
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "subject_icon_anim")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "subject_phase"
+    )
+    val breath by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "subject_breath"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+        val strokeW = 2.dp.toPx()
+
+        when {
+            subjectTitle.contains("الاسلامية") || subjectTitle.contains("الأخلاقية") || subjectTitle.contains("الاخلاقية") -> {
+                // Radiant eight-point Islamic geometric star + crescent glow
+                drawCircle(
+                    color = accentColor.copy(alpha = 0.16f),
+                    radius = (w * 0.42f) * breath,
+                    center = Offset(cx, cy)
+                )
+                rotate(degrees = sin(phase) * 8f, pivot = Offset(cx, cy)) {
+                    val s = w * 0.46f
+                    drawRoundRect(
+                        color = accentColor,
+                        topLeft = Offset(cx - s / 2f, cy - s / 2f),
+                        size = Size(s, s),
+                        cornerRadius = CornerRadius(3.dp.toPx()),
+                        style = Stroke(width = strokeW)
+                    )
+                    rotate(degrees = 45f, pivot = Offset(cx, cy)) {
+                        drawRoundRect(
+                            color = accentColor,
+                            topLeft = Offset(cx - s / 2f, cy - s / 2f),
+                            size = Size(s, s),
+                            cornerRadius = CornerRadius(3.dp.toPx()),
+                            style = Stroke(width = strokeW)
+                        )
+                    }
+                }
+                drawCircle(
+                    color = accentColor,
+                    radius = 2.4.dp.toPx() * breath,
+                    center = Offset(cx, cy)
+                )
+            }
+
+            subjectTitle.contains("العلوم") -> {
+                // Animated atomic orbital rings + glowing nucleus
+                drawCircle(
+                    color = accentColor,
+                    radius = 3.dp.toPx() * breath,
+                    center = Offset(cx, cy)
+                )
+                rotate(degrees = 30f + sin(phase) * 10f, pivot = Offset(cx, cy)) {
+                    drawOval(
+                        color = accentColor,
+                        topLeft = Offset(w * 0.12f, h * 0.32f),
+                        size = Size(w * 0.76f, h * 0.36f),
+                        style = Stroke(width = 1.7.dp.toPx())
+                    )
+                }
+                rotate(degrees = -30f - sin(phase) * 10f, pivot = Offset(cx, cy)) {
+                    drawOval(
+                        color = accentColor.copy(alpha = 0.85f),
+                        topLeft = Offset(w * 0.12f, h * 0.32f),
+                        size = Size(w * 0.76f, h * 0.36f),
+                        style = Stroke(width = 1.7.dp.toPx())
+                    )
+                }
+                val electronX = cx + cos(phase) * (w * 0.32f)
+                val electronY = cy + sin(phase) * (h * 0.18f)
+                drawCircle(
+                    color = accentColor,
+                    radius = 2.2.dp.toPx(),
+                    center = Offset(electronX, electronY)
+                )
+            }
+
+            subjectTitle.contains("الرياضيات") -> {
+                // Animated geometric prism + coordinate grid waves
+                val offsetWave = sin(phase) * 2.dp.toPx()
+                val triangle = Path().apply {
+                    moveTo(cx, h * 0.16f + offsetWave)
+                    lineTo(w * 0.84f, h * 0.78f)
+                    lineTo(w * 0.16f, h * 0.78f)
+                    close()
+                }
+                drawPath(
+                    path = triangle,
+                    color = accentColor.copy(alpha = 0.20f)
+                )
+                drawPath(
+                    path = triangle,
+                    color = accentColor,
+                    style = Stroke(width = strokeW, join = StrokeJoin.Round)
+                )
+                drawCircle(
+                    color = accentColor,
+                    radius = (w * 0.16f) * breath,
+                    center = Offset(cx, h * 0.56f),
+                    style = Stroke(width = 1.6.dp.toPx())
+                )
+            }
+
+            subjectTitle.contains("الانكليزي") || subjectTitle.contains("النشاط محلول") -> {
+                // Animated global language sphere + meridian arcs
+                val r = (w * 0.38f) * breath
+                drawCircle(
+                    color = accentColor.copy(alpha = 0.15f),
+                    radius = r,
+                    center = Offset(cx, cy)
+                )
+                drawCircle(
+                    color = accentColor,
+                    radius = r,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = strokeW)
+                )
+                drawOval(
+                    color = accentColor,
+                    topLeft = Offset(cx - r * 0.52f, cy - r),
+                    size = Size(r * 1.04f, r * 2f),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+                drawLine(
+                    color = accentColor,
+                    start = Offset(cx - r, cy),
+                    end = Offset(cx + r, cy),
+                    strokeWidth = 1.5.dp.toPx()
+                )
+            }
+
+            subjectTitle.contains("الاجتماعيات") -> {
+                // Animated compass rose & heritage meridian
+                val r = w * 0.38f
+                drawCircle(
+                    color = accentColor,
+                    radius = r,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.8.dp.toPx())
+                )
+                rotate(degrees = sin(phase) * 18f, pivot = Offset(cx, cy)) {
+                    val needle = Path().apply {
+                        moveTo(cx, cy - r * 0.78f)
+                        lineTo(cx + r * 0.22f, cy)
+                        lineTo(cx, cy + r * 0.78f)
+                        lineTo(cx - r * 0.22f, cy)
+                        close()
+                    }
+                    drawPath(path = needle, color = accentColor.copy(alpha = 0.28f))
+                    drawPath(
+                        path = needle,
+                        color = accentColor,
+                        style = Stroke(width = 1.7.dp.toPx(), join = StrokeJoin.Round)
+                    )
+                }
+            }
+
+            else -> {
+                // Reading / Arabic Grammar: Open calligraphic scroll book + nib wave
+                val flutter = sin(phase) * (h * 0.04f)
+                val bookPath = Path().apply {
+                    moveTo(cx, h * 0.76f)
+                    lineTo(w * 0.16f, h * 0.68f + flutter)
+                    lineTo(w * 0.16f, h * 0.24f + flutter)
+                    lineTo(cx, h * 0.32f)
+                    lineTo(w * 0.84f, h * 0.24f - flutter)
+                    lineTo(w * 0.84f, h * 0.68f - flutter)
+                    close()
+                }
+                drawPath(path = bookPath, color = accentColor.copy(alpha = 0.20f))
+                drawPath(
+                    path = bookPath,
+                    color = accentColor,
+                    style = Stroke(width = strokeW, join = StrokeJoin.Round)
+                )
+                drawLine(
+                    color = accentColor,
+                    start = Offset(cx, h * 0.32f),
+                    end = Offset(cx, h * 0.76f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnimatedSearchVectorIcon(
+    tint: Color,
+    modifier: Modifier = Modifier.size(20.dp)
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "search_vector_pulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "search_lens_scale"
+    )
+    Canvas(modifier = modifier.scale(scale)) {
+        val w = size.width
+        val h = size.height
+        val lensCenter = Offset(w * 0.42f, h * 0.42f)
+        val radius = w * 0.28f
+        drawCircle(
+            color = tint.copy(alpha = 0.16f),
+            radius = radius,
+            center = lensCenter
+        )
+        drawCircle(
+            color = tint,
+            radius = radius,
+            center = lensCenter,
+            style = Stroke(width = 2.dp.toPx())
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.62f, h * 0.62f),
+            end = Offset(w * 0.86f, h * 0.86f),
+            strokeWidth = 2.4.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun AnimatedClearVectorIcon(
+    tint: Color,
+    modifier: Modifier = Modifier.size(18.dp)
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawCircle(
+            color = tint.copy(alpha = 0.14f),
+            radius = w * 0.44f,
+            center = Offset(w / 2f, h / 2f)
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.32f, h * 0.32f),
+            end = Offset(w * 0.68f, h * 0.68f),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.68f, h * 0.32f),
+            end = Offset(w * 0.32f, h * 0.68f),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CurriculumBooksScreen(
@@ -735,8 +1258,6 @@ fun CurriculumBooksScreen(
     }
 
     val isDarkMode by viewModel.isDarkMode.collectAsState()
-    val currentUser by viewModel.currentUser.collectAsState()
-    val isDeveloperAuthenticated by viewModel.isDeveloperAuthenticated.collectAsState()
     val allBooks by IraqiCurriculumCatalog.booksFlow.collectAsState()
 
     var selectedStage by remember { mutableStateOf(CurriculumAcademicStage.PRIMARY) }
@@ -747,9 +1268,6 @@ fun CurriculumBooksScreen(
 
     // Active book opened inside the Full-Screen In-App WebView Modal
     var activeBookInViewer by remember { mutableStateOf<CurriculumBookItem?>(null) }
-
-    // Optional quick link manager dialog for Developer
-    var showDeveloperQuickManagerDialog by remember { mutableStateOf(false) }
 
     val displayedBooks = remember(allBooks, selectedStage, selectedGradeClass, searchQuery) {
         val q = searchQuery.trim()
@@ -766,6 +1284,17 @@ fun CurriculumBooksScreen(
         }
     }
 
+    val headerInfinite = rememberInfiniteTransition(label = "curriculum_header_mesh")
+    val meshPhase by headerInfinite.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 5200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "curriculum_mesh_phase"
+    )
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Column(
             modifier = Modifier
@@ -776,12 +1305,12 @@ fun CurriculumBooksScreen(
         ) {
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Royal Emerald Header Card
+            // Royal Interactive Header Card with Animated Geometric Mesh Canvas
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -796,13 +1325,54 @@ fun CurriculumBooksScreen(
                             )
                         )
                         .border(
-                            width = 1.dp,
-                            color = GoldAccent.copy(alpha = 0.55f),
-                            shape = RoundedCornerShape(22.dp)
+                            width = 1.2.dp,
+                            color = GoldAccent.copy(alpha = 0.60f),
+                            shape = RoundedCornerShape(24.dp)
                         )
-                        .padding(16.dp)
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Animated Geometric Mesh & Wave Canvas Background
+                    Canvas(modifier = Modifier.matchParentSize()) {
+                        val w = size.width
+                        val h = size.height
+                        val stepX = w / 6f
+                        for (i in 0..6) {
+                            val x = i * stepX + sin(meshPhase + i * 0.6f) * 10.dp.toPx()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.05f),
+                                start = Offset(x, 0f),
+                                end = Offset(x - 24.dp.toPx(), h),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
+                        val wavePath = Path().apply {
+                            moveTo(0f, h * 0.72f)
+                            var x = 0f
+                            while (x <= w) {
+                                val y = h * 0.72f + sin((x / w) * 2f * PI + meshPhase).toFloat() * (h * 0.12f)
+                                lineTo(x, y)
+                                x += 18f
+                            }
+                            lineTo(w, h)
+                            lineTo(0f, h)
+                            close()
+                        }
+                        drawPath(
+                            path = wavePath,
+                            color = GoldAccent.copy(alpha = 0.08f)
+                        )
+                        drawCircle(
+                            color = GoldAccent.copy(alpha = 0.10f),
+                            radius = h * 0.48f,
+                            center = Offset(w * 0.14f + cos(meshPhase) * 14f, h * 0.28f)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -810,25 +1380,24 @@ fun CurriculumBooksScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = GoldAccent.copy(alpha = 0.18f),
-                                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.65f)),
-                                    modifier = Modifier.size(44.dp)
+                                    color = GoldAccent.copy(alpha = 0.16f),
+                                    border = BorderStroke(1.2.dp, GoldAccent.copy(alpha = 0.75f)),
+                                    modifier = Modifier.size(48.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AutoStories,
-                                            contentDescription = "المناهج الدراسية والكتب",
-                                            tint = GoldAccent,
-                                            modifier = Modifier.size(24.dp)
+                                        AnimatedCurriculumCrestCanvasIcon(
+                                            accentColor = GoldAccent,
+                                            secondaryColor = Color(0xFF34D399),
+                                            modifier = Modifier.size(28.dp)
                                         )
                                     }
                                 }
-                                Column {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
                                         text = "المناهج الدراسية الرسمية في العراق",
                                         style = MaterialTheme.typography.titleMedium,
@@ -836,7 +1405,7 @@ fun CurriculumBooksScreen(
                                         color = Color.White
                                     )
                                     Text(
-                                        text = "تصفح وقراءة جميع كتب المناهج مباشرة داخل التطبيق بدقة كاملة",
+                                        text = "المكتبة الأكاديمية التفاعلية • تصفح مباشر داخل التطبيق",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = Color(0xFFD1FAE5)
                                     )
@@ -846,7 +1415,7 @@ fun CurriculumBooksScreen(
                             Surface(
                                 shape = RoundedCornerShape(50),
                                 color = Color.White.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.55f))
+                                border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.65f))
                             ) {
                                 Text(
                                     text = "${displayedBooks.size} كتاب",
@@ -857,47 +1426,11 @@ fun CurriculumBooksScreen(
                                 )
                             }
                         }
-
-                        if (isDeveloperAuthenticated || currentUser?.role == UserRole.ADMIN) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = GoldAccent.copy(alpha = 0.20f),
-                                    border = BorderStroke(1.dp, GoldAccent),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable { showDeveloperQuickManagerDialog = true }
-                                        .testTag("open_curriculum_links_manager_btn")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Link,
-                                            contentDescription = null,
-                                            tint = Color(0xFFFFF3B0),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "مدير روابط المناهج الدراسية",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFFFFF3B0)
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
 
-            // Stage Selector Pills (الابتدائية • المتوسطة • الإعدادية)
+            // Stage Selector Pills with Animated Canvas Vector Icons (الابتدائية • المتوسطة • الإعدادية)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -907,13 +1440,18 @@ fun CurriculumBooksScreen(
                     val stageBookCount = remember(allBooks, stage) {
                         allBooks.count { it.stage == stage }
                     }
+                    val pillScale by animateFloatAsState(
+                        targetValue = if (isSelected) 1.02f else 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "stage_pill_scale_${stage.name}"
+                    )
                     Surface(
                         onClick = {
                             searchQuery = ""
                             selectedStage = stage
                             selectedGradeClass = stage.gradeClasses.first()
                         },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = if (isSelected) {
                             DeepEmerald
                         } else if (isDarkMode) {
@@ -922,19 +1460,34 @@ fun CurriculumBooksScreen(
                             Color.White
                         },
                         border = BorderStroke(
-                            width = 1.dp,
+                            width = if (isSelected) 1.4.dp else 1.dp,
                             color = if (isSelected) GoldAccent else Color(0xFFCBD5E1).copy(alpha = 0.5f)
                         ),
-                        shadowElevation = if (isSelected) 4.dp else 1.dp,
+                        shadowElevation = if (isSelected) 5.dp else 1.dp,
                         modifier = Modifier
                             .weight(1f)
-                            .height(46.dp)
+                            .height(48.dp)
+                            .scale(pillScale)
                             .testTag("curriculum_stage_tab_${stage.name}")
                     ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
                             modifier = Modifier.padding(horizontal = 6.dp)
                         ) {
+                            AnimatedStageSelectorCanvasIcon(
+                                stage = stage,
+                                isSelected = isSelected,
+                                tint = if (isSelected) {
+                                    GoldAccent
+                                } else if (isDarkMode) {
+                                    Color(0xFF34D399)
+                                } else {
+                                    DeepEmerald
+                                },
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = if (stageBookCount > 0) {
                                     "${stage.shortBadge} ($stageBookCount)"
@@ -969,6 +1522,11 @@ fun CurriculumBooksScreen(
                     val gradeBookCount = remember(allBooks, selectedStage, gradeClass) {
                         allBooks.count { it.stage == selectedStage && it.gradeClass == gradeClass }
                     }
+                    val chipScale by animateFloatAsState(
+                        targetValue = if (isGradeSelected) 1.03f else 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "grade_chip_scale_$gradeClass"
+                    )
                     Surface(
                         onClick = {
                             searchQuery = ""
@@ -983,17 +1541,25 @@ fun CurriculumBooksScreen(
                             Color(0xFFECFDF5)
                         },
                         border = BorderStroke(
-                            width = 1.dp,
+                            width = if (isGradeSelected) 1.3.dp else 1.dp,
                             color = if (isGradeSelected) GoldAccent else Color(0xFF10B981).copy(alpha = 0.35f)
                         ),
+                        shadowElevation = if (isGradeSelected) 3.dp else 0.dp,
                         modifier = Modifier
                             .height(38.dp)
+                            .scale(chipScale)
                             .testTag("curriculum_grade_chip_$gradeClass")
                     ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 14.dp)
                         ) {
+                            if (isGradeSelected) {
+                                Canvas(modifier = Modifier.size(7.dp)) {
+                                    drawCircle(color = GoldAccent)
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
                             Text(
                                 text = if (gradeBookCount > 0) {
                                     "$gradeClass ($gradeBookCount)"
@@ -1015,7 +1581,7 @@ fun CurriculumBooksScreen(
                 }
             }
 
-            // Search Bar
+            // Search Bar with Custom Animated Canvas Vector Icons
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -1026,18 +1592,17 @@ fun CurriculumBooksScreen(
                     )
                 },
                 leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = "بحث",
-                        tint = DeepEmerald
+                    AnimatedSearchVectorIcon(
+                        tint = DeepEmerald,
+                        modifier = Modifier.size(20.dp)
                     )
                 },
                 trailingIcon = {
                     if (searchQuery.isNotBlank()) {
                         IconButton(onClick = { searchQuery = "" }) {
-                            Icon(
-                                imageVector = Icons.Filled.Clear,
-                                contentDescription = "مسح البحث"
+                            AnimatedClearVectorIcon(
+                                tint = if (isDarkMode) Color(0xFF94A3B8) else DeepEmerald,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -1049,93 +1614,48 @@ fun CurriculumBooksScreen(
                     .testTag("curriculum_search_input")
             )
 
-            // Books List or Pending Stage Notice
-            if (displayedBooks.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Card(
+            // Smooth AnimatedContent when switching between stages or grades
+            AnimatedContent(
+                targetState = Triple(selectedStage, selectedGradeClass, displayedBooks),
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(260)) +
+                        slideInHorizontally(animationSpec = tween(260)) { fullWidth -> fullWidth / 10 })
+                        .togetherWith(
+                            fadeOut(animationSpec = tween(180)) +
+                                slideOutHorizontally(animationSpec = tween(180)) { fullWidth -> -fullWidth / 12 }
+                        )
+                        .using(SizeTransform(clip = false))
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                label = "curriculum_grade_animated_content"
+            ) { (stageState, gradeState, booksForState) ->
+                if (booksForState.isEmpty()) {
+                    InteractiveSmartLibraryStageView(
+                        selectedStage = stageState,
+                        selectedGradeClass = gradeState,
+                        hasActiveSearchQuery = searchQuery.isNotBlank(),
+                        isDarkMode = isDarkMode
+                    )
+                } else {
+                    LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .testTag("curriculum_stage_pending_notice_card"),
-                        shape = RoundedCornerShape(22.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF8FAFC)
-                        ),
-                        border = BorderStroke(
-                            1.2.dp,
-                            if (isDarkMode) Color(0xFF334155) else Color(0xFFA7F3D0)
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                            .fillMaxHeight()
+                            .testTag("curriculum_books_list"),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 96.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
-                                border = BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.65f)),
-                                modifier = Modifier.size(68.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.MenuBook,
-                                        contentDescription = "مناهج قيد الرفع والتحديث",
-                                        tint = if (isDarkMode) GoldAccent else DeepEmerald,
-                                        modifier = Modifier.size(34.dp)
-                                    )
+                        items(booksForState, key = { it.id }) { book ->
+                            CurriculumBookOfficialCard(
+                                book = book,
+                                isDarkMode = isDarkMode,
+                                onDirectOpenBook = {
+                                    activeBookInViewer = book
                                 }
-                            }
-
-                            Text(
-                                text = if (searchQuery.isNotBlank()) {
-                                    "لا توجد كتب مطابقة لعبارة البحث الحالية"
-                                } else {
-                                    "مناهج هذه المرحلة قيد الرفع والتحديث.. ستتوفر قريباً"
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkMode) Color.White else DeepForestGreen,
-                                textAlign = TextAlign.Center
                             )
-
-                            if (searchQuery.isBlank()) {
-                                Text(
-                                    text = "${selectedStage.arabicTitle} • $selectedGradeClass",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDarkMode) Color(0xFFA7F3D0) else DeepEmerald,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
                         }
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .testTag("curriculum_books_list"),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 96.dp)
-                ) {
-                    items(displayedBooks, key = { it.id }) { book ->
-                        CurriculumBookOfficialCard(
-                            book = book,
-                            isDarkMode = isDarkMode,
-                            onDirectOpenBook = {
-                                activeBookInViewer = book
-                            }
-                        )
                     }
                 }
             }
@@ -1149,51 +1669,197 @@ fun CurriculumBooksScreen(
                 onCloseViewer = { activeBookInViewer = null }
             )
         }
+    }
+}
 
-        // Quick Links Manager Modal when opened from Curriculum Screen by Developer/Admin
-        if (showDeveloperQuickManagerDialog) {
-            Dialog(
-                onDismissRequest = { showDeveloperQuickManagerDialog = false },
-                properties = DialogProperties(usePlatformDefaultWidth = false)
+/**
+ * Interactive Animated Stage for Intermediate & Preparatory Digital Library Synchronization:
+ * Replaces the old static pending notice with an InfiniteTransition Canvas illustration of a
+ * smart digital library with softly breathing light rings, a technical status badge, and the exact
+ * academic synchronization message.
+ */
+@Composable
+private fun InteractiveSmartLibraryStageView(
+    selectedStage: CurriculumAcademicStage,
+    selectedGradeClass: String,
+    hasActiveSearchQuery: Boolean,
+    isDarkMode: Boolean
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "smart_library_stage_anim")
+    val ringPulse by infiniteTransition.animateFloat(
+        initialValue = 0.86f,
+        targetValue = 1.16f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "smart_library_ring_pulse"
+    )
+    val orbitAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 6000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "smart_library_orbit_angle"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+                .testTag("curriculum_stage_pending_notice_card"),
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White
+            ),
+            border = BorderStroke(
+                1.4.dp,
+                if (isDarkMode) GoldAccent.copy(alpha = 0.45f) else Color(0xFF10B981).copy(alpha = 0.45f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = if (isDarkMode) {
+                                listOf(
+                                    Color(0xFF042F24).copy(alpha = 0.65f),
+                                    Color(0xFF0F172A)
+                                )
+                            } else {
+                                listOf(
+                                    Color(0xFFECFDF5).copy(alpha = 0.85f),
+                                    Color.White
+                                )
+                            }
+                        )
+                    )
             ) {
-                Surface(
+                Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(12.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp)
+                    // Animated Smart Digital Library Canvas Illustration with Breathing Light Rings
+                    Box(
+                        modifier = Modifier.size(116.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "مدير روابط المناهج الدراسية المباشر",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkMode) Color.White else DeepForestGreen
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val w = size.width
+                            val h = size.height
+                            val cx = w / 2f
+                            val cy = h / 2f
+                            val primaryRingColor = if (isDarkMode) GoldAccent else DeepEmerald
+                            val secondaryRingColor = Color(0xFF10B981)
+
+                            // Outer softly breathing light rings
+                            drawCircle(
+                                color = secondaryRingColor.copy(alpha = 0.10f),
+                                radius = (w * 0.46f) * ringPulse,
+                                center = Offset(cx, cy)
                             )
-                            TextButton(onClick = { showDeveloperQuickManagerDialog = false }) {
-                                Text("إغلاق", fontWeight = FontWeight.ExtraBold, color = DangerRed)
+                            drawCircle(
+                                color = primaryRingColor.copy(alpha = 0.18f),
+                                radius = (w * 0.36f) * (2f - ringPulse * 0.85f),
+                                center = Offset(cx, cy),
+                                style = Stroke(width = 1.6.dp.toPx())
+                            )
+                            drawCircle(
+                                color = secondaryRingColor.copy(alpha = 0.28f),
+                                radius = w * 0.28f,
+                                center = Offset(cx, cy)
+                            )
+
+                            // Orbiting academic sync nodes
+                            for (i in 0 until 4) {
+                                val angle = orbitAngle + (i * PI / 2.0).toFloat()
+                                val nx = cx + cos(angle) * (w * 0.39f)
+                                val ny = cy + sin(angle) * (h * 0.39f)
+                                drawCircle(
+                                    color = GoldAccent,
+                                    radius = 3.2.dp.toPx(),
+                                    center = Offset(nx, ny)
+                                )
                             }
-                        }
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            item {
-                                DeveloperCurriculumManagerSection(viewModel = viewModel)
+
+                            // Smart Digital Library Open Book & Arch Inside the Ring
+                            val flutter = sin(orbitAngle * 2f) * (h * 0.025f)
+                            val bookPath = Path().apply {
+                                moveTo(cx, cy + h * 0.14f)
+                                lineTo(cx - w * 0.18f, cy + h * 0.08f + flutter)
+                                lineTo(cx - w * 0.18f, cy - h * 0.12f + flutter)
+                                lineTo(cx, cy - h * 0.06f)
+                                lineTo(cx + w * 0.18f, cy - h * 0.12f - flutter)
+                                lineTo(cx + w * 0.18f, cy + h * 0.08f - flutter)
+                                close()
                             }
+                            drawPath(
+                                path = bookPath,
+                                color = primaryRingColor.copy(alpha = 0.24f)
+                            )
+                            drawPath(
+                                path = bookPath,
+                                color = primaryRingColor,
+                                style = Stroke(width = 2.2.dp.toPx(), join = StrokeJoin.Round)
+                            )
+                            drawLine(
+                                color = GoldAccent,
+                                start = Offset(cx, cy - h * 0.06f),
+                                end = Offset(cx, cy + h * 0.14f),
+                                strokeWidth = 2.2.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
                         }
                     }
+
+                    // Technical Status Badge showing Selected Stage & Grade
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFD1FAE5),
+                        border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.70f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Canvas(modifier = Modifier.size(8.dp)) {
+                                drawCircle(color = GoldAccent, radius = (size.minDimension / 2f) * ringPulse.coerceIn(0.8f, 1.1f))
+                            }
+                            Text(
+                                text = "${selectedStage.arabicTitle} • $selectedGradeClass",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = if (hasActiveSearchQuery) {
+                            "لا توجد كتب مطابقة لعبارة البحث الحالية"
+                        } else {
+                            "المكتبة الرقمية الذكية لهذه المرحلة في طور التجهيز والمزامنة الأكاديمية"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDarkMode) Color.White else DeepForestGreen,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 24.sp
+                    )
                 }
             }
         }
@@ -1201,12 +1867,12 @@ fun CurriculumBooksScreen(
 }
 
 /**
- * Clean Curriculum Book Card:
- * - NO "PDF رسمي" badge, NO file size badge, NO replacement badge on the left.
+ * Clean Interactive Curriculum Book Card:
  * - Contains ONLY:
- *   1. Book Title (`book.subjectTitle`)
- *   2. Stage & Grade (`${book.stage.shortBadge} • ${book.gradeClass}`)
- *   3. Full-width green button ("فتح مباشر") that opens the book inside the app.
+ *   1. Animated Subject Canvas Vector Icon (`AnimatedBookSubjectCanvasIcon`)
+ *   2. Book Title (`book.subjectTitle`)
+ *   3. Stage & Grade (`${book.stage.shortBadge} • ${book.gradeClass}`)
+ *   4. Full-width green button ("فتح مباشر") that opens the book inside the app.
  */
 @Composable
 private fun CurriculumBookOfficialCard(
@@ -1214,17 +1880,28 @@ private fun CurriculumBookOfficialCard(
     isDarkMode: Boolean,
     onDirectOpenBook: () -> Unit
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "book_card_pulse_${book.id}")
+    val badgeGlow by infiniteTransition.animateFloat(
+        initialValue = 0.30f,
+        targetValue = 0.65f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "book_badge_glow"
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("curriculum_book_card_${book.id}"),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+            color = if (isDarkMode) Color(0xFF334155) else Color(0xFFA7F3D0).copy(alpha = 0.75f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -1240,17 +1917,16 @@ private fun CurriculumBookOfficialCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
-                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.40f)),
-                    modifier = Modifier.size(48.dp)
+                    border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = badgeGlow)),
+                    modifier = Modifier.size(52.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.MenuBook,
-                            contentDescription = book.subjectTitle,
-                            tint = if (isDarkMode) Color(0xFF34D399) else DeepEmerald,
-                            modifier = Modifier.size(24.dp)
+                        AnimatedBookSubjectCanvasIcon(
+                            subjectTitle = book.subjectTitle,
+                            accentColor = if (isDarkMode) Color(0xFF34D399) else DeepEmerald,
+                            modifier = Modifier.size(30.dp)
                         )
                     }
                 }
@@ -1287,10 +1963,10 @@ private fun CurriculumBookOfficialCard(
                     .height(48.dp)
                     .testTag("open_book_btn_${book.id}")
             ) {
-                Icon(
-                    imageVector = Icons.Filled.AutoStories,
-                    contentDescription = null,
-                    modifier = Modifier.size(19.dp)
+                AnimatedCurriculumCrestCanvasIcon(
+                    accentColor = GoldAccent,
+                    secondaryColor = Color.White,
+                    modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -1307,9 +1983,9 @@ private fun CurriculumBookOfficialCard(
  * Full-Screen In-App Book Viewer Modal (شاشة القراءة المدمجة داخل التطبيق حصراً):
  * - Opens the Google Drive link in `/preview` format (`https://drive.google.com/file/d/FILE_ID/preview`)
  *   inside an embedded full-screen WebView without ever leaving the app or opening an external browser.
- * - Top bar shows the current book name (`book.subjectTitle`) and a clear button
- *   ("إغلاق / رجوع للمناهج") to return to the books list immediately.
- * - Supports pinch-to-zoom, smooth scrolling, and blocks any pop-out / external browser navigation.
+ * - While the book is being prepared, renders a royal interactive 3D flipping-pages Canvas book
+ *   animation with glowing light waves and a smooth progress bar that fades out (`fadeOut`)
+ *   once `onPageFinished` fires.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -1370,11 +2046,10 @@ fun InAppGoogleDriveBookViewerModal(
                                     modifier = Modifier.size(38.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AutoStories,
-                                            contentDescription = null,
-                                            tint = GoldAccent,
-                                            modifier = Modifier.size(20.dp)
+                                        AnimatedCurriculumCrestCanvasIcon(
+                                            accentColor = GoldAccent,
+                                            secondaryColor = Color(0xFF34D399),
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     }
                                 }
@@ -1410,12 +2085,16 @@ fun InAppGoogleDriveBookViewerModal(
                                         .size(36.dp)
                                         .testTag("in_app_book_viewer_reload_btn")
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Refresh,
-                                        contentDescription = "إعادة تحميل الكتاب",
-                                        tint = Color(0xFFA7F3D0),
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    Canvas(modifier = Modifier.size(18.dp)) {
+                                        val r = size.minDimension * 0.38f
+                                        drawArc(
+                                            color = Color(0xFFA7F3D0),
+                                            startAngle = 35f,
+                                            sweepAngle = 285f,
+                                            useCenter = false,
+                                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                                        )
+                                    }
                                 }
 
                                 Button(
@@ -1430,12 +2109,6 @@ fun InAppGoogleDriveBookViewerModal(
                                         .height(38.dp)
                                         .testTag("in_app_book_viewer_close_btn")
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "إغلاق / رجوع للمناهج",
                                         style = MaterialTheme.typography.labelMedium,
@@ -1474,7 +2147,7 @@ fun InAppGoogleDriveBookViewerModal(
                                     settings.setSupportMultipleWindows(false)
                                     settings.javaScriptCanOpenWindowsAutomatically = false
                                     webChromeClient = WebChromeClient()
-                                    webViewClient = object : android.webkit.WebViewClient() {
+                                    webViewClient = object : WebViewClient() {
                                         override fun onPageStarted(
                                             view: WebView?,
                                             url: String?,
@@ -1507,10 +2180,8 @@ fun InAppGoogleDriveBookViewerModal(
                                             val targetUrl = request?.url?.toString().orEmpty()
                                             if (targetUrl.isBlank()) return true
                                             return if (targetUrl.startsWith("http://") || targetUrl.startsWith("https://")) {
-                                                // Load all HTTP/HTTPS links directly inside the embedded WebView without opening an external browser
                                                 false
                                             } else {
-                                                // Block external intent:// or custom scheme links
                                                 true
                                             }
                                         }
@@ -1526,32 +2197,17 @@ fun InAppGoogleDriveBookViewerModal(
                             }
                         )
 
-                        if (isLoadingPage) {
-                            Surface(
-                                shape = RoundedCornerShape(18.dp),
-                                color = Color(0xFF042F24).copy(alpha = 0.90f),
-                                border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.65f)),
-                                shadowElevation = 8.dp,
-                                modifier = Modifier.align(Alignment.Center)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = GoldAccent,
-                                        strokeWidth = 3.dp,
-                                        modifier = Modifier.size(34.dp)
-                                    )
-                                    Text(
-                                        text = "جاري تحميل الكتاب داخل التطبيق...",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
-                                    )
-                                }
-                            }
+                        // Royal Interactive 3D Digital Book Preparation Screen with Smooth Fade-Out
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = isLoadingPage,
+                            enter = fadeIn(animationSpec = tween(250)),
+                            exit = fadeOut(animationSpec = tween(420)),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            RoyalBookFlippingPreparationOverlay(
+                                book = book,
+                                isDarkMode = isDarkMode
+                            )
                         }
                     }
                 }
@@ -1561,7 +2217,246 @@ fun InAppGoogleDriveBookViewerModal(
 }
 
 /**
- * 1. مدير روابط المناهج الدراسية (تحديث الروابط المباشر بدون رفع ملفات):
+ * Royal Interactive Preparation Screen:
+ * Draws an animated 3D digital book using `Canvas` whose pages flip smoothly with glowing light waves
+ * and a sleek animated progress bar alongside the book's title, disappearing smoothly with `fadeOut`
+ * once the embedded reader finishes loading.
+ */
+@Composable
+private fun RoyalBookFlippingPreparationOverlay(
+    book: CurriculumBookItem,
+    isDarkMode: Boolean
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "royal_3d_book_prep")
+    val flipProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "book_page_flip_progress"
+    )
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "book_light_wave_phase"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = if (isDarkMode) {
+                        listOf(
+                            Color(0xFF042F24),
+                            Color(0xFF064E3B),
+                            Color(0xFF0F172A)
+                        )
+                    } else {
+                        listOf(
+                            Color(0xFFECFDF5),
+                            Color(0xFFD1FAE5),
+                            Color(0xFFF8FAFC)
+                        )
+                    }
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        // Ambient light waves in the background
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            for (band in 0..2) {
+                val path = Path().apply {
+                    val baseY = h * (0.28f + band * 0.22f)
+                    moveTo(0f, baseY)
+                    var x = 0f
+                    while (x <= w) {
+                        val y = baseY + sin((x / w) * 2f * PI + wavePhase + band).toFloat() * 24.dp.toPx()
+                        lineTo(x, y)
+                        x += 24f
+                    }
+                }
+                drawPath(
+                    path = path,
+                    color = GoldAccent.copy(alpha = if (isDarkMode) 0.12f else 0.18f),
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.88f) else Color.White.copy(alpha = 0.95f)
+            ),
+            border = BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.75f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 3D Flipping Digital Book Canvas
+                Box(
+                    modifier = Modifier.size(132.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+                        val cx = w / 2f
+                        val cy = h / 2f
+
+                        // Glowing halo rings around the 3D book
+                        drawCircle(
+                            color = GoldAccent.copy(alpha = 0.14f),
+                            radius = w * (0.42f + 0.05f * sin(wavePhase)),
+                            center = Offset(cx, cy)
+                        )
+                        drawCircle(
+                            color = Color(0xFF10B981).copy(alpha = 0.18f),
+                            radius = w * 0.34f,
+                            center = Offset(cx, cy)
+                        )
+
+                        val bookHalfW = w * 0.34f
+                        val bookTopY = cy - h * 0.18f
+                        val bookBottomY = cy + h * 0.22f
+
+                        // Left static open page stack
+                        val leftPage = Path().apply {
+                            moveTo(cx, bookBottomY)
+                            lineTo(cx - bookHalfW, bookBottomY - h * 0.05f)
+                            lineTo(cx - bookHalfW, bookTopY - h * 0.05f)
+                            lineTo(cx, bookTopY)
+                            close()
+                        }
+                        drawPath(
+                            path = leftPage,
+                            color = if (isDarkMode) Color(0xFF042F24) else Color(0xFFECFDF5)
+                        )
+                        drawPath(
+                            path = leftPage,
+                            color = GoldAccent,
+                            style = Stroke(width = 2.2.dp.toPx(), join = StrokeJoin.Round)
+                        )
+
+                        // Right static open page stack
+                        val rightPage = Path().apply {
+                            moveTo(cx, bookBottomY)
+                            lineTo(cx + bookHalfW, bookBottomY - h * 0.05f)
+                            lineTo(cx + bookHalfW, bookTopY - h * 0.05f)
+                            lineTo(cx, bookTopY)
+                            close()
+                        }
+                        drawPath(
+                            path = rightPage,
+                            color = if (isDarkMode) Color(0xFF065F46) else Color(0xFFD1FAE5)
+                        )
+                        drawPath(
+                            path = rightPage,
+                            color = GoldAccent,
+                            style = Stroke(width = 2.2.dp.toPx(), join = StrokeJoin.Round)
+                        )
+
+                        // Dynamic 3D flipping page sweeping from right to left across the spine
+                        val flipAngle = flipProgress * PI.toFloat()
+                        val flipEdgeX = cx + cos(flipAngle) * bookHalfW
+                        val flipArchLift = sin(flipAngle) * (h * 0.16f)
+                        val flippingPage = Path().apply {
+                            moveTo(cx, bookBottomY)
+                            lineTo(flipEdgeX, bookBottomY - h * 0.05f - flipArchLift)
+                            lineTo(flipEdgeX, bookTopY - h * 0.05f - flipArchLift)
+                            lineTo(cx, bookTopY)
+                            close()
+                        }
+                        drawPath(
+                            path = flippingPage,
+                            color = GoldAccent.copy(alpha = 0.35f)
+                        )
+                        drawPath(
+                            path = flippingPage,
+                            color = GoldAccent,
+                            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
+                        )
+
+                        // Center spine
+                        drawLine(
+                            color = GoldAccent,
+                            start = Offset(cx, bookTopY),
+                            end = Offset(cx, bookBottomY + 3.dp.toPx()),
+                            strokeWidth = 2.8.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+
+                Text(
+                    text = book.subjectTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDarkMode) Color.White else DeepForestGreen,
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = "${book.stage.arabicTitle} • ${book.gradeClass}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) Color(0xFFA7F3D0) else DeepEmerald,
+                    textAlign = TextAlign.Center
+                )
+
+                // Smooth Animated Shimmer Progress Bar
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(50))
+                ) {
+                    val barW = size.width
+                    val barH = size.height
+                    drawRoundRect(
+                        color = if (isDarkMode) Color(0xFF042F24) else Color(0xFFD1FAE5),
+                        size = Size(barW, barH),
+                        cornerRadius = CornerRadius(barH / 2f)
+                    )
+                    val activeSegmentW = barW * 0.48f
+                    val startX = (barW + activeSegmentW) * flipProgress - activeSegmentW
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                DeepEmerald,
+                                GoldAccent,
+                                DeepEmerald
+                            )
+                        ),
+                        topLeft = Offset(startX.coerceIn(0f, barW), 0f),
+                        size = Size(activeSegmentW.coerceAtMost(barW - startX.coerceAtLeast(0f)), barH),
+                        cornerRadius = CornerRadius(barH / 2f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 1. مدير روابط المناهج الدراسية (حصرياً داخل إعدادات المطور Developer Settings فقط):
  * - يتيح للمطور اختيار (المرحلة الدراسية) ثم (الصف الدراسي).
  * - يعرض قائمة كتب ذلك الصف، وبجانب كل كتاب حقل نصي يحتوي على رابط Google Drive الخاص به
  *   مع زر (تحديث الرابط) وزر (حذف).
@@ -1619,14 +2514,14 @@ fun DeveloperCurriculumManagerSection(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoStories,
-                        contentDescription = null,
-                        tint = DeepEmerald
+                    AnimatedCurriculumCrestCanvasIcon(
+                        accentColor = DeepEmerald,
+                        secondaryColor = GoldAccent,
+                        modifier = Modifier.size(26.dp)
                     )
                     Column {
                         Text(
-                            text = "مدير روابط المناهج الدراسية (تحديث الروابط المباشر)",
+                            text = "إدارة وتحديث روابط الكتب الدراسية (حصرياً للمطور)",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.ExtraBold
                         )
@@ -1759,9 +2654,7 @@ fun DeveloperCurriculumManagerSection(
                             onClick = { statusMessage = null },
                             modifier = Modifier.size(24.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "إغلاق",
+                            AnimatedClearVectorIcon(
                                 tint = Color(0xFF065F46),
                                 modifier = Modifier.size(16.dp)
                             )
@@ -1831,12 +2724,6 @@ fun DeveloperCurriculumManagerSection(
                             .height(44.dp)
                             .testTag("dev_add_book_submit_btn")
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "إضافة كتاب جديد للصف",
                             style = MaterialTheme.typography.labelLarge,
@@ -1907,13 +2794,6 @@ fun DeveloperCurriculumManagerSection(
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                         modifier = Modifier.testTag("dev_delete_book_btn_${book.id}")
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Delete,
-                                            contentDescription = "حذف الكتاب",
-                                            tint = DangerRed,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = "حذف",
                                             style = MaterialTheme.typography.labelSmall,
@@ -1954,12 +2834,6 @@ fun DeveloperCurriculumManagerSection(
                                         .height(40.dp)
                                         .testTag("dev_update_book_link_btn_${book.id}")
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Save,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "تحديث الرابط",
                                         style = MaterialTheme.typography.labelLarge,

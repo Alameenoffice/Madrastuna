@@ -128,7 +128,7 @@ fun AdminAccountsScreen(
             val clsMatch = selectedClassFilter == "الكل" || ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClassFilter)
             val secMatch = selectedSectionFilter == "الكل" || ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSectionFilter)
             qMatch && clsMatch && secMatch
-        }.sortedBy { it.fullNameWithFather }
+        }.sortedBy { it.studentName }
     }
 
     val showTeachersList = activeDirectoryTab == 0 || activeDirectoryTab == 2
@@ -576,14 +576,24 @@ fun AdminAccountsScreen(
                                     color = AdaptiveSoftSurface,
                                     border = BorderStroke(1.dp, AdaptiveSoftBorder)
                                 ) {
-                                    Text(
-                                        text = teacher.specialty.ifBlank { "عام" }.split("،").firstOrNull()?.trim() ?: "عام",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = DeepForestGreen,
-                                        maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        AnimatedSpecialtyCanvasIcon(
+                                            specialty = teacher.specialty,
+                                            accentColor = DeepEmerald,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = teacher.specialty.ifBlank { "عام" }.split("،").firstOrNull()?.trim() ?: "عام",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen,
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
                                 Surface(
                                     shape = RoundedCornerShape(50),

@@ -435,6 +435,8 @@ fun SchoolSetupScreen(
     var selectedSchoolGenderType by remember { mutableStateOf("مدرسة بنين") }
     var logoBase64 by remember { mutableStateOf("") }
     var adminFullName by remember { mutableStateOf("المدير") }
+    var adminGender by remember { mutableStateOf("ذكر") }
+    var adminAgeYears by remember { mutableStateOf(35) }
     var adminPhone by remember { mutableStateOf("") }
     var adminPhoneKorekOverride by remember { mutableStateOf(false) }
     var adminUsername by remember { mutableStateOf("admin") }
@@ -829,6 +831,18 @@ fun SchoolSetupScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
+                    )
+
+                    GenderAndAgeSegmentedSelectorCard(
+                        selectedGender = adminGender,
+                        onGenderChange = { newGender: String ->
+                            adminGender = newGender
+                        },
+                        ageYears = adminAgeYears,
+                        onAgeYearsChange = { newAge: Int ->
+                            adminAgeYears = newAge
+                        },
+                        title = "تحديد الجنس والعمر الزمني للحساب"
                     )
 
                     SmartIraqiPhoneInputField(

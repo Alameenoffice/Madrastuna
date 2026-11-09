@@ -549,7 +549,7 @@ data class UserAccount(
     val canModerateActivities: Boolean = false,
     val canManageCanteen: Boolean = false,
     val gender: String = "ذكر",
-    val ageYears: Int = 0
+    val ageYears: Int = 12
 ) {
     val isFemale: Boolean
         get() {
@@ -564,7 +564,10 @@ data class UserAccount(
         get() = normalizedGenderLabel
 
     val effectiveAgeYears: Int
-        get() = ageYears.coerceAtLeast(0)
+        get() = if (ageYears > 0) ageYears else 12
+
+    val age: Int
+        get() = effectiveAgeYears
     val teacherSubjectsList: List<String>
         get() = specialty.split("،", ",", "|")
             .map { it.trim() }
@@ -1029,7 +1032,7 @@ data class StudentRecord(
     val enrollmentHistory: List<EnrollmentHistoryEntry> = emptyList(),
     val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList(),
     val gender: String = "ذكر",
-    val ageYears: Int = 0,
+    val ageYears: Int = 12,
     val presentDays: Int = 0
 ) {
     val isFemale: Boolean
@@ -1045,7 +1048,10 @@ data class StudentRecord(
         get() = normalizedGenderLabel
 
     val effectiveAgeYears: Int
-        get() = ageYears.coerceAtLeast(0)
+        get() = if (ageYears > 0) ageYears else 12
+
+    val age: Int
+        get() = effectiveAgeYears
 
     val realPresentDaysCount: Int
         get() = dailyAttendance.values.count { it.equals("PRESENT", ignoreCase = true) }

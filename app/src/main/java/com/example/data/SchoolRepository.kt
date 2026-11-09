@@ -684,7 +684,9 @@ class SchoolRepository(context: Context) {
                         photoBase64 = o.optString("photoBase64", ""),
                         schoolId = itemSchoolId,
                         canModerateActivities = o.optBoolean("canModerateActivities", false),
-                        canManageCanteen = o.optBoolean("canManageCanteen", false)
+                        canManageCanteen = o.optBoolean("canManageCanteen", false),
+                        gender = o.optString("gender", "ذكر").ifBlank { "ذكر" },
+                        ageYears = o.optInt("ageYears", o.optInt("age", 12)).let { if (it > 0) it else 12 }
                     )
                 )
             }
@@ -734,6 +736,9 @@ class SchoolRepository(context: Context) {
                 put("schoolId", schoolId)
                 put("canModerateActivities", acc.canModerateActivities)
                 put("canManageCanteen", acc.canManageCanteen)
+                put("gender", InputSanitizer.sanitize(acc.normalizedGenderLabel))
+                put("ageYears", acc.effectiveAgeYears)
+                put("age", acc.effectiveAgeYears)
                 if (acc.role == UserRole.TEACHER) {
                     val teacherSpecificRatings = existingRatings.filter {
                         it.teacherId == acc.id ||
@@ -963,7 +968,9 @@ class SchoolRepository(context: Context) {
                         enrollmentDecisionDate = ArabicTextNormalizer.normalizeDateIso(o.optString("enrollmentDecisionDate", "")),
                         enrollmentOrderNumber = o.optString("enrollmentOrderNumber", ""),
                         enrollmentHistory = parsedEnrollmentHistory,
-                        archivedYearlySummaries = parsedArchivedSummaries
+                        archivedYearlySummaries = parsedArchivedSummaries,
+                        gender = o.optString("gender", "ذكر").ifBlank { "ذكر" },
+                        ageYears = o.optInt("ageYears", o.optInt("age", 12)).let { if (it > 0) it else 12 }
                     )
                 )
             }
@@ -1128,6 +1135,9 @@ class SchoolRepository(context: Context) {
                     })
                 }
                 put("archivedYearlySummaries", archivedJsonArr)
+                put("gender", InputSanitizer.sanitize(s.normalizedGenderLabel))
+                put("ageYears", s.effectiveAgeYears)
+                put("age", s.effectiveAgeYears)
             })
         }
         val jsonStr = arr.toString()

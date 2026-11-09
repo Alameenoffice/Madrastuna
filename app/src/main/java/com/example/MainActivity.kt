@@ -135,8 +135,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             val schoolViewModel: SchoolViewModel = viewModel()
             val isDarkMode by schoolViewModel.isDarkMode.collectAsState()
+            val currentUser by schoolViewModel.currentUser.collectAsState()
+            val students by schoolViewModel.students.collectAsState()
+            val selectedParentChildId by schoolViewModel.selectedParentChildId.collectAsState()
+            val schoolConfig by schoolViewModel.schoolConfig.collectAsState()
 
-            MyApplicationTheme(darkTheme = isDarkMode) {
+            val isFeminineTheme: Boolean = remember(currentUser, students, selectedParentChildId, schoolConfig.schoolGenderType) {
+                val user = currentUser
+                if (user != null) {
+                    val linkedStudent = when (user.role) {
+                        UserRole.STUDENT -> students.firstOrNull {
+                            it.id == user.linkedStudentId ||
+                                it.studentUsername.equals(user.username, ignoreCase = true) ||
+                                it.studentName.trim() == user.fullName.trim()
+                        }
+                        UserRole.PARENT -> {
+                            val children = schoolViewModel.getChildrenForParent(user)
+                            children.firstOrNull { it.id == selectedParentChildId } ?: children.firstOrNull()
+                        }
+                        else -> null
+                    }
+                    user.isFemale || (linkedStudent?.isFemale == true)
+                } else {
+                    schoolConfig.schoolGenderType.contains("بنات")
+                }
+            }
+
+            MyApplicationTheme(
+                darkTheme = isDarkMode,
+                isFeminineTheme = isFeminineTheme
+            ) {
                 MadrasatiRootApp(viewModel = schoolViewModel)
             }
         }
