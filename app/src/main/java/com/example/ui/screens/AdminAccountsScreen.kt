@@ -306,9 +306,9 @@ fun AdminAccountsScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         listOf(
-                            0 to "الكادر التدريسي (${accounts.count { it.role == UserRole.TEACHER }})",
-                            1 to "سجل وأسماء الطلاب (${students.size})",
-                            2 to "عرض الشامل"
+                            0 to "الكادر التدريسي",
+                            1 to "سجل الطلبة",
+                            2 to "العرض الشامل"
                         ).forEach { (tabIdx, tabTitle) ->
                             val isSelected = activeDirectoryTab == tabIdx
                             Surface(
@@ -503,6 +503,13 @@ fun AdminAccountsScreen(
                     val realSupervisedCount = remember(students, teacher, schoolConfig.schoolId) {
                         viewModel.getTeacherSupervisedStudentsCount(teacher)
                     }
+                    val primarySpecialtyLabel = remember(teacher.specialty) {
+                        teacher.specialty.ifBlank { "عام" }
+                            .split("،", ",", "|")
+                            .firstOrNull()
+                            ?.trim()
+                            ?.ifBlank { "عام" } ?: "عام"
+                    }
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -521,7 +528,7 @@ fun AdminAccountsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // Right side: Serial number inside geometric circle + Full Name + Gender/Classes subtitle
+                            // Right side: Serial number inside geometric circle (36.dp) + Column(weight(1f)) with Full Name + Specialty & Student Count
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -544,7 +551,7 @@ fun AdminAccountsScreen(
                                 }
                                 Column(
                                     modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Text(
                                         text = teacher.fullName,
@@ -555,7 +562,7 @@ fun AdminAccountsScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "${teacher.normalizedGenderLabel}${if (teacher.ageYears > 0) " (${teacher.ageYears} سنة)" else ""} • الصفوف: ${teacher.formattedAssignedClassesForDisplay.ifBlank { "غير محدد" }}",
+                                        text = "$primarySpecialtyLabel • $realSupervisedCount طالب",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -566,55 +573,29 @@ fun AdminAccountsScreen(
 
                             Spacer(modifier = Modifier.width(8.dp))
 
-                            // Left side: Compact Subject Badge + Real Supervised Students Count + Chevron
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            // Far Left: Single sleek navigation indicator
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = AdaptiveSoftSurface,
+                                border = BorderStroke(1.dp, AdaptiveSoftBorder)
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = AdaptiveSoftSurface,
-                                    border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        AnimatedSpecialtyCanvasIcon(
-                                            specialty = teacher.specialty,
-                                            accentColor = DeepEmerald,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = teacher.specialty.ifBlank { "عام" }.split("،").firstOrNull()?.trim() ?: "عام",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = DeepForestGreen,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = RoyalGreen.copy(alpha = 0.12f),
-                                    border = BorderStroke(1.dp, RoyalGreen.copy(alpha = 0.35f))
-                                ) {
-                                    Text(
-                                        text = "$realSupervisedCount طالب",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = RoyalGreen,
-                                        maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                    AnimatedSpecialtyCanvasIcon(
+                                        specialty = teacher.specialty,
+                                        accentColor = DeepEmerald,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                        contentDescription = "عرض سجل الأستاذ",
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                    contentDescription = "عرض سجل الأستاذ",
-                                    tint = DeepEmerald,
-                                    modifier = Modifier.size(20.dp)
-                                )
                             }
                         }
                     }
@@ -673,11 +654,15 @@ fun AdminAccountsScreen(
                 }
             } else {
                 itemsIndexed(filteredStudents, key = { _, s -> "compact_student_${s.id}" }) { idx, stu ->
-                    val realPresentDays = remember(attendance, stu.id, stu.dailyAttendance) {
-                        viewModel.getTotalPresentDays(stu.id)
-                    }
                     val realAbsentDays = remember(attendance, stu.id, stu.dailyAttendance) {
                         viewModel.getTotalAbsenceDays(stu.id)
+                    }
+                    val attendanceDisciplineSummary = remember(stu.enrollmentStatusEnum, realAbsentDays) {
+                        when {
+                            stu.enrollmentStatusEnum != StudentEnrollmentStatus.ACTIVE -> stu.enrollmentStatusEnum.arabicLabel
+                            realAbsentDays == 0 -> "منتظم"
+                            else -> "غياب $realAbsentDays يوم"
+                        }
                     }
                     Surface(
                         modifier = Modifier
@@ -704,7 +689,7 @@ fun AdminAccountsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // Right side: Serial number inside geometric circle + Full Name + Attendance/Gender subtitle
+                            // Right side: Serial number inside geometric circle (36.dp) + Column(weight(1f)) with Full Name + Class & Attendance Status
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -727,7 +712,7 @@ fun AdminAccountsScreen(
                                 }
                                 Column(
                                     modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Text(
                                         text = stu.fullNameWithFather,
@@ -738,7 +723,7 @@ fun AdminAccountsScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "${stu.normalizedGenderLabel}${if (stu.ageYears > 0) " (${stu.ageYears} سنة)" else ""} • حضور: $realPresentDays يوم • غياب: $realAbsentDays يوم",
+                                        text = "${stu.gradeClass} (${stu.sectionName}) • $attendanceDisciplineSummary",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -749,48 +734,13 @@ fun AdminAccountsScreen(
 
                             Spacer(modifier = Modifier.width(8.dp))
 
-                            // Left side: Compact Class & Section Badge + Status + Chevron
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = AdaptiveSoftSurface,
-                                    border = BorderStroke(1.dp, AdaptiveSoftBorder)
-                                ) {
-                                    Text(
-                                        text = "${stu.gradeClass} (${stu.sectionName})",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = DeepForestGreen,
-                                        maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                                if (stu.enrollmentStatusEnum != StudentEnrollmentStatus.ACTIVE) {
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = DangerRed.copy(alpha = 0.12f),
-                                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.4f))
-                                    ) {
-                                        Text(
-                                            text = stu.enrollmentStatusEnum.arabicLabel,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = DangerRed,
-                                            maxLines = 1,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                }
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                    contentDescription = "عرض سجل الطالب",
-                                    tint = DeepEmerald,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                            // Far Left: Single sleek badge or navigation chevron arrow
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = "عرض سجل الطالب",
+                                tint = DeepEmerald,
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
                     }
                 }
@@ -904,12 +854,13 @@ fun AdminAccountsScreen(
 
                     LazyColumn(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
+                            .weight(1f)
                             .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = PaddingValues(top = 14.dp, bottom = 32.dp)
+                        contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
                     ) {
-                        // 1. لوحة الأداء والنشاط التقني للأستاذ (Real Supervised Count + Real Metrics)
+                        // 1. لوحة الأداء والنشاط التقني للأستاذ (شبكة متزنة 2×2 لبطاقات الإحصائيات المتساوية)
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -928,103 +879,65 @@ fun AdminAccountsScreen(
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
                                     )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Surface(
-                                            modifier = Modifier.weight(1.15f),
-                                            shape = RoundedCornerShape(16.dp),
-                                            color = AdaptiveSoftSurface,
-                                            border = BorderStroke(1.2.dp, AdaptiveSoftBorder)
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.padding(12.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = "${realMetrics.supervisedStudentsCount} طالب",
-                                                    style = MaterialTheme.typography.headlineSmall,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = RoyalGreen
-                                                )
-                                                Text(
-                                                    text = "إجمالي عدد الطلاب المشرف عليهم فعلياً",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = DeepForestGreen,
-                                                    textAlign = TextAlign.Center
-                                                )
-                                                Text(
-                                                    text = "محسوب تلقائياً من الصفوف والشعب المسندة",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontSize = 9.5.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    textAlign = TextAlign.Center
-                                                )
-                                            }
-                                        }
 
-                                        Column(
-                                            modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = AdaptiveSoftSurface.copy(alpha = 0.6f),
-                                                border = BorderStroke(1.dp, AdaptiveSoftBorder),
-                                                modifier = Modifier.fillMaxWidth()
+                                    val statGridItems = listOf(
+                                        Triple("الطلاب المشرف عليهم", "${realMetrics.supervisedStudentsCount} طالب", RoyalGreen),
+                                        Triple("نسبة الأداء والالتزام", "${realMetrics.commitmentRatePercent}%", DeepEmerald),
+                                        Triple("نسبة النشاط التفاعلي", "${realMetrics.interactiveActivityPercent}%", InfoBlue),
+                                        Triple("الحضور والدرجات المرصودة", "${realMetrics.recordedAttendanceActionsCount + realMetrics.gradedStudentsCount} سجل", GoldAccent)
+                                    )
+
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        statGridItems.chunked(2).forEach { rowPair ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Column(modifier = Modifier.padding(10.dp)) {
-                                                    Text(
-                                                        text = "مؤشر الأداء والالتزام: ${realMetrics.commitmentRatePercent}%",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = DeepForestGreen
-                                                    )
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    LinearProgressIndicator(
-                                                        progress = { (realMetrics.commitmentRatePercent / 100f).coerceIn(0f, 1f) },
+                                                rowPair.forEach { (statTitle, statValue, statColor) ->
+                                                    Surface(
                                                         modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(6.dp)
-                                                            .clip(RoundedCornerShape(50)),
-                                                        color = RoyalGreen,
-                                                        trackColor = AdaptiveSoftContainer
-                                                    )
-                                                }
-                                            }
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = AdaptiveSoftSurface.copy(alpha = 0.6f),
-                                                border = BorderStroke(1.dp, AdaptiveSoftBorder),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Column(modifier = Modifier.padding(10.dp)) {
-                                                    Text(
-                                                        text = "مؤشر النشاط التفاعلي: ${realMetrics.interactiveActivityPercent}%",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = DeepForestGreen
-                                                    )
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    LinearProgressIndicator(
-                                                        progress = { (realMetrics.interactiveActivityPercent / 100f).coerceIn(0f, 1f) },
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(6.dp)
-                                                            .clip(RoundedCornerShape(50)),
-                                                        color = DeepEmerald,
-                                                        trackColor = AdaptiveSoftContainer
-                                                    )
+                                                            .weight(1f)
+                                                            .heightIn(min = 78.dp),
+                                                        shape = RoundedCornerShape(16.dp),
+                                                        color = AdaptiveSoftSurface.copy(alpha = 0.7f),
+                                                        border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .padding(horizontal = 10.dp, vertical = 12.dp),
+                                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                                            verticalArrangement = Arrangement.Center
+                                                        ) {
+                                                            Text(
+                                                                text = statValue,
+                                                                style = MaterialTheme.typography.titleMedium,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = statColor,
+                                                                maxLines = 1
+                                                            )
+                                                            Spacer(modifier = Modifier.height(4.dp))
+                                                            Text(
+                                                                text = statTitle,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = DeepForestGreen,
+                                                                textAlign = TextAlign.Center,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
 
                                     Text(
-                                        text = "تفاصيل النشاط الفعلي: رصد حضور (${realMetrics.recordedAttendanceActionsCount}) • واجبات منشورة (${realMetrics.publishedHomeworksCount}) • درجات مرصودة (${realMetrics.gradedStudentsCount})",
+                                        text = "تفاصيل الرصد: حضور (${realMetrics.recordedAttendanceActionsCount}) • واجبات (${realMetrics.publishedHomeworksCount}) • درجات (${realMetrics.gradedStudentsCount})",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontWeight = FontWeight.Bold
@@ -1033,7 +946,7 @@ fun AdminAccountsScreen(
                             }
                         }
 
-                        // 2. البيانات الأساسية + الجنس والعمر
+                        // 2. البيانات الأساسية وبيانات الدخول (عرض أنيق بدون صندوق تعديل الجنس والعمر داخل السجل)
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1051,18 +964,39 @@ fun AdminAccountsScreen(
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
                                     )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        listOf(
+                                            "الجنس: ${liveTeacher.normalizedGenderLabel}",
+                                            "العمر: ${formatArabicAgeYearsLabel(liveTeacher.effectiveAgeYears)}",
+                                            "الهاتف: ${liveTeacher.phone.ifBlank { "غير مسجل" }}"
+                                        ).forEach { badgeLabel ->
+                                            Surface(
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = AdaptiveSoftSurface,
+                                                border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                            ) {
+                                                Text(
+                                                    text = badgeLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen,
+                                                    textAlign = TextAlign.Center,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                     Text(
-                                        text = "اسم المستخدم: ${liveTeacher.username}  |  كلمة المرور: ${liveTeacher.password}  |  الهاتف: ${liveTeacher.phone.ifBlank { "غير مسجل" }}",
+                                        text = "اسم المستخدم: ${liveTeacher.username}  |  كلمة المرور: ${liveTeacher.password}",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    GenderAndAgeSegmentedSelectorCard(
-                                        selectedGender = editedGender,
-                                        onGenderChange = { newG -> editedGender = newG },
-                                        ageYears = editedAge,
-                                        onAgeYearsChange = { newA -> editedAge = newA },
-                                        title = "تحديد جنس وعمر الأستاذ (يضبط الهوية اللونية لحسابه)"
                                     )
                                 }
                             }
@@ -1327,12 +1261,70 @@ fun AdminAccountsScreen(
 
                     LazyColumn(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
+                            .weight(1f)
                             .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = PaddingValues(top = 14.dp, bottom = 32.dp)
+                        contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
                     ) {
-                        // 1. إحصائيات حضور الطالب الفعلية (تبدأ من 0 للطالب الجديد)
+                        // 1. بطاقة الملخص الشخصي والأكاديمي
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "بطاقة الملخص الشخصي والأكاديمي",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    Text(
+                                        text = liveStu.fullNameWithFather,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        listOf(
+                                            "${liveStu.gradeClass} (${liveStu.sectionName})",
+                                            "الجنس: ${liveStu.normalizedGenderLabel}",
+                                            "العمر: ${formatArabicAgeYearsLabel(liveStu.effectiveAgeYears)}"
+                                        ).forEach { infoChip ->
+                                            Surface(
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = AdaptiveSoftSurface,
+                                                border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                            ) {
+                                                Text(
+                                                    text = infoChip,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen,
+                                                    textAlign = TextAlign.Center,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. سجل المواظبة والانضباط المدرسي
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1345,7 +1337,7 @@ fun AdminAccountsScreen(
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Text(
-                                        text = "إحصائيات المواظبة الفعلية للطالب (صفر بيانات وهمية)",
+                                        text = "سجل المواظبة والانضباط المدرسي",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
@@ -1355,8 +1347,8 @@ fun AdminAccountsScreen(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         listOf(
-                                            Triple("الحضور الفعلي", "$realPresent يوم", RoyalGreen),
-                                            Triple("الغياب الفعلي", "$realAbsent يوم", DangerRed),
+                                            Triple("الحضور", "$realPresent يوم", RoyalGreen),
+                                            Triple("الغياب", "$realAbsent يوم", DangerRed),
                                             Triple("الإجازات", "$realExcused يوم", InfoBlue),
                                             Triple("التأخر", "$realLate يوم", WarningAmber)
                                         ).forEach { (lbl, valTxt, col) ->
@@ -1392,7 +1384,7 @@ fun AdminAccountsScreen(
                             }
                         }
 
-                        // 2. أداة نقل الطالب الفورية (تغيير الصف أو الشعبة + الجنس والعمر)
+                        // 3. أداة نقل الطالب الفورية (تغيير الصف أو الشعبة بدون حشر اختيار الجنس والعمر بداخلها)
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1406,19 +1398,19 @@ fun AdminAccountsScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Text(
-                                        text = "أداة نقل الطالب الفورية (تغيير الصف أو الشعبة)",
+                                        text = "أداة نقل الطالب الفورية",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
                                     )
                                     Text(
-                                        text = "الصف الحالي: ${liveStu.gradeClass} (شعبة ${liveStu.sectionName}) — اختر الصف الجديد أو الشعبة الجديدة للنقل الفوري:",
+                                        text = "الصف الحالي: ${liveStu.gradeClass} (شعبة ${liveStu.sectionName})",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
 
                                     Text(
-                                        text = "1. اختر الصف الجديد:",
+                                        text = "الصف الجديد:",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
@@ -1440,7 +1432,7 @@ fun AdminAccountsScreen(
                                     }
 
                                     Text(
-                                        text = "2. اختر الشعبة الجديدة:",
+                                        text = "الشعبة الجديدة:",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
@@ -1461,22 +1453,14 @@ fun AdminAccountsScreen(
                                         }
                                     }
 
-                                    GenderAndAgeSegmentedSelectorCard(
-                                        selectedGender = transferTargetGender,
-                                        onGenderChange = { transferTargetGender = it },
-                                        ageYears = transferTargetAge,
-                                        onAgeYearsChange = { transferTargetAge = it },
-                                        title = "تحديد الجنس والعمر الزمني للطالب"
-                                    )
-
                                     Button(
                                         onClick = {
                                             viewModel.transferStudentClassAndSection(
                                                 studentId = liveStu.id,
                                                 newGradeClass = transferTargetClass,
                                                 newSectionName = transferTargetSection,
-                                                newGender = transferTargetGender,
-                                                newAgeYears = transferTargetAge
+                                                newGender = liveStu.normalizedGenderLabel,
+                                                newAgeYears = liveStu.effectiveAgeYears
                                             )
                                         },
                                         modifier = Modifier
@@ -1498,7 +1482,7 @@ fun AdminAccountsScreen(
                             }
                         }
 
-                        // 3. بيانات الحساب وولي الأمر والقرارات الإدارية
+                        // 4. بيانات الحساب وولي الأمر
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1511,7 +1495,7 @@ fun AdminAccountsScreen(
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Text(
-                                        text = "بيانات الحساب وولي الأمر والقرارات الإدارية",
+                                        text = "بيانات الحساب وولي الأمر",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
@@ -1771,7 +1755,7 @@ fun AdminAccountsScreen(
         var canModerateActivities by remember(currentEditing) { mutableStateOf(currentEditing?.canModerateActivities ?: false) }
         var canManageCanteen by remember(currentEditing) { mutableStateOf(currentEditing?.canManageCanteen ?: false) }
         var teacherGender by remember(currentEditing) { mutableStateOf(currentEditing?.normalizedGenderLabel ?: "ذكر") }
-        var teacherAgeYears by remember(currentEditing) { mutableStateOf(currentEditing?.ageYears ?: 0) }
+        var teacherAgeYears by remember(currentEditing) { mutableStateOf(currentEditing?.effectiveAgeYears ?: 30) }
 
         // Multi-select subjects from registeredSubjects
         val initialSubjects = remember(currentEditing) {
@@ -1830,7 +1814,7 @@ fun AdminAccountsScreen(
                             onGenderChange = { teacherGender = it },
                             ageYears = teacherAgeYears,
                             onAgeYearsChange = { teacherAgeYears = it },
-                            title = "تحديد جنس وعمر $staffSingular"
+                            title = "الجنس والعمر"
                         )
                     }
                     item {
@@ -2275,7 +2259,7 @@ fun AdminAccountsScreen(
         var sectionDropdownExpanded by remember { mutableStateOf(false) }
         var isLinkedToExistingParent by remember(currentStu) { mutableStateOf(false) }
         var studentGender by remember(currentStu) { mutableStateOf(currentStu?.normalizedGenderLabel ?: "ذكر") }
-        var studentAgeYears by remember(currentStu) { mutableStateOf(currentStu?.ageYears ?: 0) }
+        var studentAgeYears by remember(currentStu) { mutableStateOf(currentStu?.effectiveAgeYears ?: 8) }
 
         val matchedParent = remember(studentName, parentName, parentPhone, students, currentStu) {
             viewModel.findExistingParentMatch(
@@ -2318,7 +2302,7 @@ fun AdminAccountsScreen(
                             onGenderChange = { studentGender = it },
                             ageYears = studentAgeYears,
                             onAgeYearsChange = { studentAgeYears = it },
-                            title = "تحديد جنس وعمر الطالب"
+                            title = "الجنس والعمر"
                         )
                     }
 

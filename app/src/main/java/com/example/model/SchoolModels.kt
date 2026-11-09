@@ -564,7 +564,12 @@ data class UserAccount(
         get() = normalizedGenderLabel
 
     val effectiveAgeYears: Int
-        get() = if (ageYears > 0) ageYears else 12
+        get() = when {
+            role == UserRole.TEACHER || role == UserRole.ADMIN || role == UserRole.PARENT ->
+                if (ageYears >= 18) ageYears else 30
+            else ->
+                if (ageYears in 5..22) ageYears else 8
+        }
 
     val age: Int
         get() = effectiveAgeYears
@@ -1032,7 +1037,7 @@ data class StudentRecord(
     val enrollmentHistory: List<EnrollmentHistoryEntry> = emptyList(),
     val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList(),
     val gender: String = "ذكر",
-    val ageYears: Int = 12,
+    val ageYears: Int = 8,
     val presentDays: Int = 0
 ) {
     val isFemale: Boolean
@@ -1048,7 +1053,7 @@ data class StudentRecord(
         get() = normalizedGenderLabel
 
     val effectiveAgeYears: Int
-        get() = if (ageYears > 0) ageYears else 12
+        get() = if (ageYears > 0) ageYears else 8
 
     val age: Int
         get() = effectiveAgeYears

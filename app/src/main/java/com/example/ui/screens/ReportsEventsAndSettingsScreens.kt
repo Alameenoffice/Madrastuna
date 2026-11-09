@@ -2363,21 +2363,6 @@ fun SettingsScreen(
                         }
                     }
 
-                    // محرك الهوية اللونية الذكي حسب الجنس والعمر (Gender-Adaptive Theme Engine)
-                    GenderAndAgeSegmentedSelectorCard(
-                        selectedGender = currentGenderSelection,
-                        onGenderChange = { newG ->
-                            currentGenderSelection = newG
-                            viewModel.updateCurrentUserGenderAndAge(newG, currentAgeSelection)
-                        },
-                        ageYears = currentAgeSelection,
-                        onAgeYearsChange = { newA ->
-                            currentAgeSelection = newA
-                            viewModel.updateCurrentUserGenderAndAge(currentGenderSelection, newA)
-                        },
-                        title = "تخصيص الجنس والعمر والهوية اللونية الذكية للمنصة"
-                    )
-
                     VectorActionButton(
                         text = "تسجيل الخروج من الحساب",
                         icon = Icons.AutoMirrored.Filled.Logout,

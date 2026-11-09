@@ -436,7 +436,7 @@ fun SchoolSetupScreen(
     var logoBase64 by remember { mutableStateOf("") }
     var adminFullName by remember { mutableStateOf("المدير") }
     var adminGender by remember { mutableStateOf("ذكر") }
-    var adminAgeYears by remember { mutableStateOf(35) }
+    var adminAgeYears by remember { mutableStateOf(30) }
     var adminPhone by remember { mutableStateOf("") }
     var adminPhoneKorekOverride by remember { mutableStateOf(false) }
     var adminUsername by remember { mutableStateOf("admin") }
@@ -842,7 +842,7 @@ fun SchoolSetupScreen(
                         onAgeYearsChange = { newAge: Int ->
                             adminAgeYears = newAge
                         },
-                        title = "تحديد الجنس والعمر الزمني للحساب"
+                        title = "الجنس والعمر"
                     )
 
                     SmartIraqiPhoneInputField(

@@ -8084,7 +8084,7 @@ fun StudentPersonalProfileScreen(
                         ) {
                             listOf(
                                 "الجنس: ${activeStudent.normalizedGenderLabel}",
-                                if (activeStudent.ageYears > 0) "العمر: ${activeStudent.ageYears} سنة" else "العمر: غير محدد",
+                                "العمر: ${formatArabicAgeYearsLabel(activeStudent.effectiveAgeYears)}",
                                 "حالة القيد: ${activeStudent.enrollmentStatusEnum.arabicLabel}",
                                 "دوام اليوم: ${todayStatus.arabicLabel}"
                             ).forEach { pillText ->
@@ -8131,59 +8131,6 @@ fun StudentPersonalProfileScreen(
                             }
                         }
                     }
-                }
-            }
-        }
-
-        // 2. Interactive Gender & Age Selector Card (Triggers 100% Full-System Color Theme Transformation)
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.2.dp, AdaptiveSoftBorder),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "الهوية الشخصية والسمة اللونية الذكية",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = DeepForestGreen
-                    )
-                    Text(
-                        text = "حدد الجنس والعمر لتخصيص الملف الشخصي وتطبيق الهوية اللونية الملائمة على كامل المنصة تلقائياً",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    GenderAndAgeSegmentedSelectorCard(
-                        selectedGender = editableGender,
-                        onGenderChange = { newGender ->
-                            editableGender = newGender
-                            viewModel.transferStudentClassAndSection(
-                                studentId = activeStudent.id,
-                                newGradeClass = activeStudent.gradeClass,
-                                newSectionName = activeStudent.sectionName,
-                                newGender = newGender,
-                                newAgeYears = editableAge
-                            )
-                        },
-                        ageYears = editableAge,
-                        onAgeYearsChange = { newAge ->
-                            editableAge = newAge
-                            viewModel.transferStudentClassAndSection(
-                                studentId = activeStudent.id,
-                                newGradeClass = activeStudent.gradeClass,
-                                newSectionName = activeStudent.sectionName,
-                                newGender = editableGender,
-                                newAgeYears = newAge
-                            )
-                        },
-                        title = "تحديد الجنس والعمر الزمني"
-                    )
                 }
             }
         }

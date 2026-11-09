@@ -686,7 +686,12 @@ class SchoolRepository(context: Context) {
                         canModerateActivities = o.optBoolean("canModerateActivities", false),
                         canManageCanteen = o.optBoolean("canManageCanteen", false),
                         gender = o.optString("gender", "ذكر").ifBlank { "ذكر" },
-                        ageYears = o.optInt("ageYears", o.optInt("age", 12)).let { if (it > 0) it else 12 }
+                        ageYears = run {
+                            val defaultAge = if (role == UserRole.TEACHER || role == UserRole.ADMIN || role == UserRole.PARENT) 30 else 8
+                            val parsedAge = o.optInt("ageYears", o.optInt("age", defaultAge))
+                            if ((role == UserRole.TEACHER || role == UserRole.ADMIN) && parsedAge < 18) 30
+                            else if (parsedAge > 0) parsedAge else defaultAge
+                        }
                     )
                 )
             }
@@ -970,7 +975,7 @@ class SchoolRepository(context: Context) {
                         enrollmentHistory = parsedEnrollmentHistory,
                         archivedYearlySummaries = parsedArchivedSummaries,
                         gender = o.optString("gender", "ذكر").ifBlank { "ذكر" },
-                        ageYears = o.optInt("ageYears", o.optInt("age", 12)).let { if (it > 0) it else 12 }
+                        ageYears = o.optInt("ageYears", o.optInt("age", 8)).let { if (it > 0) it else 8 }
                     )
                 )
             }
