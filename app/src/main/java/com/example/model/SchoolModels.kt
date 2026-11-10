@@ -56,6 +56,8 @@ object FirebaseConfigConstants {
     const val COL_OCCASION_THEME = "global_occasion_theme"
     const val COL_SYSTEM_SECURE_CONFIG = "system_secure_config"
     const val DOC_DEVELOPER_VAULT = "developer_vault"
+    const val COL_CURRICULUM_BOOKS = "global_curriculum_config"
+    const val COL_SCHOOL_ACTIVATION_GATE = "school_activation_gate"
 
     // Developer Super-Admin Token (resolved dynamically via SecurityShieldHelper — zero plaintext in code)
     val DEV_USERNAME: String
@@ -454,7 +456,9 @@ data class RegisteredSchoolSummary(
     val createdAt: String = "2026-10-29",
     val isActive: Boolean = true,
     val adminUsername: String = "",
-    val subscriptionExpiryDate: String = "2027-10-29"
+    val subscriptionExpiryDate: String = "2027-10-29",
+    val isSchoolOfficiallyActivated: Boolean = false,
+    val schoolActivationCode: String = "1001"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -508,7 +512,9 @@ data class SchoolConfig(
     val urgentAlert: UrgentSchoolAlert = UrgentSchoolAlert(),
     val holidaysConfig: SchoolHolidaysConfig = SchoolHolidaysConfig(),
     val isCanteenWalletEnabled: Boolean = true,
-    val principalFullName: String = "مدير المدرسة"
+    val principalFullName: String = "مدير المدرسة",
+    val isSchoolOfficiallyActivated: Boolean = false,
+    val schoolActivationCode: String = "1001"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L

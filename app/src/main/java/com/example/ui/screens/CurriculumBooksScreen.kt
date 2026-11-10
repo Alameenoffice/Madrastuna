@@ -630,6 +630,15 @@ object IraqiCurriculumCatalog {
     fun init(context: Context) {
         if (isInitialized) return
         isInitialized = true
+        val repo = com.example.data.SchoolRepository(context)
+        val cloudJson = repo.loadCloudCurriculumBooksJson()
+        if (!cloudJson.isNullOrBlank()) {
+            val parsedCloud = parseBooksJson(cloudJson)
+            if (parsedCloud.isNotEmpty()) {
+                _booksFlow.value = parsedCloud
+                return
+            }
+        }
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedJson = prefs.getString(KEY_BOOKS_JSON, null)
         if (!savedJson.isNullOrBlank()) {
@@ -640,7 +649,16 @@ object IraqiCurriculumCatalog {
             }
         }
         _booksFlow.value = defaultPrimaryBooks
-        saveToPrefs(context, defaultPrimaryBooks)
+        saveToPrefs(context, defaultPrimaryBooks, pushToCloud = false)
+    }
+
+    fun applyCloudBooksJson(context: Context, rawJson: String) {
+        if (rawJson.isBlank()) return
+        val parsed = parseBooksJson(rawJson)
+        if (parsed.isNotEmpty()) {
+            _booksFlow.value = parsed
+            saveToPrefs(context, parsed, pushToCloud = false)
+        }
     }
 
     private fun parseBooksJson(jsonStr: String): List<CurriculumBookItem> {
@@ -674,7 +692,7 @@ object IraqiCurriculumCatalog {
         }
     }
 
-    private fun saveToPrefs(context: Context, list: List<CurriculumBookItem>) {
+    private fun saveToPrefs(context: Context, list: List<CurriculumBookItem>, pushToCloud: Boolean = true) {
         try {
             val arr = JSONArray()
             list.forEach { item ->
@@ -687,10 +705,12 @@ object IraqiCurriculumCatalog {
                 }
                 arr.put(obj)
             }
+            val jsonPayload = arr.toString()
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
-                .putString(KEY_BOOKS_JSON, arr.toString())
+                .putString(KEY_BOOKS_JSON, jsonPayload)
                 .apply()
+            com.example.data.SchoolRepository(context).saveCloudCurriculumBooksJson(jsonPayload, pushToCloud = pushToCloud)
         } catch (_: Exception) {
         }
     }

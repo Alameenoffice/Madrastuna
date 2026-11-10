@@ -191,6 +191,7 @@ fun MadrasatiRootApp(
     val biometricCredentials by viewModel.biometricCredentials.collectAsState()
     val loginLockoutUntilMs by viewModel.loginLockoutUntilMs.collectAsState()
     val failedLoginAttemptsCount by viewModel.failedLoginAttemptsCount.collectAsState()
+    val isSchoolGatePassed by viewModel.isSchoolGatePassed.collectAsState()
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -294,6 +295,19 @@ fun MadrasatiRootApp(
                     }
                 )
             }
+            currentUser == null && !isSchoolGatePassed -> {
+                SchoolActivationGateScreen(
+                    schoolConfig = schoolConfig,
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { viewModel.toggleDarkMode() },
+                    onActivateSchoolAsAdmin = { schoolCode: String, adminPass: String, onResult: (Boolean, String) -> Unit ->
+                        viewModel.verifyAndActivateSchoolGateAsAdmin(schoolCode, adminPass, onResult)
+                    },
+                    onVerifyActivatedSchoolCode = { schoolCode: String, onResult: (Boolean, String) -> Unit ->
+                        viewModel.verifyActivatedSchoolCodeForAccess(schoolCode, onResult)
+                    }
+                )
+            }
             currentUser == null -> {
                 UnifiedLoginScreen(
                     schoolConfig = schoolConfig,
@@ -312,7 +326,8 @@ fun MadrasatiRootApp(
                     biometricCredentials = biometricCredentials,
                     onBiometricLogin = { viewModel.loginWithSavedBiometrics() },
                     onShowErrorToast = { errMsg -> viewModel.showToastAlert(errMsg, isSuccess = false) },
-                    hasActiveTopToast = toastAlert != null
+                    hasActiveTopToast = toastAlert != null,
+                    onSwitchSchoolCodeGate = { viewModel.returnToSchoolSecurityGate() }
                 )
             }
             else -> {

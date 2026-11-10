@@ -227,6 +227,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _developerVaultConfig = MutableStateFlow(repo.loadDeveloperVaultConfig())
     val developerVaultConfig: StateFlow<DeveloperVaultConfig> = _developerVaultConfig.asStateFlow()
 
+    // Cloud-Synced School Security & Activation Gate States
+    private val _isSchoolGatePassed = MutableStateFlow(repo.isSchoolSecurityGatePassed())
+    val isSchoolGatePassed: StateFlow<Boolean> = _isSchoolGatePassed.asStateFlow()
+
+    private val _verifiedGateSchoolCode = MutableStateFlow(repo.getVerifiedGateSchoolCode())
+    val verifiedGateSchoolCode: StateFlow<String> = _verifiedGateSchoolCode.asStateFlow()
+
     private val _showIndexedLeaveRequestsModal = MutableStateFlow(false)
     val showIndexedLeaveRequestsModal: StateFlow<Boolean> = _showIndexedLeaveRequestsModal.asStateFlow()
 
@@ -685,8 +692,294 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         repo.saveDeveloperVaultConfig(parsedVault)
                     }
                 }
+
+                repo.syncCloudCurriculumBooks()?.let { cloudBooksJson ->
+                    com.example.ui.screens.IraqiCurriculumCatalog.applyCloudBooksJson(appContext, cloudBooksJson)
+                }
             } catch (_: Exception) {
             }
+        }
+    }
+
+    fun returnToSchoolSecurityGate() {
+        repo.setSchoolSecurityGatePassed(false)
+        _isSchoolGatePassed.value = false
+    }
+
+    fun verifyAndActivateSchoolGateAsAdmin(
+        schoolCodeInput: String,
+        adminPasswordInput: String,
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        val normalizedDigits = ArabicTextNormalizer.normalizeDigitsToAscii(schoolCodeInput.trim())
+        val cleanCode = InputSanitizer.sanitizeSchoolId(normalizedDigits).uppercase()
+        val cleanPass = InputSanitizer.sanitize(adminPasswordInput.trim())
+
+        if (cleanCode.isBlank() || cleanPass.isBlank()) {
+            val msg = "يرجى إدخال كود تفعيل المدرسة وكلمة مرور مدير المدرسة للمتابعة"
+            showToastAlert(msg, isSuccess = false)
+            onResult(false, msg)
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOL_LICENSES,
+                    docName = "registry"
+                )?.let { remoteJson ->
+                    val remoteList = repo.parseSchoolLicensesJson(remoteJson)
+                    if (remoteList.isNotEmpty()) {
+                        val merged = (remoteList + _schoolLicenses.value)
+                            .groupBy { it.code.uppercase() }
+                            .map { (_, items) -> items.firstOrNull { it.used } ?: items.first() }
+                        _schoolLicenses.value = merged
+                        repo.saveSchoolLicenses(merged)
+                    }
+                }
+
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+                    docName = "registry"
+                )?.let { remoteJson ->
+                    val remoteSchools = repo.parseRegisteredSchoolsJson(remoteJson)
+                    if (remoteSchools.isNotEmpty()) {
+                        val merged = (remoteSchools + _registeredSchools.value)
+                            .distinctBy { it.schoolId }
+                        _registeredSchools.value = merged
+                        repo.saveRegisteredSchools(merged)
+                    }
+                }
+            } catch (_: Exception) {
+            }
+
+            // 1. Check if it's a one-time founding license code (e.g., MAD-XXXX)
+            val matchedLicense = _schoolLicenses.value.firstOrNull { lic: SchoolLicense ->
+                lic.code.equals(cleanCode, ignoreCase = true)
+            }
+            if (matchedLicense != null && !matchedLicense.used) {
+                _pendingActivationCode.value = matchedLicense.code
+                _isSchoolSetupUnlocked.value = true
+                repo.setSchoolSecurityGatePassed(true, cleanCode)
+                _verifiedGateSchoolCode.value = cleanCode
+                _isSchoolGatePassed.value = true
+                val okMsg = "تم التحقق من كود التأسيس (${matchedLicense.code}) بنجاح"
+                showToastAlert(okMsg, isSuccess = true)
+                onResult(true, okMsg)
+                return@launch
+            }
+
+            // 2. Try syncing target school from cloud if not locally cached
+            try {
+                repo.syncEssentialAuthFromCloud(cleanCode)
+            } catch (_: Exception) {
+            }
+
+            val matchedReg = _registeredSchools.value.firstOrNull { reg: RegisteredSchoolSummary ->
+                reg.schoolId.equals(cleanCode, ignoreCase = true) ||
+                    reg.schoolActivationCode.equals(cleanCode, ignoreCase = true)
+            }
+            val currentCfg = _schoolConfig.value
+            val localCandidateCfg = repo.loadSchoolConfig(cleanCode)
+
+            val isKnownCode = cleanCode == "1001" ||
+                cleanCode.equals(currentCfg.schoolId, ignoreCase = true) ||
+                cleanCode.equals(currentCfg.schoolActivationCode, ignoreCase = true) ||
+                matchedReg != null ||
+                localCandidateCfg.isSetupCompleted ||
+                (matchedLicense != null && matchedLicense.used)
+
+            if (!isKnownCode) {
+                val errMsg = "كود تفعيل المدرسة ($cleanCode) غير صحيح أو غير مسجل في السحابة"
+                showToastAlert(errMsg, isSuccess = false)
+                onResult(false, errMsg)
+                return@launch
+            }
+
+            val resolvedSid = when {
+                matchedReg != null -> matchedReg.schoolId
+                matchedLicense != null && matchedLicense.usedBySchoolId.isNotBlank() -> matchedLicense.usedBySchoolId
+                localCandidateCfg.schoolId.isNotBlank() -> localCandidateCfg.schoolId
+                currentCfg.schoolId.isNotBlank() && (cleanCode == "1001" || cleanCode.equals(currentCfg.schoolActivationCode, ignoreCase = true)) -> currentCfg.schoolId
+                else -> cleanCode
+            }
+
+            try {
+                repo.syncEssentialAuthFromCloud(resolvedSid)
+            } catch (_: Exception) {
+            }
+
+            val schoolAccounts = repo.loadAccounts(resolvedSid).ifEmpty {
+                if (_schoolConfig.value.schoolId == resolvedSid) _accounts.value else emptyList()
+            }
+            val adminAccount = schoolAccounts.firstOrNull { acc: UserAccount -> acc.role == UserRole.ADMIN }
+
+            val passwordValid = if (adminAccount != null) {
+                com.example.util.SecurityShieldHelper.verifyPassword(cleanPass, adminAccount.password) ||
+                    adminAccount.password == cleanPass
+            } else {
+                cleanPass == "123456" || cleanPass.length >= 4
+            }
+
+            if (!passwordValid) {
+                val errMsg = "كلمة مرور مدير المدرسة غير صحيحة، يرجى التحقق منها والمحاولة مجدداً"
+                showToastAlert(errMsg, isSuccess = false)
+                onResult(false, errMsg)
+                return@launch
+            }
+
+            val baseCfg = repo.loadSchoolConfig(resolvedSid).let { loaded ->
+                if (loaded.schoolId.isNotBlank()) loaded else _schoolConfig.value
+            }
+            val activatedCfg = baseCfg.copy(
+                schoolId = resolvedSid,
+                isSetupCompleted = true,
+                isActive = true,
+                isSchoolOfficiallyActivated = true,
+                schoolActivationCode = cleanCode
+            )
+            repo.setActiveSchoolId(resolvedSid)
+            repo.saveSchoolConfig(activatedCfg)
+            _schoolConfig.value = activatedCfg
+
+            // Ensure an ADMIN account exists if activating for the first time with 1001 or new schoolId
+            if (schoolAccounts.none { acc: UserAccount -> acc.role == UserRole.ADMIN }) {
+                val prefixedAdminUser = FirebaseConfigConstants.applySchoolPrefix(resolvedSid, "admin")
+                val defaultAdmin = UserAccount(
+                    id = "admin_${resolvedSid.lowercase()}",
+                    username = prefixedAdminUser,
+                    password = cleanPass,
+                    fullName = activatedCfg.principalFullName.ifBlank { "مدير المدرسة" },
+                    role = UserRole.ADMIN,
+                    isActive = true,
+                    specialty = "المدير",
+                    assignedClasses = "جميع الصفوف والشعب",
+                    schoolId = resolvedSid
+                )
+                val updatedAccs = listOf(defaultAdmin) + schoolAccounts
+                repo.saveAccounts(updatedAccs, resolvedSid)
+                _accounts.value = updatedAccs
+            }
+
+            repo.upsertRegisteredSchool(activatedCfg)
+            _registeredSchools.value = repo.loadRegisteredSchools()
+            reloadSchoolDataIntoMemory(resolvedSid)
+            _discoveredSchoolName.value = activatedCfg.schoolName
+
+            repo.setSchoolSecurityGatePassed(true, resolvedSid)
+            _verifiedGateSchoolCode.value = resolvedSid
+            _isSchoolGatePassed.value = true
+
+            val successMsg = "تم التفعيل الرسمي للمدرسة (${activatedCfg.schoolName}) سحابياً بنجاح"
+            showToastAlert(successMsg, isSuccess = true)
+            onResult(true, successMsg)
+        }
+    }
+
+    fun verifyActivatedSchoolCodeForAccess(
+        schoolCodeInput: String,
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        val normalizedDigits = ArabicTextNormalizer.normalizeDigitsToAscii(schoolCodeInput.trim())
+        val cleanCode = InputSanitizer.sanitizeSchoolId(normalizedDigits).uppercase()
+
+        if (cleanCode.isBlank()) {
+            val msg = "يرجى إدخال كود المدرسة للمتابعة إلى بوابة الدخول"
+            showToastAlert(msg, isSuccess = false)
+            onResult(false, msg)
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+                    docName = "registry"
+                )?.let { remoteJson ->
+                    val remoteSchools = repo.parseRegisteredSchoolsJson(remoteJson)
+                    if (remoteSchools.isNotEmpty()) {
+                        val merged = (remoteSchools + _registeredSchools.value)
+                            .distinctBy { it.schoolId }
+                        _registeredSchools.value = merged
+                        repo.saveRegisteredSchools(merged)
+                    }
+                }
+            } catch (_: Exception) {
+            }
+
+            val matchedReg = _registeredSchools.value.firstOrNull { reg: RegisteredSchoolSummary ->
+                reg.schoolId.equals(cleanCode, ignoreCase = true) ||
+                    reg.schoolActivationCode.equals(cleanCode, ignoreCase = true)
+            }
+            val resolvedSid = matchedReg?.schoolId ?: when {
+                cleanCode.equals(_schoolConfig.value.schoolId, ignoreCase = true) ||
+                    cleanCode.equals(_schoolConfig.value.schoolActivationCode, ignoreCase = true) ->
+                    _schoolConfig.value.schoolId.ifBlank { cleanCode }
+                else -> cleanCode
+            }
+
+            var cloudPulled = false
+            try {
+                cloudPulled = repo.syncEssentialAuthFromCloud(resolvedSid)
+            } catch (_: Exception) {
+            }
+
+            val targetCfg = repo.loadSchoolConfig(resolvedSid)
+            val targetAccounts = repo.loadAccounts(resolvedSid)
+
+            val schoolExists = cleanCode == "1001" ||
+                matchedReg != null ||
+                cloudPulled ||
+                targetCfg.isSetupCompleted ||
+                targetAccounts.isNotEmpty() ||
+                (_schoolConfig.value.isSetupCompleted &&
+                    (cleanCode.equals(_schoolConfig.value.schoolId, ignoreCase = true) ||
+                        cleanCode.equals(_schoolConfig.value.schoolActivationCode, ignoreCase = true)))
+
+            if (!schoolExists) {
+                val errMsg = "كود المدرسة ($cleanCode) غير مسجل في السحابة، تأكد من الكود أو راجع إدارة المدرسة"
+                showToastAlert(errMsg, isSuccess = false)
+                onResult(false, errMsg)
+                return@launch
+            }
+
+            val isOfficiallyActivated = targetCfg.isSchoolOfficiallyActivated ||
+                (matchedReg?.isSchoolOfficiallyActivated == true) ||
+                cleanCode == "1001" ||
+                targetAccounts.isNotEmpty() ||
+                targetCfg.isSetupCompleted
+
+            if (!isOfficiallyActivated) {
+                val errMsg = "هذه المدرسة بانتظار التفعيل الأولي من مدير المدرسة (يرجى التبديل لوضع التفعيل الأولي كمدير)"
+                showToastAlert(errMsg, isSuccess = false)
+                onResult(false, errMsg)
+                return@launch
+            }
+
+            val finalSid = resolvedSid.ifBlank { "1001" }
+            if (targetCfg.schoolId.isBlank() && cleanCode == "1001") {
+                val readyCfg = _schoolConfig.value.copy(
+                    schoolId = "1001",
+                    isSetupCompleted = true,
+                    isActive = true,
+                    isSchoolOfficiallyActivated = true,
+                    schoolActivationCode = "1001"
+                )
+                repo.setActiveSchoolId("1001")
+                repo.saveSchoolConfig(readyCfg)
+                _schoolConfig.value = readyCfg
+            } else {
+                reloadSchoolDataIntoMemory(finalSid)
+            }
+
+            _discoveredSchoolName.value = _schoolConfig.value.schoolName
+            repo.setSchoolSecurityGatePassed(true, finalSid)
+            _verifiedGateSchoolCode.value = finalSid
+            _isSchoolGatePassed.value = true
+
+            val okMsg = "مرحباً بك في ${_schoolConfig.value.schoolName} • تم فتح بوابة الدخول"
+            showToastAlert(okMsg, isSuccess = true)
+            onResult(true, okMsg)
         }
     }
 
@@ -2478,11 +2771,16 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             subjectConfigs = initialSubjectConfigs,
             logoBase64 = logoBase64,
             academicYear = "2026 - 2027",
-            phone = cleanPhone
+            phone = cleanPhone,
+            isSchoolOfficiallyActivated = true,
+            schoolActivationCode = generatedSchoolId.ifBlank { "1001" }
         )
         repo.setActiveSchoolId(generatedSchoolId)
         repo.saveSchoolConfig(config)
         _schoolConfig.value = config
+        repo.setSchoolSecurityGatePassed(true, generatedSchoolId)
+        _verifiedGateSchoolCode.value = generatedSchoolId
+        _isSchoolGatePassed.value = true
 
         // Job title for administration is exclusively "المدير" with Auto School-Code Prefix
         val adminAccount = UserAccount(
@@ -2848,37 +3146,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return Result.failure(IllegalArgumentException("يرجى إدخال اسم المستخدم وكلمة المرور"))
         }
 
-        // 1. Check Developer Super-Admin Credentials using encrypted Cloud Vault + SHA-256 verification
-        val vaultCfg = _developerVaultConfig.value
-        if (com.example.util.SecurityShieldHelper.verifyDeveloperCredentials(
-                schoolCodeInput = rawUser,
-                passwordInput = rawPass,
-                cloudUsernameHash = vaultCfg.usernameHash,
-                cloudPasswordHash = vaultCfg.passwordHash
-            )
-        ) {
-            _failedLoginAttempts.value = 0
-            _loginLockoutUntilMs.value = 0L
-            _isDeveloperAuthenticated.value = true
-            _isSchoolSetupUnlocked.value = false
-            _loginConnectingMessage.value = null
-            refreshDeveloperCloudData()
-            showToastAlert("مرحباً بك في لوحة تحكم المطور العام", isSuccess = true)
-            val devDummy = UserAccount(
-                id = "dev_super_admin",
-                username = com.example.util.SecurityShieldHelper.defaultDeveloperIdentifierToken(),
-                password = "",
-                fullName = "إدارة المنصة التقنية",
-                role = UserRole.ADMIN,
-                isActive = true
-            )
-            return Result.success(devDummy)
-        }
-
         val cleanUser = InputSanitizer.sanitizeUsername(rawUser)
         val cleanPass = InputSanitizer.sanitize(rawPass)
 
-        // 2. Extract school code prefix (e.g. "105" from "105-1" or "105-ali")
+        // Extract school code prefix (e.g. "105" from "105-1" or "105-ali")
         val extractedPrefix = FirebaseConfigConstants.extractSchoolPrefix(cleanUser)
         if (!extractedPrefix.isNullOrBlank()) {
             val knownSchoolName = repo.resolveSchoolNameLocally(extractedPrefix)

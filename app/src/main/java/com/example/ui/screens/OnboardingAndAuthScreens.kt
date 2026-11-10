@@ -8,6 +8,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,8 +43,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +61,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
@@ -975,8 +998,782 @@ fun SchoolSetupScreen(
 }
 
 /**
+ * Cloud-Synced School Security & Activation Gate Screen (بوابة التفعيل والأمان السحابية للمدرسة)
+ * Mandatory screen between Splash/Onboarding and UnifiedLoginScreen.
+ */
+@Composable
+fun SchoolActivationGateScreen(
+    schoolConfig: SchoolConfig,
+    isDarkMode: Boolean,
+    onToggleDarkMode: () -> Unit,
+    onActivateSchoolAsAdmin: (schoolCode: String, adminPassword: String, onResult: (Boolean, String) -> Unit) -> Unit,
+    onVerifyActivatedSchoolCode: (schoolCode: String, onResult: (Boolean, String) -> Unit) -> Unit,
+    onGateUnlockedSuccess: () -> Unit = {}
+) {
+    val coroutineScope = rememberCoroutineScope()
+
+    var isAdminActivationMode by remember(schoolConfig.isSchoolOfficiallyActivated) {
+        mutableStateOf(!schoolConfig.isSchoolOfficiallyActivated)
+    }
+
+    var schoolCodeInput by remember {
+        mutableStateOf(
+            schoolConfig.schoolActivationCode.takeIf { it.isNotBlank() && schoolConfig.isSetupCompleted }.orEmpty()
+        )
+    }
+    var adminPasswordInput by remember { mutableStateOf("") }
+    var showAdminPassword by remember { mutableStateOf(false) }
+    var isVerifyingCloud by remember { mutableStateOf(false) }
+    var isGateUnlockedAnimating by remember { mutableStateOf(false) }
+    var statusFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var isStatusSuccess by remember { mutableStateOf(false) }
+
+    val isTypingActive = schoolCodeInput.isNotBlank() || adminPasswordInput.isNotBlank()
+
+    // Smooth physics-based reactive animations for character & gate
+    val infiniteTransition = rememberInfiniteTransition(label = "security_gate_character_infinite")
+    val breathPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "guardian_breath_phase"
+    )
+    val nodAngleDeg by infiniteTransition.animateFloat(
+        initialValue = -3.2f,
+        targetValue = 3.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "guardian_nod_angle"
+    )
+    val cloudOrbitDeg by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 14000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "cloud_orbit_rotation"
+    )
+    val pulseGlow by infiniteTransition.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "cloud_ring_pulse"
+    )
+
+    val typingExcitement by animateFloatAsState(
+        targetValue = when {
+            isGateUnlockedAnimating -> 1.0f
+            isVerifyingCloud -> 0.75f
+            isTypingActive -> 0.45f
+            else -> 0f
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "guardian_typing_excitement"
+    )
+
+    val gateOpenFraction by animateFloatAsState(
+        targetValue = if (isGateUnlockedAnimating) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "security_gate_open_fraction"
+    )
+
+    SoftWaveMeshBackground(isDarkMode = isDarkMode) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Top Header Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFF059669).copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Shield,
+                                contentDescription = null,
+                                tint = Color(0xFF047857),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "بوابة التفعيل والأمان السحابية للمدرسة",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF047857),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = onToggleDarkMode,
+                        shape = CircleShape,
+                        color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("gate_theme_toggle")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                contentDescription = "تبديل المظهر",
+                                tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Speech Bubble Card Above the Character
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(22.dp),
+                            ambientColor = Color(0xFF059669).copy(alpha = 0.2f),
+                            spotColor = Color(0xFFD97706).copy(alpha = 0.2f)
+                        ),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF0F291E) else Color(0xFFECFDF5)
+                    ),
+                    border = BorderStroke(
+                        width = 1.5.dp,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF059669), Color(0xFFD97706), Color(0xFF10B981))
+                        )
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VerifiedUser,
+                                contentDescription = null,
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "المرشد الأكاديمي وحارس البوابة السحابية",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFB45309)
+                            )
+                        }
+                        Text(
+                            text = "مرحباً بك في بوابة الأمان السحابية.. هل لديك كود تفعيل مدرستك للمتابعة إلى بوابة الدخول؟",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkMode) Color.White else Color(0xFF064E3B),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                // Multi-Layered Cinematic Canvas Character & Cloud Portal Gate
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(225.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("school_security_gate_canvas")
+                    ) {
+                        val w = size.width
+                        val h = size.height
+                        val cx = w / 2f
+                        val cy = h * 0.54f
+                        val breathOffset = sin(breathPhase) * 4.5f
+
+                        // 1. Deep Royal Emerald & Gold Aura Backdrop
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFF10B981).copy(alpha = 0.26f * pulseGlow + gateOpenFraction * 0.25f),
+                                    Color(0xFFD97706).copy(alpha = 0.14f * pulseGlow),
+                                    Color.Transparent
+                                ),
+                                center = Offset(cx, cy),
+                                radius = minOf(w, h) * 0.56f
+                            ),
+                            radius = minOf(w, h) * 0.56f,
+                            center = Offset(cx, cy)
+                        )
+
+                        // 2. Orbiting Cloud Connection Rings & Nodes
+                        val outerRingRadius = minOf(w, h) * 0.44f
+                        val innerRingRadius = minOf(w, h) * 0.35f
+
+                        rotate(degrees = cloudOrbitDeg, pivot = Offset(cx, cy)) {
+                            drawCircle(
+                                color = Color(0xFF10B981).copy(alpha = 0.35f),
+                                radius = outerRingRadius,
+                                center = Offset(cx, cy),
+                                style = Stroke(width = 2.2f)
+                            )
+                            for (idx in 0 until 6) {
+                                val angleRad = (idx * 60.0) * (PI / 180.0)
+                                val nx = cx + (outerRingRadius * cos(angleRad)).toFloat()
+                                val ny = cy + (outerRingRadius * sin(angleRad)).toFloat()
+                                drawCircle(
+                                    color = if (idx % 2 == 0) Color(0xFFF59E0B) else Color(0xFF34D399),
+                                    radius = 5.5f + typingExcitement * 2.5f,
+                                    center = Offset(nx, ny)
+                                )
+                            }
+                        }
+
+                        rotate(degrees = -cloudOrbitDeg * 1.3f, pivot = Offset(cx, cy)) {
+                            drawCircle(
+                                color = Color(0xFFD97706).copy(alpha = 0.32f),
+                                radius = innerRingRadius,
+                                center = Offset(cx, cy),
+                                style = Stroke(width = 1.8f)
+                            )
+                        }
+
+                        // 3. Twin Security Portal Pillars & Sliding Gate Doors (Open on Unlock)
+                        val gateWidth = minOf(w * 0.56f, 240f)
+                        val gateHeight = h * 0.76f
+                        val gateTop = cy - gateHeight * 0.48f
+                        val slideOffset = gateOpenFraction * (gateWidth * 0.42f)
+
+                        // Left & Right Portal Wings
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF064E3B).copy(alpha = 0.85f),
+                                    Color(0xFF047857).copy(alpha = 0.92f)
+                                )
+                            ),
+                            topLeft = Offset(cx - gateWidth / 2f - slideOffset, gateTop),
+                            size = Size(gateWidth * 0.48f, gateHeight),
+                            cornerRadius = CornerRadius(22f, 22f)
+                        )
+                        drawRoundRect(
+                            color = Color(0xFFD97706).copy(alpha = 0.7f),
+                            topLeft = Offset(cx - gateWidth / 2f - slideOffset, gateTop),
+                            size = Size(gateWidth * 0.48f, gateHeight),
+                            cornerRadius = CornerRadius(22f, 22f),
+                            style = Stroke(width = 2.5f)
+                        )
+
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF064E3B).copy(alpha = 0.85f),
+                                    Color(0xFF047857).copy(alpha = 0.92f)
+                                )
+                            ),
+                            topLeft = Offset(cx + gateWidth * 0.02f + slideOffset, gateTop),
+                            size = Size(gateWidth * 0.48f, gateHeight),
+                            cornerRadius = CornerRadius(22f, 22f)
+                        )
+                        drawRoundRect(
+                            color = Color(0xFFD97706).copy(alpha = 0.7f),
+                            topLeft = Offset(cx + gateWidth * 0.02f + slideOffset, gateTop),
+                            size = Size(gateWidth * 0.48f, gateHeight),
+                            cornerRadius = CornerRadius(22f, 22f),
+                            style = Stroke(width = 2.5f)
+                        )
+
+                        // Radiant Golden-Emerald Light Beam when Gate Opens
+                        if (gateOpenFraction > 0.01f) {
+                            drawRoundRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFFFDE68A).copy(alpha = 0.75f * gateOpenFraction),
+                                        Color(0xFF34D399).copy(alpha = 0.55f * gateOpenFraction),
+                                        Color.Transparent
+                                    )
+                                ),
+                                topLeft = Offset(cx - slideOffset, gateTop + 6f),
+                                size = Size(slideOffset * 2f, gateHeight - 12f),
+                                cornerRadius = CornerRadius(18f, 18f)
+                            )
+                        }
+
+                        // 4. Academic Guardian / Digital Guide Character in Royal Emerald & Gold
+                        val charCenterY = cy + 16f + breathOffset
+                        val bodyWidth = 86f
+                        val bodyHeight = 74f
+
+                        // Ceremonial Academic Robe / Blazer
+                        val robePath = Path().apply {
+                            moveTo(cx - bodyWidth * 0.52f, charCenterY + bodyHeight * 0.65f)
+                            lineTo(cx - bodyWidth * 0.38f, charCenterY - bodyHeight * 0.15f)
+                            quadraticBezierTo(
+                                cx,
+                                charCenterY - bodyHeight * 0.28f,
+                                cx + bodyWidth * 0.38f,
+                                charCenterY - bodyHeight * 0.15f
+                            )
+                            lineTo(cx + bodyWidth * 0.52f, charCenterY + bodyHeight * 0.65f)
+                            close()
+                        }
+                        drawPath(
+                            path = robePath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color(0xFF059669), Color(0xFF064E3B))
+                            )
+                        )
+                        drawPath(
+                            path = robePath,
+                            color = Color(0xFFF59E0B),
+                            style = Stroke(width = 3f)
+                        )
+
+                        // Golden Academic Lapels / Collar
+                        val collarPath = Path().apply {
+                            moveTo(cx - 18f, charCenterY - 8f)
+                            lineTo(cx, charCenterY + 22f)
+                            lineTo(cx + 18f, charCenterY - 8f)
+                        }
+                        drawPath(
+                            path = collarPath,
+                            color = Color(0xFFFBBF24),
+                            style = Stroke(width = 4f, cap = StrokeCap.Round)
+                        )
+
+                        // Glowing Security Shield Emblem on Chest
+                        drawCircle(
+                            color = if (isGateUnlockedAnimating) Color(0xFFFBBF24) else Color(0xFF10B981),
+                            radius = 11f + typingExcitement * 2f,
+                            center = Offset(cx, charCenterY + 28f)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 5f,
+                            center = Offset(cx, charCenterY + 28f)
+                        )
+
+                        // Welcoming Right Arm Raising Golden Key/Shield Emblem
+                        val armRaiseOffset = typingExcitement * 16f + sin(breathPhase) * 3f
+                        val handCenter = Offset(cx + bodyWidth * 0.58f, charCenterY + 2f - armRaiseOffset)
+                        drawLine(
+                            color = Color(0xFF047857),
+                            start = Offset(cx + bodyWidth * 0.35f, charCenterY + 6f),
+                            end = handCenter,
+                            strokeWidth = 12f,
+                            cap = StrokeCap.Round
+                        )
+                        drawCircle(
+                            color = Color(0xFFFDE68A),
+                            radius = 12f + typingExcitement * 3f,
+                            center = handCenter
+                        )
+                        drawCircle(
+                            color = Color(0xFFD97706),
+                            radius = 12f + typingExcitement * 3f,
+                            center = handCenter,
+                            style = Stroke(width = 2.5f)
+                        )
+
+                        // Character Head (with gentle welcoming nod)
+                        val headCenterY = charCenterY - 34f
+                        rotate(degrees = nodAngleDeg * (1f + typingExcitement * 0.6f), pivot = Offset(cx, headCenterY)) {
+                            // Head Circle
+                            drawCircle(
+                                color = Color(0xFFFDE68A),
+                                radius = 26f,
+                                center = Offset(cx, headCenterY)
+                            )
+                            drawCircle(
+                                color = Color(0xFFD97706),
+                                radius = 26f,
+                                center = Offset(cx, headCenterY),
+                                style = Stroke(width = 2.2f)
+                            )
+
+                            // Expressive Eyes (tracking input typing)
+                            val eyeLookY = if (isTypingActive) 2.5f else 0f
+                            drawCircle(
+                                color = Color(0xFF064E3B),
+                                radius = 3.6f,
+                                center = Offset(cx - 9f, headCenterY - 2f + eyeLookY)
+                            )
+                            drawCircle(
+                                color = Color(0xFF064E3B),
+                                radius = 3.6f,
+                                center = Offset(cx + 9f, headCenterY - 2f + eyeLookY)
+                            )
+
+                            // Warm Welcoming Smile
+                            val smilePath = Path().apply {
+                                moveTo(cx - 9f, headCenterY + 8f)
+                                quadraticBezierTo(
+                                    cx,
+                                    headCenterY + 15f + typingExcitement * 3f,
+                                    cx + 9f,
+                                    headCenterY + 8f
+                                )
+                            }
+                            drawPath(
+                                path = smilePath,
+                                color = Color(0xFF064E3B),
+                                style = Stroke(width = 2.8f, cap = StrokeCap.Round)
+                            )
+
+                            // Royal Academic Graduation Cap (Mortarboard) + Gold Tassel
+                            val capTopY = headCenterY - 26f
+                            val capDiamond = Path().apply {
+                                moveTo(cx, capTopY - 12f)
+                                lineTo(cx + 36f, capTopY)
+                                lineTo(cx, capTopY + 10f)
+                                lineTo(cx - 36f, capTopY)
+                                close()
+                            }
+                            drawPath(
+                                path = capDiamond,
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(Color(0xFF064E3B), Color(0xFF059669), Color(0xFF064E3B))
+                                )
+                            )
+                            drawPath(
+                                path = capDiamond,
+                                color = Color(0xFFFBBF24),
+                                style = Stroke(width = 2.2f)
+                            )
+                            // Gold Tassel
+                            drawLine(
+                                color = Color(0xFFF59E0B),
+                                start = Offset(cx + 24f, capTopY + 2f),
+                                end = Offset(cx + 30f, capTopY + 18f),
+                                strokeWidth = 3f,
+                                cap = StrokeCap.Round
+                            )
+                            drawCircle(
+                                color = Color(0xFFFBBF24),
+                                radius = 4f,
+                                center = Offset(cx + 30f, capTopY + 19f)
+                            )
+                        }
+                    }
+                }
+
+                // Cloud Security & Activation Gate Form Card
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 14.dp,
+                            shape = RoundedCornerShape(26.dp),
+                            ambientColor = Color(0xFF059669).copy(alpha = 0.22f),
+                            spotColor = Color(0xFF064E3B).copy(alpha = 0.25f)
+                        ),
+                    shape = RoundedCornerShape(26.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(1.2.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFD1FAE5))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Mode Header Badge
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isAdminActivationMode) Color(0xFFFEF3C7) else Color(0xFFD1FAE5),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isAdminActivationMode) Icons.Filled.AdminPanelSettings else Icons.Filled.VerifiedUser,
+                                        contentDescription = null,
+                                        tint = if (isAdminActivationMode) Color(0xFFD97706) else Color(0xFF059669),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isAdminActivationMode) {
+                                        "التفعيل الرسمي الأولي للمدرسة (خاص بمدير المدرسة)"
+                                    } else {
+                                        "أدخل كود المدرسة للمتابعة"
+                                    },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = if (isAdminActivationMode) {
+                                        "أدخل كود تفعيل المدرسة وكلمة مرور المدير لتفعيل المدرسة سحابياً لجميع الحسابات"
+                                    } else {
+                                        "أدخل كود مدرستك المفعلة للانتقال مباشرة إلى شاشة تسجيل الدخول"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
+                                )
+                            }
+                        }
+
+                        // School Code Field (Always visible in both modes)
+                        OutlinedTextField(
+                            value = schoolCodeInput,
+                            onValueChange = { newVal: String ->
+                                schoolCodeInput = newVal
+                                statusFeedbackMessage = null
+                            },
+                            label = {
+                                Text(
+                                    if (isAdminActivationMode) "كود تفعيل المدرسة"
+                                    else "أدخل كود المدرسة للمتابعة"
+                                )
+                            },
+                            placeholder = { Text("مثال: 1001 أو كود المدرسة") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.VpnKey,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669)
+                                )
+                            },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("gate_school_code_input"),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+
+                        // Principal Password Field (Visible ONLY in Initial Principal Activation Mode — Case A)
+                        AnimatedVisibility(visible = isAdminActivationMode) {
+                            OutlinedTextField(
+                                value = adminPasswordInput,
+                                onValueChange = { newPass: String ->
+                                    adminPasswordInput = newPass
+                                    statusFeedbackMessage = null
+                                },
+                                label = { Text("كلمة مرور مدير المدرسة") },
+                                placeholder = { Text("أدخل كلمة مرور المدير لتأكيد التفعيل الرسمي") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Lock,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD97706)
+                                    )
+                                },
+                                trailingIcon = {
+                                    IconButton(onClick = { showAdminPassword = !showAdminPassword }) {
+                                        Icon(
+                                            imageVector = if (showAdminPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = "إظهار كلمة المرور"
+                                        )
+                                    }
+                                },
+                                visualTransformation = if (showAdminPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("gate_admin_password_input"),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                        }
+
+                        // Status / Feedback Banner
+                        if (statusFeedbackMessage != null) {
+                            Surface(
+                                color = if (isStatusSuccess) Color(0xFFECFDF5) else Color(0xFFFDE8E8),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isStatusSuccess) Color(0xFF10B981) else Color(0xFFF8B4B4)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isStatusSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                                        contentDescription = null,
+                                        tint = if (isStatusSuccess) Color(0xFF059669) else Color(0xFF9B1C1C)
+                                    )
+                                    Text(
+                                        text = statusFeedbackMessage!!,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isStatusSuccess) Color(0xFF065F46) else Color(0xFF9B1C1C)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Primary Action Button
+                        Button(
+                            onClick = {
+                                if (isVerifyingCloud || isGateUnlockedAnimating) return@Button
+                                isVerifyingCloud = true
+                                statusFeedbackMessage = null
+                                if (isAdminActivationMode) {
+                                    onActivateSchoolAsAdmin(schoolCodeInput, adminPasswordInput) { ok: Boolean, msg: String ->
+                                        isVerifyingCloud = false
+                                        isStatusSuccess = ok
+                                        statusFeedbackMessage = msg
+                                        if (ok) {
+                                            isGateUnlockedAnimating = true
+                                            coroutineScope.launch {
+                                                delay(550L)
+                                                onGateUnlockedSuccess()
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    onVerifyActivatedSchoolCode(schoolCodeInput) { ok: Boolean, msg: String ->
+                                        isVerifyingCloud = false
+                                        isStatusSuccess = ok
+                                        statusFeedbackMessage = msg
+                                        if (ok) {
+                                            isGateUnlockedAnimating = true
+                                            coroutineScope.launch {
+                                                delay(550L)
+                                                onGateUnlockedSuccess()
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !isVerifyingCloud && !isGateUnlockedAnimating,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 52.dp)
+                                .testTag("gate_submit_button"),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF059669),
+                                contentColor = Color.White
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
+                        ) {
+                            if (isVerifyingCloud) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.2.dp,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "جاري التحقق السحابي وفتح البوابة...",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (isAdminActivationMode) Icons.Filled.Verified else Icons.AutoMirrored.Filled.Login,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (isAdminActivationMode) {
+                                        "تفعيل المدرسة رسمياً والمتابعة لبوابة الدخول"
+                                    } else {
+                                        "فتح البوابة والمتابعة لتسجيل الدخول"
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        // Small Text Toggle Button at the bottom of the Gate Card
+                        TextButton(
+                            onClick = {
+                                isAdminActivationMode = !isAdminActivationMode
+                                statusFeedbackMessage = null
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("gate_toggle_mode_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.SwapHoriz,
+                                contentDescription = null,
+                                tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isAdminActivationMode) {
+                                    "التبديل إلى: وضع الدخول بكود مدرسة مفعلة"
+                                } else {
+                                    "التبديل إلى: وضع التفعيل الأولي كمدير"
+                                },
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * Unified Login Screen (بوابة تسجيل الدخول الموحدة)
- * - Default screen on any device installing the app.
+ * - Default screen after passing SchoolActivationGateScreen.
  * - Contains ONLY Username field, Password field, and Login button (no public "+ تأسيس مدرسة جديدة" button).
  * - Tapping 5 times consecutively on the platform logo at the top opens the one-time Activation Code dialog.
  */
@@ -996,7 +1793,8 @@ fun UnifiedLoginScreen(
     biometricCredentials: BiometricSavedCredentials? = null,
     onBiometricLogin: () -> Result<*> = { Result.success(null) },
     onShowErrorToast: (String) -> Unit = {},
-    hasActiveTopToast: Boolean = false
+    hasActiveTopToast: Boolean = false,
+    onSwitchSchoolCodeGate: () -> Unit = {}
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -1110,56 +1908,91 @@ fun UnifiedLoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Row: School Capsule + Theme Toggle
+                // Top Row: School Capsule + Switch Security Gate Button + Theme Toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFF059669).copy(alpha = 0.14f),
-                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f)),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .clickable {
-                                val now = System.currentTimeMillis()
-                                if (now - lastLogoTapTime > 2200L) {
-                                    logoTapCount = 1
-                                } else {
-                                    logoTapCount++
-                                }
-                                lastLogoTapTime = now
-                                if (logoTapCount >= 5) {
-                                    logoTapCount = 0
-                                    showActivationCodeDialog = true
-                                }
-                            }
-                            .testTag("platform_logo_five_taps")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFF059669).copy(alpha = 0.14f),
+                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable {
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastLogoTapTime > 2200L) {
+                                        logoTapCount = 1
+                                    } else {
+                                        logoTapCount++
+                                    }
+                                    lastLogoTapTime = now
+                                    if (logoTapCount >= 5) {
+                                        logoTapCount = 0
+                                        showActivationCodeDialog = true
+                                    }
+                                }
+                                .testTag("platform_logo_five_taps")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.School,
-                                contentDescription = null,
-                                tint = Color(0xFF047857),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = if (isSchoolVerified) {
-                                    "منصة: $discoveredSchoolName"
-                                } else {
-                                    "منصة مدرستي الذكية"
-                                },
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF047857),
-                                maxLines = 1,
-                                softWrap = false
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.School,
+                                    contentDescription = null,
+                                    tint = Color(0xFF047857),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = if (isSchoolVerified) {
+                                        "منصة: $discoveredSchoolName"
+                                    } else {
+                                        "منصة مدرستي الذكية"
+                                    },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF047857),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = onSwitchSchoolCodeGate,
+                            shape = RoundedCornerShape(50),
+                            color = if (isDarkMode) Color(0xFF0F291E) else Color(0xFFFEF3C7).copy(alpha = 0.75f),
+                            border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.55f)),
+                            modifier = Modifier.testTag("switch_school_security_gate_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.VpnKey,
+                                    contentDescription = "تبديل كود المدرسة / البوابة الأمنية",
+                                    tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFB45309),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "تبديل كود المدرسة / البوابة الأمنية",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFF92400E),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
 

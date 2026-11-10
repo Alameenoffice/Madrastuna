@@ -35,6 +35,51 @@ class SchoolRepository(context: Context) {
         prefs.edit().putString("active_school_id", clean).apply()
     }
 
+    fun isSchoolSecurityGatePassed(): Boolean {
+        return prefs.getBoolean("school_security_gate_passed_v1", false)
+    }
+
+    fun getVerifiedGateSchoolCode(): String {
+        return prefs.getString("verified_gate_school_code_v1", "")?.trim().orEmpty()
+    }
+
+    fun setSchoolSecurityGatePassed(passed: Boolean, schoolCode: String = "") {
+        val cleanCode = InputSanitizer.sanitizeSchoolId(schoolCode)
+        val editor = prefs.edit().putBoolean("school_security_gate_passed_v1", passed)
+        if (cleanCode.isNotBlank()) {
+            editor.putString("verified_gate_school_code_v1", cleanCode)
+        }
+        editor.apply()
+    }
+
+    fun loadCloudCurriculumBooksJson(): String? {
+        return prefs.getString("global_cloud_curriculum_books_json", null)
+    }
+
+    fun saveCloudCurriculumBooksJson(rawJson: String, pushToCloud: Boolean = true) {
+        if (rawJson.isBlank()) return
+        prefs.edit().putString("global_cloud_curriculum_books_json", rawJson).apply()
+        if (pushToCloud) {
+            FirebaseCloudSync.pushGlobalCollectionAsync(
+                collectionName = FirebaseConfigConstants.COL_CURRICULUM_BOOKS,
+                docName = "registry",
+                jsonPayload = rawJson
+            )
+        }
+    }
+
+    suspend fun syncCloudCurriculumBooks(): String? {
+        val remoteJson = FirebaseCloudSync.fetchGlobalCollectionPayload(
+            collectionName = FirebaseConfigConstants.COL_CURRICULUM_BOOKS,
+            docName = "registry"
+        )
+        if (!remoteJson.isNullOrBlank() && remoteJson != "[]") {
+            prefs.edit().putString("global_cloud_curriculum_books_json", remoteJson).apply()
+            return remoteJson
+        }
+        return loadCloudCurriculumBooksJson()
+    }
+
     private fun scopedKey(schoolId: String, subCollection: String): String {
         val sid = schoolId.ifBlank { getActiveSchoolId() }.ifBlank { "default_school" }
         return FirebaseConfigConstants.schoolCollectionPath(sid, subCollection)
@@ -192,7 +237,10 @@ class SchoolRepository(context: Context) {
                 featureSettings = parsedFeatures,
                 urgentAlert = parsedUrgentAlert,
                 holidaysConfig = parsedHolidaysConfig,
-                isCanteenWalletEnabled = obj.optBoolean("isCanteenWalletEnabled", parsedFeatures.canteenWalletEnabled)
+                isCanteenWalletEnabled = obj.optBoolean("isCanteenWalletEnabled", parsedFeatures.canteenWalletEnabled),
+                principalFullName = obj.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" },
+                isSchoolOfficiallyActivated = obj.optBoolean("isSchoolOfficiallyActivated", false),
+                schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } }
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -384,6 +432,9 @@ class SchoolRepository(context: Context) {
             put("holidaysConfig", holidaysJson)
             put("teacherRatings", currentRatingsArr)
             put("isCanteenWalletEnabled", config.isCanteenWalletEnabled)
+            put("principalFullName", InputSanitizer.sanitize(config.principalFullName.ifBlank { "مدير المدرسة" }))
+            put("isSchoolOfficiallyActivated", config.isSchoolOfficiallyActivated)
+            put("schoolActivationCode", InputSanitizer.sanitizeSchoolId(config.schoolActivationCode.ifBlank { sid.ifBlank { "1001" } }))
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
@@ -2254,7 +2305,9 @@ class SchoolRepository(context: Context) {
                             createdAt = o.optString("createdAt", "2026-10-29"),
                             isActive = o.optBoolean("isActive", true),
                             adminUsername = o.optString("adminUsername", ""),
-                            subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" }
+                            subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
+                            isSchoolOfficiallyActivated = o.optBoolean("isSchoolOfficiallyActivated", false),
+                            schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } }
                         )
                     )
                 }
@@ -2280,6 +2333,8 @@ class SchoolRepository(context: Context) {
                 put("isActive", s.isActive)
                 put("adminUsername", s.adminUsername)
                 put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
+                put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
+                put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
             })
         }
         val jsonStr = arr.toString()
@@ -2315,7 +2370,9 @@ class SchoolRepository(context: Context) {
             createdAt = config.createdAt.ifBlank { "2026-10-29" },
             isActive = config.isActive,
             adminUsername = resolvedAdminUser,
-            subscriptionExpiryDate = resolvedExpiry
+            subscriptionExpiryDate = resolvedExpiry,
+            isSchoolOfficiallyActivated = config.isSchoolOfficiallyActivated,
+            schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } }
         )
         if (existingIdx >= 0) {
             current[existingIdx] = summary

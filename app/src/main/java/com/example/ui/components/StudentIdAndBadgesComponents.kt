@@ -1786,7 +1786,7 @@ fun AdminSubscriptionAndBroadcastBanner(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (isExpired) {
-                                "انتهى اشتراك المدرسة (${schoolConfig.subscriptionExpiryDate}) — يرجى التواصل مع المطور للتجديد"
+                                "انتهى اشتراك المدرسة (${schoolConfig.subscriptionExpiryDate}) — يرجى التواصل مع الدعم الفني للمنصة للتجديد"
                             } else {
                                 "تنبيه تجديد الاشتراك: متبقي ($daysRemaining) يوم على انتهاء اشتراك المدرسة (${schoolConfig.subscriptionExpiryDate})"
                             },
