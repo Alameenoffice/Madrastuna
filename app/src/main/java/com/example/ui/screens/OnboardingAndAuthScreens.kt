@@ -435,8 +435,8 @@ fun SchoolSetupScreen(
     var selectedSchoolGenderType by remember { mutableStateOf("مدرسة بنين") }
     var logoBase64 by remember { mutableStateOf("") }
     var adminFullName by remember { mutableStateOf("المدير") }
-    var adminGender by remember { mutableStateOf("ذكر") }
-    var adminAgeYears by remember { mutableStateOf(30) }
+    var adminGender by remember { mutableStateOf("") }
+    var adminAgeYears by remember { mutableStateOf(0) }
     var adminPhone by remember { mutableStateOf("") }
     var adminPhoneKorekOverride by remember { mutableStateOf(false) }
     var adminUsername by remember { mutableStateOf("admin") }

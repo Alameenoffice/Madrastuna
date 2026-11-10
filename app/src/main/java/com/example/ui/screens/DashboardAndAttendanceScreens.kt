@@ -127,9 +127,9 @@ fun DashboardScreen(
         item {
             val welcomeSubtitle = when {
                 isParentOrStudent && myStudent != null ->
-                    "الطالب: ${myStudent.studentName} • الصف: ${myStudent.gradeClass} (شعبة ${myStudent.sectionName})"
+                    "${myStudent.studentTitleLabel}: ${myStudent.studentName} • الصف: ${myStudent.gradeClass} (شعبة ${myStudent.sectionName})"
                 isTeacher ->
-                    "المواد: ${currentUser?.specialty?.ifBlank { "كادر تدريسي" } ?: ""} • الصفوف: ${currentUser?.formattedAssignedClassesForDisplay ?: ""}"
+                    "${currentUser?.honorificTeacherTitle ?: "الأستاذ"} • المواد: ${currentUser?.specialty?.ifBlank { "كادر تدريسي" } ?: ""} • الصفوف: ${currentUser?.formattedAssignedClassesForDisplay ?: ""}"
                 else -> {
                     val cleanAddr = ArabicTextNormalizer.cleanDefaultAddress(schoolConfig.address)
                     if (cleanAddr.isNotBlank()) {
@@ -138,6 +138,15 @@ fun DashboardScreen(
                         "${schoolConfig.schoolName} — ${schoolConfig.academicYear}"
                     }
                 }
+            }
+            val welcomeGreetingPrefix = when {
+                currentUser?.role == UserRole.STUDENT && myStudent != null ->
+                    if (myStudent.isFemale) "مرحباً بكِ" else "مرحباً بك"
+                else -> currentUser?.welcomeGreeting ?: "مرحباً بك"
+            }
+            val roleGenderPillText = when {
+                currentUser?.role == UserRole.STUDENT && myStudent != null -> myStudent.studentTitleLabel
+                else -> currentUser?.roleGenderTitle ?: currentUser?.role?.arabicTitle ?: "مستخدم"
             }
 
             val edgeToEdgeWaveModifier = Modifier.layout { measurable, constraints ->
@@ -170,11 +179,11 @@ fun DashboardScreen(
             ) {
                 // 1) FIRST: Welcome Hero Section ("مرحباً بك، ...") edge-to-edge on top layer
                 ThreeDHeroHeaderCard(
-                    title = "مرحباً بك، ${currentUser?.fullName ?: ""}",
+                    title = "$welcomeGreetingPrefix، ${currentUser?.fullName ?: ""}",
                     subtitle = "$welcomeSubtitle • ${schoolConfig.ministryAffiliation} (${schoolConfig.schoolGenderType})",
                     rightPillText = "${schoolConfig.schoolType.arabicLabel} • ${schoolConfig.schoolStage.arabicLabel}",
                     rightPillIcon = Icons.Filled.School,
-                    leftPillText = currentUser?.role?.arabicTitle ?: "مستخدم",
+                    leftPillText = roleGenderPillText,
                     leftPillIcon = Icons.Filled.VerifiedUser,
                     illustrationType = ThreeDIllustrationType.BOOKS_GRADUATION_CAP,
                     bottomActionText = if (isAdmin) "إدارة الحسابات والمستخدمين" else null,
@@ -7985,11 +7994,16 @@ fun StudentPersonalProfileScreen(
         dailyBehaviors.filter { it.studentId == activeStudent.id }.sortedByDescending { it.date }
     }
 
-    var editableGender by remember(activeStudent.id, activeStudent.gender) {
-        mutableStateOf(activeStudent.normalizedGenderLabel)
+    val allNotifications by viewModel.notifications.collectAsState()
+    val allReports by viewModel.reports.collectAsState()
+    val scopedNotifications = remember(allNotifications, currentUser, activeStudent.id) {
+        viewModel.getScopedNotificationsForUser(currentUser).take(6)
     }
-    var editableAge by remember(activeStudent.id, activeStudent.ageYears) {
-        mutableStateOf(activeStudent.ageYears)
+    val studentReports = remember(allReports, activeStudent.id, activeStudent.studentName) {
+        allReports.filter {
+            it.studentName.trim() == activeStudent.studentName.trim() ||
+                it.studentName.trim() == activeStudent.fullNameWithFather.trim()
+        }.take(5)
     }
 
     LazyColumn(
@@ -8000,134 +8014,124 @@ fun StudentPersonalProfileScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
     ) {
-        // 1. Header Banner Card (Adaptive to Male/Female Theme)
+        // 1. Royal Emerald 3D Hero Header Banner addressing the student by gender
+        item {
+            ThreeDHeroHeaderCard(
+                title = if (activeStudent.isFemale) {
+                    "مرحباً بكِ يا ${activeStudent.studentName}"
+                } else {
+                    "مرحباً بك يا ${activeStudent.studentName}"
+                },
+                subtitle = "${activeStudent.studentTitleLabel}: ${activeStudent.fullNameWithFather} • الصف: ${activeStudent.gradeClass} (شعبة ${activeStudent.sectionName})",
+                rightPillText = if (activeStudent.isFemale) "ملف الطالبة والبيانات الشاملة" else "ملف الطالب والبيانات الشاملة",
+                rightPillIcon = Icons.Filled.AccountBox,
+                leftPillText = "كود الطالب: ${activeStudent.studentUsername.ifBlank { activeStudent.id }}",
+                leftPillIcon = Icons.Filled.Badge,
+                illustrationType = ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK,
+                bottomActionText = "عرض بطاقة الهوية المدرسية الرقمية والباركود",
+                bottomActionIcon = Icons.Filled.QrCode2,
+                bottomActionTestTag = "student_profile_open_digital_id_btn",
+                onBottomActionClick = { showDigitalIdModal = true }
+            )
+        }
+
+        // 2. Comprehensive Personal & Academic Identity Card (Unclipped Full-Text Info Rows)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(26.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    AdaptiveHeroStart,
-                                    AdaptiveHeroMid,
-                                    AdaptiveHeroEnd
-                                )
-                            )
-                        )
-                        .padding(18.dp)
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color.White.copy(alpha = 0.20f),
-                                border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
-                                modifier = Modifier.size(68.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Base64AvatarImage(
-                                        base64Data = activeStudent.photoBase64,
-                                        fallbackIcon = Icons.Filled.Person,
-                                        contentDescription = activeStudent.fullNameWithFather,
-                                        size = 62.dp,
-                                        tint = Color.White
-                                    )
-                                }
-                            }
-
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.18f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
-                                ) {
-                                    Text(
-                                        text = if (activeStudent.isFemale) "ملف الطالبة الشخصي الشامل" else "ملف الطالب الشخصي الشامل",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                    )
-                                }
+                            Base64AvatarImage(
+                                base64Data = activeStudent.photoBase64,
+                                fallbackIcon = Icons.Filled.Person,
+                                contentDescription = activeStudent.fullNameWithFather,
+                                size = 48.dp,
+                                tint = RoyalGreen
+                            )
+                            Column {
                                 Text(
-                                    text = activeStudent.fullNameWithFather,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "المرحلة: ${schoolConfig.schoolStage.arabicLabel} • الصف: ${activeStudent.gradeClass} (شعبة ${activeStudent.sectionName})",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.94f),
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        // Metadata Pills Row
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf(
-                                "الجنس: ${activeStudent.normalizedGenderLabel}",
-                                "العمر: ${formatArabicAgeYearsLabel(activeStudent.effectiveAgeYears)}",
-                                "حالة القيد: ${activeStudent.enrollmentStatusEnum.arabicLabel}",
-                                "دوام اليوم: ${todayStatus.arabicLabel}"
-                            ).forEach { pillText ->
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.16f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
-                                ) {
-                                    Text(
-                                        text = pillText,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Button to view existing Digital ID Card without altering it
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable { showDigitalIdModal = true }
-                                .testTag("student_profile_open_digital_id_btn"),
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color.White,
-                            shadowElevation = 2.dp
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 10.dp, horizontal = 14.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "عرض بطاقة الهوية المدرسية الرقمية والباركود",
-                                    style = MaterialTheme.typography.labelLarge,
+                                    text = "البيانات الشخصية والأكاديمية الشاملة",
+                                    style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = DeepForestGreen
                                 )
+                                Text(
+                                    text = "${schoolConfig.schoolName} • العام الدراسي ${schoolConfig.academicYear}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = AdaptiveSoftSurface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder)
+                        ) {
+                            Text(
+                                text = activeStudent.enrollmentStatusEnum.arabicLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+
+                    val personalInfoRows = buildList {
+                        add("الاسم الرباعي الكامل" to activeStudent.fullNameWithFather)
+                        add("الصف الدراسي والشعبة" to "${activeStudent.gradeClass} — شعبة (${activeStudent.sectionName})")
+                        add("الكود الأكاديمي / اسم المستخدم" to activeStudent.studentUsername.ifBlank { activeStudent.id })
+                        add("الجنس والعمر" to "الجنس: ${activeStudent.normalizedGenderLabel} • العمر: ${formatArabicAgeYearsLabel(activeStudent.effectiveAgeYears)}")
+                        add("ولي الأمر ورقم التواصل" to "${activeStudent.parentName.ifBlank { "ولي الأمر" }} • ${activeStudent.parentPhone.ifBlank { "غير مسجل" }}")
+                        add("حالة الدوام اليومي (${todayIso})" to todayStatus.arabicLabel)
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        personalInfoRows.forEach { (labelTitle, valueDetail) ->
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                color = AdaptiveSoftSurface.copy(alpha = 0.65f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = labelTitle,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepEmerald
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = valueDetail,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        textAlign = TextAlign.End
+                                    )
+                                }
                             }
                         }
                     }
@@ -8135,7 +8139,7 @@ fun StudentPersonalProfileScreen(
             }
         }
 
-        // 3. Real-Time Attendance & Discipline Analytics (Animated Geometric Ring + Real Counters starting at 0)
+        // 3. Real-Time Attendance & Discipline Analytics (Unified White & Royal Emerald Cards with Circular Vector Indicators)
         item {
             val animatedSweep by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (totalRecordedDays == 0) 0f else (attendanceCommitmentPercent / 100f) * 360f,
@@ -8160,30 +8164,29 @@ fun StudentPersonalProfileScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "إحصائيات المواظبة والانضباط الحقيقية",
+                                text = "سجل المواظبة والانضباط المدرسي",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = DeepForestGreen
                             )
                             Text(
                                 text = if (totalRecordedDays == 0) {
-                                    "لم يتم تسجيل أيام دوام بعد (تبدأ العدادات من 0 وتزداد تلقائياً مع كل رصد)"
+                                    "تبدأ العدادات من 0 وتُحدث تلقائياً مع كل رصد يومي للحضور"
                                 } else {
-                                    "محسوبة آلياً من سجل الحضور الفعلي للطالب ($totalRecordedDays يوم مرصود)"
+                                    "إجمالي أيام الدوام المرصودة فعلياً: $totalRecordedDays يوم"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        // Geometric Progress Ring
                         Box(
-                            modifier = Modifier.size(68.dp),
+                            modifier = Modifier.size(64.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             val ringTrackColor = AdaptiveSoftContainer
                             val ringActiveColor = RoyalGreen
                             androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                                val strokePx = 7.dp.toPx()
+                                val strokePx = 6.5.dp.toPx()
                                 drawArc(
                                     color = ringTrackColor,
                                     startAngle = 0f,
@@ -8211,43 +8214,66 @@ fun StudentPersonalProfileScreen(
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            Triple("أيام الحضور الفعلي", "$realPresentDays يوم", RoyalGreen),
-                            Triple("أيام الغياب الفعلي", "$realAbsentDays يوم", DangerRed),
-                            Triple("الإجازات الرسمية", "$realExcusedDays يوم", InfoBlue),
-                            Triple("مرات التأخر", "$realLateDays يوم", WarningAmber)
-                        ).forEach { (label, valueText, accentCol) ->
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                color = accentCol.copy(alpha = 0.09f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, accentCol.copy(alpha = 0.32f))
+                    val attendanceStatCards = listOf(
+                        Triple("أيام الحضور", "$realPresentDays يوم", Icons.Filled.CheckCircle),
+                        Triple("أيام الغياب", "$realAbsentDays يوم", Icons.Filled.EventBusy),
+                        Triple("الإجازات", "$realExcusedDays يوم", Icons.Filled.EventAvailable),
+                        Triple("التأخر الصباحي", "$realLateDays يوم", Icons.Filled.Schedule)
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        attendanceStatCards.chunked(2).forEach { pair ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    Text(
-                                        text = valueText,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = accentCol,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = label,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = DeepForestGreen,
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 2
-                                    )
+                                pair.forEach { (statLabel, statVal, statIcon) ->
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = AdaptiveSoftSurface.copy(alpha = 0.7f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color.White,
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder),
+                                                modifier = Modifier.size(36.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = statIcon,
+                                                        contentDescription = statLabel,
+                                                        tint = RoyalGreen,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = statVal,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen,
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    text = statLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepEmerald,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -8276,7 +8302,7 @@ fun StudentPersonalProfileScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "السجل الأكاديمي ومؤشر التقدم الدراسي",
+                                text = "السجل الأكاديمي ودرجات المواد الدراسية",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = DeepForestGreen
@@ -8302,14 +8328,13 @@ fun StudentPersonalProfileScreen(
                         }
                     }
 
-                    // Text-only Excellence Badges
                     if (studentBadges.isNotEmpty() || cumulativeAverage >= 85 || (realPresentDays > 0 && realAbsentDays == 0)) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             val badgesTextList = buildList {
-                                if (cumulativeAverage >= 90) add("وسام التفوق الأكاديمي الممتاز")
+                                if (cumulativeAverage >= 90) add("وسام التفوق الأكاديمي الممتاز (${activeStudent.excellingGenderLabel})")
                                 else if (cumulativeAverage >= 80) add("وسام التميز العلمي الجيد جداً")
                                 if (realPresentDays > 0 && realAbsentDays == 0) add("وسام الانضباط والمواظبة الكاملة")
                                 studentBadges.forEach { add(it.arabicTitle) }
@@ -8416,7 +8441,7 @@ fun StudentPersonalProfileScreen(
             }
         }
 
-        // 5. E-Wallet & Behavioral Log Summary Card
+        // 5. E-Wallet Balance, Transactions & Behavioral Log Summary Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -8430,7 +8455,7 @@ fun StudentPersonalProfileScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "المحفظة المدرسية والسجل السلوكي التربوي",
+                        text = "محفظة الحانوت المدرسي والسجل السلوكي",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.ExtraBold,
                         color = DeepForestGreen
@@ -8503,6 +8528,53 @@ fun StudentPersonalProfileScreen(
                         }
                     }
 
+                    if (activeStudent.walletTransactions.isNotEmpty()) {
+                        Text(
+                            text = "آخر حركات محفظة الحانوت:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            activeStudent.walletTransactions.take(4).forEach { tx ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = AdaptiveSoftSurface.copy(alpha = 0.55f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "${tx.type.arabicLabel} • ${tx.note.ifBlank { tx.actorName }}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "${tx.date} ${tx.timestamp}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Text(
+                                            text = "${tx.amountIqd} د.ع",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = RoyalGreen
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (studentBehaviors.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             studentBehaviors.take(5).forEach { beh ->
@@ -8535,6 +8607,102 @@ fun StudentPersonalProfileScreen(
                                         }
                                         Text(
                                             text = "التقييم: ${beh.participationLevel.arabicLabel} • ${beh.behaviorNote.ifBlank { "انضباط ومشاركة متميزة" }}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Administration Announcements & Official Notifications Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "تبليغات الإدارة والإشعارات المدرسية",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+
+                    if (schoolConfig.urgentAlert.isActive && schoolConfig.urgentAlert.message.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = AdaptiveSoftSurface,
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, RoyalGreen),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = schoolConfig.urgentAlert.authorName.ifBlank { "تبليغ رسمي من إدارة المدرسة" },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepForestGreen
+                                )
+                                Text(
+                                    text = schoolConfig.urgentAlert.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    if (scopedNotifications.isEmpty() && studentReports.isEmpty() && (!schoolConfig.urgentAlert.isActive || schoolConfig.urgentAlert.message.isBlank())) {
+                        Text(
+                            text = "لا توجد تبليغات إدارية جديدة حالياً.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            scopedNotifications.forEach { notif ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = AdaptiveSoftSurface.copy(alpha = 0.55f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, AdaptiveSoftBorder),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = notif.title,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = notif.createdAt,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        Text(
+                                            text = notif.body,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )

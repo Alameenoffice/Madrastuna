@@ -43,19 +43,19 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 fun formatArabicAgeYearsLabel(ageYears: Int): String {
-    val cleanAge = ageYears.coerceAtLeast(1)
-    return if (cleanAge in 3..10) {
-        "$cleanAge سنوات"
+    if (ageYears <= 0) return "غير محدد"
+    return if (ageYears in 3..10) {
+        "$ageYears سنوات"
     } else {
-        "$cleanAge سنة"
+        "$ageYears سنة"
     }
 }
 
 /**
  * Compact, modern Segmented Selector for Gender (ذكر / أنثى) and Age (العمر):
- * - Gender: 44.dp Segmented Toggle Pill with two clean side-by-side options (ذكر | أنثى).
- * - Age: Single balanced horizontal row with (-) button on the left, "X سنوات / سنة" in the center,
- *   and (+) button on the right, without duplicate labels or clipped capsules.
+ * - Gender: 44.dp Segmented Toggle Pill with two clean side-by-side options (ذكر | أنثى) using the unified Royal Emerald palette.
+ * - Age: Single balanced horizontal row with (-) button on the left, "X سنوات / سنة" (or "غير محدد" if 0) in the center,
+ *   and (+) button on the right, without fake defaults.
  */
 @Composable
 fun GenderAndAgeSegmentedSelectorCard(
@@ -65,20 +65,20 @@ fun GenderAndAgeSegmentedSelectorCard(
     onAgeYearsChange: (Int) -> Unit,
     title: String = "الجنس والعمر"
 ) {
-    val isFemaleSelected: Boolean = selectedGender.trim() == "أنثى" ||
-        selectedGender.trim() == "انثى" ||
-        selectedGender.equals("FEMALE", ignoreCase = true)
-
-    val maleSelected: Boolean = !isFemaleSelected
-    val effectiveDisplayedAge: Int = if (ageYears > 0) ageYears else 9
+    val cleanGender = selectedGender.trim()
+    val isFemaleSelected: Boolean = cleanGender == "أنثى" ||
+        cleanGender == "انثى" ||
+        cleanGender.equals("FEMALE", ignoreCase = true)
+    val isMaleSelected: Boolean = cleanGender == "ذكر" ||
+        cleanGender.equals("MALE", ignoreCase = true)
 
     val maleBgColor by animateColorAsState(
-        targetValue = if (maleSelected) RoyalGreen else Color.Transparent,
+        targetValue = if (isMaleSelected) RoyalGreen else Color.Transparent,
         animationSpec = tween(220),
         label = "male_seg_bg"
     )
     val femaleBgColor by animateColorAsState(
-        targetValue = if (isFemaleSelected) Color(0xFFE11D48) else Color.Transparent,
+        targetValue = if (isFemaleSelected) DeepEmerald else Color.Transparent,
         animationSpec = tween(220),
         label = "female_seg_bg"
     )
@@ -96,16 +96,28 @@ fun GenderAndAgeSegmentedSelectorCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (title.isNotBlank()) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = DeepForestGreen,
-                    maxLines = 1
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = if (!isMaleSelected && !isFemaleSelected && ageYears <= 0) "اختياري" else "محدد",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald
+                    )
+                }
             }
 
-            // 1. الجنس: شريط تبديل ثنائي عصري ومضغوط بارتفاع 44.dp فقط
+            // 1. الجنس: شريط تبديل ثنائي عصري ومضغوط بارتفاع 44.dp بهوية زمردية موحدة
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -121,7 +133,9 @@ fun GenderAndAgeSegmentedSelectorCard(
                         .weight(1f)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(9.dp))
-                        .clickable { onGenderChange("ذكر") },
+                        .clickable {
+                            onGenderChange(if (isMaleSelected) "" else "ذكر")
+                        },
                     shape = RoundedCornerShape(9.dp),
                     color = maleBgColor
                 ) {
@@ -133,7 +147,7 @@ fun GenderAndAgeSegmentedSelectorCard(
                             text = "ذكر",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (maleSelected) Color.White else DeepForestGreen,
+                            color = if (isMaleSelected) Color.White else DeepForestGreen,
                             maxLines = 1,
                             softWrap = false
                         )
@@ -145,7 +159,9 @@ fun GenderAndAgeSegmentedSelectorCard(
                         .weight(1f)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(9.dp))
-                        .clickable { onGenderChange("أنثى") },
+                        .clickable {
+                            onGenderChange(if (isFemaleSelected) "" else "أنثى")
+                        },
                     shape = RoundedCornerShape(9.dp),
                     color = femaleBgColor
                 ) {
@@ -157,7 +173,7 @@ fun GenderAndAgeSegmentedSelectorCard(
                             text = "أنثى",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (isFemaleSelected) Color.White else Color(0xFFBE185D),
+                            color = if (isFemaleSelected) Color.White else DeepForestGreen,
                             maxLines = 1,
                             softWrap = false
                         )
@@ -165,7 +181,7 @@ fun GenderAndAgeSegmentedSelectorCard(
                 }
             }
 
-            // 2. العمر: عداد رقمي أفقي أنيق وموزون في سطر واحد (زر + في اليمين، العمر في الوسط، زر - في اليسار)
+            // 2. العمر: عداد رقمي أفقي أنيق وموزون في سطر واحد (زر + في اليمين، العمر أو "غير محدد" في الوسط، زر - في اليسار)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -179,8 +195,7 @@ fun GenderAndAgeSegmentedSelectorCard(
                 // في اليمين (بداية السطر في RTL): زر زائد دائري (+)
                 Surface(
                     onClick = {
-                        val current = if (ageYears <= 0) 9 else ageYears
-                        val next: Int = (current + 1).coerceAtMost(75)
+                        val next: Int = if (ageYears <= 0) 6 else (ageYears + 1).coerceAtMost(75)
                         onAgeYearsChange(next)
                     },
                     shape = CircleShape,
@@ -189,17 +204,16 @@ fun GenderAndAgeSegmentedSelectorCard(
                     modifier = Modifier.size(32.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        val accent = if (isFemaleSelected) Color(0xFFE11D48) else DeepEmerald
                         Canvas(modifier = Modifier.size(13.dp)) {
                             drawLine(
-                                color = accent,
+                                color = DeepEmerald,
                                 start = Offset(size.width * 0.18f, size.height / 2f),
                                 end = Offset(size.width * 0.82f, size.height / 2f),
                                 strokeWidth = 2.2.dp.toPx(),
                                 cap = StrokeCap.Round
                             )
                             drawLine(
-                                color = accent,
+                                color = DeepEmerald,
                                 start = Offset(size.width / 2f, size.height * 0.18f),
                                 end = Offset(size.width / 2f, size.height * 0.82f),
                                 strokeWidth = 2.2.dp.toPx(),
@@ -209,13 +223,13 @@ fun GenderAndAgeSegmentedSelectorCard(
                     }
                 }
 
-                // في الوسط: الرقم مع كلمة سنة/سنوات بخط واضح بدون تكرار
+                // في الوسط: العمر الفعلي أو "غير محدد" إذا لم يتم إدخاله بعد
                 Text(
-                    text = formatArabicAgeYearsLabel(effectiveDisplayedAge),
+                    text = if (ageYears <= 0) "العمر: غير محدد" else formatArabicAgeYearsLabel(ageYears),
                     style = MaterialTheme.typography.titleSmall,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = if (isFemaleSelected) Color(0xFFBE185D) else DeepForestGreen,
+                    color = DeepForestGreen,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     softWrap = false
@@ -224,8 +238,7 @@ fun GenderAndAgeSegmentedSelectorCard(
                 // في اليسار (نهاية السطر في RTL): زر ناقص دائري (-)
                 Surface(
                     onClick = {
-                        val current = if (ageYears <= 0) 9 else ageYears
-                        val next: Int = (current - 1).coerceAtLeast(5)
+                        val next: Int = if (ageYears <= 6) 0 else (ageYears - 1)
                         onAgeYearsChange(next)
                     },
                     shape = CircleShape,
@@ -234,10 +247,9 @@ fun GenderAndAgeSegmentedSelectorCard(
                     modifier = Modifier.size(32.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        val accent = if (isFemaleSelected) Color(0xFFE11D48) else DeepEmerald
                         Canvas(modifier = Modifier.size(13.dp)) {
                             drawLine(
-                                color = accent,
+                                color = DeepEmerald,
                                 start = Offset(size.width * 0.18f, size.height / 2f),
                                 end = Offset(size.width * 0.82f, size.height / 2f),
                                 strokeWidth = 2.2.dp.toPx(),

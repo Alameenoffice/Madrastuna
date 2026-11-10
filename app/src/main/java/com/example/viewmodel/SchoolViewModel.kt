@@ -3166,11 +3166,46 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun getTeacherSupervisedStudentsCount(teacher: UserAccount): Int {
         val sid = _schoolConfig.value.schoolId
-        return _students.value.count { stu ->
-            (stu.schoolId.isBlank() || stu.schoolId == sid) &&
-                stu.isActive &&
-                teacher.canTeacherAccessClassSection(stu.gradeClass, stu.sectionName)
+        val activeSchoolStudents = _students.value.filter { stu ->
+            (stu.schoolId.isBlank() || stu.schoolId == sid) && stu.isActive
         }
+        if (activeSchoolStudents.isEmpty()) return 0
+
+        val directMatched = activeSchoolStudents.count { stu ->
+            teacher.canTeacherAccessClassSection(stu.gradeClass, stu.sectionName)
+        }
+        if (directMatched > 0) return directMatched
+
+        val teacherSubs = teacher.teacherSubjectsList
+        if (teacherSubs.isNotEmpty()) {
+            val classesForTeacherSubjects = _schoolConfig.value.subjectConfigs
+                .filter { cfg: SubjectConfigItem ->
+                    (cfg.schoolId.isBlank() || cfg.schoolId == sid) &&
+                        teacherSubs.any { tSub: String ->
+                            ArabicTextNormalizer.normalizeText(cfg.name) == ArabicTextNormalizer.normalizeText(tSub)
+                        }
+                }
+                .flatMap { cfg: SubjectConfigItem -> cfg.assignedClasses }
+                .distinct()
+
+            if (classesForTeacherSubjects.isNotEmpty()) {
+                val subjectClassMatched = activeSchoolStudents.count { stu: StudentRecord ->
+                    classesForTeacherSubjects.any { assignedCls: String ->
+                        ArabicTextNormalizer.matchesClass(stu.gradeClass, assignedCls)
+                    }
+                }
+                if (subjectClassMatched > 0) return subjectClassMatched
+            }
+        }
+
+        if (teacher.gradeClass.isNotBlank()) {
+            val fallbackClassMatched = activeSchoolStudents.count { stu ->
+                ArabicTextNormalizer.matchesClass(stu.gradeClass, teacher.gradeClass)
+            }
+            if (fallbackClassMatched > 0) return fallbackClassMatched
+        }
+
+        return activeSchoolStudents.size
     }
 
     fun getTeacherRealPerformanceMetrics(teacher: UserAccount): TeacherRealPerformanceMetrics {

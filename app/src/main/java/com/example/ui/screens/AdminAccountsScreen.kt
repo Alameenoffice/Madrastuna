@@ -50,6 +50,7 @@ fun AdminAccountsScreen(
     val attendance by viewModel.attendance.collectAsState()
     val homeworks by viewModel.homeworks.collectAsState()
     val grades by viewModel.grades.collectAsState()
+    val schedules by viewModel.schedules.collectAsState()
     val teacherRatings by viewModel.teacherRatings.collectAsState()
     val toastAlert by viewModel.toastAlert.collectAsState()
     val latestAnnualPromotionReport by viewModel.latestAnnualPromotionReport.collectAsState()
@@ -554,7 +555,7 @@ fun AdminAccountsScreen(
                                     verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Text(
-                                        text = teacher.fullName,
+                                        text = "${teacher.honorificTeacherTitle}: ${teacher.fullName}",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = MaterialTheme.colorScheme.onSurface,
@@ -562,10 +563,10 @@ fun AdminAccountsScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "$primarySpecialtyLabel • $realSupervisedCount طالب",
+                                        text = "${teacher.specialty.ifBlank { primarySpecialtyLabel }} • ${teacher.formattedAssignedClassesForDisplay} • $realSupervisedCount طالب",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
+                                        maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
@@ -860,7 +861,7 @@ fun AdminAccountsScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
                     ) {
-                        // 1. لوحة الأداء والنشاط التقني للأستاذ (شبكة متزنة 2×2 لبطاقات الإحصائيات المتساوية)
+                        // 1. لوحة الأداء والنشاط التقني للأستاذ (بطاقات زمردية وبيضاء فاخرة بدون أي قص للنصوص + شريط تقدم بصري)
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -873,18 +874,44 @@ fun AdminAccountsScreen(
                                     modifier = Modifier.padding(16.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Text(
-                                        text = "لوحة الأداء والنشاط التقني للأستاذ",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = DeepForestGreen
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "لوحة الأداء والنشاط التقني (${liveTeacher.honorificTeacherTitle})",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "مؤشرات حقيقية مستخرجة من الحضور والواجبات والدرجات والتقييمات",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = AdaptiveSoftSurface,
+                                            border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                        ) {
+                                            Text(
+                                                text = "${realMetrics.supervisedStudentsCount} طالب",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                    }
 
                                     val statGridItems = listOf(
-                                        Triple("الطلاب المشرف عليهم", "${realMetrics.supervisedStudentsCount} طالب", RoyalGreen),
-                                        Triple("نسبة الأداء والالتزام", "${realMetrics.commitmentRatePercent}%", DeepEmerald),
-                                        Triple("نسبة النشاط التفاعلي", "${realMetrics.interactiveActivityPercent}%", InfoBlue),
-                                        Triple("الحضور والدرجات المرصودة", "${realMetrics.recordedAttendanceActionsCount + realMetrics.gradedStudentsCount} سجل", GoldAccent)
+                                        Triple("الطلاب المشرف عليهم", "${realMetrics.supervisedStudentsCount} طالب", Icons.Filled.Groups),
+                                        Triple("نسبة الأداء والالتزام", "${realMetrics.commitmentRatePercent}%", Icons.Filled.Verified),
+                                        Triple("نسبة النشاط التفاعلي", "${realMetrics.interactiveActivityPercent}%", Icons.Filled.AutoGraph),
+                                        Triple("الحضور والدرجات المرصودة", "${realMetrics.recordedAttendanceActionsCount + realMetrics.gradedStudentsCount} سجل", Icons.Filled.FactCheck)
                                     )
 
                                     Column(
@@ -896,39 +923,56 @@ fun AdminAccountsScreen(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                rowPair.forEach { (statTitle, statValue, statColor) ->
+                                                rowPair.forEach { (statTitle, statValue, statIcon) ->
                                                     Surface(
                                                         modifier = Modifier
                                                             .weight(1f)
-                                                            .heightIn(min = 78.dp),
+                                                            .heightIn(min = 88.dp),
                                                         shape = RoundedCornerShape(16.dp),
                                                         color = AdaptiveSoftSurface.copy(alpha = 0.7f),
                                                         border = BorderStroke(1.dp, AdaptiveSoftBorder)
                                                     ) {
-                                                        Column(
+                                                        Row(
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
                                                                 .padding(horizontal = 10.dp, vertical = 12.dp),
-                                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                                            verticalArrangement = Arrangement.Center
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                         ) {
-                                                            Text(
-                                                                text = statValue,
-                                                                style = MaterialTheme.typography.titleMedium,
-                                                                fontWeight = FontWeight.ExtraBold,
-                                                                color = statColor,
-                                                                maxLines = 1
-                                                            )
-                                                            Spacer(modifier = Modifier.height(4.dp))
-                                                            Text(
-                                                                text = statTitle,
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = DeepForestGreen,
-                                                                textAlign = TextAlign.Center,
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis
-                                                            )
+                                                            Surface(
+                                                                shape = CircleShape,
+                                                                color = Color.White,
+                                                                border = BorderStroke(1.dp, AdaptiveSoftBorder),
+                                                                modifier = Modifier.size(34.dp)
+                                                            ) {
+                                                                Box(contentAlignment = Alignment.Center) {
+                                                                    Icon(
+                                                                        imageVector = statIcon,
+                                                                        contentDescription = statTitle,
+                                                                        tint = RoyalGreen,
+                                                                        modifier = Modifier.size(18.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                            Column(
+                                                                modifier = Modifier.weight(1f),
+                                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = statValue,
+                                                                    style = MaterialTheme.typography.titleSmall,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = DeepForestGreen
+                                                                )
+                                                                Text(
+                                                                    text = statTitle,
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = DeepEmerald,
+                                                                    maxLines = 2
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -936,17 +980,51 @@ fun AdminAccountsScreen(
                                         }
                                     }
 
-                                    Text(
-                                        text = "تفاصيل الرصد: حضور (${realMetrics.recordedAttendanceActionsCount}) • واجبات (${realMetrics.publishedHomeworksCount}) • درجات (${realMetrics.gradedStudentsCount})",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    // Visual Progress Bar for Overall Commitment & Interactive Activity
+                                    val combinedProgress = ((realMetrics.commitmentRatePercent + realMetrics.interactiveActivityPercent) / 200f).coerceIn(0f, 1f)
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "مؤشر الكفاءة والنشاط العام",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "حضور (${realMetrics.recordedAttendanceActionsCount}) • واجبات (${realMetrics.publishedHomeworksCount}) • درجات (${realMetrics.gradedStudentsCount})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(8.dp)
+                                                .clip(RoundedCornerShape(50))
+                                                .background(AdaptiveSoftContainer)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(combinedProgress)
+                                                    .fillMaxHeight()
+                                                    .clip(RoundedCornerShape(50))
+                                                    .background(
+                                                        Brush.horizontalGradient(
+                                                            listOf(RoyalGreen, DeepEmerald)
+                                                        )
+                                                    )
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        // 2. البيانات الأساسية وبيانات الدخول (عرض أنيق بدون صندوق تعديل الجنس والعمر داخل السجل)
+                        // 2. البيانات الأساسية وبيانات الدخول (عرض كامل للنصوص 100% بدون أي بتر أو قص)
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -956,7 +1034,7 @@ fun AdminAccountsScreen(
                             ) {
                                 Column(
                                     modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
                                         text = "البيانات الأساسية وبيانات الدخول",
@@ -964,40 +1042,226 @@ fun AdminAccountsScreen(
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
                                     )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        listOf(
-                                            "الجنس: ${liveTeacher.normalizedGenderLabel}",
-                                            "العمر: ${formatArabicAgeYearsLabel(liveTeacher.effectiveAgeYears)}",
-                                            "الهاتف: ${liveTeacher.phone.ifBlank { "غير مسجل" }}"
-                                        ).forEach { badgeLabel ->
-                                            Surface(
-                                                modifier = Modifier.weight(1f),
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = AdaptiveSoftSurface,
-                                                border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                    val teacherBasicRows = listOf(
+                                        "الاسم الكامل واللقب" to "${liveTeacher.honorificTeacherTitle}: ${liveTeacher.fullName}",
+                                        "المواد الدراسية المسندة" to liveTeacher.specialty.ifBlank { "غير محدد" },
+                                        "الصفوف والشعب الحالية" to liveTeacher.formattedAssignedClassesForDisplay,
+                                        "رقم الهاتف / واتساب" to liveTeacher.phone.ifBlank { "غير مسجل" },
+                                        "الجنس والعمر" to "الجنس: ${liveTeacher.normalizedGenderLabel} • العمر: ${formatArabicAgeYearsLabel(liveTeacher.effectiveAgeYears)}",
+                                        "بيانات تسجيل الدخول" to "المستخدم: ${liveTeacher.username}  |  كلمة المرور: ${liveTeacher.password}"
+                                    )
+                                    teacherBasicRows.forEach { (rowLabel, rowValue) ->
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = AdaptiveSoftSurface.copy(alpha = 0.65f),
+                                            border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = badgeLabel,
-                                                    style = MaterialTheme.typography.labelSmall,
+                                                    text = rowLabel,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepEmerald
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = rowValue,
+                                                    style = MaterialTheme.typography.bodySmall,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = DeepForestGreen,
-                                                    textAlign = TextAlign.Center,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                                                    textAlign = TextAlign.End
                                                 )
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        // 2-ب. جدول الحصص الأسبوعي وسجل آخر الواجبات والدرجات والتقييم الأكاديمي للأستاذ
+                        item {
+                            val teacherSchedules = remember(schedules, liveTeacher) {
+                                val tSubs = liveTeacher.teacherSubjectsList
+                                schedules.filter { item ->
+                                    item.teacherName.trim() == liveTeacher.fullName.trim() ||
+                                        (liveTeacher.canTeacherAccessClassSection(item.gradeClass, item.sectionName) &&
+                                            tSubs.any { ArabicTextNormalizer.normalizeText(it) == ArabicTextNormalizer.normalizeText(item.subjectName) })
+                                }.take(8)
+                            }
+                            val teacherRecentHomeworks = remember(homeworks, liveTeacher) {
+                                val tSubs = liveTeacher.teacherSubjectsList
+                                homeworks.filter { hw ->
+                                    hw.teacherName.trim() == liveTeacher.fullName.trim() ||
+                                        (liveTeacher.canTeacherAccessClassSection(hw.gradeClass, hw.sectionName) &&
+                                            (tSubs.isEmpty() || liveTeacher.canTeacherAccessSubject(hw.subjectName)))
+                                }.take(5)
+                            }
+                            val teacherRecentRatings = remember(teacherRatings, liveTeacher) {
+                                teacherRatings.filter { r ->
+                                    r.teacherId == liveTeacher.id || r.teacherName.trim() == liveTeacher.fullName.trim()
+                                }
+                            }
+                            val avgStars = remember(teacherRecentRatings) {
+                                if (teacherRecentRatings.isEmpty()) 0.0 else teacherRecentRatings.map { it.stars }.average()
+                            }
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.2.dp, AdaptiveSoftBorder)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
                                     Text(
-                                        text = "اسم المستخدم: ${liveTeacher.username}  |  كلمة المرور: ${liveTeacher.password}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        text = "السجل الحي للحصص والواجبات والتقييم الأكاديمي",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
                                     )
+
+                                    // التقييم الأكاديمي للأستاذ
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = AdaptiveSoftSurface,
+                                        border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "التقييم الأكاديمي المعتمد:",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                            Text(
+                                                text = if (teacherRecentRatings.isEmpty()) {
+                                                    "لم يُقيم بعد (0 تقييم)"
+                                                } else {
+                                                    "${String.format(java.util.Locale.US, "%.1f", avgStars)} / 5.0 (${teacherRecentRatings.size} تقييم)"
+                                                },
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                        }
+                                    }
+
+                                    // جدول الحصص الأسبوعي للأستاذ
+                                    Text(
+                                        text = "جدول الحصص الأسبوعي المسند (${teacherSchedules.size}):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    if (teacherSchedules.isEmpty()) {
+                                        Text(
+                                            text = "لا توجد حصص مسجلة في الجدول الأسبوعي لهذا الأستاذ حالياً.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    } else {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            teacherSchedules.forEach { sched ->
+                                                Surface(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = AdaptiveSoftSurface.copy(alpha = 0.55f),
+                                                    border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "${sched.dayOfWeek} • الحصة ${sched.periodNumber} (${sched.subjectName})",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepForestGreen
+                                                        )
+                                                        Text(
+                                                            text = "${sched.gradeClass} (${sched.sectionName})",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = DeepEmerald
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // سجل آخر الواجبات المنشورة
+                                    Text(
+                                        text = "آخر الواجبات والتحاضير المنشورة (${realMetrics.publishedHomeworksCount}):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen
+                                    )
+                                    if (teacherRecentHomeworks.isEmpty()) {
+                                        Text(
+                                            text = "لم ينشر الأستاذ واجبات يومية بعد.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    } else {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            teacherRecentHomeworks.forEach { hw ->
+                                                Surface(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = AdaptiveSoftSurface.copy(alpha = 0.55f),
+                                                    border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween
+                                                        ) {
+                                                            Text(
+                                                                text = "${hw.subjectName} — ${hw.gradeClass} (${hw.sectionName})",
+                                                                style = MaterialTheme.typography.labelMedium,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = DeepForestGreen
+                                                            )
+                                                            Text(
+                                                                text = hw.dueDate,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = DeepEmerald,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = hw.dailyPreparation.ifBlank { hw.homeworkDetails },
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1267,7 +1531,7 @@ fun AdminAccountsScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
                     ) {
-                        // 1. بطاقة الملخص الشخصي والأكاديمي
+                        // 1. بطاقة الملخص الشخصي والأكاديمي (عرض كامل للنصوص 100% بدون أي قص لاسم الصف أو البيانات)
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1286,36 +1550,39 @@ fun AdminAccountsScreen(
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
                                     )
-                                    Text(
-                                        text = liveStu.fullNameWithFather,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                    val studentSummaryRows = listOf(
+                                        "الاسم الرباعي الكامل" to liveStu.fullNameWithFather,
+                                        "الصف الدراسي والشعبة" to "${liveStu.gradeClass} — شعبة (${liveStu.sectionName})",
+                                        "حالة القيد الدراسي" to liveStu.enrollmentStatusEnum.arabicLabel,
+                                        "الجنس والعمر" to "الجنس: ${liveStu.normalizedGenderLabel} • العمر: ${formatArabicAgeYearsLabel(liveStu.effectiveAgeYears)}"
                                     )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        listOf(
-                                            "${liveStu.gradeClass} (${liveStu.sectionName})",
-                                            "الجنس: ${liveStu.normalizedGenderLabel}",
-                                            "العمر: ${formatArabicAgeYearsLabel(liveStu.effectiveAgeYears)}"
-                                        ).forEach { infoChip ->
-                                            Surface(
-                                                modifier = Modifier.weight(1f),
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = AdaptiveSoftSurface,
-                                                border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                    studentSummaryRows.forEach { (rowTitle, rowVal) ->
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = AdaptiveSoftSurface.copy(alpha = 0.65f),
+                                            border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = infoChip,
-                                                    style = MaterialTheme.typography.labelSmall,
+                                                    text = rowTitle,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepEmerald
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = rowVal,
+                                                    style = MaterialTheme.typography.bodySmall,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = DeepForestGreen,
-                                                    textAlign = TextAlign.Center,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                                                    textAlign = TextAlign.End
                                                 )
                                             }
                                         }
@@ -1324,7 +1591,7 @@ fun AdminAccountsScreen(
                             }
                         }
 
-                        // 2. سجل المواظبة والانضباط المدرسي
+                        // 2. سجل المواظبة والانضباط المدرسي (بطاقات زمردية وبيضاء موحدة بأيقونات دائرية بدلاً من المربعات الملونة الباهتة)
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1342,40 +1609,65 @@ fun AdminAccountsScreen(
                                         fontWeight = FontWeight.ExtraBold,
                                         color = DeepForestGreen
                                     )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        listOf(
-                                            Triple("الحضور", "$realPresent يوم", RoyalGreen),
-                                            Triple("الغياب", "$realAbsent يوم", DangerRed),
-                                            Triple("الإجازات", "$realExcused يوم", InfoBlue),
-                                            Triple("التأخر", "$realLate يوم", WarningAmber)
-                                        ).forEach { (lbl, valTxt, col) ->
-                                            Surface(
-                                                modifier = Modifier.weight(1f),
-                                                shape = RoundedCornerShape(14.dp),
-                                                color = col.copy(alpha = 0.09f),
-                                                border = BorderStroke(1.dp, col.copy(alpha = 0.32f))
+                                    val stuAttendanceCards = listOf(
+                                        Triple("أيام الحضور", "$realPresent يوم", Icons.Filled.CheckCircle),
+                                        Triple("أيام الغياب", "$realAbsent يوم", Icons.Filled.EventBusy),
+                                        Triple("الإجازات", "$realExcused يوم", Icons.Filled.EventAvailable),
+                                        Triple("التأخر الصباحي", "$realLate يوم", Icons.Filled.Schedule)
+                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        stuAttendanceCards.chunked(2).forEach { rowPair ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Column(
-                                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally
-                                                ) {
-                                                    Text(
-                                                        text = valTxt,
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = col
-                                                    )
-                                                    Text(
-                                                        text = lbl,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = DeepForestGreen,
-                                                        maxLines = 1
-                                                    )
+                                                rowPair.forEach { (lbl, valTxt, ic) ->
+                                                    Surface(
+                                                        modifier = Modifier.weight(1f),
+                                                        shape = RoundedCornerShape(16.dp),
+                                                        color = AdaptiveSoftSurface.copy(alpha = 0.7f),
+                                                        border = BorderStroke(1.dp, AdaptiveSoftBorder)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                        ) {
+                                                            Surface(
+                                                                shape = CircleShape,
+                                                                color = Color.White,
+                                                                border = BorderStroke(1.dp, AdaptiveSoftBorder),
+                                                                modifier = Modifier.size(36.dp)
+                                                            ) {
+                                                                Box(contentAlignment = Alignment.Center) {
+                                                                    Icon(
+                                                                        imageVector = ic,
+                                                                        contentDescription = lbl,
+                                                                        tint = RoyalGreen,
+                                                                        modifier = Modifier.size(18.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = valTxt,
+                                                                    style = MaterialTheme.typography.titleSmall,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = DeepForestGreen,
+                                                                    maxLines = 1
+                                                                )
+                                                                Text(
+                                                                    text = lbl,
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = DeepEmerald,
+                                                                    maxLines = 1
+                                                                )
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1754,8 +2046,8 @@ fun AdminAccountsScreen(
         var teacherPhotoBase64 by remember(currentEditing) { mutableStateOf(currentEditing?.photoBase64 ?: "") }
         var canModerateActivities by remember(currentEditing) { mutableStateOf(currentEditing?.canModerateActivities ?: false) }
         var canManageCanteen by remember(currentEditing) { mutableStateOf(currentEditing?.canManageCanteen ?: false) }
-        var teacherGender by remember(currentEditing) { mutableStateOf(currentEditing?.normalizedGenderLabel ?: "ذكر") }
-        var teacherAgeYears by remember(currentEditing) { mutableStateOf(currentEditing?.effectiveAgeYears ?: 30) }
+        var teacherGender by remember(currentEditing) { mutableStateOf(currentEditing?.gender ?: "") }
+        var teacherAgeYears by remember(currentEditing) { mutableStateOf(currentEditing?.effectiveAgeYears ?: 0) }
 
         // Multi-select subjects from registeredSubjects
         val initialSubjects = remember(currentEditing) {
@@ -2258,8 +2550,8 @@ fun AdminAccountsScreen(
         var classDropdownExpanded by remember { mutableStateOf(false) }
         var sectionDropdownExpanded by remember { mutableStateOf(false) }
         var isLinkedToExistingParent by remember(currentStu) { mutableStateOf(false) }
-        var studentGender by remember(currentStu) { mutableStateOf(currentStu?.normalizedGenderLabel ?: "ذكر") }
-        var studentAgeYears by remember(currentStu) { mutableStateOf(currentStu?.effectiveAgeYears ?: 8) }
+        var studentGender by remember(currentStu) { mutableStateOf(currentStu?.gender ?: "") }
+        var studentAgeYears by remember(currentStu) { mutableStateOf(currentStu?.effectiveAgeYears ?: 0) }
 
         val matchedParent = remember(studentName, parentName, parentPhone, students, currentStu) {
             viewModel.findExistingParentMatch(

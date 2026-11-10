@@ -4981,6 +4981,7 @@ fun SeamlessWaveTeacherSpotlightSection(
     data class SpotlightSlide(
         val rankIndex: Int,
         val rankLabel: String,
+        val honorificTitle: String,
         val fullName: String,
         val subjects: String,
         val avgRating: Float,
@@ -4991,13 +4992,14 @@ fun SeamlessWaveTeacherSpotlightSection(
         if (topTeachers.isNotEmpty()) {
             topTeachers.take(3).mapIndexed { index, summary ->
                 val rankTitle = when (index) {
-                    0 -> "المتصدر الأول #1"
+                    0 -> if (summary.teacher.isFemale) "المتصدرة الأولى #1" else "المتصدر الأول #1"
                     1 -> "المركز الثاني #2"
                     else -> "المركز الثالث #3"
                 }
                 SpotlightSlide(
                     rankIndex = index,
                     rankLabel = rankTitle,
+                    honorificTitle = summary.teacher.honorificTeacherTitle,
                     fullName = summary.teacher.fullName,
                     subjects = summary.teacher.specialty.ifBlank {
                         summary.teacher.teacherSubjectsList.joinToString(" • ").ifBlank { "الكادر التدريسي المتميز" }
@@ -5011,6 +5013,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                 SpotlightSlide(
                     rankIndex = 0,
                     rankLabel = "المتصدر الأول #1",
+                    honorificTitle = "الأستاذ",
                     fullName = teacherName,
                     subjects = teacherSubjects.ifBlank { "الكادر التدريسي المتميز" },
                     avgRating = averageRating,
@@ -5148,7 +5151,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                             }
 
                             Text(
-                                text = "الأستاذ(ة): ${slide.fullName}",
+                                text = "${slide.honorificTitle}: ${slide.fullName}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.ExtraBold,

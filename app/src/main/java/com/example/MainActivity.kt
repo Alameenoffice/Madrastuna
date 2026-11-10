@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity() {
 
             MyApplicationTheme(
                 darkTheme = isDarkMode,
-                isFeminineTheme = isFeminineTheme
+                isFeminineTheme = false
             ) {
                 MadrasatiRootApp(viewModel = schoolViewModel)
             }
@@ -917,6 +917,9 @@ fun AuthenticatedMainPlatform(
     val allSections = remember(schoolConfig.schoolType, featureSettings, currentUser) {
         buildList {
             add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
+            if (currentUser?.role == UserRole.STUDENT || currentUser?.role == UserRole.PARENT) {
+                add(AppSection.STUDENT_PERSONAL_PROFILE to Icons.Filled.AccountBox)
+            }
             if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
                 add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
             }
@@ -973,6 +976,9 @@ fun AuthenticatedMainPlatform(
                 val academicGroupSections = remember(currentUser) {
                     buildList {
                         add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
+                        if (currentUser?.role == UserRole.STUDENT || currentUser?.role == UserRole.PARENT) {
+                            add(AppSection.STUDENT_PERSONAL_PROFILE to Icons.Filled.AccountBox)
+                        }
                         if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
                             add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
                         }

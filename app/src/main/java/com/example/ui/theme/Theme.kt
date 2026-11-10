@@ -29,10 +29,10 @@ fun MyApplicationTheme(
     isFeminineTheme: Boolean = GenderThemeState.isFeminine,
     content: @Composable () -> Unit
 ) {
-    // Synchronize global reactive state immediately so every screen and component reads the active gender palette
-    GenderThemeState.isFeminine = isFeminineTheme
+    // Unified Royal Emerald identity across all users
+    GenderThemeState.isFeminine = false
     SideEffect {
-        GenderThemeState.isFeminine = isFeminineTheme
+        GenderThemeState.isFeminine = false
     }
 
     val context = LocalContext.current
@@ -132,24 +132,8 @@ fun MyApplicationTheme(
         )
     }
 
-    val adaptivePalette = remember(isFeminineTheme) {
-        if (isFeminineTheme) {
-            GenderAdaptivePalette(
-                isFeminine = true,
-                primary = Color(0xFFE11D48),
-                primaryDeep = Color(0xFFBE123C),
-                primaryDarkest = Color(0xFF881337),
-                accentBright = Color(0xFFF43F5E),
-                secondaryLavenderOrNavy = Color(0xFF6B21A8),
-                softTintBg = Color(0xFFFFF1F2),
-                softContainerBg = Color(0xFFFFE4E6),
-                softBorderAccent = Color(0xFFFECDD3),
-                waveRibbon1 = Color(0xFFFFE4E6),
-                waveRibbon2 = Color(0xFFFECDD3)
-            )
-        } else {
-            GenderAdaptivePalette()
-        }
+    val adaptivePalette = remember {
+        GenderAdaptivePalette()
     }
 
     CompositionLocalProvider(

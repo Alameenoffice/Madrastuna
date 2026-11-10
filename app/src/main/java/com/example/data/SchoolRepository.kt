@@ -685,13 +685,8 @@ class SchoolRepository(context: Context) {
                         schoolId = itemSchoolId,
                         canModerateActivities = o.optBoolean("canModerateActivities", false),
                         canManageCanteen = o.optBoolean("canManageCanteen", false),
-                        gender = o.optString("gender", "ذكر").ifBlank { "ذكر" },
-                        ageYears = run {
-                            val defaultAge = if (role == UserRole.TEACHER || role == UserRole.ADMIN || role == UserRole.PARENT) 30 else 8
-                            val parsedAge = o.optInt("ageYears", o.optInt("age", defaultAge))
-                            if ((role == UserRole.TEACHER || role == UserRole.ADMIN) && parsedAge < 18) 30
-                            else if (parsedAge > 0) parsedAge else defaultAge
-                        }
+                        gender = o.optString("gender", "").trim().let { if (it == "غير محدد") "" else it },
+                        ageYears = o.optInt("ageYears", o.optInt("age", 0)).coerceAtLeast(0)
                     )
                 )
             }
@@ -741,7 +736,7 @@ class SchoolRepository(context: Context) {
                 put("schoolId", schoolId)
                 put("canModerateActivities", acc.canModerateActivities)
                 put("canManageCanteen", acc.canManageCanteen)
-                put("gender", InputSanitizer.sanitize(acc.normalizedGenderLabel))
+                put("gender", if (acc.isGenderSpecified) InputSanitizer.sanitize(acc.normalizedGenderLabel) else "")
                 put("ageYears", acc.effectiveAgeYears)
                 put("age", acc.effectiveAgeYears)
                 if (acc.role == UserRole.TEACHER) {
@@ -974,8 +969,8 @@ class SchoolRepository(context: Context) {
                         enrollmentOrderNumber = o.optString("enrollmentOrderNumber", ""),
                         enrollmentHistory = parsedEnrollmentHistory,
                         archivedYearlySummaries = parsedArchivedSummaries,
-                        gender = o.optString("gender", "ذكر").ifBlank { "ذكر" },
-                        ageYears = o.optInt("ageYears", o.optInt("age", 8)).let { if (it > 0) it else 8 }
+                        gender = o.optString("gender", "").trim().let { if (it == "غير محدد") "" else it },
+                        ageYears = o.optInt("ageYears", o.optInt("age", 0)).coerceAtLeast(0)
                     )
                 )
             }
@@ -1140,7 +1135,7 @@ class SchoolRepository(context: Context) {
                     })
                 }
                 put("archivedYearlySummaries", archivedJsonArr)
-                put("gender", InputSanitizer.sanitize(s.normalizedGenderLabel))
+                put("gender", if (s.isGenderSpecified) InputSanitizer.sanitize(s.normalizedGenderLabel) else "")
                 put("ageYears", s.effectiveAgeYears)
                 put("age", s.effectiveAgeYears)
             })

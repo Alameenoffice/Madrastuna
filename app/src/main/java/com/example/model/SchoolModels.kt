@@ -265,7 +265,7 @@ enum class AppSection(private val rawArabicTitle: String) {
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     CURRICULUM_BOOKS("المناهج الدراسية"),
     EXAMS_GRADES("الامتحانات والدرجات"),
-    STUDENT_PERSONAL_PROFILE("ملف الطالب الشخصي"),
+    STUDENT_PERSONAL_PROFILE("ملفي الشخصي والبيانات الشاملة"),
     STUDENT_COMPREHENSIVE_ARCHIVE("السجل الأكاديمي والإحصائي الشامل"),
     HONOR_ROLL("لوحة الشرف"),
     TEACHER_EVALUATION("تقييم الكادر التدريسي"),
@@ -548,9 +548,16 @@ data class UserAccount(
     val schoolId: String = "",
     val canModerateActivities: Boolean = false,
     val canManageCanteen: Boolean = false,
-    val gender: String = "ذكر",
-    val ageYears: Int = 12
+    val gender: String = "",
+    val ageYears: Int = 0
 ) {
+    val isGenderSpecified: Boolean
+        get() {
+            val g = gender.trim()
+            return g == "ذكر" || g == "أنثى" || g == "انثى" ||
+                g.equals("MALE", ignoreCase = true) || g.equals("FEMALE", ignoreCase = true)
+        }
+
     val isFemale: Boolean
         get() {
             val g = gender.trim()
@@ -558,21 +565,34 @@ data class UserAccount(
         }
 
     val normalizedGenderLabel: String
-        get() = if (isFemale) "أنثى" else "ذكر"
+        get() = when {
+            !isGenderSpecified -> "غير محدد"
+            isFemale -> "أنثى"
+            else -> "ذكر"
+        }
 
     val genderArabicLabel: String
         get() = normalizedGenderLabel
 
     val effectiveAgeYears: Int
-        get() = when {
-            role == UserRole.TEACHER || role == UserRole.ADMIN || role == UserRole.PARENT ->
-                if (ageYears >= 18) ageYears else 30
-            else ->
-                if (ageYears in 5..22) ageYears else 8
-        }
+        get() = if (ageYears > 0) ageYears else 0
 
     val age: Int
         get() = effectiveAgeYears
+
+    val honorificTeacherTitle: String
+        get() = if (isFemale) "الأستاذة" else "الأستاذ"
+
+    val roleGenderTitle: String
+        get() = when (role) {
+            UserRole.ADMIN -> if (isFemale) "المديرة" else "المدير"
+            UserRole.TEACHER -> if (isFemale) "المعلمة" else "المعلم"
+            UserRole.STUDENT -> if (isFemale) "الطالبة" else "الطالب"
+            UserRole.PARENT -> "ولي الأمر"
+        }
+
+    val welcomeGreeting: String
+        get() = if (isFemale) "مرحباً بكِ" else "مرحباً بك"
     val teacherSubjectsList: List<String>
         get() = specialty.split("،", ",", "|")
             .map { it.trim() }
@@ -1036,10 +1056,17 @@ data class StudentRecord(
     val enrollmentOrderNumber: String = "",
     val enrollmentHistory: List<EnrollmentHistoryEntry> = emptyList(),
     val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList(),
-    val gender: String = "ذكر",
-    val ageYears: Int = 8,
+    val gender: String = "",
+    val ageYears: Int = 0,
     val presentDays: Int = 0
 ) {
+    val isGenderSpecified: Boolean
+        get() {
+            val g = gender.trim()
+            return g == "ذكر" || g == "أنثى" || g == "انثى" ||
+                g.equals("MALE", ignoreCase = true) || g.equals("FEMALE", ignoreCase = true)
+        }
+
     val isFemale: Boolean
         get() {
             val g = gender.trim()
@@ -1047,16 +1074,32 @@ data class StudentRecord(
         }
 
     val normalizedGenderLabel: String
-        get() = if (isFemale) "أنثى" else "ذكر"
+        get() = when {
+            !isGenderSpecified -> "غير محدد"
+            isFemale -> "أنثى"
+            else -> "ذكر"
+        }
 
     val genderArabicLabel: String
         get() = normalizedGenderLabel
 
     val effectiveAgeYears: Int
-        get() = if (ageYears > 0) ageYears else 8
+        get() = if (ageYears > 0) ageYears else 0
 
     val age: Int
         get() = effectiveAgeYears
+
+    val studentTitleLabel: String
+        get() = if (isFemale) "الطالبة" else "الطالب"
+
+    val presentGenderLabel: String
+        get() = if (isFemale) "حاضرة" else "حاضر"
+
+    val excellingGenderLabel: String
+        get() = if (isFemale) "متفوقة" else "متفوق"
+
+    val topRankGenderLabel: String
+        get() = if (isFemale) "المتصدرة الأولى" else "المتصدر الأول"
 
     val realPresentDaysCount: Int
         get() = dailyAttendance.values.count { it.equals("PRESENT", ignoreCase = true) }

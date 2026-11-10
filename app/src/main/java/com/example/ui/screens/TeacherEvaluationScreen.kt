@@ -445,7 +445,7 @@ fun TeacherEvaluationScreen(
                         )
 
                         Text(
-                            text = "تقييم الأستاذ(ة): ${targetTeacher.fullName}",
+                            text = "تقييم ${targetTeacher.honorificTeacherTitle}: ${targetTeacher.fullName}",
                             style = MaterialTheme.typography.titleMedium,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -937,7 +937,7 @@ private fun SeamlessEvaluationConnectedWaveHeader(
                                 color = Color(0xFFFBBF24).copy(alpha = 0.28f)
                             ) {
                                 Text(
-                                    text = "المركز الأول #1 • وسام التميز التربوي ★",
+                                    text = if (topSummary.teacher.isFemale) "المتصدرة الأولى #1 • وسام التميز التربوي ★" else "المتصدر الأول #1 • وسام التميز التربوي ★",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFFFEF08A),
@@ -946,7 +946,7 @@ private fun SeamlessEvaluationConnectedWaveHeader(
                             }
 
                             Text(
-                                text = "الأستاذ(ة): ${topSummary.teacher.fullName}",
+                                text = "${topSummary.teacher.honorificTeacherTitle}: ${topSummary.teacher.fullName}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontSize = 17.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
