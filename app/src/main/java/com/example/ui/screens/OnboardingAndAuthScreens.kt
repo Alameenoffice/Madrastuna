@@ -50,8 +50,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -998,7 +1000,7 @@ fun SchoolSetupScreen(
 }
 
 /**
- * Cloud-Synced School Security & Activation Gate Screen (بوابة التفعيل والأمان السحابية للمدرسة)
+ * School Activation & Access Gate Screen (بوابة رمز المدرسة والترحيب الأكاديمي)
  * Mandatory screen between Splash/Onboarding and UnifiedLoginScreen.
  */
 @Composable
@@ -1023,130 +1025,114 @@ fun SchoolActivationGateScreen(
     }
     var adminPasswordInput by remember { mutableStateOf("") }
     var showAdminPassword by remember { mutableStateOf(false) }
-    var isVerifyingCloud by remember { mutableStateOf(false) }
+    var isVerifying by remember { mutableStateOf(false) }
     var isGateUnlockedAnimating by remember { mutableStateOf(false) }
     var statusFeedbackMessage by remember { mutableStateOf<String?>(null) }
     var isStatusSuccess by remember { mutableStateOf(false) }
 
     val isTypingActive = schoolCodeInput.isNotBlank() || adminPasswordInput.isNotBlank()
 
-    // Smooth physics-based reactive animations for character & gate
-    val infiniteTransition = rememberInfiniteTransition(label = "security_gate_character_infinite")
-    val breathPhase by infiniteTransition.animateFloat(
+    // Smooth physics-based animations for the Modern Flat Vector Academic Character
+    val infiniteTransition = rememberInfiniteTransition(label = "pro_vector_welcome_character")
+    val breathCycle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "char_breath_cycle"
+    )
+    val elbowWaveDeg by infiniteTransition.animateFloat(
+        initialValue = -14f,
+        targetValue = 16f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1050, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "char_elbow_wave_deg"
+    )
+    val wristWaveDeg by infiniteTransition.animateFloat(
+        initialValue = -18f,
+        targetValue = 22f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "char_wrist_wave_deg"
+    )
+    val tasselPendulumDeg by infiniteTransition.animateFloat(
+        initialValue = -11f,
+        targetValue = 13f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1450, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "char_tassel_pendulum_deg"
+    )
+    val particleFloatPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 5200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "guardian_breath_phase"
-    )
-    val nodAngleDeg by infiniteTransition.animateFloat(
-        initialValue = -3.2f,
-        targetValue = 3.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "guardian_nod_angle"
-    )
-    val cloudOrbitDeg by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "cloud_orbit_rotation"
-    )
-    val pulseGlow by infiniteTransition.animateFloat(
-        initialValue = 0.65f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "cloud_ring_pulse"
+        label = "char_particles_phase"
     )
 
-    val typingExcitement by animateFloatAsState(
-        targetValue = when {
-            isGateUnlockedAnimating -> 1.0f
-            isVerifyingCloud -> 0.75f
-            isTypingActive -> 0.45f
-            else -> 0f
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "guardian_typing_excitement"
-    )
-
-    val gateOpenFraction by animateFloatAsState(
+    val unlockBadgeProgress by animateFloatAsState(
         targetValue = if (isGateUnlockedAnimating) 1f else 0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioLowBouncy,
             stiffness = Spring.StiffnessLow
         ),
-        label = "security_gate_open_fraction"
+        label = "char_unlock_badge_progress"
+    )
+
+    val typingBoost by animateFloatAsState(
+        targetValue = when {
+            isGateUnlockedAnimating -> 1f
+            isVerifying -> 0.7f
+            isTypingActive -> 0.35f
+            else -> 0f
+        },
+        animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
+        label = "char_typing_boost"
     )
 
     SoftWaveMeshBackground(isDarkMode = isDarkMode) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = Color.Transparent
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(horizontal = 18.dp, vertical = 12.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top Header Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFF059669).copy(alpha = 0.14f),
-                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Shield,
-                                contentDescription = null,
-                                tint = Color(0xFF047857),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "بوابة التفعيل والأمان السحابية للمدرسة",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF047857),
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
+                // Safe top spacing (24.dp after statusBarsPadding) so the header is never clipped
+                Spacer(modifier = Modifier.height(24.dp))
 
+                // Subtle Theme Toggle aligned to the end while keeping the main title centered
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
                     Surface(
                         onClick = onToggleDarkMode,
                         shape = CircleShape,
                         color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
-                        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFD1FAE5)),
                         shadowElevation = 3.dp,
                         modifier = Modifier
-                            .size(36.dp)
+                            .align(Alignment.CenterEnd)
+                            .size(38.dp)
                             .testTag("gate_theme_toggle")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -1158,359 +1144,781 @@ fun SchoolActivationGateScreen(
                             )
                         }
                     }
-                }
 
-                // Speech Bubble Card Above the Character
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(
-                            elevation = 8.dp,
-                            shape = RoundedCornerShape(22.dp),
-                            ambientColor = Color(0xFF059669).copy(alpha = 0.2f),
-                            spotColor = Color(0xFFD97706).copy(alpha = 0.2f)
-                        ),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDarkMode) Color(0xFF0F291E) else Color(0xFFECFDF5)
-                    ),
-                    border = BorderStroke(
-                        width = 1.5.dp,
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color(0xFF059669), Color(0xFFD97706), Color(0xFF10B981))
-                        )
-                    )
-                ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(horizontal = 44.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.VerifiedUser,
-                                contentDescription = null,
-                                tint = Color(0xFFD97706),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "المرشد الأكاديمي وحارس البوابة السحابية",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFB45309)
-                            )
-                        }
                         Text(
-                            text = "مرحباً بك في بوابة الأمان السحابية.. هل لديك كود تفعيل مدرستك للمتابعة إلى بوابة الدخول؟",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontSize = 13.5.sp,
+                            text = "مرحباً بك في منصتك المدرسية",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isDarkMode) Color.White else Color(0xFF064E3B),
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "أدخل رمز المدرسة للمتابعة",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF047857),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1
                         )
                     }
                 }
 
-                // Multi-Layered Cinematic Canvas Character & Cloud Portal Gate
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Modern Flat Vector Illustration — Pro Academic Character with Smooth Waving Hand & Bezier Curves
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(225.dp),
+                        .height(250.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    val bodyScaleY = 1f + (breathCycle - 0.5f) * 0.024f
+                    val bodyTranslateY = (0.5f - breathCycle) * 7f
+
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
+                            .graphicsLayer {
+                                scaleY = bodyScaleY
+                                translationY = bodyTranslateY
+                            }
                             .testTag("school_security_gate_canvas")
                     ) {
                         val w = size.width
                         val h = size.height
-                        val cx = w / 2f
+                        val cx = w * 0.5f
                         val cy = h * 0.54f
-                        val breathOffset = sin(breathPhase) * 4.5f
+                        val unit = minOf(w, h) / 250f
 
-                        // 1. Deep Royal Emerald & Gold Aura Backdrop
+                        // 1. Soft Emerald & Mint Glow Circular Backdrop
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    Color(0xFF10B981).copy(alpha = 0.26f * pulseGlow + gateOpenFraction * 0.25f),
-                                    Color(0xFFD97706).copy(alpha = 0.14f * pulseGlow),
+                                    Color(0xFF34D399).copy(alpha = if (isDarkMode) 0.28f else 0.34f),
+                                    Color(0xFF10B981).copy(alpha = if (isDarkMode) 0.14f else 0.18f),
+                                    Color(0xFFD97706).copy(alpha = 0.07f * (1f + unlockBadgeProgress)),
                                     Color.Transparent
                                 ),
-                                center = Offset(cx, cy),
-                                radius = minOf(w, h) * 0.56f
+                                center = Offset(cx, cy - 6f * unit),
+                                radius = 118f * unit
                             ),
-                            radius = minOf(w, h) * 0.56f,
-                            center = Offset(cx, cy)
+                            radius = 118f * unit,
+                            center = Offset(cx, cy - 6f * unit)
                         )
 
-                        // 2. Orbiting Cloud Connection Rings & Nodes
-                        val outerRingRadius = minOf(w, h) * 0.44f
-                        val innerRingRadius = minOf(w, h) * 0.35f
+                        // Soft inner mint halo disc
+                        drawCircle(
+                            brush = Brush.linearGradient(
+                                colors = if (isDarkMode) {
+                                    listOf(Color(0xFF064E3B).copy(alpha = 0.65f), Color(0xFF042F24).copy(alpha = 0.40f))
+                                } else {
+                                    listOf(Color(0xFFD1FAE5).copy(alpha = 0.85f), Color(0xFFECFDF5).copy(alpha = 0.55f))
+                                },
+                                start = Offset(cx - 80f * unit, cy - 80f * unit),
+                                end = Offset(cx + 80f * unit, cy + 80f * unit)
+                            ),
+                            radius = 84f * unit,
+                            center = Offset(cx, cy + 4f * unit)
+                        )
+                        drawCircle(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF10B981).copy(alpha = 0.55f),
+                                    Color(0xFFF59E0B).copy(alpha = 0.45f)
+                                )
+                            ),
+                            radius = 84f * unit,
+                            center = Offset(cx, cy + 4f * unit),
+                            style = Stroke(width = 2f * unit)
+                        )
 
-                        rotate(degrees = cloudOrbitDeg, pivot = Offset(cx, cy)) {
-                            drawCircle(
-                                color = Color(0xFF10B981).copy(alpha = 0.35f),
-                                radius = outerRingRadius,
-                                center = Offset(cx, cy),
-                                style = Stroke(width = 2.2f)
-                            )
-                            for (idx in 0 until 6) {
-                                val angleRad = (idx * 60.0) * (PI / 180.0)
-                                val nx = cx + (outerRingRadius * cos(angleRad)).toFloat()
-                                val ny = cy + (outerRingRadius * sin(angleRad)).toFloat()
+                        // 2. Floating Geometric Glowing Particles (Diamonds, Rings, Soft Orbs)
+                        val particleAnchors = listOf(
+                            Triple(-92f, -52f, 7f),
+                            Triple(94f, -46f, 6.5f),
+                            Triple(-84f, 38f, 5.5f),
+                            Triple(92f, 36f, 6f),
+                            Triple(-52f, -88f, 5f),
+                            Triple(58f, -84f, 5.5f)
+                        )
+                        particleAnchors.forEachIndexed { idx, (ox, oy, rad) ->
+                            val driftY = sin(particleFloatPhase + idx * 1.15f) * 6.5f * unit
+                            val driftX = cos(particleFloatPhase * 0.8f + idx * 0.9f) * 4f * unit
+                            val px = cx + ox * unit + driftX
+                            val py = cy + oy * unit + driftY
+                            val pSize = rad * unit * (1f + typingBoost * 0.25f)
+
+                            if (idx % 2 == 0) {
+                                // Glowing 4-point geometric star/diamond via Bezier curves
+                                val starPath = Path().apply {
+                                    moveTo(px, py - pSize * 1.35f)
+                                    cubicTo(
+                                        px + pSize * 0.25f, py - pSize * 0.25f,
+                                        px + pSize * 0.25f, py - pSize * 0.25f,
+                                        px + pSize * 1.35f, py
+                                    )
+                                    cubicTo(
+                                        px + pSize * 0.25f, py + pSize * 0.25f,
+                                        px + pSize * 0.25f, py + pSize * 0.25f,
+                                        px, py + pSize * 1.35f
+                                    )
+                                    cubicTo(
+                                        px - pSize * 0.25f, py + pSize * 0.25f,
+                                        px - pSize * 0.25f, py + pSize * 0.25f,
+                                        px - pSize * 1.35f, py
+                                    )
+                                    cubicTo(
+                                        px - pSize * 0.25f, py - pSize * 0.25f,
+                                        px - pSize * 0.25f, py - pSize * 0.25f,
+                                        px, py - pSize * 1.35f
+                                    )
+                                    close()
+                                }
+                                drawPath(
+                                    path = starPath,
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(Color(0xFFFBBF24), Color(0xFFF59E0B).copy(alpha = 0.2f)),
+                                        center = Offset(px, py),
+                                        radius = pSize * 1.5f
+                                    )
+                                )
+                            } else {
                                 drawCircle(
-                                    color = if (idx % 2 == 0) Color(0xFFF59E0B) else Color(0xFF34D399),
-                                    radius = 5.5f + typingExcitement * 2.5f,
-                                    center = Offset(nx, ny)
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            Color(0xFF34D399).copy(alpha = 0.85f),
+                                            Color(0xFF10B981).copy(alpha = 0.1f)
+                                        ),
+                                        center = Offset(px, py),
+                                        radius = pSize * 1.4f
+                                    ),
+                                    radius = pSize,
+                                    center = Offset(px, py)
                                 )
                             }
                         }
 
-                        rotate(degrees = -cloudOrbitDeg * 1.3f, pivot = Offset(cx, cy)) {
-                            drawCircle(
-                                color = Color(0xFFD97706).copy(alpha = 0.32f),
-                                radius = innerRingRadius,
-                                center = Offset(cx, cy),
-                                style = Stroke(width = 1.8f)
+                        // 3. Sculpted Left Arm (resting gracefully on hip/side in smooth Bezier curves)
+                        val torsoTopY = cy + 6f * unit
+                        val torsoBottomY = cy + 88f * unit
+                        val leftArmPath = Path().apply {
+                            moveTo(cx - 42f * unit, torsoTopY + 8f * unit)
+                            cubicTo(
+                                cx - 68f * unit, torsoTopY + 24f * unit,
+                                cx - 72f * unit, torsoTopY + 56f * unit,
+                                cx - 50f * unit, torsoBottomY - 4f * unit
                             )
-                        }
-
-                        // 3. Twin Security Portal Pillars & Sliding Gate Doors (Open on Unlock)
-                        val gateWidth = minOf(w * 0.56f, 240f)
-                        val gateHeight = h * 0.76f
-                        val gateTop = cy - gateHeight * 0.48f
-                        val slideOffset = gateOpenFraction * (gateWidth * 0.42f)
-
-                        // Left & Right Portal Wings
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF064E3B).copy(alpha = 0.85f),
-                                    Color(0xFF047857).copy(alpha = 0.92f)
-                                )
-                            ),
-                            topLeft = Offset(cx - gateWidth / 2f - slideOffset, gateTop),
-                            size = Size(gateWidth * 0.48f, gateHeight),
-                            cornerRadius = CornerRadius(22f, 22f)
-                        )
-                        drawRoundRect(
-                            color = Color(0xFFD97706).copy(alpha = 0.7f),
-                            topLeft = Offset(cx - gateWidth / 2f - slideOffset, gateTop),
-                            size = Size(gateWidth * 0.48f, gateHeight),
-                            cornerRadius = CornerRadius(22f, 22f),
-                            style = Stroke(width = 2.5f)
-                        )
-
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF064E3B).copy(alpha = 0.85f),
-                                    Color(0xFF047857).copy(alpha = 0.92f)
-                                )
-                            ),
-                            topLeft = Offset(cx + gateWidth * 0.02f + slideOffset, gateTop),
-                            size = Size(gateWidth * 0.48f, gateHeight),
-                            cornerRadius = CornerRadius(22f, 22f)
-                        )
-                        drawRoundRect(
-                            color = Color(0xFFD97706).copy(alpha = 0.7f),
-                            topLeft = Offset(cx + gateWidth * 0.02f + slideOffset, gateTop),
-                            size = Size(gateWidth * 0.48f, gateHeight),
-                            cornerRadius = CornerRadius(22f, 22f),
-                            style = Stroke(width = 2.5f)
-                        )
-
-                        // Radiant Golden-Emerald Light Beam when Gate Opens
-                        if (gateOpenFraction > 0.01f) {
-                            drawRoundRect(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color(0xFFFDE68A).copy(alpha = 0.75f * gateOpenFraction),
-                                        Color(0xFF34D399).copy(alpha = 0.55f * gateOpenFraction),
-                                        Color.Transparent
-                                    )
-                                ),
-                                topLeft = Offset(cx - slideOffset, gateTop + 6f),
-                                size = Size(slideOffset * 2f, gateHeight - 12f),
-                                cornerRadius = CornerRadius(18f, 18f)
+                            cubicTo(
+                                cx - 42f * unit, torsoBottomY - 2f * unit,
+                                cx - 36f * unit, torsoTopY + 52f * unit,
+                                cx - 34f * unit, torsoTopY + 24f * unit
                             )
-                        }
-
-                        // 4. Academic Guardian / Digital Guide Character in Royal Emerald & Gold
-                        val charCenterY = cy + 16f + breathOffset
-                        val bodyWidth = 86f
-                        val bodyHeight = 74f
-
-                        // Ceremonial Academic Robe / Blazer
-                        val robePath = Path().apply {
-                            moveTo(cx - bodyWidth * 0.52f, charCenterY + bodyHeight * 0.65f)
-                            lineTo(cx - bodyWidth * 0.38f, charCenterY - bodyHeight * 0.15f)
-                            quadraticBezierTo(
-                                cx,
-                                charCenterY - bodyHeight * 0.28f,
-                                cx + bodyWidth * 0.38f,
-                                charCenterY - bodyHeight * 0.15f
-                            )
-                            lineTo(cx + bodyWidth * 0.52f, charCenterY + bodyHeight * 0.65f)
                             close()
                         }
                         drawPath(
-                            path = robePath,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(Color(0xFF059669), Color(0xFF064E3B))
+                            path = leftArmPath,
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color(0xFF047857), Color(0xFF064E3B)),
+                                start = Offset(cx - 70f * unit, torsoTopY),
+                                end = Offset(cx - 34f * unit, torsoBottomY)
                             )
                         )
-                        drawPath(
-                            path = robePath,
-                            color = Color(0xFFF59E0B),
-                            style = Stroke(width = 3f)
-                        )
 
-                        // Golden Academic Lapels / Collar
-                        val collarPath = Path().apply {
-                            moveTo(cx - 18f, charCenterY - 8f)
-                            lineTo(cx, charCenterY + 22f)
-                            lineTo(cx + 18f, charCenterY - 8f)
+                        // 4. Anatomically Proportioned Academic Blazer & Shoulders (Smooth Cubic Bezier)
+                        val blazerPath = Path().apply {
+                            moveTo(cx - 56f * unit, torsoBottomY)
+                            cubicTo(
+                                cx - 58f * unit, torsoTopY + 42f * unit,
+                                cx - 54f * unit, torsoTopY + 12f * unit,
+                                cx - 38f * unit, torsoTopY + 4f * unit
+                            )
+                            cubicTo(
+                                cx - 22f * unit, torsoTopY - 2f * unit,
+                                cx + 22f * unit, torsoTopY - 2f * unit,
+                                cx + 38f * unit, torsoTopY + 4f * unit
+                            )
+                            cubicTo(
+                                cx + 54f * unit, torsoTopY + 12f * unit,
+                                cx + 58f * unit, torsoTopY + 42f * unit,
+                                cx + 56f * unit, torsoBottomY
+                            )
+                            cubicTo(
+                                cx + 22f * unit, torsoBottomY + 10f * unit,
+                                cx - 22f * unit, torsoBottomY + 10f * unit,
+                                cx - 56f * unit, torsoBottomY
+                            )
+                            close()
                         }
                         drawPath(
-                            path = collarPath,
-                            color = Color(0xFFFBBF24),
-                            style = Stroke(width = 4f, cap = StrokeCap.Round)
-                        )
-
-                        // Glowing Security Shield Emblem on Chest
-                        drawCircle(
-                            color = if (isGateUnlockedAnimating) Color(0xFFFBBF24) else Color(0xFF10B981),
-                            radius = 11f + typingExcitement * 2f,
-                            center = Offset(cx, charCenterY + 28f)
-                        )
-                        drawCircle(
-                            color = Color.White,
-                            radius = 5f,
-                            center = Offset(cx, charCenterY + 28f)
-                        )
-
-                        // Welcoming Right Arm Raising Golden Key/Shield Emblem
-                        val armRaiseOffset = typingExcitement * 16f + sin(breathPhase) * 3f
-                        val handCenter = Offset(cx + bodyWidth * 0.58f, charCenterY + 2f - armRaiseOffset)
-                        drawLine(
-                            color = Color(0xFF047857),
-                            start = Offset(cx + bodyWidth * 0.35f, charCenterY + 6f),
-                            end = handCenter,
-                            strokeWidth = 12f,
-                            cap = StrokeCap.Round
-                        )
-                        drawCircle(
-                            color = Color(0xFFFDE68A),
-                            radius = 12f + typingExcitement * 3f,
-                            center = handCenter
-                        )
-                        drawCircle(
-                            color = Color(0xFFD97706),
-                            radius = 12f + typingExcitement * 3f,
-                            center = handCenter,
-                            style = Stroke(width = 2.5f)
-                        )
-
-                        // Character Head (with gentle welcoming nod)
-                        val headCenterY = charCenterY - 34f
-                        rotate(degrees = nodAngleDeg * (1f + typingExcitement * 0.6f), pivot = Offset(cx, headCenterY)) {
-                            // Head Circle
-                            drawCircle(
-                                color = Color(0xFFFDE68A),
-                                radius = 26f,
-                                center = Offset(cx, headCenterY)
+                            path = blazerPath,
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF059669),
+                                    Color(0xFF047857),
+                                    Color(0xFF064E3B)
+                                ),
+                                start = Offset(cx - 40f * unit, torsoTopY),
+                                end = Offset(cx + 40f * unit, torsoBottomY)
                             )
-                            drawCircle(
-                                color = Color(0xFFD97706),
-                                radius = 26f,
-                                center = Offset(cx, headCenterY),
-                                style = Stroke(width = 2.2f)
-                            )
+                        )
 
-                            // Expressive Eyes (tracking input typing)
-                            val eyeLookY = if (isTypingActive) 2.5f else 0f
-                            drawCircle(
-                                color = Color(0xFF064E3B),
-                                radius = 3.6f,
-                                center = Offset(cx - 9f, headCenterY - 2f + eyeLookY)
+                        // Crisp White Dress Shirt V-Insert & Emerald-Gold Tie
+                        val shirtPath = Path().apply {
+                            moveTo(cx - 18f * unit, torsoTopY + 2f * unit)
+                            cubicTo(
+                                cx - 12f * unit, torsoTopY + 24f * unit,
+                                cx - 5f * unit, torsoTopY + 40f * unit,
+                                cx, torsoTopY + 48f * unit
                             )
-                            drawCircle(
-                                color = Color(0xFF064E3B),
-                                radius = 3.6f,
-                                center = Offset(cx + 9f, headCenterY - 2f + eyeLookY)
+                            cubicTo(
+                                cx + 5f * unit, torsoTopY + 40f * unit,
+                                cx + 12f * unit, torsoTopY + 24f * unit,
+                                cx + 18f * unit, torsoTopY + 2f * unit
                             )
+                            close()
+                        }
+                        drawPath(
+                            path = shirtPath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color(0xFFFFFFFF), Color(0xFFE2E8F0)),
+                                startY = torsoTopY,
+                                endY = torsoTopY + 48f * unit
+                            )
+                        )
 
-                            // Warm Welcoming Smile
-                            val smilePath = Path().apply {
-                                moveTo(cx - 9f, headCenterY + 8f)
-                                quadraticBezierTo(
-                                    cx,
-                                    headCenterY + 15f + typingExcitement * 3f,
-                                    cx + 9f,
-                                    headCenterY + 8f
+                        // Academic Gold-Trimmed Tie
+                        val tiePath = Path().apply {
+                            moveTo(cx - 4.5f * unit, torsoTopY + 8f * unit)
+                            lineTo(cx + 4.5f * unit, torsoTopY + 8f * unit)
+                            lineTo(cx + 6.5f * unit, torsoTopY + 34f * unit)
+                            lineTo(cx, torsoTopY + 44f * unit)
+                            lineTo(cx - 6.5f * unit, torsoTopY + 34f * unit)
+                            close()
+                        }
+                        drawPath(
+                            path = tiePath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color(0xFFF59E0B), Color(0xFFB45309))
+                            )
+                        )
+
+                        // Royal Academic Stole / Sash (وشاح أكاديمي زمردي وذهبي)
+                        val leftSashPath = Path().apply {
+                            moveTo(cx - 24f * unit, torsoTopY + 2f * unit)
+                            cubicTo(
+                                cx - 30f * unit, torsoTopY + 30f * unit,
+                                cx - 28f * unit, torsoTopY + 58f * unit,
+                                cx - 22f * unit, torsoBottomY + 4f * unit
+                            )
+                            lineTo(cx - 11f * unit, torsoBottomY + 5f * unit)
+                            cubicTo(
+                                cx - 15f * unit, torsoTopY + 54f * unit,
+                                cx - 16f * unit, torsoTopY + 26f * unit,
+                                cx - 14f * unit, torsoTopY + 3f * unit
+                            )
+                            close()
+                        }
+                        val rightSashPath = Path().apply {
+                            moveTo(cx + 24f * unit, torsoTopY + 2f * unit)
+                            cubicTo(
+                                cx + 30f * unit, torsoTopY + 30f * unit,
+                                cx + 28f * unit, torsoTopY + 58f * unit,
+                                cx + 22f * unit, torsoBottomY + 4f * unit
+                            )
+                            lineTo(cx + 11f * unit, torsoBottomY + 5f * unit)
+                            cubicTo(
+                                cx + 15f * unit, torsoTopY + 54f * unit,
+                                cx + 16f * unit, torsoTopY + 26f * unit,
+                                cx + 14f * unit, torsoTopY + 3f * unit
+                            )
+                            close()
+                        }
+                        val sashBrush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFFFBBF24), Color(0xFFD97706), Color(0xFF10B981))
+                        )
+                        drawPath(path = leftSashPath, brush = sashBrush)
+                        drawPath(path = rightSashPath, brush = sashBrush)
+
+                        // Sculpted Blazer Collar Lapels
+                        val lapelsPath = Path().apply {
+                            moveTo(cx - 18f * unit, torsoTopY + 2f * unit)
+                            lineTo(cx - 28f * unit, torsoTopY + 18f * unit)
+                            lineTo(cx - 14f * unit, torsoTopY + 26f * unit)
+                            lineTo(cx, torsoTopY + 48f * unit)
+                            lineTo(cx + 14f * unit, torsoTopY + 26f * unit)
+                            lineTo(cx + 28f * unit, torsoTopY + 18f * unit)
+                            lineTo(cx + 18f * unit, torsoTopY + 2f * unit)
+                        }
+                        drawPath(
+                            path = lapelsPath,
+                            color = Color(0xFF064E3B),
+                            style = Stroke(width = 2.6f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                        )
+
+                        // 5. Smooth Waving Right Arm & Sculpted Hand (Rotating naturally from Elbow & Wrist joints)
+                        val shoulderPivot = Offset(cx + 40f * unit, torsoTopY + 12f * unit)
+                        val elbowPivot = Offset(cx + 68f * unit, torsoTopY + 18f * unit)
+
+                        // Upper Arm bridging shoulder to elbow
+                        val upperArmPath = Path().apply {
+                            moveTo(shoulderPivot.x - 8f * unit, shoulderPivot.y - 6f * unit)
+                            cubicTo(
+                                shoulderPivot.x + 12f * unit, shoulderPivot.y - 8f * unit,
+                                elbowPivot.x - 4f * unit, elbowPivot.y - 8f * unit,
+                                elbowPivot.x + 6f * unit, elbowPivot.y - 2f * unit
+                            )
+                            cubicTo(
+                                elbowPivot.x + 8f * unit, elbowPivot.y + 10f * unit,
+                                shoulderPivot.x + 12f * unit, shoulderPivot.y + 14f * unit,
+                                shoulderPivot.x - 6f * unit, shoulderPivot.y + 12f * unit
+                            )
+                            close()
+                        }
+                        drawPath(
+                            path = upperArmPath,
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color(0xFF059669), Color(0xFF047857)),
+                                start = shoulderPivot,
+                                end = elbowPivot
+                            )
+                        )
+
+                        // Forearm + Waving Hand rotating smoothly around the Elbow Joint
+                        val activeElbowWave = elbowWaveDeg * (1f + typingBoost * 0.35f) - unlockBadgeProgress * 18f
+                        rotate(degrees = activeElbowWave, pivot = elbowPivot) {
+                            val wristPivot = Offset(elbowPivot.x + 16f * unit, elbowPivot.y - 42f * unit)
+
+                            // Curved Forearm Sleeve
+                            val forearmPath = Path().apply {
+                                moveTo(elbowPivot.x - 9f * unit, elbowPivot.y + 4f * unit)
+                                cubicTo(
+                                    elbowPivot.x - 6f * unit, elbowPivot.y - 18f * unit,
+                                    wristPivot.x - 11f * unit, wristPivot.y + 8f * unit,
+                                    wristPivot.x - 8f * unit, wristPivot.y
                                 )
-                            }
-                            drawPath(
-                                path = smilePath,
-                                color = Color(0xFF064E3B),
-                                style = Stroke(width = 2.8f, cap = StrokeCap.Round)
-                            )
-
-                            // Royal Academic Graduation Cap (Mortarboard) + Gold Tassel
-                            val capTopY = headCenterY - 26f
-                            val capDiamond = Path().apply {
-                                moveTo(cx, capTopY - 12f)
-                                lineTo(cx + 36f, capTopY)
-                                lineTo(cx, capTopY + 10f)
-                                lineTo(cx - 36f, capTopY)
+                                lineTo(wristPivot.x + 8f * unit, wristPivot.y + 3f * unit)
+                                cubicTo(
+                                    wristPivot.x + 10f * unit, wristPivot.y + 18f * unit,
+                                    elbowPivot.x + 11f * unit, elbowPivot.y - 12f * unit,
+                                    elbowPivot.x + 8f * unit, elbowPivot.y + 6f * unit
+                                )
                                 close()
                             }
                             drawPath(
-                                path = capDiamond,
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(Color(0xFF064E3B), Color(0xFF059669), Color(0xFF064E3B))
+                                path = forearmPath,
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFF059669), Color(0xFF065F46)),
+                                    start = elbowPivot,
+                                    end = wristPivot
                                 )
                             )
-                            drawPath(
-                                path = capDiamond,
-                                color = Color(0xFFFBBF24),
-                                style = Stroke(width = 2.2f)
-                            )
-                            // Gold Tassel
+                            // Gold cuff trim at wrist
                             drawLine(
-                                color = Color(0xFFF59E0B),
-                                start = Offset(cx + 24f, capTopY + 2f),
-                                end = Offset(cx + 30f, capTopY + 18f),
-                                strokeWidth = 3f,
+                                color = Color(0xFFFBBF24),
+                                start = Offset(wristPivot.x - 8f * unit, wristPivot.y + 2f * unit),
+                                end = Offset(wristPivot.x + 8f * unit, wristPivot.y + 5f * unit),
+                                strokeWidth = 3f * unit,
                                 cap = StrokeCap.Round
                             )
-                            drawCircle(
-                                color = Color(0xFFFBBF24),
-                                radius = 4f,
-                                center = Offset(cx + 30f, capTopY + 19f)
+
+                            // Sculpted Vector Hand rotating at the Wrist Joint
+                            rotate(degrees = wristWaveDeg, pivot = wristPivot) {
+                                val handPalmPath = Path().apply {
+                                    moveTo(wristPivot.x - 7f * unit, wristPivot.y)
+                                    // Thumb curve
+                                    cubicTo(
+                                        wristPivot.x - 16f * unit, wristPivot.y - 6f * unit,
+                                        wristPivot.x - 18f * unit, wristPivot.y - 16f * unit,
+                                        wristPivot.x - 10f * unit, wristPivot.y - 18f * unit
+                                    )
+                                    cubicTo(
+                                        wristPivot.x - 7f * unit, wristPivot.y - 17f * unit,
+                                        wristPivot.x - 6f * unit, wristPivot.y - 12f * unit,
+                                        wristPivot.x - 5f * unit, wristPivot.y - 14f * unit
+                                    )
+                                    // Sculpted fingers arch
+                                    cubicTo(
+                                        wristPivot.x - 6f * unit, wristPivot.y - 28f * unit,
+                                        wristPivot.x + 8f * unit, wristPivot.y - 30f * unit,
+                                        wristPivot.x + 11f * unit, wristPivot.y - 16f * unit
+                                    )
+                                    cubicTo(
+                                        wristPivot.x + 13f * unit, wristPivot.y - 8f * unit,
+                                        wristPivot.x + 10f * unit, wristPivot.y - 2f * unit,
+                                        wristPivot.x + 6f * unit, wristPivot.y + 2f * unit
+                                    )
+                                    close()
+                                }
+                                drawPath(
+                                    path = handPalmPath,
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B).copy(alpha = 0.55f)),
+                                        start = Offset(wristPivot.x - 12f * unit, wristPivot.y - 28f * unit),
+                                        end = Offset(wristPivot.x + 10f * unit, wristPivot.y + 4f * unit)
+                                    )
+                                )
+
+                                // Subtle waving motion arc lines beside the hand
+                                val waveArcRadius = 22f * unit
+                                drawArc(
+                                    color = Color(0xFF10B981).copy(alpha = 0.55f),
+                                    startAngle = -55f,
+                                    sweepAngle = 65f,
+                                    useCenter = false,
+                                    topLeft = Offset(wristPivot.x - waveArcRadius + 4f * unit, wristPivot.y - 34f * unit),
+                                    size = Size(waveArcRadius * 2f, waveArcRadius * 2f),
+                                    style = Stroke(width = 2.2f * unit, cap = StrokeCap.Round)
+                                )
+
+                                // Glowing Golden Confirmation Badge raised when school code is verified
+                                if (unlockBadgeProgress > 0.02f) {
+                                    val badgeCenter = Offset(
+                                        wristPivot.x + 2f * unit,
+                                        wristPivot.y - (36f + unlockBadgeProgress * 12f) * unit
+                                    )
+                                    val badgeRadius = 18f * unit * unlockBadgeProgress
+                                    drawCircle(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(
+                                                Color(0xFFFDE68A),
+                                                Color(0xFFF59E0B),
+                                                Color.Transparent
+                                            ),
+                                            center = badgeCenter,
+                                            radius = badgeRadius * 1.9f
+                                        ),
+                                        radius = badgeRadius * 1.9f,
+                                        center = badgeCenter
+                                    )
+                                    drawCircle(
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(Color(0xFFFBBF24), Color(0xFFD97706))
+                                        ),
+                                        radius = badgeRadius,
+                                        center = badgeCenter
+                                    )
+                                    val checkPath = Path().apply {
+                                        moveTo(badgeCenter.x - badgeRadius * 0.42f, badgeCenter.y + badgeRadius * 0.02f)
+                                        lineTo(badgeCenter.x - badgeRadius * 0.10f, badgeCenter.y + badgeRadius * 0.34f)
+                                        lineTo(badgeCenter.x + badgeRadius * 0.46f, badgeCenter.y - badgeRadius * 0.30f)
+                                    }
+                                    drawPath(
+                                        path = checkPath,
+                                        color = Color.White,
+                                        style = Stroke(width = 3f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 6. Neck & Sculpted Flat-Vector Face (With Warm Shading & Modern Vector Features)
+                        val neckTopY = cy - 12f * unit
+                        val neckPath = Path().apply {
+                            moveTo(cx - 11f * unit, neckTopY)
+                            lineTo(cx - 13f * unit, torsoTopY + 8f * unit)
+                            cubicTo(
+                                cx - 5f * unit, torsoTopY + 15f * unit,
+                                cx + 5f * unit, torsoTopY + 15f * unit,
+                                cx + 13f * unit, torsoTopY + 8f * unit
+                            )
+                            lineTo(cx + 11f * unit, neckTopY)
+                            close()
+                        }
+                        drawPath(
+                            path = neckPath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color(0xFFF5CBA7), Color(0xFFE59866)),
+                                startY = neckTopY,
+                                endY = torsoTopY + 14f * unit
+                            )
+                        )
+
+                        val headCenterY = cy - 42f * unit
+                        // Soft Ears
+                        drawOval(
+                            color = Color(0xFFF5CBA7),
+                            topLeft = Offset(cx - 33f * unit, headCenterY - 6f * unit),
+                            size = Size(10f * unit, 16f * unit)
+                        )
+                        drawOval(
+                            color = Color(0xFFF5CBA7),
+                            topLeft = Offset(cx + 23f * unit, headCenterY - 6f * unit),
+                            size = Size(10f * unit, 16f * unit)
+                        )
+
+                        // Sculpted Jawline & Head Contour via Cubic Bezier Curves
+                        val facePath = Path().apply {
+                            moveTo(cx, headCenterY - 30f * unit)
+                            cubicTo(
+                                cx + 24f * unit, headCenterY - 30f * unit,
+                                cx + 29f * unit, headCenterY - 12f * unit,
+                                cx + 26f * unit, headCenterY + 6f * unit
+                            )
+                            cubicTo(
+                                cx + 23f * unit, headCenterY + 22f * unit,
+                                cx + 11f * unit, headCenterY + 31f * unit,
+                                cx, headCenterY + 31f * unit
+                            )
+                            cubicTo(
+                                cx - 11f * unit, headCenterY + 31f * unit,
+                                cx - 23f * unit, headCenterY + 22f * unit,
+                                cx - 26f * unit, headCenterY + 6f * unit
+                            )
+                            cubicTo(
+                                cx - 29f * unit, headCenterY - 12f * unit,
+                                cx - 24f * unit, headCenterY - 30f * unit,
+                                cx, headCenterY - 30f * unit
+                            )
+                            close()
+                        }
+                        drawPath(
+                            path = facePath,
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFFFFF3E0),
+                                    Color(0xFFFAD7A0),
+                                    Color(0xFFF5CBA7)
+                                ),
+                                start = Offset(cx - 20f * unit, headCenterY - 28f * unit),
+                                end = Offset(cx + 22f * unit, headCenterY + 30f * unit)
+                            )
+                        )
+
+                        // Modern Styled Hair Under Graduation Cap
+                        val hairPath = Path().apply {
+                            moveTo(cx - 26f * unit, headCenterY - 6f * unit)
+                            cubicTo(
+                                cx - 28f * unit, headCenterY - 24f * unit,
+                                cx - 14f * unit, headCenterY - 32f * unit,
+                                cx, headCenterY - 30f * unit
+                            )
+                            cubicTo(
+                                cx + 14f * unit, headCenterY - 32f * unit,
+                                cx + 28f * unit, headCenterY - 24f * unit,
+                                cx + 26f * unit, headCenterY - 6f * unit
+                            )
+                            cubicTo(
+                                cx + 22f * unit, headCenterY - 18f * unit,
+                                cx + 8f * unit, headCenterY - 16f * unit,
+                                cx - 4f * unit, headCenterY - 19f * unit
+                            )
+                            cubicTo(
+                                cx - 14f * unit, headCenterY - 21f * unit,
+                                cx - 22f * unit, headCenterY - 16f * unit,
+                                cx - 26f * unit, headCenterY - 6f * unit
+                            )
+                            close()
+                        }
+                        drawPath(
+                            path = hairPath,
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color(0xFF1E293B), Color(0xFF0F172A)),
+                                start = Offset(cx - 26f * unit, headCenterY - 30f * unit),
+                                end = Offset(cx + 26f * unit, headCenterY)
+                            )
+                        )
+
+                        // Soft Vector Eyebrows & Curved Friendly Eyelids (No primitive black dots)
+                        val leftBrowPath = Path().apply {
+                            moveTo(cx - 17f * unit, headCenterY - 7f * unit)
+                            quadraticBezierTo(
+                                cx - 11f * unit, headCenterY - 11f * unit,
+                                cx - 5f * unit, headCenterY - 8f * unit
+                            )
+                        }
+                        val rightBrowPath = Path().apply {
+                            moveTo(cx + 5f * unit, headCenterY - 8f * unit)
+                            quadraticBezierTo(
+                                cx + 11f * unit, headCenterY - 11f * unit,
+                                cx + 17f * unit, headCenterY - 7f * unit
+                            )
+                        }
+                        drawPath(
+                            path = leftBrowPath,
+                            color = Color(0xFF334155),
+                            style = Stroke(width = 2.2f * unit, cap = StrokeCap.Round)
+                        )
+                        drawPath(
+                            path = rightBrowPath,
+                            color = Color(0xFF334155),
+                            style = Stroke(width = 2.2f * unit, cap = StrokeCap.Round)
+                        )
+
+                        // Warm Curved Vector Eyes (Almond/Smiling Arcs with Emerald Iris Shading)
+                        val leftEyeArch = Path().apply {
+                            moveTo(cx - 16f * unit, headCenterY - 1f * unit)
+                            quadraticBezierTo(
+                                cx - 11f * unit, headCenterY - 5.5f * unit,
+                                cx - 6f * unit, headCenterY - 1f * unit
+                            )
+                        }
+                        val rightEyeArch = Path().apply {
+                            moveTo(cx + 6f * unit, headCenterY - 1f * unit)
+                            quadraticBezierTo(
+                                cx + 11f * unit, headCenterY - 5.5f * unit,
+                                cx + 16f * unit, headCenterY - 1f * unit
+                            )
+                        }
+                        drawPath(
+                            path = leftEyeArch,
+                            color = Color(0xFF064E3B),
+                            style = Stroke(width = 2.4f * unit, cap = StrokeCap.Round)
+                        )
+                        drawPath(
+                            path = rightEyeArch,
+                            color = Color(0xFF064E3B),
+                            style = Stroke(width = 2.4f * unit, cap = StrokeCap.Round)
+                        )
+
+                        // Subtle Sculpted Nose Bridge
+                        val nosePath = Path().apply {
+                            moveTo(cx, headCenterY - 2f * unit)
+                            cubicTo(
+                                cx - 2.5f * unit, headCenterY + 5f * unit,
+                                cx - 2f * unit, headCenterY + 8f * unit,
+                                cx + 1.5f * unit, headCenterY + 8.5f * unit
+                            )
+                        }
+                        drawPath(
+                            path = nosePath,
+                            color = Color(0xFFD98880).copy(alpha = 0.75f),
+                            style = Stroke(width = 1.8f * unit, cap = StrokeCap.Round)
+                        )
+
+                        // Confident Warm Vector Smile
+                        val smilePath = Path().apply {
+                            moveTo(cx - 9.5f * unit, headCenterY + 14f * unit)
+                            cubicTo(
+                                cx - 4f * unit, headCenterY + 21f * unit,
+                                cx + 4f * unit, headCenterY + 21f * unit,
+                                cx + 9.5f * unit, headCenterY + 14f * unit
+                            )
+                        }
+                        drawPath(
+                            path = smilePath,
+                            color = Color(0xFF065F46),
+                            style = Stroke(width = 2.5f * unit, cap = StrokeCap.Round)
+                        )
+
+                        // 7. 3D Perspective Graduation Cap (Mortarboard) + Swinging Pendulum Gold Tassel
+                        val capCrownY = headCenterY - 24f * unit
+                        // Cap Skull Band
+                        val capBandPath = Path().apply {
+                            moveTo(cx - 24f * unit, capCrownY + 4f * unit)
+                            cubicTo(
+                                cx - 22f * unit, capCrownY - 8f * unit,
+                                cx + 22f * unit, capCrownY - 8f * unit,
+                                cx + 24f * unit, capCrownY + 4f * unit
+                            )
+                            cubicTo(
+                                cx + 12f * unit, capCrownY + 1f * unit,
+                                cx - 12f * unit, capCrownY + 1f * unit,
+                                cx - 24f * unit, capCrownY + 4f * unit
+                            )
+                            close()
+                        }
+                        drawPath(
+                            path = capBandPath,
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF042F24))
+                            )
+                        )
+
+                        // 3D Perspective Mortarboard Top Rhombus
+                        val capTopCenterY = capCrownY - 8f * unit
+                        val capBoardPath = Path().apply {
+                            moveTo(cx, capTopCenterY - 15f * unit)
+                            lineTo(cx + 46f * unit, capTopCenterY - 1f * unit)
+                            lineTo(cx, capTopCenterY + 12f * unit)
+                            lineTo(cx - 46f * unit, capTopCenterY - 1f * unit)
+                            close()
+                        }
+                        drawPath(
+                            path = capBoardPath,
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF065F46),
+                                    Color(0xFF047857),
+                                    Color(0xFF064E3B)
+                                ),
+                                start = Offset(cx - 46f * unit, capTopCenterY - 15f * unit),
+                                end = Offset(cx + 46f * unit, capTopCenterY + 12f * unit)
+                            )
+                        )
+                        drawPath(
+                            path = capBoardPath,
+                            color = Color(0xFFFBBF24),
+                            style = Stroke(width = 2f * unit, join = StrokeJoin.Round)
+                        )
+
+                        // Gold Button on Center of Mortarboard + Pendulum Swinging Tassel
+                        val buttonCenter = Offset(cx, capTopCenterY - 1.5f * unit)
+                        val tasselAnchor = Offset(cx - 32f * unit, capTopCenterY + 2f * unit)
+                        drawLine(
+                            color = Color(0xFFFBBF24),
+                            start = buttonCenter,
+                            end = tasselAnchor,
+                            strokeWidth = 2.2f * unit,
+                            cap = StrokeCap.Round
+                        )
+                        drawCircle(
+                            color = Color(0xFFF59E0B),
+                            radius = 3.5f * unit,
+                            center = buttonCenter
+                        )
+
+                        rotate(degrees = tasselPendulumDeg, pivot = tasselAnchor) {
+                            val tasselDropPath = Path().apply {
+                                moveTo(tasselAnchor.x, tasselAnchor.y)
+                                quadraticBezierTo(
+                                    tasselAnchor.x - 3f * unit,
+                                    tasselAnchor.y + 12f * unit,
+                                    tasselAnchor.x - 1f * unit,
+                                    tasselAnchor.y + 24f * unit
+                                )
+                            }
+                            drawPath(
+                                path = tasselDropPath,
+                                color = Color(0xFFF59E0B),
+                                style = Stroke(width = 2.6f * unit, cap = StrokeCap.Round)
+                            )
+                            val plumePath = Path().apply {
+                                moveTo(tasselAnchor.x - 1f * unit, tasselAnchor.y + 22f * unit)
+                                lineTo(tasselAnchor.x - 5.5f * unit, tasselAnchor.y + 32f * unit)
+                                lineTo(tasselAnchor.x + 3.5f * unit, tasselAnchor.y + 32f * unit)
+                                close()
+                            }
+                            drawPath(
+                                path = plumePath,
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(Color(0xFFFBBF24), Color(0xFFD97706))
+                                )
                             )
                         }
                     }
                 }
 
-                // Cloud Security & Activation Gate Form Card
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Clean, Minimal Luxury Activation Card (Zero Clutter)
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(
-                            elevation = 14.dp,
-                            shape = RoundedCornerShape(26.dp),
-                            ambientColor = Color(0xFF059669).copy(alpha = 0.22f),
-                            spotColor = Color(0xFF064E3B).copy(alpha = 0.25f)
+                            elevation = 12.dp,
+                            shape = RoundedCornerShape(24.dp),
+                            ambientColor = Color(0xFF059669).copy(alpha = 0.18f),
+                            spotColor = Color(0xFF064E3B).copy(alpha = 0.22f)
                         ),
-                    shape = RoundedCornerShape(26.dp),
+                    shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
                     ),
@@ -1519,66 +1927,17 @@ fun SchoolActivationGateScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // Mode Header Badge
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = if (isAdminActivationMode) Color(0xFFFEF3C7) else Color(0xFFD1FAE5),
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = if (isAdminActivationMode) Icons.Filled.AdminPanelSettings else Icons.Filled.VerifiedUser,
-                                        contentDescription = null,
-                                        tint = if (isAdminActivationMode) Color(0xFFD97706) else Color(0xFF059669),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (isAdminActivationMode) {
-                                        "التفعيل الرسمي الأولي للمدرسة (خاص بمدير المدرسة)"
-                                    } else {
-                                        "أدخل كود المدرسة للمتابعة"
-                                    },
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = if (isAdminActivationMode) {
-                                        "أدخل كود تفعيل المدرسة وكلمة مرور المدير لتفعيل المدرسة سحابياً لجميع الحسابات"
-                                    } else {
-                                        "أدخل كود مدرستك المفعلة للانتقال مباشرة إلى شاشة تسجيل الدخول"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
-                                )
-                            }
-                        }
-
-                        // School Code Field (Always visible in both modes)
+                        // Field 1: رمز المدرسة
                         OutlinedTextField(
                             value = schoolCodeInput,
                             onValueChange = { newVal: String ->
                                 schoolCodeInput = newVal
                                 statusFeedbackMessage = null
                             },
-                            label = {
-                                Text(
-                                    if (isAdminActivationMode) "كود تفعيل المدرسة"
-                                    else "أدخل كود المدرسة للمتابعة"
-                                )
-                            },
-                            placeholder = { Text("مثال: 1001 أو كود المدرسة") },
+                            label = { Text("رمز المدرسة") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Filled.VpnKey,
@@ -1593,7 +1952,7 @@ fun SchoolActivationGateScreen(
                             shape = RoundedCornerShape(14.dp)
                         )
 
-                        // Principal Password Field (Visible ONLY in Initial Principal Activation Mode — Case A)
+                        // Field 2 (Only in Principal Activation Mode): كلمة مرور الإدارة
                         AnimatedVisibility(visible = isAdminActivationMode) {
                             OutlinedTextField(
                                 value = adminPasswordInput,
@@ -1601,8 +1960,7 @@ fun SchoolActivationGateScreen(
                                     adminPasswordInput = newPass
                                     statusFeedbackMessage = null
                                 },
-                                label = { Text("كلمة مرور مدير المدرسة") },
-                                placeholder = { Text("أدخل كلمة مرور المدير لتأكيد التفعيل الرسمي") },
+                                label = { Text("كلمة مرور الإدارة") },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Filled.Lock,
@@ -1627,7 +1985,7 @@ fun SchoolActivationGateScreen(
                             )
                         }
 
-                        // Status / Feedback Banner
+                        // Concise Feedback Banner
                         if (statusFeedbackMessage != null) {
                             Surface(
                                 color = if (isStatusSuccess) Color(0xFFECFDF5) else Color(0xFFFDE8E8),
@@ -1658,15 +2016,15 @@ fun SchoolActivationGateScreen(
                             }
                         }
 
-                        // Primary Action Button
+                        // Primary Action Button: "متابعة" or "تفعيل المدرسة"
                         Button(
                             onClick = {
-                                if (isVerifyingCloud || isGateUnlockedAnimating) return@Button
-                                isVerifyingCloud = true
+                                if (isVerifying || isGateUnlockedAnimating) return@Button
+                                isVerifying = true
                                 statusFeedbackMessage = null
                                 if (isAdminActivationMode) {
                                     onActivateSchoolAsAdmin(schoolCodeInput, adminPasswordInput) { ok: Boolean, msg: String ->
-                                        isVerifyingCloud = false
+                                        isVerifying = false
                                         isStatusSuccess = ok
                                         statusFeedbackMessage = msg
                                         if (ok) {
@@ -1679,7 +2037,7 @@ fun SchoolActivationGateScreen(
                                     }
                                 } else {
                                     onVerifyActivatedSchoolCode(schoolCodeInput) { ok: Boolean, msg: String ->
-                                        isVerifyingCloud = false
+                                        isVerifying = false
                                         isStatusSuccess = ok
                                         statusFeedbackMessage = msg
                                         if (ok) {
@@ -1692,19 +2050,19 @@ fun SchoolActivationGateScreen(
                                     }
                                 }
                             },
-                            enabled = !isVerifyingCloud && !isGateUnlockedAnimating,
+                            enabled = !isVerifying && !isGateUnlockedAnimating,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 52.dp)
+                                .height(52.dp)
                                 .testTag("gate_submit_button"),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF059669),
                                 contentColor = Color.White
                             ),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                         ) {
-                            if (isVerifyingCloud) {
+                            if (isVerifying) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     strokeWidth = 2.2.dp,
@@ -1712,31 +2070,21 @@ fun SchoolActivationGateScreen(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "جاري التحقق السحابي وفتح البوابة...",
+                                    text = "جاري التحقق...",
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White
                                 )
                             } else {
-                                Icon(
-                                    imageVector = if (isAdminActivationMode) Icons.Filled.Verified else Icons.AutoMirrored.Filled.Login,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = if (isAdminActivationMode) {
-                                        "تفعيل المدرسة رسمياً والمتابعة لبوابة الدخول"
-                                    } else {
-                                        "فتح البوابة والمتابعة لتسجيل الدخول"
-                                    },
-                                    style = MaterialTheme.typography.titleSmall,
+                                    text = if (isAdminActivationMode) "تفعيل المدرسة" else "متابعة",
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White
                                 )
                             }
                         }
 
-                        // Small Text Toggle Button at the bottom of the Gate Card
+                        // Bottom Short Toggle Button: "تفعيل مدرسة جديدة" or "لدي رمز مدرسة مفعلة"
                         TextButton(
                             onClick = {
                                 isAdminActivationMode = !isAdminActivationMode
@@ -1746,26 +2094,21 @@ fun SchoolActivationGateScreen(
                                 .fillMaxWidth()
                                 .testTag("gate_toggle_mode_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.SwapHoriz,
-                                contentDescription = null,
-                                tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (isAdminActivationMode) {
-                                    "التبديل إلى: وضع الدخول بكود مدرسة مفعلة"
+                                    "لدي رمز مدرسة مفعلة"
                                 } else {
-                                    "التبديل إلى: وضع التفعيل الأولي كمدير"
+                                    "تفعيل مدرسة جديدة"
                                 },
-                                fontSize = 12.5.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857)
                             )
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
@@ -1980,12 +2323,12 @@ fun UnifiedLoginScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.VpnKey,
-                                    contentDescription = "تبديل كود المدرسة / البوابة الأمنية",
+                                    contentDescription = "تبديل رمز المدرسة",
                                     tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFB45309),
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = "تبديل كود المدرسة / البوابة الأمنية",
+                                    text = "تبديل رمز المدرسة",
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFF92400E),

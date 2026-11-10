@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -1333,15 +1334,12 @@ fun CurriculumBooksScreen(
         ) {
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Royal 3D Wave Hero Header matching Attendance and Schedule & Homework screens 100%
-            ThreeDHeroHeaderCard(
+            // Royal 3D Wave Hero Header with exclusive Opening & Closing 3D Book Vector Animation on the left
+            CurriculumHeroBannerWithOpenBookAnimation(
                 title = "المناهج الدراسية والكتب الرسمية",
                 subtitle = "تصفح وقراءة كافة الكتب المنهجية المعتمدة مباشرة داخل المنصة",
                 rightPillText = "منهج وزارة التربية المعتمد",
-                rightPillIcon = Icons.Filled.Verified,
-                leftPillText = "${allBooks.size.coerceAtLeast(56)} كتاب منهجي",
-                leftPillIcon = Icons.AutoMirrored.Filled.MenuBook,
-                illustrationType = ThreeDIllustrationType.BOOKS_GRADUATION_CAP
+                leftPillText = "${allBooks.size.coerceAtLeast(56)} كتاب منهجي"
             )
 
             // Unified Luxury Filter Card for Stages, Grade Classes & Search (Zero text clipping)
@@ -1568,10 +1566,9 @@ fun CurriculumBooksScreen(
 }
 
 /**
- * Interactive Animated Stage for Intermediate & Preparatory Digital Library Synchronization:
- * Replaces the old static pending notice with an InfiniteTransition Canvas illustration of a
- * smart digital library with softly breathing light rings, a technical status badge, and the exact
- * academic synchronization message.
+ * Interactive Animated Stage for Intermediate & Preparatory Curriculum Stages:
+ * Displays `OpeningAndClosing3DBookVectorAnimation` in the center of the stage card
+ * with clean, non-technical Arabic copy.
  */
 @Composable
 private fun InteractiveSmartLibraryStageView(
@@ -1580,26 +1577,6 @@ private fun InteractiveSmartLibraryStageView(
     hasActiveSearchQuery: Boolean,
     isDarkMode: Boolean
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "smart_library_stage_anim")
-    val ringPulse by infiniteTransition.animateFloat(
-        initialValue = 0.86f,
-        targetValue = 1.16f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "smart_library_ring_pulse"
-    )
-    val orbitAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "smart_library_orbit_angle"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1647,80 +1624,13 @@ private fun InteractiveSmartLibraryStageView(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Animated Smart Digital Library Canvas Illustration with Breathing Light Rings
-                    Box(
-                        modifier = Modifier.size(116.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val w = size.width
-                            val h = size.height
-                            val cx = w / 2f
-                            val cy = h / 2f
-                            val primaryRingColor = if (isDarkMode) GoldAccent else DeepEmerald
-                            val secondaryRingColor = Color(0xFF10B981)
+                    // Exclusive 3D Opening & Closing Book Vector Animation in the center of the stage card
+                    OpeningAndClosing3DBookVectorAnimation(
+                        modifier = Modifier.size(124.dp),
+                        isDarkMode = isDarkMode
+                    )
 
-                            // Outer softly breathing light rings
-                            drawCircle(
-                                color = secondaryRingColor.copy(alpha = 0.10f),
-                                radius = (w * 0.46f) * ringPulse,
-                                center = Offset(cx, cy)
-                            )
-                            drawCircle(
-                                color = primaryRingColor.copy(alpha = 0.18f),
-                                radius = (w * 0.36f) * (2f - ringPulse * 0.85f),
-                                center = Offset(cx, cy),
-                                style = Stroke(width = 1.6.dp.toPx())
-                            )
-                            drawCircle(
-                                color = secondaryRingColor.copy(alpha = 0.28f),
-                                radius = w * 0.28f,
-                                center = Offset(cx, cy)
-                            )
-
-                            // Orbiting academic sync nodes
-                            for (i in 0 until 4) {
-                                val angle = orbitAngle + (i * PI / 2.0).toFloat()
-                                val nx = cx + cos(angle) * (w * 0.39f)
-                                val ny = cy + sin(angle) * (h * 0.39f)
-                                drawCircle(
-                                    color = GoldAccent,
-                                    radius = 3.2.dp.toPx(),
-                                    center = Offset(nx, ny)
-                                )
-                            }
-
-                            // Smart Digital Library Open Book & Arch Inside the Ring
-                            val flutter = sin(orbitAngle * 2f) * (h * 0.025f)
-                            val bookPath = Path().apply {
-                                moveTo(cx, cy + h * 0.14f)
-                                lineTo(cx - w * 0.18f, cy + h * 0.08f + flutter)
-                                lineTo(cx - w * 0.18f, cy - h * 0.12f + flutter)
-                                lineTo(cx, cy - h * 0.06f)
-                                lineTo(cx + w * 0.18f, cy - h * 0.12f - flutter)
-                                lineTo(cx + w * 0.18f, cy + h * 0.08f - flutter)
-                                close()
-                            }
-                            drawPath(
-                                path = bookPath,
-                                color = primaryRingColor.copy(alpha = 0.24f)
-                            )
-                            drawPath(
-                                path = bookPath,
-                                color = primaryRingColor,
-                                style = Stroke(width = 2.2.dp.toPx(), join = StrokeJoin.Round)
-                            )
-                            drawLine(
-                                color = GoldAccent,
-                                start = Offset(cx, cy - h * 0.06f),
-                                end = Offset(cx, cy + h * 0.14f),
-                                strokeWidth = 2.2.dp.toPx(),
-                                cap = StrokeCap.Round
-                            )
-                        }
-                    }
-
-                    // Technical Status Badge showing Selected Stage & Grade
+                    // Stage & Grade Badge
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFD1FAE5),
@@ -1732,7 +1642,7 @@ private fun InteractiveSmartLibraryStageView(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Canvas(modifier = Modifier.size(8.dp)) {
-                                drawCircle(color = GoldAccent, radius = (size.minDimension / 2f) * ringPulse.coerceIn(0.8f, 1.1f))
+                                drawCircle(color = GoldAccent, radius = size.minDimension / 2f)
                             }
                             Text(
                                 text = "${selectedStage.arabicTitle} • $selectedGradeClass",
@@ -1747,7 +1657,7 @@ private fun InteractiveSmartLibraryStageView(
                         text = if (hasActiveSearchQuery) {
                             "لا توجد كتب مطابقة لعبارة البحث الحالية"
                         } else {
-                            "المكتبة الرقمية الذكية لهذه المرحلة في طور التجهيز والمزامنة الأكاديمية"
+                            "كتب هذه المرحلة قيد التجهيز والإضافة قريباً"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
@@ -2112,10 +2022,580 @@ fun InAppGoogleDriveBookViewerModal(
 }
 
 /**
+ * Exclusive Curriculum Hero Banner with `OpeningAndClosing3DBookVectorAnimation` on the left side:
+ * Replaces the stacked-books illustration used in Schedule & Homework with a dedicated
+ * 3D Perspective Opening & Closing Book Vector Animation.
+ */
+@Composable
+private fun CurriculumHeroBannerWithOpenBookAnimation(
+    title: String,
+    subtitle: String,
+    rightPillText: String,
+    leftPillText: String,
+    modifier: Modifier = Modifier
+) {
+    val waveHeroShape = remember {
+        GenericShape { size, _ ->
+            val w = size.width
+            val h = size.height
+            val topWaveDepth = (h * 0.065f).coerceIn(10f, 22f)
+            val bottomWaveDepth = (h * 0.095f).coerceIn(16f, 30f)
+
+            moveTo(0f, topWaveDepth * 0.45f)
+            cubicTo(
+                w * 0.32f, -topWaveDepth * 0.35f,
+                w * 0.68f, topWaveDepth * 1.35f,
+                w, topWaveDepth * 0.25f
+            )
+            lineTo(w, h - bottomWaveDepth)
+            quadraticBezierTo(
+                w * 0.50f, h + bottomWaveDepth * 0.85f,
+                0f, h - bottomWaveDepth * 0.85f
+            )
+            close()
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = waveHeroShape,
+                ambientColor = Color(0xFF047857).copy(alpha = 0.32f),
+                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.38f)
+            )
+            .clip(waveHeroShape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF059669),
+                        Color(0xFF047857),
+                        Color(0xFF0F3D5E)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(950f, 680f)
+                )
+            )
+    ) {
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+
+            val innerWave = Path().apply {
+                moveTo(0f, h * 0.72f)
+                cubicTo(
+                    w * 0.35f, h * 0.60f,
+                    w * 0.70f, h * 0.88f,
+                    w, h * 0.74f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = innerWave,
+                color = Color(0xFF0F3D5E).copy(alpha = 0.28f)
+            )
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF34D399).copy(alpha = 0.34f),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.22f, h * 0.50f),
+                    radius = w * 0.44f
+                ),
+                radius = w * 0.44f,
+                center = Offset(w * 0.22f, h * 0.50f)
+            )
+
+            val step = 11.dp.toPx()
+            val dotRadius = 1.6.dp.toPx()
+            for (row in 0..6) {
+                for (col in 0..7) {
+                    val alpha = ((1f - (row + col) / 14f) * 0.22f).coerceIn(0.03f, 0.22f)
+                    drawCircle(
+                        color = Color.White.copy(alpha = alpha),
+                        radius = dotRadius,
+                        center = Offset(w * 0.04f + col * step, h * 0.10f + row * step)
+                    )
+                    drawCircle(
+                        color = Color.White.copy(alpha = alpha),
+                        radius = dotRadius,
+                        center = Offset(w * 0.96f - col * step, h * 0.88f - row * step)
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.weight(1f, fill = false),
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Verified,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = rightPillText,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(0.01f))
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = leftPillText,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.92f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Left side of the Emerald Banner: 3D Opening & Closing Book Vector Animation
+                OpeningAndClosing3DBookVectorAnimation(
+                    modifier = Modifier.size(108.dp),
+                    isDarkMode = true
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Perspective 3D Vector Book Animation (`OpeningAndClosing3DBookVectorAnimation`):
+ * Exclusively designed for the Curriculum screen:
+ * 1. Emerald & Gold Book Cover (`غلاف الكتاب الزمردي والذهبي`): Left and right covers open and close
+ *    at a smooth perspective angle like breathing wings (`wingAngle` oscillating via `sin(progress)`).
+ * 2. Live Flipping Pages (`حركة تقليب الأوراق الحية`): 3 layers of Ivory-White pages drawn with curved
+ *    Bezier paths (`quadraticBezierTo` / `cubicTo`) rising and flipping from right to left one after
+ *    another in an infinite smooth loop, with realistic Book Spine Shadow and a rising golden light aura.
+ */
+@Composable
+fun OpeningAndClosing3DBookVectorAnimation(
+    modifier: Modifier = Modifier.size(108.dp),
+    isDarkMode: Boolean = false
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "perspective_3d_open_book_anim")
+    val wingPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "book_wing_breath_phase"
+    )
+    val pageCycle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "book_3_pages_flip_cycle"
+    )
+
+    Canvas(
+        modifier = modifier.testTag("opening_closing_3d_book_vector_canvas")
+    ) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+        val cy = h * 0.56f
+
+        // Smooth opening/closing wing oscillation (opens wide and gently closes partway like breathing wings)
+        val wingBreath = (sin(wingPhase) + 1f) * 0.5f // 0..1
+        val openSpread = 0.72f + wingBreath * 0.28f   // 0.72..1.0 horizontal spread
+        val wingLift = (1f - wingBreath) * (h * 0.085f) // wings rise as the book closes slightly
+        val floatOffset = sin(wingPhase) * (h * 0.025f)
+
+        val spineTopY = cy - h * 0.14f + floatOffset
+        val spineBottomY = cy + h * 0.25f + floatOffset
+        val halfSpanX = w * 0.40f * openSpread
+
+        // 1. Golden Light Aura rising from between the open pages
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFFDE68A).copy(alpha = 0.48f + 0.18f * wingBreath),
+                    Color(0xFFF59E0B).copy(alpha = 0.20f),
+                    Color(0xFF10B981).copy(alpha = 0.10f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, spineTopY - h * 0.04f),
+                radius = w * (0.42f + 0.06f * wingBreath)
+            ),
+            radius = w * (0.42f + 0.06f * wingBreath),
+            center = Offset(cx, spineTopY - h * 0.04f)
+        )
+
+        // Rising golden light rays / sparkles above the open book
+        for (rayIdx in -1..1) {
+            val rayDrift = ((pageCycle + (rayIdx + 1) * 0.33f) % 1f)
+            val rx = cx + rayIdx * (w * 0.12f) * (0.6f + rayDrift * 0.5f)
+            val ry = spineTopY - h * (0.06f + rayDrift * 0.22f)
+            val rayAlpha = (1f - rayDrift) * 0.75f
+            drawCircle(
+                color = Color(0xFFFDE68A).copy(alpha = rayAlpha),
+                radius = (2.6f + (1f - rayDrift) * 2.2f).dp.toPx() * (w / 108.dp.toPx()).coerceIn(0.6f, 1.5f),
+                center = Offset(rx, ry)
+            )
+        }
+
+        // Soft drop shadow beneath the floating 3D book
+        drawOval(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFF042F24).copy(alpha = if (isDarkMode) 0.42f else 0.24f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, spineBottomY + h * 0.10f),
+                radius = halfSpanX * 0.95f
+            ),
+            topLeft = Offset(cx - halfSpanX * 0.85f, spineBottomY + h * 0.05f),
+            size = Size(halfSpanX * 1.70f, h * 0.11f)
+        )
+
+        // 2. Emerald & Gold Book Covers (Left & Right Perspective Wings)
+        val coverOuterTopY = spineTopY - h * 0.07f - wingLift
+        val coverOuterBottomY = spineBottomY - h * 0.04f - wingLift
+        val coverThickness = h * 0.035f
+
+        // Left Emerald Cover Wing
+        val leftCoverPath = Path().apply {
+            moveTo(cx, spineBottomY + coverThickness)
+            cubicTo(
+                cx - halfSpanX * 0.42f, spineBottomY + coverThickness - h * 0.03f,
+                cx - halfSpanX * 0.78f, coverOuterBottomY + coverThickness + h * 0.02f,
+                cx - halfSpanX * 1.05f, coverOuterBottomY + coverThickness
+            )
+            lineTo(cx - halfSpanX * 1.02f, coverOuterTopY)
+            cubicTo(
+                cx - halfSpanX * 0.70f, coverOuterTopY - h * 0.03f,
+                cx - halfSpanX * 0.35f, spineTopY - h * 0.02f,
+                cx, spineTopY + coverThickness * 0.4f
+            )
+            close()
+        }
+        drawPath(
+            path = leftCoverPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF059669)),
+                start = Offset(cx, spineBottomY),
+                end = Offset(cx - halfSpanX, coverOuterTopY)
+            )
+        )
+        drawPath(
+            path = leftCoverPath,
+            color = GoldAccent,
+            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
+        )
+
+        // Right Emerald Cover Wing
+        val rightCoverPath = Path().apply {
+            moveTo(cx, spineBottomY + coverThickness)
+            cubicTo(
+                cx + halfSpanX * 0.42f, spineBottomY + coverThickness - h * 0.03f,
+                cx + halfSpanX * 0.78f, coverOuterBottomY + coverThickness + h * 0.02f,
+                cx + halfSpanX * 1.05f, coverOuterBottomY + coverThickness
+            )
+            lineTo(cx + halfSpanX * 1.02f, coverOuterTopY)
+            cubicTo(
+                cx + halfSpanX * 0.70f, coverOuterTopY - h * 0.03f,
+                cx + halfSpanX * 0.35f, spineTopY - h * 0.02f,
+                cx, spineTopY + coverThickness * 0.4f
+            )
+            close()
+        }
+        drawPath(
+            path = rightCoverPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF059669)),
+                start = Offset(cx, spineBottomY),
+                end = Offset(cx + halfSpanX, coverOuterTopY)
+            )
+        )
+        drawPath(
+            path = rightCoverPath,
+            color = GoldAccent,
+            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
+        )
+
+        // 3. Base Ivory-White Open Page Stacks (Curved Bezier Arch on Left & Right)
+        val pageSpanX = halfSpanX * 0.94f
+        val pageOuterTopY = coverOuterTopY - h * 0.025f
+        val pageOuterBottomY = coverOuterBottomY - h * 0.015f
+
+        val leftRestingPage = Path().apply {
+            moveTo(cx, spineBottomY)
+            cubicTo(
+                cx - pageSpanX * 0.35f, spineBottomY - h * 0.06f,
+                cx - pageSpanX * 0.72f, pageOuterBottomY - h * 0.02f,
+                cx - pageSpanX, pageOuterBottomY
+            )
+            lineTo(cx - pageSpanX * 0.97f, pageOuterTopY)
+            cubicTo(
+                cx - pageSpanX * 0.68f, pageOuterTopY - h * 0.055f,
+                cx - pageSpanX * 0.32f, spineTopY - h * 0.065f,
+                cx, spineTopY
+            )
+            close()
+        }
+        drawPath(
+            path = leftRestingPage,
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFFFFFDF7),
+                    Color(0xFFFAF6EE),
+                    Color(0xFFE2DCCD)
+                ),
+                startX = cx - pageSpanX,
+                endX = cx
+            )
+        )
+        drawPath(
+            path = leftRestingPage,
+            color = Color(0xFFD6CEBF),
+            style = Stroke(width = 1.1.dp.toPx(), join = StrokeJoin.Round)
+        )
+
+        val rightRestingPage = Path().apply {
+            moveTo(cx, spineBottomY)
+            cubicTo(
+                cx + pageSpanX * 0.35f, spineBottomY - h * 0.06f,
+                cx + pageSpanX * 0.72f, pageOuterBottomY - h * 0.02f,
+                cx + pageSpanX, pageOuterBottomY
+            )
+            lineTo(cx + pageSpanX * 0.97f, pageOuterTopY)
+            cubicTo(
+                cx + pageSpanX * 0.68f, pageOuterTopY - h * 0.055f,
+                cx + pageSpanX * 0.32f, spineTopY - h * 0.065f,
+                cx, spineTopY
+            )
+            close()
+        }
+        drawPath(
+            path = rightRestingPage,
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFFE2DCCD),
+                    Color(0xFFFAF6EE),
+                    Color(0xFFFFFDF7)
+                ),
+                startX = cx,
+                endX = cx + pageSpanX
+            )
+        )
+        drawPath(
+            path = rightRestingPage,
+            color = Color(0xFFD6CEBF),
+            style = Stroke(width = 1.1.dp.toPx(), join = StrokeJoin.Round)
+        )
+
+        // Subtle text lines on resting left & right pages
+        for (lineIdx in 1..3) {
+            val frac = lineIdx * 0.22f
+            val ly = spineTopY + (spineBottomY - spineTopY) * frac
+            drawQuadraticBezierLine(
+                start = Offset(cx - pageSpanX * 0.18f, ly - h * 0.01f),
+                control = Offset(cx - pageSpanX * 0.50f, ly - h * 0.045f),
+                end = Offset(cx - pageSpanX * 0.80f, ly - h * 0.02f),
+                color = Color(0xFF059669).copy(alpha = 0.25f),
+                strokeWidth = 1.3.dp.toPx()
+            )
+            drawQuadraticBezierLine(
+                start = Offset(cx + pageSpanX * 0.18f, ly - h * 0.01f),
+                control = Offset(cx + pageSpanX * 0.50f, ly - h * 0.045f),
+                end = Offset(cx + pageSpanX * 0.80f, ly - h * 0.02f),
+                color = Color(0xFF059669).copy(alpha = 0.25f),
+                strokeWidth = 1.3.dp.toPx()
+            )
+        }
+
+        // 4. 3 Layers of Live Flipping Ivory-White Pages (Right-to-Left Continuous Bezier Flip)
+        for (layer in 0 until 3) {
+            val layerProgress = (pageCycle + layer / 3f) % 1f
+            // Smooth S-curve easing for each page flip
+            val eased = (1f - cos(layerProgress * PI).toFloat()) * 0.5f
+            val angleRad = eased * PI.toFloat() // 0 (right) -> PI (left)
+            val cosA = cos(angleRad)            // +1 (right) -> -1 (left)
+            val sinA = sin(angleRad)            // 0 -> 1 (top of arch) -> 0
+
+            val tipX = cx + cosA * (pageSpanX * 0.94f)
+            val archLift = sinA * (h * 0.20f)
+            val tipTopY = pageOuterTopY - archLift
+            val tipBottomY = pageOuterBottomY - archLift * 0.88f
+
+            val ctrlX = cx + cosA * (pageSpanX * 0.46f)
+            val ctrlLift = sinA * (h * 0.25f) + h * 0.04f
+
+            val flippingPagePath = Path().apply {
+                moveTo(cx, spineBottomY)
+                quadraticBezierTo(
+                    ctrlX,
+                    spineBottomY - ctrlLift,
+                    tipX,
+                    tipBottomY
+                )
+                lineTo(tipX, tipTopY)
+                quadraticBezierTo(
+                    ctrlX,
+                    spineTopY - ctrlLift,
+                    cx,
+                    spineTopY
+                )
+                close()
+            }
+
+            val pageAlpha = (0.96f - sinA * 0.06f).coerceIn(0.85f, 0.98f)
+            drawPath(
+                path = flippingPagePath,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFFEAE3D2).copy(alpha = pageAlpha),
+                        Color(0xFFFFFDF7).copy(alpha = pageAlpha),
+                        Color(0xFFFAF6EE).copy(alpha = pageAlpha)
+                    ),
+                    start = Offset(cx, (spineTopY + spineBottomY) * 0.5f),
+                    end = Offset(tipX, (tipTopY + tipBottomY) * 0.5f)
+                )
+            )
+            drawPath(
+                path = flippingPagePath,
+                color = GoldAccent.copy(alpha = 0.55f + sinA * 0.30f),
+                style = Stroke(width = 1.2.dp.toPx(), join = StrokeJoin.Round)
+            )
+        }
+
+        // 5. Realistic Book Spine Shadow & Golden Spine Clasp in Center
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    Color(0xFF042F24).copy(alpha = 0.30f),
+                    Color(0xFF042F24).copy(alpha = 0.12f),
+                    Color.Transparent
+                ),
+                startX = cx - w * 0.07f,
+                endX = cx + w * 0.07f
+            ),
+            topLeft = Offset(cx - w * 0.07f, spineTopY),
+            size = Size(w * 0.14f, spineBottomY - spineTopY)
+        )
+        drawLine(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFFFDE68A), GoldAccent, Color(0xFFB45309)),
+                startY = spineTopY,
+                endY = spineBottomY + coverThickness
+            ),
+            start = Offset(cx, spineTopY),
+            end = Offset(cx, spineBottomY + coverThickness),
+            strokeWidth = 2.6.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawQuadraticBezierLine(
+    start: Offset,
+    control: Offset,
+    end: Offset,
+    color: Color,
+    strokeWidth: Float
+) {
+    val p = Path().apply {
+        moveTo(start.x, start.y)
+        quadraticBezierTo(control.x, control.y, end.x, end.y)
+    }
+    drawPath(
+        path = p,
+        color = color,
+        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+    )
+}
+
+/**
  * Royal Interactive Preparation Screen:
- * Draws an animated 3D digital book using `Canvas` whose pages flip smoothly with glowing light waves
- * and a sleek animated progress bar alongside the book's title, disappearing smoothly with `fadeOut`
- * once the embedded reader finishes loading.
+ * Displays `OpeningAndClosing3DBookVectorAnimation` in a large, elegant size (`148.dp`)
+ * in the center of the screen while the book loads inside the app, fading out smoothly once ready.
  */
 @Composable
 private fun RoyalBookFlippingPreparationOverlay(
@@ -2123,14 +2603,14 @@ private fun RoyalBookFlippingPreparationOverlay(
     isDarkMode: Boolean
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "royal_3d_book_prep")
-    val flipProgress by infiniteTransition.animateFloat(
+    val shimmerProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "book_page_flip_progress"
+        label = "book_page_shimmer_progress"
     )
     val wavePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -2205,100 +2685,11 @@ private fun RoyalBookFlippingPreparationOverlay(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 3D Flipping Digital Book Canvas
-                Box(
-                    modifier = Modifier.size(132.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val w = size.width
-                        val h = size.height
-                        val cx = w / 2f
-                        val cy = h / 2f
-
-                        // Glowing halo rings around the 3D book
-                        drawCircle(
-                            color = GoldAccent.copy(alpha = 0.14f),
-                            radius = w * (0.42f + 0.05f * sin(wavePhase)),
-                            center = Offset(cx, cy)
-                        )
-                        drawCircle(
-                            color = Color(0xFF10B981).copy(alpha = 0.18f),
-                            radius = w * 0.34f,
-                            center = Offset(cx, cy)
-                        )
-
-                        val bookHalfW = w * 0.34f
-                        val bookTopY = cy - h * 0.18f
-                        val bookBottomY = cy + h * 0.22f
-
-                        // Left static open page stack
-                        val leftPage = Path().apply {
-                            moveTo(cx, bookBottomY)
-                            lineTo(cx - bookHalfW, bookBottomY - h * 0.05f)
-                            lineTo(cx - bookHalfW, bookTopY - h * 0.05f)
-                            lineTo(cx, bookTopY)
-                            close()
-                        }
-                        drawPath(
-                            path = leftPage,
-                            color = if (isDarkMode) Color(0xFF042F24) else Color(0xFFECFDF5)
-                        )
-                        drawPath(
-                            path = leftPage,
-                            color = GoldAccent,
-                            style = Stroke(width = 2.2.dp.toPx(), join = StrokeJoin.Round)
-                        )
-
-                        // Right static open page stack
-                        val rightPage = Path().apply {
-                            moveTo(cx, bookBottomY)
-                            lineTo(cx + bookHalfW, bookBottomY - h * 0.05f)
-                            lineTo(cx + bookHalfW, bookTopY - h * 0.05f)
-                            lineTo(cx, bookTopY)
-                            close()
-                        }
-                        drawPath(
-                            path = rightPage,
-                            color = if (isDarkMode) Color(0xFF065F46) else Color(0xFFD1FAE5)
-                        )
-                        drawPath(
-                            path = rightPage,
-                            color = GoldAccent,
-                            style = Stroke(width = 2.2.dp.toPx(), join = StrokeJoin.Round)
-                        )
-
-                        // Dynamic 3D flipping page sweeping from right to left across the spine
-                        val flipAngle = flipProgress * PI.toFloat()
-                        val flipEdgeX = cx + cos(flipAngle) * bookHalfW
-                        val flipArchLift = sin(flipAngle) * (h * 0.16f)
-                        val flippingPage = Path().apply {
-                            moveTo(cx, bookBottomY)
-                            lineTo(flipEdgeX, bookBottomY - h * 0.05f - flipArchLift)
-                            lineTo(flipEdgeX, bookTopY - h * 0.05f - flipArchLift)
-                            lineTo(cx, bookTopY)
-                            close()
-                        }
-                        drawPath(
-                            path = flippingPage,
-                            color = GoldAccent.copy(alpha = 0.35f)
-                        )
-                        drawPath(
-                            path = flippingPage,
-                            color = GoldAccent,
-                            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
-                        )
-
-                        // Center spine
-                        drawLine(
-                            color = GoldAccent,
-                            start = Offset(cx, bookTopY),
-                            end = Offset(cx, bookBottomY + 3.dp.toPx()),
-                            strokeWidth = 2.8.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
-                    }
-                }
+                // Large 3D Opening & Closing Book Vector Animation in the center of the preparation overlay
+                OpeningAndClosing3DBookVectorAnimation(
+                    modifier = Modifier.size(148.dp),
+                    isDarkMode = isDarkMode
+                )
 
                 Text(
                     text = book.subjectTitle,
@@ -2331,7 +2722,7 @@ private fun RoyalBookFlippingPreparationOverlay(
                         cornerRadius = CornerRadius(barH / 2f)
                     )
                     val activeSegmentW = barW * 0.48f
-                    val startX = (barW + activeSegmentW) * flipProgress - activeSegmentW
+                    val startX = (barW + activeSegmentW) * shimmerProgress - activeSegmentW
                     drawRoundRect(
                         brush = Brush.horizontalGradient(
                             colors = listOf(

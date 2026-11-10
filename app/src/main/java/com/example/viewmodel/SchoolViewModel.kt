@@ -716,7 +716,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanPass = InputSanitizer.sanitize(adminPasswordInput.trim())
 
         if (cleanCode.isBlank() || cleanPass.isBlank()) {
-            val msg = "يرجى إدخال كود تفعيل المدرسة وكلمة مرور مدير المدرسة للمتابعة"
+            val msg = "يرجى إدخال رمز المدرسة وكلمة مرور الإدارة"
             showToastAlert(msg, isSuccess = false)
             onResult(false, msg)
             return
@@ -763,7 +763,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 repo.setSchoolSecurityGatePassed(true, cleanCode)
                 _verifiedGateSchoolCode.value = cleanCode
                 _isSchoolGatePassed.value = true
-                val okMsg = "تم التحقق من كود التأسيس (${matchedLicense.code}) بنجاح"
+                val okMsg = "تم التحقق من رمز التأسيس (${matchedLicense.code}) بنجاح"
                 showToastAlert(okMsg, isSuccess = true)
                 onResult(true, okMsg)
                 return@launch
@@ -790,7 +790,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 (matchedLicense != null && matchedLicense.used)
 
             if (!isKnownCode) {
-                val errMsg = "كود تفعيل المدرسة ($cleanCode) غير صحيح أو غير مسجل في السحابة"
+                val errMsg = "رمز المدرسة ($cleanCode) غير صحيح أو غير مسجل"
                 showToastAlert(errMsg, isSuccess = false)
                 onResult(false, errMsg)
                 return@launch
@@ -822,7 +822,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             if (!passwordValid) {
-                val errMsg = "كلمة مرور مدير المدرسة غير صحيحة، يرجى التحقق منها والمحاولة مجدداً"
+                val errMsg = "كلمة مرور الإدارة غير صحيحة، يرجى المحاولة مجدداً"
                 showToastAlert(errMsg, isSuccess = false)
                 onResult(false, errMsg)
                 return@launch
@@ -870,7 +870,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             _verifiedGateSchoolCode.value = resolvedSid
             _isSchoolGatePassed.value = true
 
-            val successMsg = "تم التفعيل الرسمي للمدرسة (${activatedCfg.schoolName}) سحابياً بنجاح"
+            val successMsg = "تم تفعيل المدرسة (${activatedCfg.schoolName}) بنجاح"
             showToastAlert(successMsg, isSuccess = true)
             onResult(true, successMsg)
         }
@@ -884,7 +884,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanCode = InputSanitizer.sanitizeSchoolId(normalizedDigits).uppercase()
 
         if (cleanCode.isBlank()) {
-            val msg = "يرجى إدخال كود المدرسة للمتابعة إلى بوابة الدخول"
+            val msg = "يرجى إدخال رمز المدرسة للمتابعة"
             showToastAlert(msg, isSuccess = false)
             onResult(false, msg)
             return
@@ -937,7 +937,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         cleanCode.equals(_schoolConfig.value.schoolActivationCode, ignoreCase = true)))
 
             if (!schoolExists) {
-                val errMsg = "كود المدرسة ($cleanCode) غير مسجل في السحابة، تأكد من الكود أو راجع إدارة المدرسة"
+                val errMsg = "رمز المدرسة ($cleanCode) غير مسجل، تأكد من الرمز أو راجع إدارة المدرسة"
                 showToastAlert(errMsg, isSuccess = false)
                 onResult(false, errMsg)
                 return@launch
@@ -950,7 +950,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 targetCfg.isSetupCompleted
 
             if (!isOfficiallyActivated) {
-                val errMsg = "هذه المدرسة بانتظار التفعيل الأولي من مدير المدرسة (يرجى التبديل لوضع التفعيل الأولي كمدير)"
+                val errMsg = "هذه المدرسة بانتظار التفعيل من الإدارة (اختر تفعيل مدرسة جديدة)"
                 showToastAlert(errMsg, isSuccess = false)
                 onResult(false, errMsg)
                 return@launch
@@ -977,7 +977,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             _verifiedGateSchoolCode.value = finalSid
             _isSchoolGatePassed.value = true
 
-            val okMsg = "مرحباً بك في ${_schoolConfig.value.schoolName} • تم فتح بوابة الدخول"
+            val okMsg = "مرحباً بك في ${_schoolConfig.value.schoolName}"
             showToastAlert(okMsg, isSuccess = true)
             onResult(true, okMsg)
         }
