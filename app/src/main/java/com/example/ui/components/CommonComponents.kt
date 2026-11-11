@@ -6806,7 +6806,33 @@ fun WaveLayeredHeaderSurface(
     }
 }
 
+fun OccasionThemeType.toThreeDIllustrationType(): ThreeDIllustrationType {
+    return when (this) {
+        OccasionThemeType.OFFICIAL -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
+        OccasionThemeType.RAMADAN_EID -> ThreeDIllustrationType.ISLAMIC_CRESCENT_3D
+        OccasionThemeType.NEW_YEAR -> ThreeDIllustrationType.GRADUATION_YEAR_3D
+        OccasionThemeType.ACADEMIC_EXCELLENCE -> ThreeDIllustrationType.GOLDEN_TROPHY
+        OccasionThemeType.NATIONAL_DAY -> ThreeDIllustrationType.SECURITY_SHIELD
+        OccasionThemeType.CUSTOM_MANUAL -> ThreeDIllustrationType.SYSTEM_BROADCAST_3D
+    }
+}
 
-
-
+@Composable
+fun AnimatedOccasionVectorCanvas(
+    themeType: OccasionThemeType,
+    modifier: Modifier = Modifier
+) {
+    val previewConfig = remember(themeType) {
+        OccasionThemeConfig(
+            isActive = themeType != OccasionThemeType.OFFICIAL,
+            themeType = themeType,
+            customTitle = themeType.arabicLabel,
+            customBannerText = themeType.bannerGreeting
+        )
+    }
+    DashboardWelcomeBezierVectorAnimation(
+        occasionConfig = previewConfig,
+        modifier = modifier
+    )
+}
 

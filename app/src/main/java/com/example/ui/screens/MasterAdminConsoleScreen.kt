@@ -2083,23 +2083,24 @@ private fun MasterStatisticsInspectionTab(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(allStats, key = { it.school.schoolId }) { item ->
-                            val isSelected = item.school.schoolId.equals(selectedSchoolId, ignoreCase = true)
+                            val school = item.school
+                            val isSelected = school.schoolId.equals(selectedSchoolId, ignoreCase = true)
                             Surface(
-                                onClick = { selectedSchoolId = item.school.schoolId },
+                                onClick = { selectedSchoolId = school.schoolId },
                                 shape = RoundedCornerShape(14.dp),
                                 color = if (isSelected) Color(0xFF0D8A6A) else Color(0xFF0D8A6A).copy(alpha = 0.08f),
                                 border = BorderStroke(
                                     1.dp,
                                     if (isSelected) GoldAccent else borderColor
                                 ),
-                                modifier = Modifier.testTag("stats_select_school_${item.school.schoolId}")
+                                modifier = Modifier.testTag("stats_select_school_${school.schoolId}")
                             ) {
                                 Column(
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                                     verticalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
                                     Text(
-                                        text = item.school.schoolName,
+                                        text = school.schoolName,
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = if (isSelected) Color.White else primaryText,

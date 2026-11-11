@@ -2316,7 +2316,9 @@ class SchoolRepository(context: Context) {
                             subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                             isSchoolOfficiallyActivated = o.optBoolean("isSchoolOfficiallyActivated", false),
                             schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } },
-                            isSuspended = o.optBoolean("isSuspended", !o.optBoolean("isActive", true))
+                            isSuspended = o.optBoolean("isSuspended", !o.optBoolean("isActive", true)),
+                            principalFullName = o.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" },
+                            adminPasswordPlain = o.optString("adminPasswordPlain", "123456").ifBlank { "123456" }
                         )
                     )
                 }
@@ -2345,6 +2347,8 @@ class SchoolRepository(context: Context) {
                 put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
                 put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
                 put("isSuspended", s.isSuspended || !s.isActive)
+                put("principalFullName", s.principalFullName.ifBlank { "مدير المدرسة" })
+                put("adminPasswordPlain", s.adminPasswordPlain.ifBlank { "123456" })
             })
         }
         val jsonStr = arr.toString()
@@ -2383,7 +2387,9 @@ class SchoolRepository(context: Context) {
             subscriptionExpiryDate = resolvedExpiry,
             isSchoolOfficiallyActivated = config.isSchoolOfficiallyActivated,
             schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } },
-            isSuspended = config.isSuspended || !config.isActive
+            isSuspended = config.isSuspended || !config.isActive,
+            principalFullName = config.principalFullName.ifBlank { "مدير المدرسة" },
+            adminPasswordPlain = if (existingIdx >= 0) current[existingIdx].adminPasswordPlain else "123456"
         )
         if (existingIdx >= 0) {
             current[existingIdx] = summary
@@ -2414,7 +2420,9 @@ class SchoolRepository(context: Context) {
                         targetSchoolId = o.optString("targetSchoolId", "ALL"),
                         iconKey = o.optString("iconKey", "BELL").ifBlank { "BELL" },
                         imageBase64 = o.optString("imageBase64", ""),
-                        imageUrl = o.optString("imageUrl", "")
+                        imageUrl = o.optString("imageUrl", ""),
+                        isActive = o.optBoolean("isActive", true),
+                        targetRole = o.optString("targetRole", "ALL").ifBlank { "ALL" }
                     )
                 )
             }
@@ -2452,6 +2460,8 @@ class SchoolRepository(context: Context) {
                 put("iconKey", b.iconKey.ifBlank { "BELL" })
                 put("imageBase64", b.imageBase64)
                 put("imageUrl", InputSanitizer.sanitize(b.imageUrl))
+                put("isActive", b.isActive)
+                put("targetRole", b.targetRole.ifBlank { "ALL" })
             })
         }
         return arr.toString()

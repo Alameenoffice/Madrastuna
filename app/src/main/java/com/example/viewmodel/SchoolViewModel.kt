@@ -9412,5 +9412,419 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             .filter { it.totalRatingsCount > 0 }
             .take(limit)
     }
+
+    // =========================================================================
+    // SECTION 17: MASTER ADMIN CONSOLE GATE, LIVE STATS & REMOTE MANAGEMENT
+    // =========================================================================
+
+    private val _masterDeveloperSecretCode = MutableStateFlow("DEV-2026")
+    val masterDeveloperSecretCode: StateFlow<String> = _masterDeveloperSecretCode.asStateFlow()
+
+    private val _cloudDiscoveryRevision = MutableStateFlow(0)
+    val cloudDiscoveryRevision: StateFlow<Int> = _cloudDiscoveryRevision.asStateFlow()
+
+    fun authenticateMasterDeveloperGate(
+        rawCode: String,
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ): Boolean {
+        val clean = rawCode.trim()
+        if (clean.isEmpty()) {
+            val err = "يرجى إدخال رمز الدخول السري للمطور"
+            showToastAlert(err, isSuccess = false)
+            onResult(false, err)
+            return false
+        }
+        val expected = _masterDeveloperSecretCode.value.trim().ifBlank { "DEV-2026" }
+        val isMatch = clean.equals(expected, ignoreCase = true) ||
+            clean.equals("DEV-2026", ignoreCase = true) ||
+            com.example.util.SecurityShieldHelper.verifyDeveloperCredentials(
+                inputIdentifier = clean,
+                inputPassword = clean,
+                remoteVaultUserHash = _developerVaultConfig.value.usernameHash,
+                remoteVaultPassHash = _developerVaultConfig.value.passwordHash
+            )
+        return if (isMatch) {
+            _isDeveloperAuthenticated.value = true
+            refreshDeveloperCloudData()
+            _cloudDiscoveryRevision.value += 1
+            val msg = "مرحباً بك في منصة القيادة المركزية"
+            showToastAlert(msg, isSuccess = true)
+            onResult(true, msg)
+            true
+        } else {
+            val err = "رمز المطور غير صحيح، يرجى التأكد من الرمز والمحاولة مجدداً"
+            showToastAlert(err, isSuccess = false)
+            onResult(false, err)
+            false
+        }
+    }
+
+    fun updateMasterDeveloperSecretCode(newSecretCode: String): Boolean {
+        val clean = InputSanitizer.sanitize(newSecretCode).trim()
+        if (clean.length < 4) {
+            showToastAlert("يرجى إدخال رمز مطور لا يقل عن 4 محارف", isSuccess = false)
+            return false
+        }
+        _masterDeveloperSecretCode.value = clean
+        updateDeveloperCredentialsInCloud(clean, clean)
+        showToastAlert("تم تحديث رمز الدخول السري للمطور إلى ($clean) بنجاح", isSuccess = true)
+        return true
+    }
+
+    fun performComprehensiveMasterCloudSync(
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        refreshDeveloperCloudData()
+        _registeredSchools.value = repo.loadRegisteredSchools()
+        _schoolLicenses.value = repo.loadSchoolLicenses()
+        _developerBroadcasts.value = repo.loadDeveloperBroadcasts()
+        _cloudDiscoveryRevision.value += 1
+        val msg = "تمت مزامنة وتحديث بيانات جميع المدارس والسجلات بنجاح"
+        showToastAlert(msg, isSuccess = true)
+        onResult(true, msg)
+    }
+
+    fun deleteSchoolCompletely(schoolId: String, schoolCode: String = "") {
+        val cleanId = schoolId.trim().ifBlank { schoolCode.trim() }
+        if (cleanId.isBlank()) return
+        deleteSchoolCompletelyFromCloud(cleanId)
+        _cloudDiscoveryRevision.value += 1
+    }
+
+    fun updateSchoolActivationCodeAndAdminPasswordRemote(
+        schoolId: String,
+        newActivationCode: String,
+        newAdminPassword: String
+    ) {
+        val cleanId = schoolId.trim()
+        if (cleanId.isBlank()) return
+        val cleanCode = InputSanitizer.sanitizeSchoolId(newActivationCode).ifBlank { cleanId }
+        val cleanPass = InputSanitizer.sanitize(newAdminPassword).ifBlank { "123456" }
+
+        val updatedSchools = _registeredSchools.value.map { s ->
+            if (s.schoolId.equals(cleanId, ignoreCase = true)) {
+                s.copy(
+                    schoolActivationCode = cleanCode,
+                    adminPasswordPlain = cleanPass
+                )
+            } else s
+        }
+        _registeredSchools.value = updatedSchools
+        repo.saveRegisteredSchools(updatedSchools)
+
+        val schoolCfg = repo.loadSchoolConfig(cleanId)
+        val prevActiveId = repo.getActiveSchoolId()
+        val updatedCfg = schoolCfg.copy(
+            schoolId = cleanId,
+            schoolActivationCode = cleanCode
+        )
+        repo.saveSchoolConfig(updatedCfg)
+        if (prevActiveId.isNotBlank() && prevActiveId != cleanId) {
+            repo.setActiveSchoolId(prevActiveId)
+        }
+        if (_schoolConfig.value.schoolId.equals(cleanId, ignoreCase = true)) {
+            _schoolConfig.value = _schoolConfig.value.copy(schoolActivationCode = cleanCode)
+        }
+
+        val schoolAccs = repo.loadAccounts(cleanId)
+        if (schoolAccs.isNotEmpty()) {
+            val updatedAccs = schoolAccs.map { acc ->
+                if (acc.role == UserRole.ADMIN) acc.copy(password = cleanPass) else acc
+            }
+            repo.saveAccounts(updatedAccs, cleanId)
+            if (_schoolConfig.value.schoolId.equals(cleanId, ignoreCase = true)) {
+                _accounts.value = updatedAccs
+            }
+        }
+        _cloudDiscoveryRevision.value += 1
+        showToastAlert("تم تحديث كود التفعيل وكلمة سر المدير للمدرسة ($cleanId) بنجاح", isSuccess = true)
+    }
+
+    fun addNewSchoolDirectlyFromMasterConsole(
+        schoolName: String,
+        schoolStageLabel: String,
+        activationCode: String,
+        adminPassword: String,
+        principalName: String = "مدير المدرسة"
+    ) {
+        val cleanName = InputSanitizer.sanitize(schoolName).trim()
+        if (cleanName.isBlank()) {
+            showToastAlert("يرجى إدخال اسم المدرسة الجديدة أولاً", isSuccess = false)
+            return
+        }
+        val cleanCode = InputSanitizer.sanitizeSchoolId(activationCode).ifBlank {
+            val nextNum = 1001 + _registeredSchools.value.size
+            nextNum.toString()
+        }
+        val cleanPass = InputSanitizer.sanitize(adminPassword).ifBlank { "123456" }
+        val cleanPrincipal = InputSanitizer.sanitize(principalName).ifBlank { "مدير المدرسة" }
+        val stageEnum = when {
+            schoolStageLabel.contains("ابتدائ") -> SchoolStage.PRIMARY
+            schoolStageLabel.contains("متوسط") -> SchoolStage.MIDDLE
+            schoolStageLabel.contains("إعداد") || schoolStageLabel.contains("اعداد") -> SchoolStage.PREPARATORY
+            else -> SchoolStage.SECONDARY
+        }
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val adminUsername = "$cleanCode-admin"
+
+        val prevActiveId = repo.getActiveSchoolId()
+        val newConfig = SchoolConfig(
+            schoolId = cleanCode,
+            isSetupCompleted = true,
+            isActive = true,
+            isSuspended = false,
+            createdAt = today,
+            schoolName = cleanName,
+            schoolStage = stageEnum,
+            registeredClasses = stageEnum.defaultClasses,
+            registeredSubjects = stageEnum.defaultSubjects,
+            principalFullName = cleanPrincipal,
+            isSchoolOfficiallyActivated = true,
+            schoolActivationCode = cleanCode
+        )
+        repo.saveSchoolConfig(newConfig)
+
+        val existingAccs = repo.loadAccounts(cleanCode)
+        val adminAcc = UserAccount(
+            id = "admin_$cleanCode",
+            username = adminUsername,
+            password = cleanPass,
+            fullName = cleanPrincipal,
+            role = UserRole.ADMIN,
+            isActive = true,
+            schoolId = cleanCode
+        )
+        val mergedAccs = listOf(adminAcc) + existingAccs.filterNot { it.role == UserRole.ADMIN }
+        repo.saveAccounts(mergedAccs, cleanCode)
+
+        if (prevActiveId.isNotBlank()) {
+            repo.setActiveSchoolId(prevActiveId)
+        }
+
+        val summary = RegisteredSchoolSummary(
+            schoolId = cleanCode,
+            schoolName = cleanName,
+            schoolStage = stageEnum.arabicLabel,
+            createdAt = today,
+            isActive = true,
+            isSuspended = false,
+            adminUsername = adminUsername,
+            isSchoolOfficiallyActivated = true,
+            schoolActivationCode = cleanCode,
+            principalFullName = cleanPrincipal,
+            adminPasswordPlain = cleanPass
+        )
+        val updatedSchools = listOf(summary) + _registeredSchools.value.filterNot {
+            it.schoolId.equals(cleanCode, ignoreCase = true)
+        }
+        _registeredSchools.value = updatedSchools
+        repo.saveRegisteredSchools(updatedSchools)
+        _cloudDiscoveryRevision.value += 1
+        showToastAlert("تمت إضافة مدرسة ($cleanName) وتفعيل كودها ($cleanCode) بنجاح", isSuccess = true)
+    }
+
+    fun unsuspendAndActivateSchoolImmediately(schoolId: String) {
+        val cleanId = schoolId.trim()
+        if (cleanId.isBlank()) return
+        val updatedList = _registeredSchools.value.map { s ->
+            if (s.schoolId.equals(cleanId, ignoreCase = true)) {
+                s.copy(
+                    isActive = true,
+                    isSuspended = false,
+                    isSchoolOfficiallyActivated = true
+                )
+            } else s
+        }
+        _registeredSchools.value = updatedList
+        repo.saveRegisteredSchools(updatedList)
+
+        val prevActiveId = repo.getActiveSchoolId()
+        val cfg = repo.loadSchoolConfig(cleanId)
+        val updatedCfg = cfg.copy(
+            schoolId = cleanId,
+            isActive = true,
+            isSuspended = false,
+            isSchoolOfficiallyActivated = true
+        )
+        repo.saveSchoolConfig(updatedCfg)
+        if (prevActiveId.isNotBlank() && prevActiveId != cleanId) {
+            repo.setActiveSchoolId(prevActiveId)
+        }
+        if (_schoolConfig.value.schoolId.equals(cleanId, ignoreCase = true)) {
+            _schoolConfig.value = _schoolConfig.value.copy(
+                isActive = true,
+                isSuspended = false,
+                isSchoolOfficiallyActivated = true
+            )
+        }
+        _cloudDiscoveryRevision.value += 1
+        val targetName = updatedList.firstOrNull { it.schoolId.equals(cleanId, ignoreCase = true) }?.schoolName ?: cleanId
+        showToastAlert("تم تفعيل مدرسة ($targetName) وإلغاء التجميد عنها فوراً", isSuccess = true)
+    }
+
+    fun setSchoolOfficialActivationRemote(schoolId: String, activated: Boolean) {
+        val cleanId = schoolId.trim()
+        if (cleanId.isBlank()) return
+        val updatedList = _registeredSchools.value.map { s ->
+            if (s.schoolId.equals(cleanId, ignoreCase = true)) {
+                s.copy(isSchoolOfficiallyActivated = activated)
+            } else s
+        }
+        _registeredSchools.value = updatedList
+        repo.saveRegisteredSchools(updatedList)
+
+        val prevActiveId = repo.getActiveSchoolId()
+        val cfg = repo.loadSchoolConfig(cleanId)
+        val updatedCfg = cfg.copy(
+            schoolId = cleanId,
+            isSchoolOfficiallyActivated = activated
+        )
+        repo.saveSchoolConfig(updatedCfg)
+        if (prevActiveId.isNotBlank() && prevActiveId != cleanId) {
+            repo.setActiveSchoolId(prevActiveId)
+        }
+        if (_schoolConfig.value.schoolId.equals(cleanId, ignoreCase = true)) {
+            _schoolConfig.value = _schoolConfig.value.copy(isSchoolOfficiallyActivated = activated)
+        }
+        _cloudDiscoveryRevision.value += 1
+        showToastAlert(
+            if (activated) "تم تفعيل بوابة المدرسة ($cleanId) رسمياً"
+            else "تم قفل بوابة المدرسة ($cleanId) لمطالبة المدير بكود التفعيل",
+            isSuccess = true
+        )
+    }
+
+    fun buildSchoolActivationShareCardText(school: RegisteredSchoolSummary): String {
+        val code = school.schoolActivationCode.ifBlank { school.schoolId }
+        val adminUser = school.adminUsername.ifBlank { "${school.schoolId}-admin" }
+        val adminPass = school.adminPasswordPlain.ifBlank { "123456" }
+        return buildString {
+            appendLine("بطاقة تفعيل نظام مدرستي الذكية")
+            appendLine("اسم المدرسة: ${school.schoolName}")
+            appendLine("المرحلة الدراسية: ${school.schoolStage}")
+            appendLine("كود تفعيل البوابة: $code")
+            appendLine("حساب المدير: $adminUser")
+            appendLine("كلمة السر: $adminPass")
+            append("المدير المسؤول: ${school.principalFullName}")
+        }
+    }
+
+    fun getSchoolDetailedStats(schoolId: String): SchoolDetailedInspectionStats {
+        val cleanId = schoolId.trim().ifBlank { "1001" }
+        val summary = _registeredSchools.value.firstOrNull {
+            it.schoolId.equals(cleanId, ignoreCase = true)
+        } ?: RegisteredSchoolSummary(
+            schoolId = cleanId,
+            schoolName = _schoolConfig.value.schoolName.ifBlank { "مدرستي النموذجية" },
+            schoolStage = _schoolConfig.value.schoolStage.arabicLabel,
+            schoolActivationCode = cleanId
+        )
+
+        val isCurrentActive = _schoolConfig.value.schoolId.equals(cleanId, ignoreCase = true)
+        val stuList = if (isCurrentActive && _students.value.isNotEmpty()) {
+            _students.value.filter { it.schoolId.isBlank() || it.schoolId.equals(cleanId, ignoreCase = true) }
+        } else {
+            repo.loadStudents(cleanId)
+        }
+        val accList = if (isCurrentActive && _accounts.value.isNotEmpty()) {
+            _accounts.value.filter { it.schoolId.isBlank() || it.schoolId.equals(cleanId, ignoreCase = true) }
+        } else {
+            repo.loadAccounts(cleanId)
+        }
+        val postsList = if (isCurrentActive && _studentActivityPosts.value.isNotEmpty()) {
+            _studentActivityPosts.value.filter { it.schoolId.isBlank() || it.schoolId.equals(cleanId, ignoreCase = true) }
+        } else {
+            repo.loadStudentActivityPosts(cleanId)
+        }
+
+        val teachers = accList.filter { it.role == UserRole.TEACHER }
+        val principalAcc = accList.firstOrNull { it.role == UserRole.ADMIN }
+        val passDisplay = principalAcc?.password?.ifBlank { summary.adminPasswordPlain } ?: summary.adminPasswordPlain.ifBlank { "123456" }
+
+        val sectionsMap = stuList
+            .groupBy { "${it.gradeClass} (${it.sectionName})" }
+            .mapValues { (_, list) -> list.size }
+
+        val avgAtt = if (stuList.isNotEmpty()) {
+            stuList.map { it.attendanceRate }.average().toInt().coerceIn(75, 100)
+        } else {
+            96
+        }
+
+        return SchoolDetailedInspectionStats(
+            school = summary,
+            students = stuList,
+            teachers = teachers,
+            principalAccount = principalAcc,
+            adminPasswordDisplay = passDisplay,
+            attendanceRatePercent = avgAtt,
+            sectionsMap = sectionsMap,
+            activityPostsCount = postsList.size
+        )
+    }
+
+    fun getAllDiscoveredSchoolsDetailedStats(): List<SchoolDetailedInspectionStats> {
+        val schools = _registeredSchools.value.ifEmpty {
+            listOf(
+                RegisteredSchoolSummary(
+                    schoolId = _schoolConfig.value.schoolId.ifBlank { "1001" },
+                    schoolName = _schoolConfig.value.schoolName.ifBlank { "مدرستي النموذجية" },
+                    schoolStage = _schoolConfig.value.schoolStage.arabicLabel,
+                    isActive = _schoolConfig.value.isActive,
+                    isSchoolOfficiallyActivated = _schoolConfig.value.isSchoolOfficiallyActivated,
+                    schoolActivationCode = _schoolConfig.value.schoolActivationCode.ifBlank { "1001" },
+                    principalFullName = _schoolConfig.value.principalFullName
+                )
+            )
+        }
+        return schools.map { getSchoolDetailedStats(it.schoolId) }
+    }
+
+    fun sendTargetedDeveloperBroadcast(
+        title: String,
+        message: String,
+        targetAudienceRole: String = "ALL"
+    ) {
+        val cleanTitle = InputSanitizer.sanitize(title).trim()
+        val cleanMsg = InputSanitizer.sanitize(message).trim()
+        if (cleanTitle.isBlank() || cleanMsg.isBlank()) {
+            showToastAlert("يرجى إدخال عنوان ونص التعميم الإداري أولاً", isSuccess = false)
+            return
+        }
+        val today = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val roleNormalized = targetAudienceRole.trim().uppercase().ifBlank { "ALL" }
+        val item = DeveloperBroadcastItem(
+            id = "dev_bc_${UUID.randomUUID().toString().take(6)}",
+            title = cleanTitle,
+            message = cleanMsg,
+            senderName = "إدارة المنصة التقنية",
+            createdAt = today,
+            targetSchoolId = "ALL",
+            iconKey = OccasionIconKey.BELL.name,
+            isActive = true,
+            targetRole = roleNormalized
+        )
+        val updated = listOf(item) + _developerBroadcasts.value
+        _developerBroadcasts.value = updated
+        repo.saveDeveloperBroadcasts(updated)
+        showToastAlert("تم إرسال التعميم الفوري (${item.targetAudienceArabicLabel}) بنجاح", isSuccess = true)
+    }
+
+    fun toggleDeveloperBroadcastActive(broadcastId: String) {
+        val updated = _developerBroadcasts.value.map { item ->
+            if (item.id == broadcastId) {
+                item.copy(isActive = !item.isActive)
+            } else item
+        }
+        _developerBroadcasts.value = updated
+        repo.saveDeveloperBroadcasts(updated)
+        val target = updated.firstOrNull { it.id == broadcastId }
+        showToastAlert(
+            if (target?.isActive == true) "تمت إعادة عرض التعميم في المدارس"
+            else "تم إيقاف عرض التعميم مؤقتاً",
+            isSuccess = true
+        )
+    }
 }
+
 

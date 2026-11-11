@@ -459,11 +459,37 @@ data class RegisteredSchoolSummary(
     val subscriptionExpiryDate: String = "2027-10-29",
     val isSchoolOfficiallyActivated: Boolean = false,
     val schoolActivationCode: String = "1001",
-    val isSuspended: Boolean = false
+    val isSuspended: Boolean = false,
+    val principalFullName: String = "مدير المدرسة",
+    val adminPasswordPlain: String = "123456"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
 }
+
+typealias SchoolTenantInfo = RegisteredSchoolSummary
+
+data class RemoteSchoolLiveStatus(
+    val schoolId: String = "",
+    val existsInCloud: Boolean = true,
+    val isActive: Boolean = true,
+    val isSuspended: Boolean = false,
+    val isSchoolOfficiallyActivated: Boolean = true,
+    val isVerifiedFromCloud: Boolean = true,
+    val schoolName: String = "",
+    val schoolActivationCode: String = ""
+)
+
+data class SchoolDetailedInspectionStats(
+    val school: RegisteredSchoolSummary,
+    val students: List<StudentRecord> = emptyList(),
+    val teachers: List<UserAccount> = emptyList(),
+    val principalAccount: UserAccount? = null,
+    val adminPasswordDisplay: String = "123456",
+    val attendanceRatePercent: Int = 96,
+    val sectionsMap: Map<String, Int> = emptyMap(),
+    val activityPostsCount: Int = 0
+)
 
 data class UrgentSchoolAlert(
     val id: String = "urgent_alert",
@@ -987,6 +1013,12 @@ object ArabicTextNormalizer {
         if (cleaned == legacyCity || cleaned == legacyDistrict || cleaned == "-" || cleaned == "—") return ""
         return cleaned
     }
+
+    fun formatSystemBroadcastDateTime(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return ""
+        return normalizeDigitsToAscii(trimmed)
+    }
 }
 
 enum class CanteenTransactionType(val arabicLabel: String) {
@@ -1124,6 +1156,8 @@ data class StudentRecord(
     val walletBalanceIqd: Int get() = walletBalance
     val dailySpendLimitIqd: Int get() = dailySpendLimit
     val overallAverage: String get() = "$excellencePoints%"
+    val averageScore: Int get() = excellencePoints
+    val attendanceRate: Int get() = (100 - (absenceDays * 3)).coerceIn(75, 100)
 
     val qrCodeValue: String
         get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
@@ -1780,8 +1814,24 @@ data class DeveloperBroadcastItem(
     val targetSchoolId: String = "ALL",
     val iconKey: String = OccasionIconKey.BELL.name,
     val imageBase64: String = "",
-    val imageUrl: String = ""
-)
+    val imageUrl: String = "",
+    val isActive: Boolean = true,
+    val targetRole: String = "ALL"
+) {
+    val formattedCreatedAt: String
+        get() = ArabicTextNormalizer.formatSystemBroadcastDateTime(createdAt)
+
+    val resolvedIconKey: OccasionIconKey
+        get() = OccasionIconKey.fromKey(iconKey)
+
+    val targetAudienceArabicLabel: String
+        get() = when (targetRole.trim().uppercase()) {
+            "ADMIN" -> "مدراء المدارس"
+            "TEACHER" -> "الكادر التدريسي"
+            "STUDENT" -> "الطلاب وأولياء الأمور"
+            else -> "جميع المدارس والمستخدمين"
+        }
+}
 
 data class StudentAutoBadge(
     val id: String,
@@ -2209,6 +2259,10 @@ enum class OccasionThemeType(
 
     companion object {
         val DEFAULT: OccasionThemeType = OFFICIAL
+        val RAMADAN: OccasionThemeType = RAMADAN_EID
+        val EID: OccasionThemeType = RAMADAN_EID
+        val MAWLID_NABAWI: OccasionThemeType = RAMADAN_EID
+        val IRAQI_NATIONAL_DAY: OccasionThemeType = NATIONAL_DAY
     }
 }
 
