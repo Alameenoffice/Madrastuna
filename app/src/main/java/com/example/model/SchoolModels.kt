@@ -460,11 +460,22 @@ data class RegisteredSchoolSummary(
     val isSchoolOfficiallyActivated: Boolean = false,
     val schoolActivationCode: String = "1001",
     val adminPasswordPlain: String = "123456",
-    val principalFullName: String = "مدير المدرسة"
+    val principalFullName: String = "مدير المدرسة",
+    val isSuspended: Boolean = !isActive,
+    val subscriptionStatus: String = if (isActive) "ACTIVE" else "SUSPENDED"
 ) {
+    val tenantId: String get() = schoolId
+    val activationCode: String get() = schoolActivationCode.ifBlank { schoolId }
+    val adminPassword: String get() = adminPasswordPlain.ifBlank { "123456" }
+    val adminCustomPassword: String get() = adminPasswordPlain.ifBlank { "123456" }
+    val principalName: String get() = principalFullName.ifBlank { "مدير المدرسة" }
+    val isOfficiallyActivated: Boolean get() = isSchoolOfficiallyActivated
+
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
 }
+
+typealias SchoolTenantInfo = RegisteredSchoolSummary
 
 data class SchoolDetailedInspectionStats(
     val school: RegisteredSchoolSummary = RegisteredSchoolSummary(),
@@ -527,7 +538,9 @@ data class SchoolConfig(
     val isCanteenWalletEnabled: Boolean = true,
     val principalFullName: String = "مدير المدرسة",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001"
+    val schoolActivationCode: String = "1001",
+    val isSuspended: Boolean = !isActive,
+    val subscriptionStatus: String = if (isActive) "ACTIVE" else "SUSPENDED"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -1791,6 +1804,63 @@ data class DeveloperBroadcastItem(
             "STUDENT" -> "الطلاب وأولياء الأمور"
             else -> "الجميع"
         }
+
+    val formattedCreatedAt: String
+        get() {
+            val raw = ArabicTextNormalizer.normalizeDigitsToAscii(createdAt).trim()
+            if (raw.isEmpty()) return "اليوم"
+            if (raw.contains("•") && raw.contains("/")) return raw
+            // Handle compact 8-digit date e.g. 20261111 or 12-digit 202611110855
+            val compactMatch = Regex("^(\\d{4})(\\d{2})(\\d{2})(?:(\\d{2})(\\d{2}))?$").find(raw)
+            if (compactMatch != null) {
+                val y = compactMatch.groupValues[1]
+                val m = compactMatch.groupValues[2]
+                val d = compactMatch.groupValues[3]
+                val hh = compactMatch.groupValues[4]
+                val mm = compactMatch.groupValues[5]
+                return if (hh.isNotEmpty() && mm.isNotEmpty()) {
+                    val hInt = hh.toIntOrNull() ?: 0
+                    val amPm = if (hInt >= 12) "م" else "ص"
+                    val h12 = when {
+                        hInt == 0 -> 12
+                        hInt > 12 -> hInt - 12
+                        else -> hInt
+                    }
+                    "$y/$m/$d • ${String.format(java.util.Locale.US, "%02d:%s", h12, mm)} $amPm"
+                } else {
+                    "$y/$m/$d"
+                }
+            }
+            // Handle standard yyyy-MM-dd hh:mm a or yyyy/MM/dd HH:mm
+            val fullMatch = Regex("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})(?:\\s+(\\d{1,2}):(\\d{2})(?:\\s*(AM|PM|am|pm|ص|م))?)?").find(raw)
+            if (fullMatch != null) {
+                val y = fullMatch.groupValues[1]
+                val m = fullMatch.groupValues[2].padStart(2, '0')
+                val d = fullMatch.groupValues[3].padStart(2, '0')
+                val hh = fullMatch.groupValues[4]
+                val mm = fullMatch.groupValues[5]
+                val mer = fullMatch.groupValues[6]
+                return if (hh.isNotEmpty() && mm.isNotEmpty()) {
+                    val hInt = hh.toIntOrNull() ?: 0
+                    val amPm = when {
+                        mer.equals("PM", ignoreCase = true) || mer == "م" -> "م"
+                        mer.equals("AM", ignoreCase = true) || mer == "ص" -> "ص"
+                        hInt >= 12 -> "م"
+                        else -> "ص"
+                    }
+                    val h12 = when {
+                        mer.isNotEmpty() -> hInt
+                        hInt == 0 -> 12
+                        hInt > 12 -> hInt - 12
+                        else -> hInt
+                    }
+                    "$y/$m/$d • ${String.format(java.util.Locale.US, "%02d:%s", h12, mm)} $amPm"
+                } else {
+                    "$y/$m/$d"
+                }
+            }
+            return raw.replace("-", "/")
+        }
 }
 
 data class StudentAutoBadge(
@@ -2253,8 +2323,21 @@ enum class OccasionThemeType(
     val greetingBanner: String
         get() = bannerGreeting
 
+    val defaultOccasionIconKey: OccasionIconKey
+        get() = when (this) {
+            OFFICIAL -> OccasionIconKey.SHIELD
+            RAMADAN, RAMADAN_EID -> OccasionIconKey.CRESCENT
+            EID -> OccasionIconKey.STAR
+            NEW_YEAR -> OccasionIconKey.CALENDAR
+            MAWLID_NABAWI -> OccasionIconKey.ROSE
+            IRAQI_NATIONAL_DAY, NATIONAL_DAY -> OccasionIconKey.FLAG
+            ACADEMIC_EXCELLENCE -> OccasionIconKey.GRADUATION_CAP
+            CUSTOM_MANUAL -> OccasionIconKey.BELL
+        }
+
     companion object {
         val DEFAULT: OccasionThemeType = OFFICIAL
+        val MAWLID: OccasionThemeType = MAWLID_NABAWI
     }
 }
 

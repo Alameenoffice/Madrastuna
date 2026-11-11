@@ -322,14 +322,15 @@ object FirebaseCloudSync {
 
     suspend fun fetchSubCollectionPayload(
         schoolId: String,
-        subCollection: String
+        subCollection: String,
+        forceRefresh: Boolean = false
     ): String? = withContext(Dispatchers.IO) {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(schoolId)
         if (cleanSchoolId.isBlank()) return@withContext null
 
         val key = "$cleanSchoolId/$subCollection"
         val lastLocalWriteTs = localWriteTimestamps[key] ?: 0L
-        if (wasRecentlyWrittenLocally(cleanSchoolId, subCollection)) {
+        if (!forceRefresh && wasRecentlyWrittenLocally(cleanSchoolId, subCollection)) {
             return@withContext localWrittenPayloads[key]
         }
 
@@ -569,6 +570,22 @@ object FirebaseCloudSync {
         val cleanDoc = InputSanitizer.sanitizeSchoolId(docName)
         if (cleanCollection.isBlank() || cleanDoc.isBlank()) return@withContext null
 
+        var rtdbPayload = ""
+        var rtdbUpdatedAt = 0L
+        try {
+            val rtdbUrl =
+                "${FirebaseConfigConstants.DATABASE_URL}/${cleanCollection}_$cleanDoc.json"
+            val response = executeHttpGet(rtdbUrl)
+            if (!response.isNullOrBlank() && response != "null") {
+                val root = JSONObject(response)
+                rtdbPayload = root.optString("payloadJson", "")
+                rtdbUpdatedAt = root.optLong("updatedAt", 0L)
+            }
+        } catch (_: Exception) {
+        }
+
+        var firestorePayload = ""
+        var firestoreUpdatedAt = 0L
         try {
             val firestoreUrl =
                 "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/$cleanCollection/$cleanDoc?key=${FirebaseConfigConstants.API_KEY}"
@@ -576,25 +593,21 @@ object FirebaseCloudSync {
             if (!response.isNullOrBlank()) {
                 val root = JSONObject(response)
                 val fields = root.optJSONObject("fields")
-                val payload = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
-                if (payload.isNotBlank()) return@withContext payload
+                firestorePayload = fields?.optJSONObject("payloadJson")?.optString("stringValue", "") ?: ""
+                firestoreUpdatedAt = fields?.optJSONObject("updatedAt")?.optString("integerValue", "0")?.toLongOrNull() ?: 0L
             }
         } catch (_: Exception) {
         }
 
-        try {
-            val rtdbUrl =
-                "${FirebaseConfigConstants.DATABASE_URL}/${cleanCollection}_$cleanDoc.json"
-            val response = executeHttpGet(rtdbUrl)
-            if (!response.isNullOrBlank() && response != "null") {
-                val root = JSONObject(response)
-                val payload = root.optString("payloadJson", "")
-                if (payload.isNotBlank()) return@withContext payload
+        val chosen = when {
+            rtdbPayload.isNotBlank() && firestorePayload.isNotBlank() -> {
+                if (rtdbUpdatedAt >= firestoreUpdatedAt) rtdbPayload else firestorePayload
             }
-        } catch (_: Exception) {
+            rtdbPayload.isNotBlank() -> rtdbPayload
+            firestorePayload.isNotBlank() -> firestorePayload
+            else -> null
         }
-
-        null
+        chosen
     }
 
     /**
@@ -691,8 +704,9 @@ object FirebaseCloudSync {
                     "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSid?key=${FirebaseConfigConstants.API_KEY}"
                 executeHttpDelete(fsSchoolRootUrl)
 
-                // 3. Delete associated license documents
-                licenseCodes.forEach { rawCode ->
+                // 3. Delete associated license documents and activation codes
+                val allCodesToClean = (licenseCodes + listOf(cleanSid)).distinct()
+                allCodesToClean.forEach { rawCode ->
                     val cleanCode = InputSanitizer.sanitizeSchoolId(rawCode)
                     if (cleanCode.isNotBlank()) {
                         val fsLicUrl =
@@ -701,6 +715,12 @@ object FirebaseCloudSync {
                         val rtdbLicUrl =
                             "${FirebaseConfigConstants.DATABASE_URL}/${FirebaseConfigConstants.COL_SCHOOL_LICENSES}/$cleanCode.json"
                         executeHttpDelete(rtdbLicUrl)
+                        val rtdbCodeUrl =
+                            "${FirebaseConfigConstants.DATABASE_URL}/school_codes/$cleanCode.json"
+                        executeHttpDelete(rtdbCodeUrl)
+                        val rtdbGateUrl =
+                            "${FirebaseConfigConstants.DATABASE_URL}/school_activation_gate/$cleanCode.json"
+                        executeHttpDelete(rtdbGateUrl)
                     }
                 }
             } catch (_: Exception) {

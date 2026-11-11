@@ -213,10 +213,14 @@ class SchoolRepository(context: Context) {
                 mergeEmbeddedTeacherRatingsIntoLocalCache(embeddedRatingsArr.toString(), resolvedSchoolId)
             }
 
+            val rawIsSuspended = obj.optBoolean("isSuspended", !obj.optBoolean("isActive", true))
+            val rawSubStatus = obj.optString("subscriptionStatus", if (!rawIsSuspended) "ACTIVE" else "SUSPENDED")
+            val effectiveIsActive = obj.optBoolean("isActive", !rawIsSuspended) && !rawIsSuspended && !rawSubStatus.equals("SUSPENDED", ignoreCase = true)
+
             SchoolConfig(
                 schoolId = resolvedSchoolId,
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
-                isActive = obj.optBoolean("isActive", true),
+                isActive = effectiveIsActive,
                 createdAt = obj.optString("createdAt", "2026-10-29"),
                 schoolName = obj.optString("schoolName", "مدرستي النموذجية"),
                 address = ArabicTextNormalizer.cleanDefaultAddress(obj.optString("address", "")),
@@ -240,7 +244,9 @@ class SchoolRepository(context: Context) {
                 isCanteenWalletEnabled = obj.optBoolean("isCanteenWalletEnabled", parsedFeatures.canteenWalletEnabled),
                 principalFullName = obj.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" },
                 isSchoolOfficiallyActivated = obj.optBoolean("isSchoolOfficiallyActivated", false),
-                schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } }
+                schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } },
+                isSuspended = !effectiveIsActive,
+                subscriptionStatus = if (effectiveIsActive) "ACTIVE" else "SUSPENDED"
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -435,6 +441,8 @@ class SchoolRepository(context: Context) {
             put("principalFullName", InputSanitizer.sanitize(config.principalFullName.ifBlank { "مدير المدرسة" }))
             put("isSchoolOfficiallyActivated", config.isSchoolOfficiallyActivated)
             put("schoolActivationCode", InputSanitizer.sanitizeSchoolId(config.schoolActivationCode.ifBlank { sid.ifBlank { "1001" } }))
+            put("isSuspended", !config.isActive)
+            put("subscriptionStatus", if (config.isActive) "ACTIVE" else "SUSPENDED")
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
@@ -2289,17 +2297,39 @@ class SchoolRepository(context: Context) {
         prefs.edit().putString("master_developer_secret_code_v1", clean).apply()
     }
 
+    fun getDeletedSchoolIds(): Set<String> {
+        return prefs.getStringSet("deleted_school_ids_v1", emptySet())?.toSet() ?: emptySet()
+    }
+
+    fun markSchoolIdAsDeleted(schoolId: String) {
+        val clean = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (clean.isBlank()) return
+        val updated = getDeletedSchoolIds().toMutableSet().apply { add(clean) }
+        prefs.edit().putStringSet("deleted_school_ids_v1", updated).apply()
+    }
+
+    fun unmarkSchoolIdAsDeleted(schoolId: String) {
+        val clean = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (clean.isBlank()) return
+        val current = getDeletedSchoolIds()
+        if (clean in current) {
+            val updated = current.toMutableSet().apply { remove(clean) }
+            prefs.edit().putStringSet("deleted_school_ids_v1", updated).apply()
+        }
+    }
+
     fun discoverLocalSchoolIds(): List<String> {
+        val deletedIds = getDeletedSchoolIds()
         val ids = mutableSetOf<String>()
         val active = getActiveSchoolId()
-        if (active.isNotBlank() && active != "default_school") ids.add(active)
+        if (active.isNotBlank() && active != "default_school" && active !in deletedIds) ids.add(active)
         try {
             prefs.all.keys.forEach { key ->
                 if (key.startsWith("schools/")) {
                     val parts = key.split("/")
                     if (parts.size >= 2) {
                         val sid = parts[1].trim()
-                        if (sid.isNotBlank() && sid != "default_school") {
+                        if (sid.isNotBlank() && sid != "default_school" && sid !in deletedIds) {
                             ids.add(sid)
                         }
                     }
@@ -2311,8 +2341,10 @@ class SchoolRepository(context: Context) {
     }
 
     fun ensureDefaultDiscoveredSchoolsIfEmpty(): List<RegisteredSchoolSummary> {
-        val existing = loadRegisteredSchools().toMutableList()
+        val deletedIds = getDeletedSchoolIds()
+        val existing = loadRegisteredSchools().filterNot { it.schoolId in deletedIds }.toMutableList()
         for (localSid in discoverLocalSchoolIds()) {
+            if (localSid in deletedIds) continue
             if (existing.none { it.schoolId.equals(localSid, ignoreCase = true) }) {
                 val cfg = loadSchoolConfig(localSid)
                 val accs = loadAccounts(localSid)
@@ -2333,49 +2365,63 @@ class SchoolRepository(context: Context) {
                         isSchoolOfficiallyActivated = cfg.isSchoolOfficiallyActivated || accs.isNotEmpty(),
                         schoolActivationCode = cfg.schoolActivationCode.ifBlank { localSid },
                         adminPasswordPlain = adminAcc?.password?.takeIf { it.length <= 24 } ?: "123456",
-                        principalFullName = adminAcc?.fullName?.ifBlank { cfg.principalFullName } ?: cfg.principalFullName.ifBlank { "مدير المدرسة" }
+                        principalFullName = adminAcc?.fullName?.ifBlank { cfg.principalFullName } ?: cfg.principalFullName.ifBlank { "مدير المدرسة" },
+                        isSuspended = !cfg.isActive,
+                        subscriptionStatus = if (cfg.isActive) "ACTIVE" else "SUSPENDED"
                     )
                 )
             }
         }
         if (existing.isEmpty()) {
-            val defaultSchool1001 = RegisteredSchoolSummary(
-                schoolId = "1001",
-                schoolName = "ثانوية المتفوقين النموذجية",
-                address = "بغداد - المنصور",
-                schoolStage = SchoolStage.SECONDARY.arabicLabel,
-                schoolType = SchoolType.PRIVATE.arabicLabel,
-                ministryAffiliation = "وزارة التربية",
-                schoolGenderType = "مدرسة بنين",
-                createdAt = "2026-10-01",
-                isActive = true,
-                adminUsername = "1001-admin",
-                subscriptionExpiryDate = "2027-10-29",
-                isSchoolOfficiallyActivated = true,
-                schoolActivationCode = "1001",
-                adminPasswordPlain = "123456",
-                principalFullName = "أ. حيدر عبد الكريم المنصوري"
-            )
-            val defaultSchool1002 = RegisteredSchoolSummary(
-                schoolId = "1002",
-                schoolName = "مدرسة الفراهيدي الابتدائية الأهلية",
-                address = "نينوى - الموصل",
-                schoolStage = SchoolStage.PRIMARY.arabicLabel,
-                schoolType = SchoolType.PRIVATE.arabicLabel,
-                ministryAffiliation = "وزارة التربية",
-                schoolGenderType = "مدرسة مختلطة",
-                createdAt = "2026-10-15",
-                isActive = true,
-                adminUsername = "1002-admin",
-                subscriptionExpiryDate = "2027-10-29",
-                isSchoolOfficiallyActivated = true,
-                schoolActivationCode = "1002",
-                adminPasswordPlain = "123456",
-                principalFullName = "أ. محمود سالم الطائي"
-            )
-            existing.add(defaultSchool1001)
-            existing.add(defaultSchool1002)
-            saveRegisteredSchools(existing)
+            if ("1001" !in deletedIds) {
+                existing.add(
+                    RegisteredSchoolSummary(
+                        schoolId = "1001",
+                        schoolName = "ثانوية المتفوقين النموذجية",
+                        address = "بغداد - المنصور",
+                        schoolStage = SchoolStage.SECONDARY.arabicLabel,
+                        schoolType = SchoolType.PRIVATE.arabicLabel,
+                        ministryAffiliation = "وزارة التربية",
+                        schoolGenderType = "مدرسة بنين",
+                        createdAt = "2026-10-01",
+                        isActive = true,
+                        adminUsername = "1001-admin",
+                        subscriptionExpiryDate = "2027-10-29",
+                        isSchoolOfficiallyActivated = true,
+                        schoolActivationCode = "1001",
+                        adminPasswordPlain = "123456",
+                        principalFullName = "أ. حيدر عبد الكريم المنصوري",
+                        isSuspended = false,
+                        subscriptionStatus = "ACTIVE"
+                    )
+                )
+            }
+            if ("1002" !in deletedIds) {
+                existing.add(
+                    RegisteredSchoolSummary(
+                        schoolId = "1002",
+                        schoolName = "مدرسة الفراهيدي الابتدائية الأهلية",
+                        address = "نينوى - الموصل",
+                        schoolStage = SchoolStage.PRIMARY.arabicLabel,
+                        schoolType = SchoolType.PRIVATE.arabicLabel,
+                        ministryAffiliation = "وزارة التربية",
+                        schoolGenderType = "مدرسة مختلطة",
+                        createdAt = "2026-10-15",
+                        isActive = true,
+                        adminUsername = "1002-admin",
+                        subscriptionExpiryDate = "2027-10-29",
+                        isSchoolOfficiallyActivated = true,
+                        schoolActivationCode = "1002",
+                        adminPasswordPlain = "123456",
+                        principalFullName = "أ. محمود سالم الطائي",
+                        isSuspended = false,
+                        subscriptionStatus = "ACTIVE"
+                    )
+                )
+            }
+            if (existing.isNotEmpty()) {
+                saveRegisteredSchools(existing)
+            }
         }
         return existing
     }
@@ -2639,6 +2685,9 @@ class SchoolRepository(context: Context) {
                 val o = arr.getJSONObject(i)
                 val sid = o.optString("schoolId").trim()
                 if (sid.isNotEmpty()) {
+                    val rawIsSuspended = o.optBoolean("isSuspended", !o.optBoolean("isActive", true))
+                    val rawSubStatus = o.optString("subscriptionStatus", if (!rawIsSuspended) "ACTIVE" else "SUSPENDED")
+                    val effectiveIsActive = o.optBoolean("isActive", !rawIsSuspended) && !rawIsSuspended && !rawSubStatus.equals("SUSPENDED", ignoreCase = true)
                     list.add(
                         RegisteredSchoolSummary(
                             schoolId = sid,
@@ -2649,13 +2698,15 @@ class SchoolRepository(context: Context) {
                             ministryAffiliation = o.optString("ministryAffiliation", "وزارة التربية").ifBlank { "وزارة التربية" },
                             schoolGenderType = o.optString("schoolGenderType", "مدرسة بنين").ifBlank { "مدرسة بنين" },
                             createdAt = o.optString("createdAt", "2026-10-29"),
-                            isActive = o.optBoolean("isActive", true),
+                            isActive = effectiveIsActive,
                             adminUsername = o.optString("adminUsername", ""),
                             subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                             isSchoolOfficiallyActivated = o.optBoolean("isSchoolOfficiallyActivated", false),
                             schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } },
                             adminPasswordPlain = o.optString("adminPasswordPlain", "123456").ifBlank { "123456" },
-                            principalFullName = o.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" }
+                            principalFullName = o.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" },
+                            isSuspended = !effectiveIsActive,
+                            subscriptionStatus = if (effectiveIsActive) "ACTIVE" else "SUSPENDED"
                         )
                     )
                 }
@@ -2685,6 +2736,8 @@ class SchoolRepository(context: Context) {
                 put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
                 put("adminPasswordPlain", s.adminPasswordPlain.ifBlank { "123456" })
                 put("principalFullName", InputSanitizer.sanitize(s.principalFullName.ifBlank { "مدير المدرسة" }))
+                put("isSuspended", !s.isActive)
+                put("subscriptionStatus", if (s.isActive) "ACTIVE" else "SUSPENDED")
             })
         }
         val jsonStr = arr.toString()
@@ -2697,6 +2750,7 @@ class SchoolRepository(context: Context) {
     }
 
     fun upsertRegisteredSchool(config: SchoolConfig, adminUsername: String = "") {
+        unmarkSchoolIdAsDeleted(config.schoolId)
         val current = loadRegisteredSchools().toMutableList()
         val existingIdx = current.indexOfFirst { it.schoolId == config.schoolId }
         val resolvedAdminUser = if (adminUsername.isNotBlank()) {
@@ -2725,7 +2779,9 @@ class SchoolRepository(context: Context) {
             isSchoolOfficiallyActivated = config.isSchoolOfficiallyActivated,
             schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } },
             adminPasswordPlain = existingPass,
-            principalFullName = config.principalFullName.ifBlank { "مدير المدرسة" }
+            principalFullName = config.principalFullName.ifBlank { "مدير المدرسة" },
+            isSuspended = !config.isActive,
+            subscriptionStatus = if (config.isActive) "ACTIVE" else "SUSPENDED"
         )
         if (existingIdx >= 0) {
             current[existingIdx] = summary
@@ -2873,6 +2929,71 @@ class SchoolRepository(context: Context) {
     }
 
     /**
+     * Live cloud status check for login/gate: fetches the latest school status from Firebase (`COL_SETTINGS` and `COL_SCHOOLS_REGISTRY`),
+     * updates local cache, and returns the fresh `SchoolConfig` so reactivated schools open immediately without stale suspension flags.
+     */
+    suspend fun fetchLatestSchoolStatusFromCloud(schoolId: String): SchoolConfig? {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return null
+
+        return kotlinx.coroutines.coroutineScope {
+            val settingsDeferred = async {
+                FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SETTINGS, forceRefresh = true)
+            }
+            val registryDeferred = async {
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+                    docName = "registry"
+                )
+            }
+            val settingsRaw = settingsDeferred.await()
+            val registryRaw = registryDeferred.await()
+
+            var registryEntry: RegisteredSchoolSummary? = null
+            if (!registryRaw.isNullOrBlank()) {
+                val parsedReg = parseRegisteredSchoolsJson(registryRaw)
+                registryEntry = parsedReg.firstOrNull {
+                    it.schoolId.equals(cleanSid, ignoreCase = true) ||
+                        it.schoolActivationCode.equals(cleanSid, ignoreCase = true)
+                }
+                if (parsedReg.isNotEmpty()) {
+                    prefs.edit().putString("global_registered_schools", registryRaw).apply()
+                }
+            }
+
+            if (!settingsRaw.isNullOrBlank()) {
+                prefs.edit().putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), settingsRaw).apply()
+            }
+
+            val baseConfig = if (!settingsRaw.isNullOrBlank()) {
+                parseSchoolConfigJson(settingsRaw, cleanSid)
+            } else {
+                loadSchoolConfig(cleanSid)
+            }
+
+            val resolvedActive = when {
+                !settingsRaw.isNullOrBlank() && registryEntry != null -> {
+                    // If settings was explicitly updated, use settings.isActive; if registry was reactivated, honor active status
+                    baseConfig.isActive
+                }
+                !settingsRaw.isNullOrBlank() -> baseConfig.isActive
+                registryEntry != null -> registryEntry.isActive
+                else -> baseConfig.isActive
+            }
+            val resolvedOfficial = baseConfig.isSchoolOfficiallyActivated || (registryEntry?.isSchoolOfficiallyActivated == true)
+
+            val mergedConfig = baseConfig.copy(
+                schoolId = cleanSid,
+                isActive = resolvedActive,
+                isSuspended = !resolvedActive,
+                subscriptionStatus = if (resolvedActive) "ACTIVE" else "SUSPENDED",
+                isSchoolOfficiallyActivated = resolvedOfficial
+            )
+            mergedConfig
+        }
+    }
+
+    /**
      * Ultra-fast essential cloud fetch for first-time login (< 1 second):
      * Pulls ONLY `COL_SETTINGS`, `COL_USERS`, and `COL_SUBJECTS` in parallel so credentials
      * can be verified and the user enters the Dashboard immediately without waiting for 25+ collections.
@@ -2883,7 +3004,7 @@ class SchoolRepository(context: Context) {
 
         return kotlinx.coroutines.coroutineScope {
             val settingsDeferred = async {
-                FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SETTINGS)
+                FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SETTINGS, forceRefresh = true)
             }
             val usersDeferred = async {
                 FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_USERS)
@@ -2891,10 +3012,17 @@ class SchoolRepository(context: Context) {
             val subjectsDeferred = async {
                 FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SUBJECTS)
             }
+            val registryDeferred = async {
+                FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+                    docName = "registry"
+                )
+            }
 
             val settingsRaw = settingsDeferred.await()
             val usersRaw = usersDeferred.await()
             val subjectsRaw = subjectsDeferred.await()
+            val registryRaw = registryDeferred.await()
 
             var foundAny = false
             val editor = prefs.edit()
@@ -2909,6 +3037,9 @@ class SchoolRepository(context: Context) {
             if (!subjectsRaw.isNullOrBlank()) {
                 editor.putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SUBJECTS), subjectsRaw)
                 foundAny = true
+            }
+            if (!registryRaw.isNullOrBlank()) {
+                editor.putString("global_registered_schools", registryRaw)
             }
             editor.apply()
             if (foundAny) {
@@ -4044,11 +4175,16 @@ class SchoolRepository(context: Context) {
     }
 
     /**
-     * Deeply deletes a school, all its subcollections, and its licenses from both local cache and Firebase Cloud.
+     * Deeply deletes a school, all its subcollections, accounts, students, teachers, grades, attendance,
+     * and its licenses from both local cache and Firebase Cloud.
      */
-    fun deleteSchoolCompletely(schoolId: String) {
+    fun deleteSchoolCompletely(schoolId: String, schoolCode: String = "") {
         val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
-        if (cleanSid.isBlank()) return
+        val cleanCode = InputSanitizer.sanitizeSchoolId(schoolCode)
+        if (cleanSid.isBlank() && cleanCode.isBlank()) return
+
+        val targetIds = listOf(cleanSid, cleanCode).filter { it.isNotBlank() }.distinct()
+        targetIds.forEach { markSchoolIdAsDeleted(it) }
 
         val subCols = listOf(
             FirebaseConfigConstants.COL_SETTINGS,
@@ -4080,31 +4216,48 @@ class SchoolRepository(context: Context) {
             FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS,
             FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
             FirebaseConfigConstants.COL_USER_PROFILES,
-            FirebaseConfigConstants.COL_HOLIDAYS
+            FirebaseConfigConstants.COL_HOLIDAYS,
+            FirebaseConfigConstants.COL_TEACHER_RATINGS,
+            FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS
         )
 
         val editor = prefs.edit()
-        subCols.forEach { sub ->
-            editor.remove(scopedKey(cleanSid, sub))
+        targetIds.forEach { sid ->
+            subCols.forEach { sub ->
+                editor.remove(scopedKey(sid, sub))
+            }
+            editor.remove("${scopedKey(sid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods")
+            editor.remove("${scopedKey(sid, FirebaseConfigConstants.COL_GRADES)}_exams")
+            editor.remove("last_shown_urgent_alert_$sid")
+            // Also remove any lingering prefixed keys under schools/{sid}/
+            try {
+                prefs.all.keys.filter { it.startsWith("schools/$sid/") }.forEach { k ->
+                    editor.remove(k)
+                }
+            } catch (_: Exception) {
+            }
         }
-        editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods")
-        editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES)}_exams")
-        editor.remove("last_shown_urgent_alert_$cleanSid")
-        if (getActiveSchoolId() == cleanSid) {
+        if (getActiveSchoolId() in targetIds) {
             editor.remove("active_school_id")
             editor.remove("active_user_session")
         }
         editor.apply()
 
         val allLicenses = loadSchoolLicenses()
-        val matchedLicenseCodes = allLicenses.filter { it.usedBySchoolId == cleanSid }.map { it.code }
-        val remainingLicenses = allLicenses.filterNot { it.usedBySchoolId == cleanSid }
+        val matchedLicenseCodes = (allLicenses
+            .filter { it.usedBySchoolId in targetIds || it.code in targetIds }
+            .map { it.code } + targetIds).distinct()
+        val remainingLicenses = allLicenses.filterNot { it.usedBySchoolId in targetIds || it.code in targetIds }
         saveSchoolLicenses(remainingLicenses)
 
-        val remainingSchools = loadRegisteredSchools().filterNot { it.schoolId == cleanSid }
+        val remainingSchools = loadRegisteredSchools().filterNot {
+            it.schoolId in targetIds || it.schoolActivationCode in targetIds
+        }
         saveRegisteredSchools(remainingSchools)
 
-        FirebaseCloudSync.deleteSchoolNodesFromCloudAsync(cleanSid, matchedLicenseCodes)
+        targetIds.forEach { sid ->
+            FirebaseCloudSync.deleteSchoolNodesFromCloudAsync(sid, matchedLicenseCodes)
+        }
     }
 
     /**

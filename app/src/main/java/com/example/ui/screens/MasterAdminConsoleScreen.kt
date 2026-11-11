@@ -39,6 +39,10 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +73,7 @@ import com.example.model.*
 import com.example.ui.components.SoftWaveMeshBackground
 import com.example.ui.components.ThreeDHeroHeaderCard
 import com.example.ui.components.ThreeDIllustrationType
+import com.example.ui.components.toThreeDIllustrationType
 import com.example.ui.theme.DeepEmerald
 import com.example.ui.theme.DeepForestGreen
 import com.example.ui.theme.GoldAccent
@@ -90,6 +95,48 @@ enum class MasterAdminSectionTab(
     ALERTS("التنبيهات", "master_tab_alerts")
 }
 
+fun buildSchoolActivationShareCardText(school: SchoolTenantInfo): String {
+    val code = school.schoolActivationCode.ifBlank { school.schoolId }
+    val adminUser = school.adminUsername.ifBlank { "${school.schoolId}-admin" }
+    val adminPass = school.adminPasswordPlain.ifBlank { "123456" }
+    return buildString {
+        appendLine("بطاقة تفعيل المدرسة الرسمية — نظام مدرستي")
+        appendLine("اسم المدرسة: ${school.schoolName}")
+        appendLine("المرحلة الدراسية: ${school.schoolStage}")
+        appendLine("كود تفعيل المدرسة: $code")
+        appendLine("اسم مستخدم المدير: $adminUser")
+        appendLine("كلمة سر المدير: $adminPass")
+        append("مدير المدرسة: ${school.principalFullName}")
+    }
+}
+
+fun buildSchoolActivationShareCardText(
+    schoolName: String,
+    schoolCode: String,
+    adminUsername: String = "",
+    adminPassword: String = "123456",
+    principalName: String = "مدير المدرسة"
+): String {
+    val effectiveUser = adminUsername.ifBlank { "$schoolCode-admin" }
+    return buildString {
+        appendLine("بطاقة تفعيل المدرسة الرسمية — نظام مدرستي")
+        appendLine("اسم المدرسة: $schoolName")
+        appendLine("كود تفعيل المدرسة: $schoolCode")
+        appendLine("اسم مستخدم المدير: $effectiveUser")
+        appendLine("كلمة سر المدير: $adminPassword")
+        append("مدير المدرسة: $principalName")
+    }
+}
+
+@Composable
+fun MasterAdminConsoleScreen(
+    viewModel: SchoolViewModel,
+    isDarkMode: Boolean = false,
+    onToggleDarkMode: () -> Unit = {}
+) {
+    MasterSystemAdminConsoleScreen(viewModel = viewModel)
+}
+
 /**
  * Root Coordinator for the Standalone "إدارة نظام مدرستي (Master System Admin Console)" Application.
  * Smoothly transitions via AnimatedContent (fadeIn + scaleIn) between:
@@ -100,7 +147,7 @@ enum class MasterAdminSectionTab(
 fun MasterAdminStandaloneRootFlow(
     viewModel: SchoolViewModel
 ) {
-    val isDeveloperAuthenticated by viewModel.isDeveloperAuthenticated.collectAsStateWithLifecycle()
+    val isDeveloperAuthenticated: Boolean by viewModel.isDeveloperAuthenticated.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.refreshDeveloperCloudData()
@@ -117,7 +164,7 @@ fun MasterAdminStandaloneRootFlow(
                 )
         },
         label = "master_admin_gate_to_console_transition"
-    ) { authenticated ->
+    ) { authenticated: Boolean ->
         if (!authenticated) {
             DeveloperWelcomeGateScreen(viewModel = viewModel)
         } else {
@@ -135,13 +182,13 @@ fun MasterAdminStandaloneRootFlow(
 fun DeveloperWelcomeGateScreen(
     viewModel: SchoolViewModel
 ) {
-    val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
+    val isDarkMode: Boolean by viewModel.isDarkMode.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
 
-    var secretCodeInput by remember { mutableStateOf("") }
-    var isPasswordVisible by remember { mutableStateOf(false) }
-    var isVerifyingBadgeRaised by remember { mutableStateOf(false) }
+    var secretCodeInput: String by remember { mutableStateOf<String>("") }
+    var isPasswordVisible: Boolean by remember { mutableStateOf<Boolean>(false) }
+    var isVerifyingBadgeRaised: Boolean by remember { mutableStateOf<Boolean>(false) }
 
     val cardBg = if (isDarkMode) Color(0xFF112620) else Color.White
     val primaryText = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF064E3B)
@@ -160,7 +207,7 @@ fun DeveloperWelcomeGateScreen(
         scope.launch {
             isVerifyingBadgeRaised = true
             delay(380)
-            viewModel.authenticateMasterDeveloperGate(trimmed) { success, _ ->
+            viewModel.authenticateMasterDeveloperGate(trimmed) { success: Boolean, _: String ->
                 if (!success) {
                     isVerifyingBadgeRaised = false
                 }
@@ -190,41 +237,42 @@ fun DeveloperWelcomeGateScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = Color(0xFF0D8A6A).copy(alpha = 0.12f),
                             border = BorderStroke(1.dp, Color(0xFF0D8A6A).copy(alpha = 0.28f)),
-                            modifier = Modifier.size(42.dp)
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Filled.AdminPanelSettings,
                                     contentDescription = "إدارة نظام مدرستي",
                                     tint = Color(0xFF0D8A6A),
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                         Column {
                             Text(
                                 text = "إدارة نظام مدرستي",
-                                style = MaterialTheme.typography.titleMedium,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = primaryText,
                                 maxLines = 1,
                                 softWrap = false
                             )
                             Text(
-                                text = "بوابة المطور الرئيسي للمنظومة",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = "منصة القيادة المركزية",
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = secondaryText,
                                 maxLines = 1,
@@ -236,7 +284,7 @@ fun DeveloperWelcomeGateScreen(
                     IconButton(
                         onClick = { viewModel.toggleDarkMode() },
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF0D8A6A).copy(alpha = 0.10f))
                             .testTag("dev_gate_theme_toggle_btn")
@@ -244,7 +292,8 @@ fun DeveloperWelcomeGateScreen(
                         Icon(
                             imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
                             contentDescription = "تبديل الوضع الليلي والنهاري",
-                            tint = if (isDarkMode) GoldAccent else Color(0xFF0D8A6A)
+                            tint = if (isDarkMode) GoldAccent else Color(0xFF0D8A6A),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -885,12 +934,12 @@ fun ProFlatVectorDeveloperCharacterCanvas(
 fun MasterSystemAdminConsoleScreen(
     viewModel: SchoolViewModel
 ) {
-    val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
-    val currentSecretCode by viewModel.masterDeveloperSecretCode.collectAsStateWithLifecycle()
+    val isDarkMode: Boolean by viewModel.isDarkMode.collectAsStateWithLifecycle()
+    val currentSecretCode: String by viewModel.masterDeveloperSecretCode.collectAsStateWithLifecycle()
 
-    var selectedTab by remember { mutableStateOf(MasterAdminSectionTab.SCHOOLS) }
-    var showChangeSecretDialog by remember { mutableStateOf(false) }
-    var newSecretCodeDraft by remember(currentSecretCode) { mutableStateOf(currentSecretCode) }
+    var selectedTab: MasterAdminSectionTab by remember { mutableStateOf<MasterAdminSectionTab>(MasterAdminSectionTab.SCHOOLS) }
+    var showChangeSecretDialog: Boolean by remember { mutableStateOf<Boolean>(false) }
+    var newSecretCodeDraft: String by remember(currentSecretCode) { mutableStateOf<String>(currentSecretCode) }
 
     val cardBg = if (isDarkMode) Color(0xFF112620) else Color.White
     val primaryText = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF064E3B)
@@ -968,48 +1017,48 @@ fun MasterSystemAdminConsoleScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = Color(0xFF0D8A6A).copy(alpha = 0.12f),
                             border = BorderStroke(1.dp, Color(0xFF0D8A6A).copy(alpha = 0.28f)),
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Filled.AdminPanelSettings,
                                     contentDescription = "إدارة نظام مدرستي",
                                     tint = Color(0xFF0D8A6A),
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "إدارة نظام مدرستي",
-                                style = MaterialTheme.typography.titleMedium,
+                                fontSize = 14.sp,
+                                lineHeight = 18.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = primaryText,
                                 maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                             Text(
-                                text = "منصة القيادة المركزية للمطور",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = "منصة القيادة المركزية",
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = secondaryText,
                                 maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
                     }
@@ -1020,11 +1069,10 @@ fun MasterSystemAdminConsoleScreen(
                     ) {
                         IconButton(
                             onClick = {
-                                viewModel.refreshDeveloperCloudData()
-                                viewModel.showToastAlert("تم تحديث واكتشاف أحدث البيانات بنجاح", isSuccess = true)
+                                viewModel.performComprehensiveMasterCloudSync { _: Boolean, _: String -> }
                             },
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFF0D8A6A).copy(alpha = 0.10f))
                                 .testTag("master_console_sync_btn")
@@ -1033,14 +1081,14 @@ fun MasterSystemAdminConsoleScreen(
                                 imageVector = Icons.Filled.Sync,
                                 contentDescription = "مزامنة البيانات",
                                 tint = Color(0xFF0D8A6A),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         IconButton(
                             onClick = { showChangeSecretDialog = true },
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFF0D8A6A).copy(alpha = 0.10f))
                                 .testTag("master_console_secret_settings_btn")
@@ -1049,14 +1097,14 @@ fun MasterSystemAdminConsoleScreen(
                                 imageVector = Icons.Filled.Key,
                                 contentDescription = "إعدادات رمز المطور",
                                 tint = Color(0xFF0D8A6A),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         IconButton(
                             onClick = { viewModel.toggleDarkMode() },
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFF0D8A6A).copy(alpha = 0.10f))
                                 .testTag("master_console_theme_btn")
@@ -1065,14 +1113,14 @@ fun MasterSystemAdminConsoleScreen(
                                 imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
                                 contentDescription = "تبديل المظهر",
                                 tint = if (isDarkMode) GoldAccent else Color(0xFF0D8A6A),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         IconButton(
                             onClick = { viewModel.exitDeveloperPanel() },
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFDC2626).copy(alpha = 0.10f))
                                 .testTag("master_console_lock_btn")
@@ -1081,7 +1129,7 @@ fun MasterSystemAdminConsoleScreen(
                                 imageVector = Icons.Filled.Lock,
                                 contentDescription = "قفل لوحة القيادة",
                                 tint = Color(0xFFDC2626),
-                                modifier = Modifier.size(19.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -1191,15 +1239,75 @@ private fun MasterSchoolsManagementTab(
     val secondaryText = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF334155)
     val borderColor = if (isDarkMode) Color(0xFF10B981).copy(alpha = 0.32f) else Color(0xFF0D8A6A).copy(alpha = 0.20f)
 
-    var newSchoolName by remember { mutableStateOf("") }
-    var newSchoolStage by remember { mutableStateOf("ثانوية") }
-    var newActivationCode by remember { mutableStateOf("") }
-    var newAdminPassword by remember { mutableStateOf("123456") }
-    var newPrincipalName by remember { mutableStateOf("") }
+    var newSchoolName: String by remember { mutableStateOf<String>("") }
+    var newSchoolStage: String by remember { mutableStateOf<String>("ثانوية") }
+    var newActivationCode: String by remember { mutableStateOf<String>("") }
+    var newAdminPassword: String by remember { mutableStateOf<String>("123456") }
+    var newPrincipalName: String by remember { mutableStateOf<String>("") }
 
-    var editingSchool by remember { mutableStateOf<RegisteredSchoolSummary?>(null) }
-    var editCodeDraft by remember { mutableStateOf("") }
-    var editPassDraft by remember { mutableStateOf("") }
+    var editingSchool: RegisteredSchoolSummary? by remember { mutableStateOf<RegisteredSchoolSummary?>(null) }
+    var editCodeDraft: String by remember { mutableStateOf<String>("") }
+    var editPassDraft: String by remember { mutableStateOf<String>("") }
+    var schoolPendingDelete: RegisteredSchoolSummary? by remember { mutableStateOf<RegisteredSchoolSummary?>(null) }
+
+    schoolPendingDelete?.let { schoolToDelete ->
+        val effectiveDeleteCode = schoolToDelete.schoolActivationCode.ifBlank { schoolToDelete.schoolId }
+        AlertDialog(
+            onDismissRequest = { schoolPendingDelete = null },
+            containerColor = cardBg,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.DeleteForever,
+                    contentDescription = null,
+                    tint = Color(0xFFDC2626),
+                    modifier = Modifier.size(34.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "تأكيد حذف المدرسة نهائياً",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFFDC2626)
+                )
+            },
+            text = {
+                Text(
+                    text = "هل أنت متأكد من حذف مدرسة (${schoolToDelete.schoolName}) نهائياً مع كافة حساباتها وبيانات طلابها ومعلميها من قاعدة البيانات؟",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = primaryText
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteSchoolCompletely(
+                            schoolId = schoolToDelete.schoolId,
+                            schoolCode = effectiveDeleteCode
+                        )
+                        schoolPendingDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFDC2626),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("confirm_delete_school_dialog_btn")
+                ) {
+                    Text("نعم، حذف المدرسة نهائياً", fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { schoolPendingDelete = null },
+                    modifier = Modifier.testTag("cancel_delete_school_dialog_btn")
+                ) {
+                    Text("إلغاء", color = secondaryText, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
 
     editingSchool?.let { target ->
         AlertDialog(
@@ -1618,31 +1726,32 @@ private fun MasterSchoolsManagementTab(
                         }
                     }
 
-                    // Remote Control Action Buttons Grid (All 5 Requested Controls)
+                    // Remote Control Action Buttons Grid (All Requested Controls + Full Cascade Delete)
+                    val isSchoolFrozen = !school.isActive || school.isSuspended
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // 1. تفعيل رسمي
+                        // 1. تفعيل رسمي (يلغي التجميد ويفعل المدرسة فوراً في السحابة والذاكرة)
                         Button(
                             onClick = {
-                                viewModel.setSchoolOfficialActivationRemote(school.schoolId, true)
+                                viewModel.unsuspendAndActivateSchoolImmediately(school.schoolId)
                             },
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF0D8A6A),
                                 contentColor = Color.White
                             ),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(if (isSchoolFrozen) 0.75f else 1f)
                                 .height(42.dp)
                                 .testTag("school_activate_btn_${school.schoolId}")
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Verified,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
@@ -1654,34 +1763,39 @@ private fun MasterSchoolsManagementTab(
                             )
                         }
 
-                        // 2. إيقاف/تجميد مؤقت
+                        // 2. زر ذكي للتجميد / إلغاء التجميد وتفعيل المدرسة فوراً
                         OutlinedButton(
                             onClick = {
-                                viewModel.toggleSchoolSubscriptionActive(school.schoolId)
+                                if (isSchoolFrozen) {
+                                    viewModel.unsuspendAndActivateSchoolImmediately(school.schoolId)
+                                } else {
+                                    viewModel.toggleSchoolSubscriptionActive(school.schoolId)
+                                }
                             },
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(
-                                1.dp,
-                                if (school.isActive) Color(0xFFD97706) else Color(0xFF0D8A6A)
+                                1.2.dp,
+                                if (!isSchoolFrozen) Color(0xFFD97706) else Color(0xFF0D8A6A)
                             ),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(if (isSchoolFrozen) 1.25f else 1f)
                                 .height(42.dp)
                                 .testTag("school_freeze_btn_${school.schoolId}")
                         ) {
                             Icon(
-                                imageVector = if (school.isActive) Icons.Filled.PauseCircle else Icons.Filled.PlayCircle,
+                                imageVector = if (!isSchoolFrozen) Icons.Filled.PauseCircle else Icons.Filled.PlayCircle,
                                 contentDescription = null,
-                                tint = if (school.isActive) Color(0xFFD97706) else Color(0xFF0D8A6A),
-                                modifier = Modifier.size(16.dp)
+                                tint = if (!isSchoolFrozen) Color(0xFFD97706) else Color(0xFF0D8A6A),
+                                modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (school.isActive) "إيقاف/تجميد مؤقت" else "إلغاء التجميد",
-                                style = MaterialTheme.typography.labelMedium,
+                                text = if (!isSchoolFrozen) "إيقاف/تجميد مؤقت" else "إلغاء التجميد وتفعيل المدرسة فوراً",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = if (isSchoolFrozen) 10.sp else 12.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (school.isActive) Color(0xFFD97706) else Color(0xFF0D8A6A),
+                                color = if (!isSchoolFrozen) Color(0xFFD97706) else Color(0xFF0D8A6A),
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -1755,39 +1869,83 @@ private fun MasterSchoolsManagementTab(
                         }
                     }
 
-                    // 5. نسخ بيانات التفعيل
-                    Surface(
-                        onClick = {
-                            val clipText = "المدرسة: ${school.schoolName}\nكود التفعيل: $effectiveCode\nاسم مستخدم المدير: $effectiveAdminUser\nكلمة سر المدير: $effectivePass"
-                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                            cm?.setPrimaryClip(ClipData.newPlainText("بيانات تفعيل المدرسة", clipText))
-                            viewModel.showToastAlert("تم نسخ بيانات التفعيل لمدرسة (${school.schoolName})", isSuccess = true)
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF0D8A6A).copy(alpha = 0.10f),
-                        border = BorderStroke(1.dp, Color(0xFF0D8A6A).copy(alpha = 0.30f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp)
-                            .testTag("school_copy_creds_btn_${school.schoolId}")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        // 5. نسخ بيانات التفعيل
+                        Surface(
+                            onClick = {
+                                val clipText = viewModel.buildSchoolActivationShareCardText(
+                                    school.copy(
+                                        schoolActivationCode = effectiveCode,
+                                        adminUsername = effectiveAdminUser,
+                                        adminPasswordPlain = effectivePass
+                                    )
+                                )
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                cm?.setPrimaryClip(ClipData.newPlainText("بيانات تفعيل المدرسة", clipText))
+                                viewModel.showToastAlert("تم نسخ بيانات التفعيل لمدرسة (${school.schoolName})", isSuccess = true)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF0D8A6A).copy(alpha = 0.10f),
+                            border = BorderStroke(1.dp, Color(0xFF0D8A6A).copy(alpha = 0.30f)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .testTag("school_copy_creds_btn_${school.schoolId}")
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.ContentCopy,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0D8A6A),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "نسخ بيانات التفعيل",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF0D8A6A),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        // 6. حذف المدرسة نهائياً بكامل بياناتها
+                        OutlinedButton(
+                            onClick = {
+                                schoolPendingDelete = school
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.2.dp, Color(0xFFDC2626)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color(0xFFDC2626).copy(alpha = 0.08f)
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .testTag("school_delete_forever_btn_${school.schoolId}")
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.ContentCopy,
+                                imageVector = Icons.Filled.DeleteForever,
                                 contentDescription = null,
-                                tint = Color(0xFF0D8A6A),
+                                tint = Color(0xFFDC2626),
                                 modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "نسخ بيانات التفعيل",
-                                style = MaterialTheme.typography.labelMedium,
+                                text = "حذف المدرسة نهائياً",
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF0D8A6A),
+                                color = Color(0xFFDC2626),
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -1825,14 +1983,14 @@ private fun MasterStatisticsInspectionTab(
         96
     }
 
-    var selectedSchoolId by remember(allStats) {
-        mutableStateOf(allStats.firstOrNull()?.school?.schoolId ?: "1001")
+    var selectedSchoolId: String by remember(allStats) {
+        mutableStateOf<String>(allStats.firstOrNull()?.school?.schoolId ?: "1001")
     }
     val selectedStats = allStats.firstOrNull {
         it.school.schoolId.equals(selectedSchoolId, ignoreCase = true)
     } ?: allStats.firstOrNull()
 
-    var inspectionSubTab by remember { mutableIntStateOf(0) } // 0 = الطلاب والشعب, 1 = الكادر التدريسي, 2 = الحضور والنشاط
+    var inspectionSubTab: Int by remember { mutableIntStateOf(0) } // 0 = الطلاب والشعب, 1 = الكادر التدريسي, 2 = الحضور والنشاط
 
     val cardBg = if (isDarkMode) Color(0xFF112620) else Color.White
     val primaryText = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF064E3B)
@@ -2347,11 +2505,11 @@ private fun MasterOccasionsRemoteThemeTab(
 ) {
     val occasionConfig by viewModel.occasionThemeConfig.collectAsStateWithLifecycle()
 
-    var selectedTheme by remember(occasionConfig.themeType) {
-        mutableStateOf(occasionConfig.themeType)
+    var selectedTheme: OccasionThemeType by remember(occasionConfig.themeType) {
+        mutableStateOf<OccasionThemeType>(occasionConfig.themeType)
     }
-    var customGreetingText by remember(occasionConfig.customBannerText) {
-        mutableStateOf(
+    var customGreetingText: String by remember(occasionConfig.customBannerText) {
+        mutableStateOf<String>(
             occasionConfig.customBannerText.ifBlank {
                 "نتمنى لجميع إدارات المدارس والكادر التدريسي والطلاب دوام التفوق والنجاح"
             }
@@ -2387,14 +2545,15 @@ private fun MasterOccasionsRemoteThemeTab(
                 subtitle = "تفعيل شريط وأيقونة المناسبة وتخصيص نص التهنئة في جميع المدارس بضغطة زر",
                 rightPillText = "الهوية الموسمية",
                 leftPillText = if (occasionConfig.isActive) "نشط: ${occasionConfig.effectiveTitle}" else "الوضع الرسمي",
-                illustrationType = ThreeDIllustrationType.CRESCENT_LANTERN_3D
+                illustrationType = selectedTheme.toThreeDIllustrationType()
             )
         }
 
-        // Occasion Cards Grid
+        // Occasion Cards Grid (Each with its Bespoke Animated Vector Canvas)
         items(supportedOccasions, key = { it.name }) { themeType ->
             val isSelected = selectedTheme == themeType
-            val isCurrentlyLive = occasionConfig.isActive && occasionConfig.themeType == themeType
+            val isCurrentlyLive = (occasionConfig.isActive && occasionConfig.themeType == themeType) ||
+                (!occasionConfig.isActive && themeType == OccasionThemeType.OFFICIAL)
 
             Card(
                 modifier = Modifier
@@ -2415,7 +2574,7 @@ private fun MasterOccasionsRemoteThemeTab(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -2425,16 +2584,23 @@ private fun MasterOccasionsRemoteThemeTab(
                         modifier = Modifier.weight(1f)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isSelected) Color(0xFF0D8A6A) else Color(0xFF0D8A6A).copy(alpha = 0.10f),
-                            modifier = Modifier.size(44.dp)
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) Color(0xFF064E3B) else Color(0xFF0D8A6A).copy(alpha = 0.12f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) GoldAccent else Color(0xFF0D8A6A).copy(alpha = 0.25f)
+                            ),
+                            modifier = Modifier.size(56.dp)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Filled.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = if (isSelected) GoldAccent else Color(0xFF0D8A6A),
-                                    modifier = Modifier.size(22.dp)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(4.dp)
+                            ) {
+                                com.example.ui.components.AnimatedOccasionVectorCanvas(
+                                    themeType = themeType,
+                                    modifier = Modifier.fillMaxSize()
                                 )
                             }
                         }
@@ -2586,26 +2752,26 @@ private fun MasterAlertsAndUpdatesTab(
     val appUpdateConfig by viewModel.appUpdateConfig.collectAsStateWithLifecycle()
     val developerBroadcasts by viewModel.developerBroadcasts.collectAsStateWithLifecycle()
 
-    var versionName by remember(appUpdateConfig.latestVersionName) {
-        mutableStateOf(appUpdateConfig.latestVersionName.ifBlank { "2.5.0" })
+    var versionName: String by remember(appUpdateConfig.latestVersionName) {
+        mutableStateOf<String>(appUpdateConfig.latestVersionName.ifBlank { "2.5.0" })
     }
-    var apkDownloadUrl by remember(appUpdateConfig.apkDownloadUrl) {
-        mutableStateOf(appUpdateConfig.apkDownloadUrl)
+    var apkDownloadUrl: String by remember(appUpdateConfig.apkDownloadUrl) {
+        mutableStateOf<String>(appUpdateConfig.apkDownloadUrl)
     }
-    var releaseNotes by remember(appUpdateConfig.releaseNotes) {
-        mutableStateOf(appUpdateConfig.releaseNotes)
+    var releaseNotes: String by remember(appUpdateConfig.releaseNotes) {
+        mutableStateOf<String>(appUpdateConfig.releaseNotes)
     }
-    var isForceUpdate by remember(appUpdateConfig.isForceUpdate) {
-        mutableStateOf(appUpdateConfig.isForceUpdate)
+    var isForceUpdate: Boolean by remember(appUpdateConfig.isForceUpdate) {
+        mutableStateOf<Boolean>(appUpdateConfig.isForceUpdate)
     }
 
-    var broadcastTitle by remember { mutableStateOf("") }
-    var broadcastMessage by remember { mutableStateOf("") }
-    var targetAudienceRole by remember { mutableStateOf("ALL") } // ALL, ADMIN, TEACHER, STUDENT
+    var broadcastTitle: String by remember { mutableStateOf<String>("") }
+    var broadcastMessage: String by remember { mutableStateOf<String>("") }
+    var targetAudienceRole: String by remember { mutableStateOf<String>("ALL") } // ALL, ADMIN, TEACHER, STUDENT
 
-    var editingBroadcast by remember { mutableStateOf<DeveloperBroadcastItem?>(null) }
-    var editBroadcastTitle by remember { mutableStateOf("") }
-    var editBroadcastBody by remember { mutableStateOf("") }
+    var editingBroadcast: DeveloperBroadcastItem? by remember { mutableStateOf<DeveloperBroadcastItem?>(null) }
+    var editBroadcastTitle: String by remember { mutableStateOf<String>("") }
+    var editBroadcastBody: String by remember { mutableStateOf<String>("") }
 
     val cardBg = if (isDarkMode) Color(0xFF112620) else Color.White
     val primaryText = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF064E3B)
@@ -3073,7 +3239,7 @@ private fun MasterAlertsAndUpdatesTab(
                                     color = primaryText
                                 )
                                 Text(
-                                    text = "الفئة: ${item.targetAudienceArabicLabel} • ${item.createdAt}",
+                                    text = "الفئة: ${item.targetAudienceArabicLabel} • ${item.formattedCreatedAt}",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = secondaryText

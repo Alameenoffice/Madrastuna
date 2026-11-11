@@ -1177,59 +1177,16 @@ fun OccasionVectorEmblem(
                         .clip(CircleShape)
                 )
             }
+        } else if (themeType != OccasionThemeType.CUSTOM_MANUAL) {
+            AnimatedOccasionVectorCanvas(
+                themeType = themeType,
+                modifier = Modifier.fillMaxSize()
+            )
         } else {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val w = this.size.width
-                val h = this.size.height
-                val center = Offset(w / 2f, h / 2f)
-                val radius = (w.coerceAtMost(h) / 2f)
-
-                // Soft emerald aura ring
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFA7F3D0).copy(alpha = 0.40f * glowPulse),
-                            Color(0xFF10B981).copy(alpha = 0.14f * glowPulse),
-                            Color.Transparent
-                        ),
-                        center = center,
-                        radius = radius
-                    ),
-                    radius = radius,
-                    center = center
-                )
-
-                // Medallion background
-                drawCircle(
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFF047857), Color(0xFF059669))
-                    ),
-                    radius = radius * 0.82f,
-                    center = center
-                )
-
-                // Clean emerald/white border
-                drawCircle(
-                    color = Color(0xFFA7F3D0),
-                    radius = radius * 0.82f,
-                    center = center,
-                    style = Stroke(width = radius * 0.055f)
-                )
-
-                when (resolvedIconKey) {
-                    OccasionIconKey.CROWN -> drawCrownEmblem(w, h)
-                    OccasionIconKey.CRESCENT -> drawRamadanLanternEmblem(w, h)
-                    OccasionIconKey.GRADUATION_CAP -> drawGraduationCapEmblem(w, h)
-                    OccasionIconKey.TROPHY -> drawTrophyLaurelEmblem(w, h)
-                    OccasionIconKey.SHIELD -> drawShieldEmblem(w, h)
-                    OccasionIconKey.FLAG -> drawNationalBannerEmblem(w, h)
-                    OccasionIconKey.BOOK -> drawOpenBookEmblem(w, h)
-                    OccasionIconKey.STAR -> drawRoyalStarEmblem(w, h)
-                    OccasionIconKey.CALENDAR -> drawCalendarEmblem(w, h)
-                    OccasionIconKey.ROSE -> drawRoseEmblem(w, h)
-                    OccasionIconKey.BELL -> drawBellEmblem(w, h)
-                }
-            }
+            ThreeDIllustrationBox(
+                type = resolvedIconKey.toThreeDIllustrationType(),
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
