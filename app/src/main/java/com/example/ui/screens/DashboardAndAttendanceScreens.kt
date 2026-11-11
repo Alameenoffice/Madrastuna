@@ -1,15 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -31,16 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
@@ -84,8 +66,6 @@ fun DashboardScreen(
     val holidaysConfig by viewModel.holidaysConfig.collectAsState()
     val toastAlert by viewModel.toastAlert.collectAsState()
     val teacherRatings by viewModel.teacherRatings.collectAsState()
-    val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
-    val dismissedBroadcastIds by viewModel.dismissedBroadcastIds.collectAsState()
     val topTeacherSummary = remember(accounts, teacherRatings, currentUser) {
         viewModel.getTopRatedTeacherSummary(accounts, teacherRatings, currentUser)
     }
@@ -212,65 +192,21 @@ fun DashboardScreen(
                     onBottomActionClick = if (isAdmin) {
                         { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) }
                     } else null,
-                    customLeftIllustration = {
-                        DashboardWelcomeBezierVectorAnimation(
-                            occasionThemeConfig = occasionThemeConfig,
-                            modifier = Modifier.size(114.dp)
-                        )
-                    },
                     modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 
-                // 2) SECOND (Tucked seamlessly under Welcome Hero wave with 0.dp gap): Global Developer Broadcast + Occasion + Principal Announcement
-                val latestActiveDevBroadcast = remember(developerBroadcasts, dismissedBroadcastIds, schoolConfig.schoolId) {
-                    developerBroadcasts.firstOrNull { bc ->
-                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                        val targetsThisSchool = bc.targetSchoolId.isBlank() ||
-                            bc.targetSchoolId.equals("ALL", ignoreCase = true) ||
-                            bc.targetSchoolId.equals(schoolConfig.schoolId, ignoreCase = true)
-                        targetsThisSchool && bc.id !in dismissedBroadcastIds && key !in dismissedBroadcastIds
-                    }
-                }
-
-                if (latestActiveDevBroadcast != null) {
-                    val bcIconKey = OccasionIconKey.fromKey(latestActiveDevBroadcast.iconKey)
-                    DeveloperSystemBroadcastBanner(
-                        title = latestActiveDevBroadcast.title,
-                        subtitle = "${latestActiveDevBroadcast.message}  •  (${latestActiveDevBroadcast.createdAt})",
-                        badgeText = "إشعار النظام العام • التعميم المركزي",
-                        iconKey = bcIconKey,
-                        illustrationType = bcIconKey.toThreeDIllustrationType(),
-                        topOverlapPadding = 22.dp,
-                        onDismiss = if (isAdmin) {
-                            {
-                                val key = latestActiveDevBroadcast.id.ifBlank {
-                                    "${latestActiveDevBroadcast.title}_${latestActiveDevBroadcast.createdAt}"
-                                }
-                                viewModel.dismissDeveloperBroadcastForAdmin(key)
-                                if (latestActiveDevBroadcast.id.isNotBlank()) {
-                                    viewModel.dismissDeveloperBroadcastForAdmin(latestActiveDevBroadcast.id)
-                                }
-                            }
-                        } else null,
-                        modifier = Modifier
-                            .seamlessWaveOverlap(26.dp)
-                            .zIndex(3.5f)
-                            .testTag("dashboard_global_broadcast_banner")
-                    )
-                }
-
+                // 2) SECOND (Tucked seamlessly under Welcome Hero wave with 0.dp gap): Developer Broadcast + Principal Announcement
                 if (occasionThemeConfig.isActive) {
                     val devIconKey = occasionThemeConfig.resolvedIconKey
-                    val occOverlap = if (latestActiveDevBroadcast != null) 18.dp else 26.dp
                     DeveloperSystemBroadcastBanner(
                         title = occasionThemeConfig.effectiveTitle,
                         subtitle = occasionThemeConfig.effectiveBannerText,
                         badgeText = devIconKey.arabicLabel,
                         iconKey = devIconKey,
                         illustrationType = devIconKey.toThreeDIllustrationType(),
-                        topOverlapPadding = occOverlap - 4.dp,
+                        topOverlapPadding = 22.dp,
                         modifier = Modifier
-                            .seamlessWaveOverlap(occOverlap)
+                            .seamlessWaveOverlap(26.dp)
                             .zIndex(3f)
                     )
                 }
@@ -286,7 +222,7 @@ fun DashboardScreen(
                     } else {
                         "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
                     }
-                    val overlapWithAbove = if (occasionThemeConfig.isActive || latestActiveDevBroadcast != null) 18.dp else 26.dp
+                    val overlapWithAbove = if (occasionThemeConfig.isActive) 18.dp else 26.dp
 
                     ThreeDMegaphoneAnnouncementBanner(
                         title = schoolBannerTitle,
@@ -314,7 +250,7 @@ fun DashboardScreen(
 
                 // 3) THIRD (Tucked seamlessly under Announcements/Welcome with 0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
                 if (featureSettings.showTopTeacherOnHome && topRatedTeachers.isNotEmpty() && topTeacherSummary != null) {
-                    val hasBannerAbove = latestActiveDevBroadcast != null || occasionThemeConfig.isActive || shouldShowUrgentAlertBanner || todayHolidayLabel != null
+                    val hasBannerAbove = occasionThemeConfig.isActive || shouldShowUrgentAlertBanner || todayHolidayLabel != null
                     val spotlightOverlap = if (hasBannerAbove) 18.dp else 26.dp
                     SeamlessWaveTeacherSpotlightSection(
                         teacherName = topTeacherSummary.teacher.fullName,
@@ -367,7 +303,7 @@ fun DashboardScreen(
                     )
                 }
 
-                if (myLatestReportCard != null && myStudent.isReportCardSentByPrincipal) {
+                if (myLatestReportCard != null) {
                     ParentIssuedReportCardArrivalBanner(
                         reportCard = myLatestReportCard,
                         onClick = { viewModel.openCelebrationReportCardModal(myLatestReportCard) },
@@ -604,18 +540,6 @@ fun DashboardScreen(
                         )
                     }
 
-                    if (schoolConfig.schoolType == SchoolType.PRIVATE && featureSettings.busTrackingEnabled) {
-                        val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
-                        SchoolBusQuickAlertsCard(
-                            busSubscribersCount = busSubscribersCount,
-                            onSendBusAlert = {},
-                            activeBusEventName = schoolConfig.activeBusEvent,
-                            activeBusEventTimestamp = schoolConfig.activeBusEventTimestamp,
-                            canSendAlerts = false,
-                            studentName = myStudent.studentName
-                        )
-                    }
-
                     // Smart Canteen E-Wallet Card for Parent & Student
                     if (schoolConfig.isCanteenWalletEnabled && featureSettings.canteenWalletEnabled) {
                         ParentStudentCanteenWalletCard(
@@ -782,10 +706,7 @@ fun DashboardScreen(
                         val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
                         SchoolBusQuickAlertsCard(
                             busSubscribersCount = busSubscribersCount,
-                            onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) },
-                            activeBusEventName = schoolConfig.activeBusEvent,
-                            activeBusEventTimestamp = schoolConfig.activeBusEventTimestamp,
-                            canSendAlerts = true
+                            onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) }
                         )
                     }
 
@@ -2729,10 +2650,7 @@ fun DailyAttendanceScreen(
                     val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
                     SchoolBusQuickAlertsCard(
                         busSubscribersCount = busSubscribersCount,
-                        onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) },
-                        activeBusEventName = schoolConfig.activeBusEvent,
-                        activeBusEventTimestamp = schoolConfig.activeBusEventTimestamp,
-                        canSendAlerts = true
+                        onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) }
                     )
                 }
             }
@@ -3695,71 +3613,17 @@ fun DailyAttendanceScreen(
 @Composable
 private fun SchoolBusQuickAlertsCard(
     busSubscribersCount: Int,
-    onSendBusAlert: (BusEventType) -> Unit,
-    activeBusEventName: String = "",
-    activeBusEventTimestamp: String = "",
-    canSendAlerts: Boolean = true,
-    studentName: String = ""
+    onSendBusAlert: (BusEventType) -> Unit
 ) {
-    var localSelectedEvent by remember(activeBusEventName) {
-        val parsed = runCatching {
-            if (activeBusEventName.isNotBlank()) BusEventType.valueOf(activeBusEventName.trim()) else null
-        }.getOrNull()
-        mutableStateOf<BusEventType>(parsed ?: BusEventType.MORNING_DEPARTURE)
-    }
-
-    val targetBusProgress = when (localSelectedEvent) {
-        BusEventType.MORNING_DEPARTURE -> 0.48f
-        BusEventType.ARRIVED_AT_SCHOOL -> 0.81f
-        BusEventType.RETURN_HOME_DEPARTURE -> 0.30f
-    }
-    val animatedBusProgress by animateFloatAsState(
-        targetValue = targetBusProgress,
-        animationSpec = tween(durationMillis = 850, easing = FastOutSlowInEasing),
-        label = "bus_route_position_progress"
-    )
-
-    val infiniteTransition = rememberInfiniteTransition(label = "interactive_school_bus_route")
-    val roadDashPhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "road_dash_phase"
-    )
-    val wheelRotationDeg by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "bus_wheel_rotation"
-    )
-    val gpsPulsePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1300, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bus_gps_pulse"
-    )
-
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("interactive_school_bus_route_card"),
-        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.28f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(11.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -3768,437 +3632,52 @@ private fun SchoolBusQuickAlertsCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFECFDF5),
-                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.DirectionsBus,
-                                contentDescription = null,
-                                tint = Color(0xFF047857),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
+                    Icon(
+                        imageVector = Icons.Filled.DirectionsBus,
+                        contentDescription = null,
+                        tint = DeepEmerald
+                    )
+                    Column {
                         Text(
                             text = "إشعارات الخطوط والنقل المدرسي الفورية",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            fontWeight = FontWeight.ExtraBold
                         )
                         Text(
-                            text = if (canSendAlerts) {
-                                "تتبع حي لحركة الباص وإشعار فوري لأولياء أمور الطلبة المشتركين ($busSubscribersCount طالب)"
-                            } else if (studentName.isNotBlank()) {
-                                "متابعة خط النقل المدرسي المباشر للطالب ($studentName)"
-                            } else {
-                                "متابعة مسار خط النقل المدرسي الفوري"
-                            },
+                            text = "ترسل إشعاراً فورياً حصرياً لأولياء أمور الطلبة المشتركين بالخط ($busSubscribersCount طالب)",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
+            }
 
-                if (activeBusEventTimestamp.isNotBlank()) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFFECFDF5),
-                        border = BorderStroke(1.dp, Color(0xFF6EE7B7))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                BusEventType.entries.forEach { busEvent ->
+                    Button(
+                        onClick = { onSendBusAlert(busEvent) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("bus_alert_btn_${busEvent.name}"),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeepEmerald,
+                            contentColor = Color.White
+                        )
                     ) {
                         Text(
-                            text = activeBusEventTimestamp,
-                            fontSize = 9.5.sp,
+                            text = busEvent.arabicLabel,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF047857),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                             maxLines = 1,
-                            softWrap = false
+                            overflow = TextOverflow.Ellipsis
                         )
-                    }
-                }
-            }
-
-            // Interactive Animated Bus & Road Route Strip Canvas
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF0F172A),
-                border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.45f))
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(100.dp)
-                    ) {
-                        Canvas(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("animated_bus_route_canvas")
-                        ) {
-                            val w = size.width
-                            val h = size.height
-                            val roadTop = h * 0.60f
-                            val roadBottom = h * 0.88f
-                            val roadCenterY = (roadTop + roadBottom) * 0.5f
-
-                            // 1) Sky Gradient & Soft Stars/Glow
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(Color(0xFF064E3B), Color(0xFF0F172A))
-                                ),
-                                size = Size(w, roadTop)
-                            )
-
-                            // 2) Highway Asphalt & Emerald Curbs
-                            drawRect(
-                                color = Color(0xFF1E293B),
-                                topLeft = Offset(0f, roadTop),
-                                size = Size(w, roadBottom - roadTop)
-                            )
-                            drawLine(
-                                color = Color(0xFF34D399).copy(alpha = 0.65f),
-                                start = Offset(0f, roadTop),
-                                end = Offset(w, roadTop),
-                                strokeWidth = 2.dp.toPx()
-                            )
-                            drawLine(
-                                color = Color(0xFFF59E0B).copy(alpha = 0.65f),
-                                start = Offset(0f, roadBottom),
-                                end = Offset(w, roadBottom),
-                                strokeWidth = 2.dp.toPx()
-                            )
-
-                            // Animated Highway Dashed Center Line (moves according to direction)
-                            val dashLen = 16.dp.toPx()
-                            val gapLen = 14.dp.toPx()
-                            val step = dashLen + gapLen
-                            val directionMultiplier = when (localSelectedEvent) {
-                                BusEventType.MORNING_DEPARTURE -> -1f
-                                BusEventType.ARRIVED_AT_SCHOOL -> 0f
-                                BusEventType.RETURN_HOME_DEPARTURE -> 1f
-                            }
-                            val dashShift = roadDashPhase * step * directionMultiplier
-                            var xPos = -step + dashShift
-                            while (xPos < w + step) {
-                                drawLine(
-                                    color = Color(0xFFFEF08A).copy(alpha = 0.82f),
-                                    start = Offset(xPos, roadCenterY),
-                                    end = Offset(xPos + dashLen, roadCenterY),
-                                    strokeWidth = 2.4.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                                xPos += step
-                            }
-
-                            // 3) LEFT LANDMARK: Home Building Icon (المنزل) at x = 0.11 * w
-                            val homeX = w * 0.11f
-                            val homeBaseY = roadTop - 2.dp.toPx()
-                            val homeW = 28.dp.toPx()
-                            val homeH = 22.dp.toPx()
-                            drawRoundRect(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))
-                                ),
-                                topLeft = Offset(homeX - homeW * 0.5f, homeBaseY - homeH),
-                                size = Size(homeW, homeH),
-                                cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-                            )
-                            val roofPath = Path().apply {
-                                moveTo(homeX - homeW * 0.64f, homeBaseY - homeH)
-                                lineTo(homeX, homeBaseY - homeH - 13.dp.toPx())
-                                lineTo(homeX + homeW * 0.64f, homeBaseY - homeH)
-                                close()
-                            }
-                            drawPath(path = roofPath, color = Color(0xFFD97706))
-                            drawRoundRect(
-                                color = Color(0xFF0F172A),
-                                topLeft = Offset(homeX - 4.dp.toPx(), homeBaseY - 11.dp.toPx()),
-                                size = Size(8.dp.toPx(), 11.dp.toPx()),
-                                cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                            )
-
-                            // 4) RIGHT LANDMARK: Emerald School Building (مبنى المدرسة الزمردي) at x = 0.89 * w
-                            val schoolX = w * 0.89f
-                            val schoolBaseY = roadTop - 2.dp.toPx()
-                            val schoolW = 36.dp.toPx()
-                            val schoolH = 28.dp.toPx()
-                            drawRoundRect(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(Color(0xFF34D399), Color(0xFF047857))
-                                ),
-                                topLeft = Offset(schoolX - schoolW * 0.5f, schoolBaseY - schoolH),
-                                size = Size(schoolW, schoolH),
-                                cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
-                            )
-                            val schoolDome = Path().apply {
-                                moveTo(schoolX - schoolW * 0.36f, schoolBaseY - schoolH)
-                                cubicTo(
-                                    schoolX - schoolW * 0.20f, schoolBaseY - schoolH - 13.dp.toPx(),
-                                    schoolX + schoolW * 0.20f, schoolBaseY - schoolH - 13.dp.toPx(),
-                                    schoolX + schoolW * 0.36f, schoolBaseY - schoolH
-                                )
-                                close()
-                            }
-                            drawPath(path = schoolDome, color = Color(0xFFFEF08A))
-                            drawRoundRect(
-                                color = Color(0xFFFEF08A),
-                                topLeft = Offset(schoolX - 5.dp.toPx(), schoolBaseY - 13.dp.toPx()),
-                                size = Size(10.dp.toPx(), 13.dp.toPx()),
-                                cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                            )
-
-                            // Glowing Green Checkmark Halo when ARRIVED_AT_SCHOOL
-                            if (localSelectedEvent == BusEventType.ARRIVED_AT_SCHOOL) {
-                                val checkCx = schoolX - schoolW * 0.55f
-                                val checkCy = schoolBaseY - schoolH - 8.dp.toPx()
-                                drawCircle(
-                                    color = Color(0xFF10B981).copy(alpha = 0.30f + 0.25f * gpsPulsePhase),
-                                    radius = 13.dp.toPx(),
-                                    center = Offset(checkCx, checkCy)
-                                )
-                                drawCircle(
-                                    color = Color(0xFF10B981),
-                                    radius = 8.5.dp.toPx(),
-                                    center = Offset(checkCx, checkCy)
-                                )
-                                val checkPath = Path().apply {
-                                    moveTo(checkCx - 3.8.dp.toPx(), checkCy + 0.4.dp.toPx())
-                                    lineTo(checkCx - 1.0.dp.toPx(), checkCy + 3.2.dp.toPx())
-                                    lineTo(checkCx + 4.2.dp.toPx(), checkCy - 2.6.dp.toPx())
-                                }
-                                drawPath(
-                                    path = checkPath,
-                                    color = Color.White,
-                                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                                )
-                            }
-
-                            // 5) VECTOR SCHOOL BUS (باص مدرسي فيكتوري أنيق)
-                            val cruiseBounce = if (localSelectedEvent == BusEventType.ARRIVED_AT_SCHOOL) {
-                                0f
-                            } else {
-                                (gpsPulsePhase - 0.5f) * 8.dp.toPx()
-                            }
-                            val busCenterX = w * animatedBusProgress + cruiseBounce
-                            val busBottomY = roadCenterY + 4.dp.toPx()
-                            val busW = 54.dp.toPx()
-                            val busH = 26.dp.toPx()
-                            val busLeft = busCenterX - busW * 0.5f
-                            val busTop = busBottomY - busH
-                            val facingSchool = localSelectedEvent != BusEventType.RETURN_HOME_DEPARTURE
-
-                            // Headlight beam
-                            val beamPath = Path().apply {
-                                if (facingSchool) {
-                                    moveTo(busLeft + busW, busTop + busH * 0.65f)
-                                    lineTo(busLeft + busW + 24.dp.toPx(), busTop + busH * 0.35f)
-                                    lineTo(busLeft + busW + 24.dp.toPx(), busTop + busH * 0.98f)
-                                } else {
-                                    moveTo(busLeft, busTop + busH * 0.65f)
-                                    lineTo(busLeft - 24.dp.toPx(), busTop + busH * 0.35f)
-                                    lineTo(busLeft - 24.dp.toPx(), busTop + busH * 0.98f)
-                                }
-                                close()
-                            }
-                            drawPath(
-                                path = beamPath,
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color(0xFFFEF08A).copy(alpha = 0.45f),
-                                        Color(0xFFFEF08A).copy(alpha = 0.12f)
-                                    )
-                                )
-                            )
-
-                            // Bus Main Body (Golden-Amber School Bus with Emerald Stripe)
-                            drawRoundRect(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(Color(0xFFFDE047), Color(0xFFF59E0B), Color(0xFFD97706))
-                                ),
-                                topLeft = Offset(busLeft, busTop),
-                                size = Size(busW, busH),
-                                cornerRadius = CornerRadius(7.dp.toPx(), 7.dp.toPx())
-                            )
-                            // Emerald School Stripe along bus side
-                            drawRect(
-                                color = Color(0xFF047857),
-                                topLeft = Offset(busLeft + 3.dp.toPx(), busTop + busH * 0.56f),
-                                size = Size(busW - 6.dp.toPx(), 4.dp.toPx())
-                            )
-                            // Bus Windows (3 glass panes)
-                            val winW = 11.dp.toPx()
-                            val winH = 8.5.dp.toPx()
-                            for (wIdx in 0..2) {
-                                val wx = busLeft + 6.dp.toPx() + wIdx * (winW + 4.dp.toPx())
-                                drawRoundRect(
-                                    color = Color(0xFFE0F2FE),
-                                    topLeft = Offset(wx, busTop + 4.dp.toPx()),
-                                    size = Size(winW, winH),
-                                    cornerRadius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
-                                )
-                            }
-
-                            // Rotating Bus Wheels
-                            val wheelY = busBottomY + 1.dp.toPx()
-                            val wheelRadius = 5.8.dp.toPx()
-                            listOf(busLeft + 13.dp.toPx(), busLeft + busW - 13.dp.toPx()).forEach { wx ->
-                                drawCircle(
-                                    color = Color(0xFF0F172A),
-                                    radius = wheelRadius,
-                                    center = Offset(wx, wheelY)
-                                )
-                                val effectiveAngle = if (localSelectedEvent == BusEventType.ARRIVED_AT_SCHOOL) 0f else wheelRotationDeg
-                                rotate(degrees = effectiveAngle, pivot = Offset(wx, wheelY)) {
-                                    drawLine(
-                                        color = Color(0xFFCBD5E1),
-                                        start = Offset(wx - wheelRadius * 0.55f, wheelY),
-                                        end = Offset(wx + wheelRadius * 0.55f, wheelY),
-                                        strokeWidth = 1.6.dp.toPx()
-                                    )
-                                    drawLine(
-                                        color = Color(0xFFCBD5E1),
-                                        start = Offset(wx, wheelY - wheelRadius * 0.55f),
-                                        end = Offset(wx, wheelY + wheelRadius * 0.55f),
-                                        strokeWidth = 1.6.dp.toPx()
-                                    )
-                                }
-                            }
-
-                            // Live GPS Signal Waves above the Bus Roof
-                            if (localSelectedEvent != BusEventType.ARRIVED_AT_SCHOOL) {
-                                val gpsX = busCenterX
-                                val gpsY = busTop - 4.dp.toPx()
-                                drawCircle(
-                                    color = Color(0xFF34D399),
-                                    radius = 2.6.dp.toPx(),
-                                    center = Offset(gpsX, gpsY)
-                                )
-                                drawArc(
-                                    color = Color(0xFF34D399).copy(alpha = 0.85f - 0.4f * gpsPulsePhase),
-                                    startAngle = 210f,
-                                    sweepAngle = 120f,
-                                    useCenter = false,
-                                    topLeft = Offset(gpsX - 8.dp.toPx(), gpsY - 8.dp.toPx()),
-                                    size = Size(16.dp.toPx(), 16.dp.toPx()),
-                                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
-                                )
-                                drawArc(
-                                    color = Color(0xFFFEF08A).copy(alpha = 0.65f * gpsPulsePhase),
-                                    startAngle = 205f,
-                                    sweepAngle = 130f,
-                                    useCenter = false,
-                                    topLeft = Offset(gpsX - 13.dp.toPx(), gpsY - 13.dp.toPx()),
-                                    size = Size(26.dp.toPx(), 26.dp.toPx()),
-                                    style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
-                                )
-                            }
-                        }
-
-                        // Landmark Labels Overlay (المنزل on Left, المدرسة on Right)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.TopCenter)
-                                .padding(horizontal = 10.dp, vertical = 5.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "المدرسة",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF6EE7B7)
-                            )
-                            Text(
-                                text = "المنزل",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFFDE68A)
-                            )
-                        }
-                    }
-
-                    // Live Route Status Caption Bar below Canvas
-                    Surface(
-                        color = when (localSelectedEvent) {
-                            BusEventType.MORNING_DEPARTURE -> Color(0xFF065F46)
-                            BusEventType.ARRIVED_AT_SCHOOL -> Color(0xFF047857)
-                            BusEventType.RETURN_HOME_DEPARTURE -> Color(0xFF1E3A8A)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = when (localSelectedEvent) {
-                                    BusEventType.MORNING_DEPARTURE -> Icons.Filled.GpsFixed
-                                    BusEventType.ARRIVED_AT_SCHOOL -> Icons.Filled.CheckCircle
-                                    BusEventType.RETURN_HOME_DEPARTURE -> Icons.Filled.DirectionsBus
-                                },
-                                contentDescription = null,
-                                tint = Color(0xFFFEF08A),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = localSelectedEvent.liveRouteStatusText,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("bus_live_status_caption")
-                            )
-                        }
-                    }
-                }
-            }
-
-            // 3 Unclipped Action Buttons for Principal / Teacher
-            if (canSendAlerts) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    BusEventType.entries.forEach { busEvent ->
-                        val isSelected = localSelectedEvent == busEvent
-                        Button(
-                            onClick = {
-                                localSelectedEvent = busEvent
-                                onSendBusAlert(busEvent)
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("bus_alert_btn_${busEvent.name}"),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 9.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isSelected) Color(0xFF047857) else Color(0xFF0F3D5E),
-                                contentColor = Color.White
-                            ),
-                            border = if (isSelected) BorderStroke(1.2.dp, Color(0xFFFEF08A)) else null
-                        ) {
-                            Text(
-                                text = busEvent.shortButtonLabel,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
                     }
                 }
             }

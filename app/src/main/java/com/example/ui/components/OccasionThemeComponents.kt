@@ -1330,26 +1330,34 @@ private fun DrawScope.drawGraduationCapEmblem(w: Float, h: Float) {
 }
 
 private fun DrawScope.drawTrophyLaurelEmblem(w: Float, h: Float) {
-    val goldBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFEF3C7), Color(0xFFFBBF24), Color(0xFFD97706))
+    val whiteBrush = Brush.linearGradient(
+        colors = listOf(Color.White, Color(0xFFECFDF5))
     )
-    // Academic Laurel Wreath & Royal Star Crest (No Trophy Cup)
-    val leftBranch = Path().apply {
-        moveTo(w * 0.50f, h * 0.74f)
-        cubicTo(w * 0.30f, h * 0.68f, w * 0.22f, h * 0.46f, w * 0.34f, h * 0.28f)
+    val cupPath = Path().apply {
+        moveTo(w * 0.34f, h * 0.30f)
+        lineTo(w * 0.66f, h * 0.30f)
+        lineTo(w * 0.61f, h * 0.52f)
+        quadraticTo(w * 0.50f, h * 0.61f, w * 0.39f, h * 0.52f)
+        close()
     }
-    val rightBranch = Path().apply {
-        moveTo(w * 0.50f, h * 0.74f)
-        cubicTo(w * 0.70f, h * 0.68f, w * 0.78f, h * 0.46f, w * 0.66f, h * 0.28f)
-    }
-    drawPath(leftBranch, brush = goldBrush, style = Stroke(width = w * 0.045f, cap = StrokeCap.Round))
-    drawPath(rightBranch, brush = goldBrush, style = Stroke(width = w * 0.045f, cap = StrokeCap.Round))
+    drawPath(cupPath, brush = whiteBrush)
+    drawLine(
+        color = Color.White,
+        start = Offset(w * 0.50f, h * 0.56f),
+        end = Offset(w * 0.50f, h * 0.68f),
+        strokeWidth = w * 0.055f
+    )
+    drawRoundRect(
+        brush = whiteBrush,
+        topLeft = Offset(w * 0.36f, h * 0.67f),
+        size = Size(w * 0.28f, h * 0.065f),
+        cornerRadius = CornerRadius(w * 0.02f, w * 0.02f)
+    )
     drawStar(
-        center = Offset(w * 0.50f, h * 0.48f),
-        outerRadius = w * 0.16f,
-        innerRadius = w * 0.07f,
-        color = Color(0xFFFEF3C7),
-        points = 8
+        center = Offset(w * 0.50f, h * 0.42f),
+        outerRadius = w * 0.065f,
+        innerRadius = w * 0.028f,
+        color = Color(0xFF047857)
     )
 }
 
@@ -1569,439 +1577,10 @@ fun occasionThemeBrush(primaryHex: String, gradientHex: String): Brush {
 }
 
 /**
- * Resolves the canonical `seasonalThemeId` ("RAMADAN", "EID", "NEW_YEAR", "MAWLID", "NATIONAL_DAY")
- * from `OccasionThemeConfig` so each occasion renders its bespoke Bézier vector scene.
- */
-fun resolveSeasonalThemeId(config: OccasionThemeConfig): String {
-    val combined = "${config.customTitle} ${config.customBannerText} ${config.launcherAliasName} ${config.themeType.name} ${config.selectedIconKey}".uppercase()
-    return when {
-        combined.contains("MAWLID") || combined.contains("مولد") || combined.contains("نبوي") || combined.contains("الرسول") -> "MAWLID"
-        combined.contains("NATIONAL") || combined.contains("وطني") || combined.contains("عراق") || config.themeType == OccasionThemeType.NATIONAL_DAY || config.selectedIconKey.equals("FLAG", ignoreCase = true) -> "NATIONAL_DAY"
-        combined.contains("EID") || combined.contains("عيد") || combined.contains("فطر") || combined.contains("أضحى") || combined.contains("اضحى") -> "EID"
-        combined.contains("RAMADAN") || combined.contains("رمضان") || config.themeType == OccasionThemeType.RAMADAN_EID || config.selectedIconKey.equals("CRESCENT", ignoreCase = true) -> "RAMADAN"
-        combined.contains("NEW_YEAR") || combined.contains("سنة") || combined.contains("عام") || config.themeType == OccasionThemeType.NEW_YEAR -> "NEW_YEAR"
-        config.selectedIconKey.equals("ROSE", ignoreCase = true) -> "MAWLID"
-        config.selectedIconKey.equals("STAR", ignoreCase = true) -> "EID"
-        else -> "NEW_YEAR"
-    }
-}
-
-/**
- * Pro Bézier Curve Vector Animation (`SeasonalBezierVectorAnimation`)
- * Built exclusively with `Path.cubicTo` & `quadraticBezierTo`, 3-stop `LinearGradient` & `RadialGradient`,
- * and smooth continuous physics (`infiniteRepeatable` with `sin` and `cos`) for every seasonal occasion:
- *   1. `RAMADAN`: 3D golden crescent + ornate heritage lantern swinging with pendulum angle + pulsing glow + 8-point stars.
- *   2. `EID`: Slowly rotating Islamic geometric patterns + swaying Eid lanterns/crescents + rising golden light particles.
- *   3. `NEW_YEAR`: New Year emblem with glowing orbits + golden & emerald shooting stars drawing curved Bézier trails.
- *   4. `MAWLID`: Architectural Bézier vector of the Prophet's Green Dome (القبة الخضراء النبوية الشريفة) & ornate minaret with expanding نورانية aura.
- *   5. `NATIONAL_DAY`: Authentic Iraqi flag fluttering with real sine-wave Bézier path (Red, White, Black + green "الله أكبر") inside a golden laurel wreath.
- */
-@Composable
-fun SeasonalBezierVectorAnimation(
-    seasonalThemeId: String,
-    modifier: Modifier = Modifier.size(96.dp)
-) {
-    val infinite = rememberInfiniteTransition(label = "seasonal_bezier_anim")
-    val phase by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "phase"
-    )
-    val pulse by infinite.animateFloat(
-        initialValue = 0.82f,
-        targetValue = 1.14f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-    val swing by infinite.animateFloat(
-        initialValue = -1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "swing"
-    )
-
-    val cleanId = seasonalThemeId.trim().uppercase()
-
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val cx = w * 0.5f
-        val cy = h * 0.5f
-        val minDim = w.coerceAtMost(h)
-
-        val gold3Stop = Brush.linearGradient(
-            colors = listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309)),
-            start = Offset(0f, 0f),
-            end = Offset(w, h)
-        )
-        val emerald3Stop = Brush.linearGradient(
-            colors = listOf(Color(0xFF34D399), Color(0xFF059669), Color(0xFF064E3B)),
-            start = Offset(0f, 0f),
-            end = Offset(w, h)
-        )
-
-        // Ambient 3-stop radial aura behind all scenes
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color(0xFFFDE68A).copy(alpha = 0.34f * pulse.coerceIn(0.7f, 1.1f)),
-                    Color(0xFF10B981).copy(alpha = 0.18f),
-                    Color.Transparent
-                ),
-                center = Offset(cx, cy),
-                radius = minDim * 0.52f * pulse
-            ),
-            radius = minDim * 0.52f * pulse,
-            center = Offset(cx, cy)
-        )
-
-        when {
-            cleanId.contains("RAMADAN") -> {
-                // 1. RAMADAN: 3D Golden Crescent + Swinging Heritage Lantern (Pendulum) + 8-point Twinkling Stars
-                val crescentPath = Path().apply {
-                    moveTo(w * 0.28f, h * 0.20f)
-                    cubicTo(w * 0.05f, h * 0.36f, w * 0.08f, h * 0.76f, w * 0.42f, h * 0.88f)
-                    cubicTo(w * 0.68f, h * 0.94f, w * 0.88f, h * 0.78f, w * 0.86f, h * 0.58f)
-                    cubicTo(w * 0.74f, h * 0.74f, w * 0.46f, h * 0.78f, w * 0.30f, h * 0.62f)
-                    cubicTo(w * 0.16f, h * 0.48f, w * 0.18f, h * 0.30f, w * 0.28f, h * 0.20f)
-                    close()
-                }
-                drawPath(path = crescentPath, brush = gold3Stop)
-
-                // Pendulum swinging ornate lantern suspended from top right curve
-                val pivotX = w * 0.56f
-                val pivotY = h * 0.14f
-                val pendulumAngle = swing * 0.22f
-                val chainLen = h * 0.20f
-                val lanternTopX = pivotX + sin(pendulumAngle) * chainLen
-                val lanternTopY = pivotY + cos(pendulumAngle) * chainLen
-
-                drawLine(
-                    brush = gold3Stop,
-                    start = Offset(pivotX, pivotY),
-                    end = Offset(lanternTopX, lanternTopY),
-                    strokeWidth = minDim * 0.025f,
-                    cap = StrokeCap.Round
-                )
-
-                // Warm inner glow expanding from lantern heart
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFFEF08A).copy(alpha = 0.85f),
-                            Color(0xFFF59E0B).copy(alpha = 0.35f),
-                            Color.Transparent
-                        ),
-                        center = Offset(lanternTopX, lanternTopY + h * 0.16f),
-                        radius = minDim * 0.22f * pulse
-                    ),
-                    radius = minDim * 0.22f * pulse,
-                    center = Offset(lanternTopX, lanternTopY + h * 0.16f)
-                )
-
-                // Lantern dome & body with cubicTo
-                val lanternDome = Path().apply {
-                    moveTo(lanternTopX - w * 0.09f, lanternTopY + h * 0.07f)
-                    quadraticBezierTo(lanternTopX, lanternTopY - h * 0.02f, lanternTopX + w * 0.09f, lanternTopY + h * 0.07f)
-                    close()
-                }
-                drawPath(lanternDome, brush = gold3Stop)
-
-                val lanternBody = Path().apply {
-                    moveTo(lanternTopX - w * 0.10f, lanternTopY + h * 0.07f)
-                    cubicTo(
-                        lanternTopX - w * 0.14f, lanternTopY + h * 0.16f,
-                        lanternTopX - w * 0.11f, lanternTopY + h * 0.25f,
-                        lanternTopX - w * 0.06f, lanternTopY + h * 0.29f
-                    )
-                    lineTo(lanternTopX + w * 0.06f, lanternTopY + h * 0.29f)
-                    cubicTo(
-                        lanternTopX + w * 0.11f, lanternTopY + h * 0.25f,
-                        lanternTopX + w * 0.14f, lanternTopY + h * 0.16f,
-                        lanternTopX + w * 0.10f, lanternTopY + h * 0.07f
-                    )
-                    close()
-                }
-                drawPath(lanternBody, brush = emerald3Stop)
-                drawPath(lanternBody, brush = gold3Stop, style = Stroke(width = minDim * 0.024f))
-
-                // Glowing core flame inside lantern
-                val flamePath = Path().apply {
-                    val fx = lanternTopX
-                    val fy = lanternTopY + h * 0.19f
-                    moveTo(fx, fy - h * 0.06f)
-                    quadraticBezierTo(fx + w * 0.04f, fy, fx, fy + h * 0.04f)
-                    quadraticBezierTo(fx - w * 0.04f, fy, fx, fy - h * 0.06f)
-                    close()
-                }
-                drawPath(flamePath, color = Color(0xFFFEF9C3))
-
-                // Twinkling 8-point stars
-                val starScale1 = (0.7f + 0.3f * sin(phase)).coerceIn(0.4f, 1.1f)
-                val starScale2 = (0.7f + 0.3f * cos(phase)).coerceIn(0.4f, 1.1f)
-                drawStar(
-                    center = Offset(w * 0.80f, h * 0.24f),
-                    outerRadius = minDim * 0.075f * starScale1,
-                    innerRadius = minDim * 0.030f * starScale1,
-                    color = Color(0xFFFEF08A),
-                    points = 8
-                )
-                drawStar(
-                    center = Offset(w * 0.24f, h * 0.44f),
-                    outerRadius = minDim * 0.055f * starScale2,
-                    innerRadius = minDim * 0.022f * starScale2,
-                    color = Color(0xFFFDE68A),
-                    points = 8
-                )
-            }
-
-            cleanId.contains("EID") -> {
-                // 2. EID: Rotating Islamic 8-fold geometric rosette + swaying festive lanterns & rising golden light particles
-                val numPetals = 8
-                val geoPath = Path()
-                for (i in 0 until numPetals) {
-                    val a1 = phase * 0.35f + (i * 2.0 * PI / numPetals).toFloat()
-                    val a2 = a1 + (PI / numPetals).toFloat()
-                    val rOuter = minDim * 0.40f
-                    val rInner = minDim * 0.22f
-                    val x1 = cx + cos(a1) * rInner
-                    val y1 = cy + sin(a1) * rInner
-                    val xTip = cx + cos((a1 + a2) * 0.5f) * rOuter
-                    val yTip = cy + sin((a1 + a2) * 0.5f) * rOuter
-                    val x2 = cx + cos(a2) * rInner
-                    val y2 = cy + sin(a2) * rInner
-                    if (i == 0) geoPath.moveTo(x1, y1) else geoPath.lineTo(x1, y1)
-                    geoPath.quadraticBezierTo(xTip, yTip, x2, y2)
-                }
-                geoPath.close()
-                drawPath(geoPath, brush = emerald3Stop)
-                drawPath(geoPath, brush = gold3Stop, style = Stroke(width = minDim * 0.025f))
-
-                // Swaying festive Eid crescent & dual lanterns
-                val swayX = sin(phase) * w * 0.03f
-                val eidCrescent = Path().apply {
-                    moveTo(cx - w * 0.14f + swayX, cy - h * 0.04f)
-                    cubicTo(cx - w * 0.18f + swayX, cy + h * 0.14f, cx + w * 0.04f + swayX, cy + h * 0.22f, cx + w * 0.18f + swayX, cy + h * 0.06f)
-                    cubicTo(cx + w * 0.06f + swayX, cy + h * 0.14f, cx - w * 0.08f + swayX, cy + h * 0.08f, cx - w * 0.14f + swayX, cy - h * 0.04f)
-                    close()
-                }
-                drawPath(eidCrescent, brush = gold3Stop)
-
-                // Rising golden light particles
-                for (p in 0..4) {
-                    val progressP = ((phase / (2f * PI.toFloat())) + p * 0.2f) % 1f
-                    val px = w * (0.22f + p * 0.14f) + sin(phase + p) * w * 0.03f
-                    val py = h * (0.82f - progressP * 0.64f)
-                    val pRadius = minDim * (0.022f + (1f - progressP) * 0.018f)
-                    drawCircle(
-                        color = Color(0xFFFEF08A).copy(alpha = (1f - progressP).coerceIn(0.2f, 0.95f)),
-                        radius = pRadius,
-                        center = Offset(px, py)
-                    )
-                }
-                drawStar(
-                    center = Offset(cx + swayX, cy - h * 0.10f),
-                    outerRadius = minDim * 0.11f * pulse.coerceIn(0.85f, 1.1f),
-                    innerRadius = minDim * 0.045f,
-                    color = Color(0xFFFEF9C3),
-                    points = 8
-                )
-            }
-
-            cleanId.contains("MAWLID") -> {
-                // 4. MAWLID: Architectural Bézier vector of the Prophet's Green Dome (القبة الخضراء النبوية الشريفة) & Minaret + expanding نورانية aura
-                for (ring in 1..2) {
-                    val ringRadius = minDim * (0.28f + ring * 0.10f) * pulse.coerceIn(0.88f, 1.12f)
-                    drawCircle(
-                        color = Color(0xFF6EE7B7).copy(alpha = 0.28f / ring),
-                        radius = ringRadius,
-                        center = Offset(cx, h * 0.54f),
-                        style = Stroke(width = minDim * 0.02f)
-                    )
-                }
-
-                // Ornate Minaret on the right
-                val minaretPath = Path().apply {
-                    moveTo(w * 0.72f, h * 0.78f)
-                    lineTo(w * 0.73f, h * 0.34f)
-                    quadraticBezierTo(w * 0.76f, h * 0.22f, w * 0.79f, h * 0.34f)
-                    lineTo(w * 0.80f, h * 0.78f)
-                    close()
-                }
-                drawPath(minaretPath, brush = gold3Stop)
-
-                // Prophet's Green Dome (القبة الخضراء) with authentic pointed ogee Bézier arch
-                val domePath = Path().apply {
-                    moveTo(w * 0.22f, h * 0.74f)
-                    cubicTo(w * 0.22f, h * 0.52f, w * 0.36f, h * 0.36f, w * 0.48f, h * 0.24f)
-                    cubicTo(w * 0.60f, h * 0.36f, w * 0.74f, h * 0.52f, w * 0.74f, h * 0.74f)
-                    close()
-                }
-                drawPath(domePath, brush = emerald3Stop)
-                drawPath(domePath, brush = gold3Stop, style = Stroke(width = minDim * 0.026f))
-
-                // Golden crescent finial atop the Green Dome
-                drawCircle(
-                    brush = gold3Stop,
-                    radius = minDim * 0.042f,
-                    center = Offset(w * 0.48f, h * 0.19f)
-                )
-
-                // Base arcade wall
-                val baseWall = Path().apply {
-                    moveTo(w * 0.16f, h * 0.74f)
-                    quadraticBezierTo(w * 0.50f, h * 0.71f, w * 0.84f, h * 0.74f)
-                    lineTo(w * 0.84f, h * 0.84f)
-                    lineTo(w * 0.16f, h * 0.84f)
-                    close()
-                }
-                drawPath(baseWall, brush = gold3Stop)
-            }
-
-            cleanId.contains("NATIONAL") -> {
-                // 5. NATIONAL_DAY: Authentic Iraqi Flag fluttering with real Sine-Wave Bézier path + Golden Laurel Wreath
-                // Golden Laurel Wreath Curves
-                val leftWreath = Path().apply {
-                    moveTo(cx, h * 0.88f)
-                    cubicTo(w * 0.14f, h * 0.80f, w * 0.08f, h * 0.34f, w * 0.28f, h * 0.16f)
-                }
-                val rightWreath = Path().apply {
-                    moveTo(cx, h * 0.88f)
-                    cubicTo(w * 0.86f, h * 0.80f, w * 0.92f, h * 0.34f, w * 0.72f, h * 0.16f)
-                }
-                drawPath(leftWreath, brush = gold3Stop, style = Stroke(width = minDim * 0.035f, cap = StrokeCap.Round))
-                drawPath(rightWreath, brush = gold3Stop, style = Stroke(width = minDim * 0.035f, cap = StrokeCap.Round))
-
-                // Golden flagpole
-                drawLine(
-                    brush = gold3Stop,
-                    start = Offset(w * 0.24f, h * 0.22f),
-                    end = Offset(w * 0.24f, h * 0.82f),
-                    strokeWidth = minDim * 0.036f,
-                    cap = StrokeCap.Round
-                )
-
-                val wave1 = sin(phase) * h * 0.045f
-                val wave2 = cos(phase) * h * 0.045f
-                val flagLeft = w * 0.26f
-                val flagRight = w * 0.78f
-                val stripeH = h * 0.12f
-
-                fun buildWaveStripe(topY: Float, botY: Float): Path = Path().apply {
-                    moveTo(flagLeft, topY)
-                    cubicTo(
-                        flagLeft + (flagRight - flagLeft) * 0.35f, topY + wave1,
-                        flagLeft + (flagRight - flagLeft) * 0.70f, topY - wave2,
-                        flagRight, topY + wave1 * 0.6f
-                    )
-                    lineTo(flagRight, botY + wave1 * 0.6f)
-                    cubicTo(
-                        flagLeft + (flagRight - flagLeft) * 0.70f, botY - wave2,
-                        flagLeft + (flagRight - flagLeft) * 0.35f, botY + wave1,
-                        flagLeft, botY
-                    )
-                    close()
-                }
-
-                // Top Red Stripe
-                drawPath(buildWaveStripe(h * 0.28f, h * 0.28f + stripeH), color = Color(0xFFDC2626))
-                // Middle White Stripe
-                drawPath(buildWaveStripe(h * 0.28f + stripeH, h * 0.28f + stripeH * 2f), color = Color(0xFFFFFFFF))
-                // Bottom Black Stripe
-                drawPath(buildWaveStripe(h * 0.28f + stripeH * 2f, h * 0.28f + stripeH * 3f), color = Color(0xFF111827))
-
-                // Kufic Green "الله أكبر" calligraphic vector strokes in the center of the white stripe
-                val midY = h * 0.28f + stripeH * 1.5f + wave1 * 0.25f
-                val kuficPath = Path().apply {
-                    moveTo(w * 0.36f, midY + h * 0.02f)
-                    lineTo(w * 0.48f, midY + h * 0.02f)
-                    moveTo(w * 0.45f, midY - h * 0.03f)
-                    lineTo(w * 0.45f, midY + h * 0.02f)
-                    moveTo(w * 0.54f, midY + h * 0.02f)
-                    lineTo(w * 0.68f, midY + h * 0.02f)
-                    moveTo(w * 0.64f, midY - h * 0.03f)
-                    lineTo(w * 0.64f, midY + h * 0.02f)
-                }
-                drawPath(
-                    kuficPath,
-                    color = Color(0xFF059669),
-                    style = Stroke(width = minDim * 0.028f, cap = StrokeCap.Round)
-                )
-            }
-
-            else -> {
-                // 3. NEW_YEAR: New Year Crest surrounded by light orbits & shooting stars drawing Animated Bézier Trails
-                val orbitPath = Path().apply {
-                    moveTo(w * 0.14f, h * 0.62f)
-                    cubicTo(w * 0.24f, h * 0.22f, w * 0.76f, h * 0.22f, w * 0.86f, h * 0.62f)
-                    cubicTo(w * 0.76f, h * 0.84f, w * 0.24f, h * 0.84f, w * 0.14f, h * 0.62f)
-                    close()
-                }
-                drawPath(
-                    orbitPath,
-                    brush = gold3Stop,
-                    style = Stroke(width = minDim * 0.024f)
-                )
-
-                // Animated Bézier shooting star trail
-                val meteorT = (sin(phase) + 1f) * 0.5f
-                val trailPath = Path().apply {
-                    moveTo(w * 0.18f, h * 0.74f)
-                    cubicTo(
-                        w * 0.34f, h * 0.30f,
-                        w * 0.62f, h * 0.24f,
-                        w * (0.45f + meteorT * 0.38f), h * (0.48f - meteorT * 0.22f)
-                    )
-                }
-                drawPath(
-                    trailPath,
-                    brush = gold3Stop,
-                    style = Stroke(width = minDim * 0.036f, cap = StrokeCap.Round)
-                )
-
-                // Central Emerald & Gold Academic Shield/Star Burst
-                val crestPath = Path().apply {
-                    moveTo(cx, h * 0.22f)
-                    cubicTo(w * 0.68f, h * 0.26f, w * 0.72f, h * 0.54f, cx, h * 0.76f)
-                    cubicTo(w * 0.28f, h * 0.54f, w * 0.32f, h * 0.26f, cx, h * 0.22f)
-                    close()
-                }
-                drawPath(crestPath, brush = emerald3Stop)
-                drawPath(crestPath, brush = gold3Stop, style = Stroke(width = minDim * 0.028f))
-
-                drawStar(
-                    center = Offset(cx, h * 0.47f),
-                    outerRadius = minDim * 0.14f * pulse.coerceIn(0.88f, 1.12f),
-                    innerRadius = minDim * 0.055f,
-                    color = Color(0xFFFEF08A),
-                    points = 8
-                )
-                drawStar(
-                    center = Offset(w * (0.45f + meteorT * 0.38f), h * (0.48f - meteorT * 0.22f)),
-                    outerRadius = minDim * 0.085f,
-                    innerRadius = minDim * 0.035f,
-                    color = Color(0xFFFEF9C3),
-                    points = 8
-                )
-            }
-        }
-    }
-}
-
-/**
- * Clean Bright Occasion / Seasonal Banner shown on Login & Dashboard when `config.isActive == true`
- * (or when `forcePreview == true`).
- * Uses `SeasonalBezierVectorAnimation` exclusively (strictly NO trophy cup!).
+ * Clean Bright Occasion / Developer Alert Banner shown on Login & Dashboard when `config.isActive == true`
+ * (or when `forcePreview == true` inside the Developer Control Panel).
+ * Displays the developer's chosen custom icon (`OccasionIconKey`) in pure Emerald (`0xFF059669`)
+ * and renders any attached image (`customIconBase64` / `customIconUrl`) with rounded corners and click-to-enlarge.
  */
 @Composable
 fun LiveOccasionBannerCard(
@@ -2021,11 +1600,9 @@ fun LiveOccasionBannerCard(
     }
     if ((!config.isActive || isLocallyDismissed) && !forcePreview) return
 
-    val titleText = config.effectiveTitle.ifBlank { "مناسبة وتهنئة عامة" }
+    val titleText = config.effectiveTitle.ifBlank { "تنبيه عام" }
     val bodyText = config.effectiveBannerText
     val resolvedIcon = OccasionIconKey.fromKey(config.selectedIconKey)
-    val seasonalThemeId = resolveSeasonalThemeId(config)
-    val formattedDate = com.example.model.ArabicTextNormalizer.formatSystemBroadcastDateTime(config.updatedAt)
 
     Column(
         modifier = modifier
@@ -2033,111 +1610,21 @@ fun LiveOccasionBannerCard(
             .testTag("live_occasion_banner_card"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFF064E3B),
-                                Color(0xFF047857),
-                                Color(0xFF059669)
-                            )
-                        )
-                    )
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.16f),
-                                border = BorderStroke(0.8.dp, Color(0xFFA7F3D0).copy(alpha = 0.45f))
-                            ) {
-                                Text(
-                                    text = resolvedIcon.arabicLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFFFEF08A),
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                )
-                            }
-                            if (formattedDate.isNotBlank()) {
-                                Text(
-                                    text = formattedDate,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFFD1FAE5).copy(alpha = 0.85f),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = titleText,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-
-                        if (bodyText.isNotBlank()) {
-                            Text(
-                                text = bodyText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFECFDF5),
-                                lineHeight = 19.sp
-                            )
-                        }
-                    }
-
-                    Box(contentAlignment = Alignment.TopEnd) {
-                        SeasonalBezierVectorAnimation(
-                            seasonalThemeId = seasonalThemeId,
-                            modifier = Modifier.size(88.dp)
-                        )
-                        if (!forcePreview) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color.Black.copy(alpha = 0.22f),
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clickable { isLocallyDismissed = true }
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "إغلاق",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+        DeveloperSystemBroadcastBanner(
+            title = titleText,
+            subtitle = bodyText,
+            badgeText = resolvedIcon.arabicLabel,
+            iconKey = resolvedIcon,
+            illustrationType = resolvedIcon.toThreeDIllustrationType(),
+            onDismiss = if (!forcePreview) {
+                { isLocallyDismissed = true }
+            } else {
+                null
             }
-        }
+        )
 
         if (config.customIconBase64.isNotBlank() || config.customIconUrl.isNotBlank()) {
-            Box(modifier = Modifier.padding(horizontal = 4.dp)) {
+            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                 DeveloperAttachedImageBannerSection(
                     imageBase64 = config.customIconBase64,
                     imageUrl = config.customIconUrl
@@ -2146,4 +1633,3 @@ fun LiveOccasionBannerCard(
         }
     }
 }
-

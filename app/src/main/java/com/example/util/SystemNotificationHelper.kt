@@ -86,8 +86,7 @@ object SystemNotificationHelper {
         context: Context,
         title: String,
         body: String,
-        tagId: String = "",
-        notificationId: String = ""
+        tagId: String = ""
     ) {
         try {
             ensureChannelCreated(context)
@@ -124,8 +123,7 @@ object SystemNotificationHelper {
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
 
-            val effectiveKey = notificationId.ifBlank { tagId }
-            val notifId = if (effectiveKey.isNotEmpty()) effectiveKey.hashCode() else Random.nextInt(10000, 99999)
+            val notifId = if (tagId.isNotEmpty()) tagId.hashCode() else Random.nextInt(10000, 99999)
             NotificationManagerCompat.from(context).notify(notifId, builder.build())
         } catch (_: Exception) {
             // Ignore security or runtime exceptions in restricted test environments

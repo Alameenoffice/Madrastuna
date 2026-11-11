@@ -1884,8 +1884,8 @@ fun AuthenticatedMainPlatform(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                // Admin 14-day Subscription Expiry Warning & Developer Broadcasts Banner (rendered below Hero Banner on Dashboard)
-                if (currentUser?.role == UserRole.ADMIN && activeSection != AppSection.DASHBOARD) {
+                // Admin 14-day Subscription Expiry Warning & Developer Broadcasts Banner (STRICTLY ADMIN ONLY)
+                if (currentUser?.role == UserRole.ADMIN) {
                     AdminSubscriptionAndBroadcastBanner(
                         schoolConfig = schoolConfig,
                         developerBroadcasts = developerBroadcasts,
