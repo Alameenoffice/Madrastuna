@@ -598,6 +598,36 @@ object FirebaseCloudSync {
     }
 
     /**
+     * Fetches the raw JSON from https://madrasati-app-d51dd-default-rtdb.firebaseio.com/schools.json
+     * or shallow keys to verify whether a school exists or was deleted/suspended in real time.
+     */
+    suspend fun fetchLiveRtdbSchoolsRootJson(): String? = withContext(Dispatchers.IO) {
+        if (isLocalUnitTestEnvironment) return@withContext null
+        try {
+            val rtdbUrl = "${FirebaseConfigConstants.DATABASE_URL}/schools.json"
+            executeHttpGet(rtdbUrl)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Fetches a specific school node https://madrasati-app-d51dd-default-rtdb.firebaseio.com/schools/{schoolId}.json
+     * to inspect its real-time existence, settings, and suspension/activation flags.
+     */
+    suspend fun fetchLiveSchoolNodeJson(schoolId: String): String? = withContext(Dispatchers.IO) {
+        if (isLocalUnitTestEnvironment) return@withContext null
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return@withContext null
+        try {
+            val rtdbUrl = "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSid.json"
+            executeHttpGet(rtdbUrl)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
      * Deeply deletes a school's entire node and all sub-collections from Firebase RTDB & Firestore,
      * plus any associated license documents.
      */

@@ -1325,231 +1325,210 @@ fun CurriculumBooksScreen(
     )
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
                 .testTag("curriculum_books_screen"),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 6.dp, bottom = 100.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            // 1. Royal 3D Wave Hero Header with exclusive Opening & Closing 3D Book Vector Animation on the left
+            item(key = "curriculum_hero_banner") {
+                CurriculumHeroBannerWithOpenBookAnimation(
+                    title = "المناهج الدراسية والكتب الرسمية",
+                    subtitle = "تصفح وقراءة كافة الكتب المنهجية المعتمدة مباشرة داخل المنصة",
+                    rightPillText = "منهج وزارة التربية المعتمد",
+                    leftPillText = "${allBooks.size.coerceAtLeast(56)} كتاب منهجي"
+                )
+            }
 
-            // Royal 3D Wave Hero Header with exclusive Opening & Closing 3D Book Vector Animation on the left
-            CurriculumHeroBannerWithOpenBookAnimation(
-                title = "المناهج الدراسية والكتب الرسمية",
-                subtitle = "تصفح وقراءة كافة الكتب المنهجية المعتمدة مباشرة داخل المنصة",
-                rightPillText = "منهج وزارة التربية المعتمد",
-                leftPillText = "${allBooks.size.coerceAtLeast(56)} كتاب منهجي"
-            )
-
-            // Unified Luxury Filter Card for Stages, Grade Classes & Search (Zero text clipping)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
-                ),
-                border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            // 2. Unified Luxury Filter Card for Stages, Grade Classes & Search (Zero text clipping)
+            item(key = "curriculum_filter_card") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    // 1. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية) — Zero clipping, no cramped icons
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isDarkMode) Color(0xFF0F172A) else AdaptiveSoftSurface)
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        CurriculumAcademicStage.entries.forEach { stage ->
-                            val isSelected = selectedStage == stage && searchQuery.isBlank()
-                            Surface(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedStage = stage
-                                    selectedGradeClass = stage.gradeClasses.first()
-                                },
-                                shape = RoundedCornerShape(11.dp),
-                                color = if (isSelected) RoyalGreen else Color.Transparent,
-                                shadowElevation = if (isSelected) 3.dp else 0.dp,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .testTag("curriculum_stage_tab_${stage.name}")
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
+                        // A. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isDarkMode) Color(0xFF0F172A) else AdaptiveSoftSurface)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CurriculumAcademicStage.entries.forEach { stage ->
+                                val isSelected = selectedStage == stage && searchQuery.isBlank()
+                                Surface(
+                                    onClick = {
+                                        searchQuery = ""
+                                        selectedStage = stage
+                                        selectedGradeClass = stage.gradeClasses.first()
+                                    },
+                                    shape = RoundedCornerShape(11.dp),
+                                    color = if (isSelected) RoyalGreen else Color.Transparent,
+                                    shadowElevation = if (isSelected) 3.dp else 0.dp,
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 4.dp)
+                                        .weight(1f)
+                                        .height(42.dp)
+                                        .testTag("curriculum_stage_tab_${stage.name}")
                                 ) {
-                                    Text(
-                                        text = stage.shortBadge,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                        color = if (isSelected) {
-                                            Color.White
-                                        } else if (isDarkMode) {
-                                            Color(0xFFE2E8F0)
-                                        } else {
-                                            DeepForestGreen
-                                        },
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = stage.shortBadge,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                            color = if (isSelected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFE2E8F0)
+                                            } else {
+                                                DeepForestGreen
+                                            },
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // 2. Grade Classes Horizontal Filter Chips (matching ScheduleAndHomeworkScreen)
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(horizontal = 2.dp)
-                    ) {
-                        items(selectedStage.gradeClasses) { gradeClass ->
-                            val isGradeSelected = selectedGradeClass == gradeClass && searchQuery.isBlank()
-                            val gradeBookCount = remember(allBooks, selectedStage, gradeClass) {
-                                allBooks.count { it.stage == selectedStage && it.gradeClass == gradeClass }
-                            }
-                            Surface(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedGradeClass = gradeClass
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isGradeSelected) {
-                                    DeepEmerald
-                                } else if (isDarkMode) {
-                                    Color(0xFF0F172A)
-                                } else {
-                                    AdaptiveSoftSurface
-                                },
-                                border = BorderStroke(
-                                    width = if (isGradeSelected) 1.4.dp else 1.dp,
-                                    color = if (isGradeSelected) GoldAccent else AdaptiveSoftBorder
-                                ),
-                                shadowElevation = if (isGradeSelected) 2.dp else 0.dp,
-                                modifier = Modifier
-                                    .height(38.dp)
-                                    .testTag("curriculum_grade_chip_$gradeClass")
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(horizontal = 14.dp)
+                        // B. Grade Classes Horizontal Scrollable Filter Chips (LazyRow with clean contentPadding & uniform height)
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp)
+                        ) {
+                            items(selectedStage.gradeClasses, key = { it }) { gradeClass ->
+                                val isGradeSelected = selectedGradeClass == gradeClass && searchQuery.isBlank()
+                                val gradeBookCount = remember(allBooks, selectedStage, gradeClass) {
+                                    allBooks.count { it.stage == selectedStage && it.gradeClass == gradeClass }
+                                }
+                                Surface(
+                                    onClick = {
+                                        searchQuery = ""
+                                        selectedGradeClass = gradeClass
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isGradeSelected) {
+                                        DeepEmerald
+                                    } else if (isDarkMode) {
+                                        Color(0xFF0F172A)
+                                    } else {
+                                        AdaptiveSoftSurface
+                                    },
+                                    border = BorderStroke(
+                                        width = if (isGradeSelected) 1.4.dp else 1.dp,
+                                        color = if (isGradeSelected) GoldAccent else AdaptiveSoftBorder
+                                    ),
+                                    shadowElevation = if (isGradeSelected) 2.dp else 0.dp,
+                                    modifier = Modifier
+                                        .height(40.dp)
+                                        .testTag("curriculum_grade_chip_$gradeClass")
                                 ) {
-                                    Text(
-                                        text = if (gradeBookCount > 0) {
-                                            "$gradeClass ($gradeBookCount)"
-                                        } else {
-                                            gradeClass
-                                        },
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = if (isGradeSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                        color = if (isGradeSelected) {
-                                            Color.White
-                                        } else if (isDarkMode) {
-                                            Color(0xFFA7F3D0)
-                                        } else {
-                                            DeepForestGreen
-                                        },
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(horizontal = 14.dp)
+                                    ) {
+                                        Text(
+                                            text = if (gradeBookCount > 0) {
+                                                "$gradeClass ($gradeBookCount)"
+                                            } else {
+                                                gradeClass
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = if (isGradeSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                            color = if (isGradeSelected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFA7F3D0)
+                                            } else {
+                                                DeepForestGreen
+                                            },
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // 3. Search Bar with Custom Animated Canvas Vector Icons
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = {
-                            Text(
-                                text = "ابحث عن اسم الكتاب أو الصف الدراسي...",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        },
-                        leadingIcon = {
-                            AnimatedSearchVectorIcon(
-                                tint = DeepEmerald,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotBlank()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    AnimatedClearVectorIcon(
-                                        tint = if (isDarkMode) Color(0xFF94A3B8) else DeepEmerald,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                        // C. Search Bar with Custom Animated Canvas Vector Icons
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = {
+                                Text(
+                                    text = "ابحث عن اسم الكتاب أو الصف الدراسي...",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            leadingIcon = {
+                                AnimatedSearchVectorIcon(
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (searchQuery.isNotBlank()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        AnimatedClearVectorIcon(
+                                            tint = if (isDarkMode) Color(0xFF94A3B8) else DeepEmerald,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("curriculum_search_input")
-                    )
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("curriculum_search_input")
+                        )
+                    }
                 }
             }
 
-            // Smooth AnimatedContent when switching between stages or grades
-            AnimatedContent(
-                targetState = Triple(selectedStage, selectedGradeClass, displayedBooks),
-                transitionSpec = {
-                    (fadeIn(animationSpec = tween(260)) +
-                        slideInHorizontally(animationSpec = tween(260)) { fullWidth -> fullWidth / 10 })
-                        .togetherWith(
-                            fadeOut(animationSpec = tween(180)) +
-                                slideOutHorizontally(animationSpec = tween(180)) { fullWidth -> -fullWidth / 12 }
-                        )
-                        .using(SizeTransform(clip = false))
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                label = "curriculum_grade_animated_content"
-            ) { (stageState, gradeState, booksForState) ->
-                if (booksForState.isEmpty()) {
+            // 3. Books List or Elegant Empty Stage Card (All scrolling seamlessly with the top banner)
+            if (displayedBooks.isEmpty()) {
+                item(key = "curriculum_empty_stage_${selectedStage.name}_$selectedGradeClass") {
                     InteractiveSmartLibraryStageView(
-                        selectedStage = stageState,
-                        selectedGradeClass = gradeState,
+                        selectedStage = selectedStage,
+                        selectedGradeClass = selectedGradeClass,
                         hasActiveSearchQuery = searchQuery.isNotBlank(),
                         isDarkMode = isDarkMode
                     )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight()
-                            .testTag("curriculum_books_list"),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 96.dp)
-                    ) {
-                        items(booksForState, key = { it.id }) { book ->
-                            CurriculumBookOfficialCard(
-                                book = book,
-                                isDarkMode = isDarkMode,
-                                onDirectOpenBook = {
-                                    activeBookInViewer = book
-                                }
-                            )
+                }
+            } else {
+                items(displayedBooks, key = { it.id }) { book ->
+                    CurriculumBookOfficialCard(
+                        book = book,
+                        isDarkMode = isDarkMode,
+                        onDirectOpenBook = {
+                            activeBookInViewer = book
                         }
-                    }
+                    )
                 }
             }
         }
@@ -1568,7 +1547,7 @@ fun CurriculumBooksScreen(
 /**
  * Interactive Animated Stage for Intermediate & Preparatory Curriculum Stages:
  * Displays `OpeningAndClosing3DBookVectorAnimation` in the center of the stage card
- * with clean, non-technical Arabic copy.
+ * with clear emerald title and calm explanatory description.
  */
 @Composable
 private fun InteractiveSmartLibraryStageView(
@@ -1579,14 +1558,13 @@ private fun InteractiveSmartLibraryStageView(
 ) {
     Box(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp)
                 .testTag("curriculum_stage_pending_notice_card"),
             shape = RoundedCornerShape(26.dp),
             colors = CardDefaults.cardColors(
@@ -1622,11 +1600,11 @@ private fun InteractiveSmartLibraryStageView(
                         .fillMaxWidth()
                         .padding(horizontal = 22.dp, vertical = 28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // Exclusive 3D Opening & Closing Book Vector Animation in the center of the stage card
+                    // Exclusive 3D Opening & Closing Book Vector Animation in the top/center of the stage card
                     OpeningAndClosing3DBookVectorAnimation(
-                        modifier = Modifier.size(124.dp),
+                        modifier = Modifier.size(132.dp),
                         isDarkMode = isDarkMode
                     )
 
@@ -1653,17 +1631,34 @@ private fun InteractiveSmartLibraryStageView(
                         }
                     }
 
+                    // Clear Emerald Title
                     Text(
                         text = if (hasActiveSearchQuery) {
                             "لا توجد كتب مطابقة لعبارة البحث الحالية"
                         } else {
-                            "كتب هذه المرحلة قيد التجهيز والإضافة قريباً"
+                            "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد"
                         },
                         style = MaterialTheme.typography.titleMedium,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color.White else DeepForestGreen,
+                        color = if (isDarkMode) Color(0xFF34D399) else DeepForestGreen,
                         textAlign = TextAlign.Center,
-                        lineHeight = 24.sp
+                        lineHeight = 25.sp
+                    )
+
+                    // Calm Explanatory Description
+                    Text(
+                        text = if (hasActiveSearchQuery) {
+                            "يرجى تجربة البحث باسم كتاب آخر أو اختيار صف دراسي مختلف من الشريط العلوي."
+                        } else {
+                            "يجري العمل حالياً على تجهيز وربط الكتب المنهجية الرسمية لهذا الصف، وستتوفر قريباً للتصفح المباشر."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
+                        textAlign = TextAlign.Center,
+                        lineHeight = 22.sp
                     )
                 }
             }
@@ -2133,24 +2128,23 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 24.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    modifier = Modifier.weight(1f, fill = false),
                     shape = RoundedCornerShape(50),
                     color = Color.White.copy(alpha = 0.18f),
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Verified,
@@ -2161,17 +2155,15 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
                         Text(
                             text = rightPillText,
                             style = MaterialTheme.typography.labelMedium,
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 1
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.weight(0.01f))
+                Spacer(modifier = Modifier.width(6.dp))
 
                 Surface(
                     shape = RoundedCornerShape(50),
@@ -2195,8 +2187,7 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
-                            maxLines = 1,
-                            softWrap = false
+                            maxLines = 1
                         )
                     }
                 }

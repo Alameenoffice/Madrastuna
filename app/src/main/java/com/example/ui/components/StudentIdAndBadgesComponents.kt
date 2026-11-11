@@ -1738,23 +1738,11 @@ fun AdminSubscriptionAndBroadcastBanner(
     onDismissBroadcast: (String) -> Unit = {}
 ) {
     var isExpiryWarningDismissed by remember { mutableStateOf(false) }
-    var isBroadcastBannerDismissed by remember { mutableStateOf(false) }
 
     val daysRemaining = schoolConfig.daysUntilExpiry()
     val showExpiryWarning = schoolConfig.isWithinRenewalWarningWindow() && !isExpiryWarningDismissed
-    val visibleBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds, isBroadcastBannerDismissed) {
-        if (isBroadcastBannerDismissed) {
-            emptyList()
-        } else {
-            developerBroadcasts.filterNot { bc ->
-                val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                bc.id in dismissedBroadcastIds || key in dismissedBroadcastIds
-            }
-        }
-    }
-    val latestBroadcast = visibleBroadcasts.firstOrNull()
 
-    if (!showExpiryWarning && latestBroadcast == null) return
+    if (!showExpiryWarning) return
 
     Column(
         modifier = modifier
@@ -1816,38 +1804,6 @@ fun AdminSubscriptionAndBroadcastBanner(
                             )
                         }
                     }
-                }
-            }
-        }
-
-        if (latestBroadcast != null) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("admin_developer_broadcast_banner"),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                DeveloperSystemBroadcastBanner(
-                    title = latestBroadcast.title,
-                    subtitle = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
-                    badgeText = "إشعار النظام العام • تعميم مدراء المدارس",
-                    onDismiss = {
-                        isBroadcastBannerDismissed = true
-                        developerBroadcasts.forEach { bc ->
-                            val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                            onDismissBroadcast(key)
-                            if (bc.id.isNotBlank()) {
-                                onDismissBroadcast(bc.id)
-                            }
-                        }
-                    }
-                )
-
-                if (latestBroadcast.imageBase64.isNotBlank() || latestBroadcast.imageUrl.isNotBlank()) {
-                    DeveloperAttachedImageBannerSection(
-                        imageBase64 = latestBroadcast.imageBase64,
-                        imageUrl = latestBroadcast.imageUrl
-                    )
                 }
             }
         }

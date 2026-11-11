@@ -13,7 +13,7 @@ android {
   compileSdk = 34
 
   defaultConfig {
-    applicationId = "com.aistudio.madrasati.zummar"
+    applicationId = "com.example.madrasati.admin"
     minSdk = 24
     targetSdk = 34
     versionCode = 1
