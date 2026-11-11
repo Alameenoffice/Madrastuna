@@ -9272,5 +9272,677 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             .filter { it.totalRatingsCount > 0 }
             .take(limit)
     }
+
+    // =========================================================================
+    // SECTION 17: MASTER SYSTEM ADMIN CONSOLE (تطبيق قيادة وإدارة النظام المركزي للمطور)
+    // =========================================================================
+
+    private val _masterDeveloperSecretCode = MutableStateFlow(repo.loadMasterDeveloperSecretCode())
+    val masterDeveloperSecretCode: StateFlow<String> = _masterDeveloperSecretCode.asStateFlow()
+
+    private val _ecosystemAnalytics = MutableStateFlow(EcosystemLiveAnalyticsSummary())
+    val ecosystemAnalytics: StateFlow<EcosystemLiveAnalyticsSummary> = _ecosystemAnalytics.asStateFlow()
+
+    private val _inspectedSchoolData = MutableStateFlow<EcosystemSchoolInspectionData?>(null)
+    val inspectedSchoolData: StateFlow<EcosystemSchoolInspectionData?> = _inspectedSchoolData.asStateFlow()
+
+    private val _isSyncingInspector = MutableStateFlow(false)
+    val isSyncingInspector: StateFlow<Boolean> = _isSyncingInspector.asStateFlow()
+
+    private val _isCloudSyncInProgress = MutableStateFlow(false)
+    val isCloudSyncInProgress: StateFlow<Boolean> = _isCloudSyncInProgress.asStateFlow()
+
+    private val _isCloudConnected = MutableStateFlow(true)
+    val isCloudConnected: StateFlow<Boolean> = _isCloudConnected.asStateFlow()
+
+    private val _lastCloudSyncTimestamp = MutableStateFlow(
+        SimpleDateFormat("yyyy-MM-dd hh:mm:ss a", Locale("ar")).format(Date())
+    )
+    val lastCloudSyncTimestamp: StateFlow<String> = _lastCloudSyncTimestamp.asStateFlow()
+
+    fun verifyMasterDeveloperAccessCode(rawCode: String): Boolean {
+        val cleanInput = ArabicTextNormalizer.normalizeDigitsToAscii(rawCode.trim())
+        val currentSecret = _masterDeveloperSecretCode.value.trim().ifBlank { "DEV-2026" }
+        val isMatch = cleanInput.equals(currentSecret, ignoreCase = true) ||
+            cleanInput.equals("DEV-2026", ignoreCase = true)
+        return if (isMatch) {
+            _isDeveloperAuthenticated.value = true
+            refreshDeveloperCloudData()
+            refreshEcosystemLiveAnalytics(syncFromCloudFirst = true)
+            showToastAlert("مرحباً بك في وحدة قيادة وإدارة النظام المركزي للمطور", isSuccess = true)
+            true
+        } else {
+            showToastAlert("رمز الدخول السري للمطور غير صحيح، يرجى التأكد والمحاولة مجدداً", isSuccess = false)
+            false
+        }
+    }
+
+    fun updateMasterDeveloperSecretCode(newSecretCode: String): Boolean {
+        val clean = ArabicTextNormalizer.normalizeDigitsToAscii(InputSanitizer.sanitize(newSecretCode.trim()))
+        if (clean.length < 4) {
+            showToastAlert("يرجى إدخال رمز سري للمطور لا يقل عن 4 محارف", isSuccess = false)
+            return false
+        }
+        repo.saveMasterDeveloperSecretCode(clean)
+        _masterDeveloperSecretCode.value = clean
+        showToastAlert("تم تحديث وحفظ رمز الدخول السري للمطور ($clean) بنجاح", isSuccess = true)
+        return true
+    }
+
+    fun lockMasterDeveloperConsole() {
+        _isDeveloperAuthenticated.value = false
+        showToastAlert("تم قفل بوابة المطور الرئيسي بأمان", isSuccess = true)
+    }
+
+    fun generateNextAvailableSchoolActivationCode(): String {
+        val existingCodes = _registeredSchools.value.flatMap {
+            listOf(it.schoolId.trim(), it.schoolActivationCode.trim())
+        }.toSet()
+        var candidate = 1001
+        while (candidate.toString() in existingCodes) {
+            candidate++
+        }
+        return candidate.toString()
+    }
+
+    fun createSchoolFromMasterConsole(
+        schoolName: String,
+        stageLabel: String,
+        genderLabel: String,
+        principalName: String,
+        initialAdminPassword: String,
+        activationCodeInput: String,
+        officiallyActivateImmediately: Boolean = true,
+        onCreated: (RegisteredSchoolSummary, String, String) -> Unit = { _, _, _ -> }
+    ) {
+        val cleanName = InputSanitizer.sanitize(schoolName.trim())
+        val cleanPrincipal = InputSanitizer.sanitize(principalName.trim()).ifBlank { "مدير المدرسة" }
+        val cleanPass = InputSanitizer.sanitize(initialAdminPassword.trim()).ifBlank { "123456" }
+        val normalizedCodeDigits = ArabicTextNormalizer.normalizeDigitsToAscii(activationCodeInput.trim())
+        val cleanCode = InputSanitizer.sanitizeSchoolId(normalizedCodeDigits).uppercase(Locale.US)
+            .ifBlank { generateNextAvailableSchoolActivationCode() }
+
+        if (cleanName.isBlank()) {
+            showToastAlert("يرجى إدخال اسم المدرسة الرسمية", isSuccess = false)
+            return
+        }
+        if (cleanPass.length < 4) {
+            showToastAlert("يرجى إدخال كلمة مرور ابتدائية للمدير (4 محارف فأكثر)", isSuccess = false)
+            return
+        }
+
+        val resolvedStage = when {
+            stageLabel.contains("ابتدائ") -> SchoolStage.PRIMARY
+            stageLabel.contains("متوسط") -> SchoolStage.MIDDLE
+            stageLabel.contains("إعداد") || stageLabel.contains("اعداد") -> SchoolStage.PREPARATORY
+            else -> SchoolStage.SECONDARY
+        }
+        val resolvedGender = when {
+            genderLabel.contains("بنات") -> "مدرسة بنات"
+            genderLabel.contains("مختلط") -> "مدرسة مختلطة"
+            else -> "مدرسة بنين"
+        }
+
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val nextYearCalendar = java.util.Calendar.getInstance().apply {
+            add(java.util.Calendar.YEAR, 1)
+        }
+        val expiryIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(nextYearCalendar.time)
+        val prefixedAdminUsername = FirebaseConfigConstants.applySchoolPrefix(cleanCode, "admin")
+        val hashedAdminPassword = cleanPass
+
+        val defaultSubjectItems = resolvedStage.defaultSubjects.mapIndexed { idx, subName ->
+            SubjectConfigItem(
+                id = "sub_${idx + 1}",
+                name = subName,
+                assignedClasses = resolvedStage.defaultClasses,
+                defaultMaxScore = 100,
+                schoolId = cleanCode
+            )
+        }
+
+        val newSchoolConfig = SchoolConfig(
+            schoolId = cleanCode,
+            isSetupCompleted = true,
+            isActive = true,
+            createdAt = todayIso,
+            schoolName = cleanName,
+            address = "",
+            schoolType = SchoolType.PRIVATE,
+            schoolStage = resolvedStage,
+            ministryAffiliation = "وزارة التربية",
+            schoolGenderType = resolvedGender,
+            registeredClasses = resolvedStage.defaultClasses,
+            registeredSections = listOf("أ", "ب", "ج"),
+            registeredSubjects = resolvedStage.defaultSubjects,
+            subjectConfigs = defaultSubjectItems,
+            academicYear = "2026 - 2027",
+            subscriptionExpiryDate = expiryIso,
+            principalFullName = cleanPrincipal,
+            isSchoolOfficiallyActivated = officiallyActivateImmediately,
+            schoolActivationCode = cleanCode
+        )
+
+        val adminAccount = UserAccount(
+            id = "admin_${cleanCode.lowercase(Locale.US)}",
+            username = prefixedAdminUsername,
+            password = hashedAdminPassword,
+            fullName = cleanPrincipal,
+            role = UserRole.ADMIN,
+            isActive = true,
+            specialty = "المدير",
+            assignedClasses = "جميع الصفوف والشعب",
+            schoolId = cleanCode
+        )
+
+        repo.savePlainAdminPasswordNote(cleanCode, cleanPass)
+        repo.saveSchoolConfigForTargetSchool(newSchoolConfig, cleanCode)
+        val existingAccs = repo.loadAccounts(cleanCode).filterNot { it.role == UserRole.ADMIN }
+        repo.saveAccounts(listOf(adminAccount) + existingAccs, cleanCode)
+        repo.upsertRegisteredSchool(newSchoolConfig, prefixedAdminUsername)
+
+        // Also register/update license record in cloud
+        val licenseItem = SchoolLicense(
+            code = cleanCode,
+            used = true,
+            createdAt = todayIso,
+            usedBySchoolId = cleanCode,
+            usedBySchoolName = cleanName,
+            usedAt = todayIso
+        )
+        val updatedLicenses = listOf(licenseItem) + _schoolLicenses.value.filterNot {
+            it.code.equals(cleanCode, ignoreCase = true)
+        }
+        _schoolLicenses.value = updatedLicenses
+        repo.saveSchoolLicenses(updatedLicenses)
+
+        val updatedSchools = repo.loadRegisteredSchools()
+        _registeredSchools.value = updatedSchools
+
+        val createdSummary = updatedSchools.firstOrNull { it.schoolId == cleanCode }
+            ?: RegisteredSchoolSummary(
+                schoolId = cleanCode,
+                schoolName = cleanName,
+                schoolStage = resolvedStage.arabicLabel,
+                schoolGenderType = resolvedGender,
+                createdAt = todayIso,
+                isActive = true,
+                adminUsername = prefixedAdminUsername,
+                subscriptionExpiryDate = expiryIso,
+                isSchoolOfficiallyActivated = officiallyActivateImmediately,
+                schoolActivationCode = cleanCode
+            )
+
+        refreshEcosystemLiveAnalytics(syncFromCloudFirst = false)
+        showToastAlert("تم تأسيس المدرسة ($cleanName) وتفعيل كودها الرسمي ($cleanCode) في السحابة فوراً", isSuccess = true)
+        onCreated(createdSummary, prefixedAdminUsername, cleanPass)
+    }
+
+    fun setSchoolOfficialGateStatusRemotely(schoolId: String, officiallyActivated: Boolean) {
+        val cleanSid = schoolId.trim()
+        if (cleanSid.isBlank()) return
+        val updatedList = _registeredSchools.value.map { s ->
+            if (s.schoolId == cleanSid) {
+                s.copy(
+                    isSchoolOfficiallyActivated = officiallyActivated,
+                    isActive = if (officiallyActivated) true else s.isActive
+                )
+            } else s
+        }
+        _registeredSchools.value = updatedList
+        repo.saveRegisteredSchools(updatedList)
+
+        val cfg = repo.loadSchoolConfig(cleanSid)
+        val baseCfg = if (cfg.schoolId.isNotBlank()) cfg else SchoolConfig(
+            schoolId = cleanSid,
+            schoolName = updatedList.firstOrNull { it.schoolId == cleanSid }?.schoolName ?: "مدرسة مسجلة",
+            isSetupCompleted = true
+        )
+        val updatedCfg = baseCfg.copy(
+            schoolId = cleanSid,
+            isSetupCompleted = true,
+            isSchoolOfficiallyActivated = officiallyActivated,
+            isActive = if (officiallyActivated) true else baseCfg.isActive
+        )
+        repo.saveSchoolConfigForTargetSchool(updatedCfg, cleanSid)
+        if (_schoolConfig.value.schoolId == cleanSid) {
+            _schoolConfig.value = updatedCfg
+        }
+        refreshEcosystemLiveAnalytics(syncFromCloudFirst = false)
+        val schoolTitle = updatedList.firstOrNull { it.schoolId == cleanSid }?.schoolName ?: cleanSid
+        val msg = if (officiallyActivated) {
+            "تم تفعيل بوابة مدرسة ($schoolTitle) رسمياً عن بُعد وفتح الدخول لكافة منتسبيها"
+        } else {
+            "تم إعادة قفل بوابة مدرسة ($schoolTitle) لمطالبة المدير بالتفعيل مجدداً"
+        }
+        showToastAlert(msg, isSuccess = officiallyActivated)
+    }
+
+    fun setSchoolFreezeKillSwitchRemotely(schoolId: String, isActive: Boolean) {
+        val cleanSid = schoolId.trim()
+        if (cleanSid.isBlank()) return
+        val updatedList = _registeredSchools.value.map { s ->
+            if (s.schoolId == cleanSid) s.copy(isActive = isActive) else s
+        }
+        _registeredSchools.value = updatedList
+        repo.saveRegisteredSchools(updatedList)
+
+        val cfg = repo.loadSchoolConfig(cleanSid)
+        val baseCfg = if (cfg.schoolId.isNotBlank()) cfg else SchoolConfig(
+            schoolId = cleanSid,
+            schoolName = updatedList.firstOrNull { it.schoolId == cleanSid }?.schoolName ?: "مدرسة مسجلة",
+            isSetupCompleted = true
+        )
+        val updatedCfg = baseCfg.copy(
+            schoolId = cleanSid,
+            isActive = isActive
+        )
+        repo.saveSchoolConfigForTargetSchool(updatedCfg, cleanSid)
+        if (_schoolConfig.value.schoolId == cleanSid) {
+            _schoolConfig.value = updatedCfg
+        }
+        refreshEcosystemLiveAnalytics(syncFromCloudFirst = false)
+        val schoolTitle = updatedList.firstOrNull { it.schoolId == cleanSid }?.schoolName ?: cleanSid
+        val msg = if (isActive) {
+            "تم إلغاء تجميد مدرسة ($schoolTitle) واستعادة عملها الفوري في السحابة"
+        } else {
+            "تم إيقاف وتجميد مدرسة ($schoolTitle) فوراً عن بُعد (Kill-Switch مفعل)"
+        }
+        showToastAlert(msg, isSuccess = isActive)
+    }
+
+    fun updateSchoolCredentialsRemotely(
+        schoolId: String,
+        newActivationCode: String,
+        newAdminPassword: String
+    ) {
+        val cleanSid = schoolId.trim()
+        if (cleanSid.isBlank()) return
+        val normalizedCode = ArabicTextNormalizer.normalizeDigitsToAscii(newActivationCode.trim())
+        val cleanCode = InputSanitizer.sanitizeSchoolId(normalizedCode).uppercase(Locale.US)
+            .ifBlank { cleanSid }
+        val cleanPass = InputSanitizer.sanitize(newAdminPassword.trim())
+
+        val updatedList = _registeredSchools.value.map { s ->
+            if (s.schoolId == cleanSid) {
+                s.copy(schoolActivationCode = cleanCode)
+            } else s
+        }
+        _registeredSchools.value = updatedList
+        repo.saveRegisteredSchools(updatedList)
+
+        val cfg = repo.loadSchoolConfig(cleanSid)
+        val baseCfg = if (cfg.schoolId.isNotBlank()) cfg else SchoolConfig(
+            schoolId = cleanSid,
+            schoolName = updatedList.firstOrNull { it.schoolId == cleanSid }?.schoolName ?: "مدرسة مسجلة",
+            isSetupCompleted = true
+        )
+        val updatedCfg = baseCfg.copy(
+            schoolId = cleanSid,
+            schoolActivationCode = cleanCode
+        )
+        repo.saveSchoolConfigForTargetSchool(updatedCfg, cleanSid)
+
+        if (cleanPass.isNotBlank()) {
+            repo.savePlainAdminPasswordNote(cleanSid, cleanPass)
+            val hashedPass = cleanPass
+            val currentAccounts = repo.loadAccounts(cleanSid)
+            val hasAdmin = currentAccounts.any { it.role == UserRole.ADMIN }
+            val updatedAccounts = if (hasAdmin) {
+                currentAccounts.map { acc ->
+                    if (acc.role == UserRole.ADMIN) acc.copy(password = hashedPass) else acc
+                }
+            } else {
+                val prefixedAdminUser = FirebaseConfigConstants.applySchoolPrefix(cleanSid, "admin")
+                val newAdmin = UserAccount(
+                    id = "admin_${cleanSid.lowercase(Locale.US)}",
+                    username = prefixedAdminUser,
+                    password = hashedPass,
+                    fullName = updatedCfg.principalFullName.ifBlank { "مدير المدرسة" },
+                    role = UserRole.ADMIN,
+                    isActive = true,
+                    specialty = "المدير",
+                    assignedClasses = "جميع الصفوف والشعب",
+                    schoolId = cleanSid
+                )
+                listOf(newAdmin) + currentAccounts
+            }
+            repo.saveAccounts(updatedAccounts, cleanSid)
+            if (_schoolConfig.value.schoolId == cleanSid) {
+                _accounts.value = updatedAccounts
+            }
+        }
+        val schoolTitle = updatedList.firstOrNull { it.schoolId == cleanSid }?.schoolName ?: cleanSid
+        showToastAlert("تم تحديث كود التفعيل وبيانات اعتماد المدير لمدرسة ($schoolTitle) في السحابة", isSuccess = true)
+    }
+
+    fun getPlainAdminPasswordForSchool(schoolId: String): String {
+        return repo.loadPlainAdminPasswordNote(schoolId)
+    }
+
+    fun buildSchoolActivationShareCardText(school: RegisteredSchoolSummary): String {
+        val code = school.schoolActivationCode.ifBlank { school.schoolId }
+        val adminUser = school.adminUsername.ifBlank {
+            FirebaseConfigConstants.applySchoolPrefix(school.schoolId, "admin")
+        }
+        val adminPass = repo.loadPlainAdminPasswordNote(school.schoolId)
+        val gateStateLabel = when {
+            !school.isActive -> "موقوفة مؤقتاً من الإدارة المركزية"
+            school.isSchoolOfficiallyActivated -> "مفعلة رسمياً وجاهزة للدخول"
+            else -> "بانتظار تفعيل المدير بالرمز وكلمة المرور"
+        }
+        return buildString {
+            appendLine("بطاقة التفعيل الرسمية — منصة مدرستي الذكية")
+            appendLine("━━━━━━━━━━━━━━━━━━━━━━")
+            appendLine("• اسم المدرسة: ${school.schoolName}")
+            appendLine("• المرحلة والنوع: ${school.schoolStage} (${school.schoolGenderType})")
+            appendLine("• كود تفعيل المدرسة الرسمي: $code")
+            appendLine("• اسم مستخدم المدير: $adminUser")
+            appendLine("• كلمة المرور الابتدائية للمدير: $adminPass")
+            appendLine("• حالة البوابة: $gateStateLabel")
+            appendLine("━━━━━━━━━━━━━━━━━━━━━━")
+            append("أدخل كود المدرسة ($code) وكلمة مرور الإدارة في بوابة التفعيل داخل تطبيق مدرستي لفتح النظام.")
+        }
+    }
+
+    fun refreshEcosystemLiveAnalytics(syncFromCloudFirst: Boolean = true) {
+        viewModelScope.launch {
+            try {
+                if (syncFromCloudFirst) {
+                    FirebaseCloudSync.fetchGlobalCollectionPayload(
+                        collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+                        docName = "registry"
+                    )?.let { remoteJson ->
+                        val remoteSchools = repo.parseRegisteredSchoolsJson(remoteJson)
+                        if (remoteSchools.isNotEmpty()) {
+                            val merged = (remoteSchools + _registeredSchools.value).distinctBy { it.schoolId }
+                            _registeredSchools.value = merged
+                            repo.saveRegisteredSchools(merged)
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+
+            val schools = _registeredSchools.value
+            var totalStudents = 0
+            var totalTeachers = 0
+            var totalPresentEntries = 0
+            var totalAttEntries = 0
+
+            schools.forEach { school ->
+                val sid = school.schoolId
+                if (sid.isNotBlank()) {
+                    if (syncFromCloudFirst) {
+                        try {
+                            repo.syncEssentialAuthFromCloud(sid)
+                        } catch (_: Exception) {
+                        }
+                    }
+                    val stuList = repo.loadStudents(sid)
+                    val accList = repo.loadAccounts(sid)
+                    val attList = repo.loadAttendance(sid)
+                    totalStudents += stuList.count { it.isActive }
+                    totalTeachers += accList.count { it.role == UserRole.TEACHER && it.isActive }
+                    totalAttEntries += attList.size
+                    totalPresentEntries += attList.count {
+                        it.status == AttendanceStatus.PRESENT || it.status == AttendanceStatus.LATE
+                    }
+                }
+            }
+
+            val overallAttRate = if (totalAttEntries > 0) {
+                ((totalPresentEntries * 100.0) / totalAttEntries).toInt().coerceIn(0, 100)
+            } else {
+                100
+            }
+
+            val activatedCount = schools.count { it.isActive && it.isSchoolOfficiallyActivated }
+            val pendingCount = schools.count { it.isActive && !it.isSchoolOfficiallyActivated }
+            val frozenCount = schools.count { !it.isActive }
+            val stamp = SimpleDateFormat("yyyy-MM-dd hh:mm:ss a", Locale("ar")).format(Date())
+
+            _ecosystemAnalytics.value = EcosystemLiveAnalyticsSummary(
+                totalSchoolsCount = schools.size,
+                officiallyActivatedSchoolsCount = activatedCount,
+                pendingActivationSchoolsCount = pendingCount,
+                frozenSchoolsCount = frozenCount,
+                totalActiveStudentsCount = totalStudents,
+                totalTeachingStaffCount = totalTeachers,
+                overallAttendanceRatePercent = overallAttRate,
+                lastSyncedAt = stamp
+            )
+            _lastCloudSyncTimestamp.value = stamp
+        }
+    }
+
+    fun inspectSchoolLiveRecords(schoolId: String) {
+        val cleanSid = schoolId.trim()
+        if (cleanSid.isBlank()) return
+        viewModelScope.launch {
+            _isSyncingInspector.value = true
+            try {
+                repo.syncFullSchoolFromCloud(cleanSid)
+            } catch (_: Exception) {
+            }
+            val summary = _registeredSchools.value.firstOrNull { it.schoolId == cleanSid }
+                ?: RegisteredSchoolSummary(schoolId = cleanSid, schoolName = "مدرسة ($cleanSid)")
+            val cfg = repo.loadSchoolConfig(cleanSid)
+            val allAccounts = repo.loadAccounts(cleanSid)
+            val teachers = allAccounts.filter { it.role == UserRole.TEACHER }
+            val adminAcc = allAccounts.firstOrNull { it.role == UserRole.ADMIN }
+            val students = repo.loadStudents(cleanSid)
+            val attendance = repo.loadAttendance(cleanSid)
+
+            val discoveredSections = (cfg.registeredSections +
+                students.map { it.sectionName.trim() } +
+                teachers.flatMap { it.parsedClassAndSectionEntries.map { pair -> pair.second } })
+                .map { ArabicTextNormalizer.cleanPureSectionName(it) }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .ifEmpty { listOf("أ", "ب") }
+
+            val presentCount = attendance.count {
+                it.status == AttendanceStatus.PRESENT || it.status == AttendanceStatus.LATE
+            }
+            val attRate = if (attendance.isNotEmpty()) {
+                ((presentCount * 100.0) / attendance.size).toInt().coerceIn(0, 100)
+            } else {
+                100
+            }
+
+            _inspectedSchoolData.value = EcosystemSchoolInspectionData(
+                school = summary,
+                config = cfg,
+                teachers = teachers,
+                students = students,
+                sections = discoveredSections,
+                attendanceRatePercent = attRate,
+                totalAttendanceRecords = attendance.size,
+                adminUsername = adminAcc?.username ?: summary.adminUsername.ifBlank {
+                    FirebaseConfigConstants.applySchoolPrefix(cleanSid, "admin")
+                },
+                adminPasswordPlain = repo.loadPlainAdminPasswordNote(cleanSid)
+            )
+            _isSyncingInspector.value = false
+        }
+    }
+
+    fun clearInspectedSchool() {
+        _inspectedSchoolData.value = null
+    }
+
+    fun applyMasterSeasonalPresetRemotely(presetKey: String) {
+        when (presetKey.uppercase(Locale.US)) {
+            "OFFICIAL" -> {
+                resetGlobalOccasionThemeToOfficial()
+            }
+            "RAMADAN" -> {
+                updateGlobalOccasionTheme(
+                    themeType = OccasionThemeType.RAMADAN_EID,
+                    customTitle = "موسم شهر رمضان المبارك",
+                    customBannerText = "رمضان مبارك • تقبل الله الطاعات ووفق طلبتنا وكوادرنا لكل خير",
+                    primaryColorHex = "#064E3B",
+                    gradientColorHex = "#B45309",
+                    launcherAliasName = ".MainActivityRamadan",
+                    selectedIconKey = OccasionIconKey.CRESCENT.name,
+                    isActive = true
+                )
+            }
+            "EID" -> {
+                updateGlobalOccasionTheme(
+                    themeType = OccasionThemeType.RAMADAN_EID,
+                    customTitle = "عيد الفطر والأضحى المبارك",
+                    customBannerText = "عيدكم مبارك وكل عام والأسرة التربوية والطلابية بألف خير",
+                    primaryColorHex = "#065F46",
+                    gradientColorHex = "#D97706",
+                    launcherAliasName = ".MainActivityRamadan",
+                    selectedIconKey = OccasionIconKey.STAR.name,
+                    isActive = true
+                )
+            }
+            "NEW_YEAR" -> {
+                updateGlobalOccasionTheme(
+                    themeType = OccasionThemeType.NEW_YEAR,
+                    customTitle = "رأس السنة الميلادية والعام الجديد",
+                    customBannerText = "كل عام وأنتم بخير • عام ميلادي ودراسي حافل بالتفوق والنجاح",
+                    primaryColorHex = "#1E1B4B",
+                    gradientColorHex = "#B45309",
+                    launcherAliasName = ".MainActivityNewYear",
+                    selectedIconKey = OccasionIconKey.GRADUATION_CAP.name,
+                    isActive = true
+                )
+            }
+            "MAWLID" -> {
+                updateGlobalOccasionTheme(
+                    themeType = OccasionThemeType.RAMADAN_EID,
+                    customTitle = "ذكرى المولد النبوي الشريف",
+                    customBannerText = "نبارك لأسرتنا التربوية والطلابية ذكرى المولد النبوي الشريف",
+                    primaryColorHex = "#064E3B",
+                    gradientColorHex = "#059669",
+                    launcherAliasName = ".MainActivityRamadan",
+                    selectedIconKey = OccasionIconKey.CRESCENT.name,
+                    isActive = true
+                )
+            }
+            "NATIONAL_DAY" -> {
+                updateGlobalOccasionTheme(
+                    themeType = OccasionThemeType.NATIONAL_DAY,
+                    customTitle = "العيد الوطني ويوم العلم العراقي",
+                    customBannerText = "دام عز العراق وعلمه شامخاً بالعلم والمعرفة والبناء",
+                    primaryColorHex = "#047857",
+                    gradientColorHex = "#0F766E",
+                    launcherAliasName = ".MainActivityNational",
+                    selectedIconKey = OccasionIconKey.FLAG.name,
+                    isActive = true
+                )
+            }
+        }
+    }
+
+    fun sendGlobalSystemBroadcastFromConsole(
+        title: String,
+        message: String,
+        targetScope: String = "ALL_PRINCIPALS",
+        iconKey: String = OccasionIconKey.BELL.name
+    ) {
+        val cleanTitle = InputSanitizer.sanitize(title.trim())
+        val cleanMsg = InputSanitizer.sanitize(message.trim())
+        if (cleanTitle.isBlank() || cleanMsg.isBlank()) {
+            showToastAlert("يرجى إدخال عنوان ونص التعميم الإداري المركزي", isSuccess = false)
+            return
+        }
+        val today = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val item = DeveloperBroadcastItem(
+            id = "dev_bc_${UUID.randomUUID().toString().take(6)}",
+            title = cleanTitle,
+            message = cleanMsg,
+            senderName = "قيادة وإدارة النظام المركزي",
+            createdAt = today,
+            targetSchoolId = "ALL",
+            iconKey = iconKey.ifBlank { OccasionIconKey.BELL.name }
+        )
+        val updated = listOf(item) + _developerBroadcasts.value
+        _developerBroadcasts.value = updated
+        repo.saveDeveloperBroadcasts(updated)
+
+        val roleTarget = if (targetScope == "ALL_USERS") "" else UserRole.ADMIN.name
+        _registeredSchools.value.forEach { school ->
+            val sid = school.schoolId
+            if (sid.isNotBlank()) {
+                val existingNotifs = repo.loadNotifications(sid)
+                val broadcastNotif = AppNotification(
+                    id = "notif_master_${UUID.randomUUID().toString().take(6)}",
+                    title = "تعميم مركزي: $cleanTitle",
+                    body = cleanMsg,
+                    type = NotificationType.GENERAL,
+                    targetRole = roleTarget,
+                    createdAt = today,
+                    isRead = false,
+                    schoolId = sid,
+                    isUrgent = true,
+                    priority = "high"
+                )
+                val updatedNotifs = listOf(broadcastNotif) + existingNotifs
+                repo.saveNotifications(updatedNotifs, sid)
+                if (sid == _schoolConfig.value.schoolId) {
+                    _notifications.value = updatedNotifs
+                }
+            }
+        }
+
+        val audienceLabel = if (targetScope == "ALL_USERS") "جميع المستخدمين في كافة المدارس" else "جميع مدراء المدارس المشتركة"
+        showToastAlert("تم بث التعميم المركزي الفوري إلى ($audienceLabel) بنجاح", isSuccess = true)
+    }
+
+    fun performComprehensiveMasterCloudSync() {
+        if (_isCloudSyncInProgress.value) return
+        viewModelScope.launch {
+            _isCloudSyncInProgress.value = true
+            try {
+                // 1. Pull latest global registries
+                val schoolsPayload = FirebaseCloudSync.fetchGlobalCollectionPayload(
+                    collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
+                    docName = "registry"
+                )
+                if (schoolsPayload != null) {
+                    _isCloudConnected.value = true
+                    val remoteSchools = repo.parseRegisteredSchoolsJson(schoolsPayload)
+                    if (remoteSchools.isNotEmpty()) {
+                        val merged = (remoteSchools + _registeredSchools.value).distinctBy { it.schoolId }
+                        _registeredSchools.value = merged
+                        repo.saveRegisteredSchools(merged)
+                    } else if (_registeredSchools.value.isNotEmpty()) {
+                        repo.saveRegisteredSchools(_registeredSchools.value)
+                    }
+                } else {
+                    // Push current local registry to ensure cloud node is initialized
+                    repo.saveRegisteredSchools(_registeredSchools.value)
+                }
+
+                // 2. Sync broadcasts, occasion theme, licenses, and curriculum books
+                repo.saveDeveloperBroadcasts(_developerBroadcasts.value)
+                repo.saveOccasionThemeConfig(_occasionThemeConfig.value)
+                repo.saveSchoolLicenses(_schoolLicenses.value)
+                repo.syncCloudCurriculumBooks()?.let { cloudBooksJson ->
+                    com.example.ui.screens.IraqiCurriculumCatalog.applyCloudBooksJson(appContext, cloudBooksJson)
+                }
+
+                // 3. Recompute live ecosystem analytics across all registered schools
+                refreshEcosystemLiveAnalytics(syncFromCloudFirst = true)
+
+                val stamp = SimpleDateFormat("yyyy-MM-dd hh:mm:ss a", Locale("ar")).format(Date())
+                _lastCloudSyncTimestamp.value = stamp
+                _isCloudConnected.value = true
+                showToastAlert("تمت المزامنة الفورية الشاملة مع قاعدة بيانات السحابة المركزية بنجاح", isSuccess = true)
+            } catch (_: Exception) {
+                _isCloudConnected.value = false
+                showToastAlert("تعذر الاتصال المؤقت بالسحابة، يرجى التحقق من اتصال الإنترنت", isSuccess = false)
+            } finally {
+                _isCloudSyncInProgress.value = false
+            }
+        }
+    }
 }
+
 

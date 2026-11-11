@@ -4178,7 +4178,53 @@ class SchoolRepository(context: Context) {
     fun loadOfficialPrimaryCurriculumBooks(): List<com.example.ui.screens.CurriculumBookItem> {
         return com.example.ui.screens.IraqiCurriculumCatalog.defaultPrimaryBooks
     }
+
+    // =========================================================================
+    // 19. MASTER SYSTEM ADMIN CONSOLE HELPERS (إدارة نظام مدرستي المركزي للمطور)
+    // =========================================================================
+
+    fun loadMasterDeveloperSecretCode(): String {
+        val saved = prefs.getString("master_developer_secret_access_code", null)?.trim().orEmpty()
+        return saved.ifBlank { "DEV-2026" }
+    }
+
+    fun saveMasterDeveloperSecretCode(newCode: String) {
+        val clean = InputSanitizer.sanitize(newCode.trim()).ifBlank { "DEV-2026" }
+        prefs.edit().putString("master_developer_secret_access_code", clean).apply()
+        val payload = JSONObject().apply {
+            put("secretAccessCode", clean)
+            put("updatedAt", System.currentTimeMillis())
+        }.toString()
+        FirebaseCloudSync.pushGlobalCollectionAsync(
+            collectionName = FirebaseConfigConstants.COL_SYSTEM_SECURE_CONFIG,
+            docName = "master_console_secret",
+            jsonPayload = payload
+        )
+    }
+
+    fun savePlainAdminPasswordNote(schoolId: String, plainPassword: String) {
+        val cleanSid = schoolId.trim()
+        if (cleanSid.isBlank()) return
+        prefs.edit().putString("master_admin_plain_pass_$cleanSid", plainPassword.trim()).apply()
+    }
+
+    fun loadPlainAdminPasswordNote(schoolId: String): String {
+        val cleanSid = schoolId.trim()
+        if (cleanSid.isBlank()) return "123456"
+        return prefs.getString("master_admin_plain_pass_$cleanSid", null)?.takeIf { it.isNotBlank() } ?: "123456"
+    }
+
+    fun saveSchoolConfigForTargetSchool(config: SchoolConfig, targetSchoolId: String) {
+        val sid = targetSchoolId.trim().ifBlank { config.schoolId.trim() }
+        if (sid.isBlank()) return
+        val previousActiveSid = getActiveSchoolId()
+        saveSchoolConfig(config.copy(schoolId = sid))
+        if (previousActiveSid.isNotBlank() && previousActiveSid != sid) {
+            setActiveSchoolId(previousActiveSid)
+        }
+    }
 }
+
 
 
 

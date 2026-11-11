@@ -162,10 +162,10 @@ class MainActivity : ComponentActivity() {
             }
 
             MyApplicationTheme(
-                darkTheme = isDarkMode,
+                darkTheme = true,
                 isFeminineTheme = false
             ) {
-                MadrasatiRootApp(viewModel = schoolViewModel)
+                MasterSystemAdminRootApp(viewModel = schoolViewModel)
             }
         }
     }

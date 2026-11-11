@@ -2528,3 +2528,30 @@ data class IssuedStudentReportCard(
     val schoolId: String = ""
 )
 
+/**
+ * 13. Master System Admin Console Models (وحدة قيادة وإدارة النظام المركزي للمطور)
+ */
+data class EcosystemSchoolInspectionData(
+    val school: RegisteredSchoolSummary = RegisteredSchoolSummary(schoolId = "", schoolName = ""),
+    val config: SchoolConfig = SchoolConfig(),
+    val teachers: List<UserAccount> = emptyList(),
+    val students: List<StudentRecord> = emptyList(),
+    val sections: List<String> = emptyList(),
+    val attendanceRatePercent: Int = 100,
+    val totalAttendanceRecords: Int = 0,
+    val adminUsername: String = "",
+    val adminPasswordPlain: String = ""
+)
+
+data class EcosystemLiveAnalyticsSummary(
+    val totalSchoolsCount: Int = 0,
+    val officiallyActivatedSchoolsCount: Int = 0,
+    val pendingActivationSchoolsCount: Int = 0,
+    val frozenSchoolsCount: Int = 0,
+    val totalActiveStudentsCount: Int = 0,
+    val totalTeachingStaffCount: Int = 0,
+    val overallAttendanceRatePercent: Int = 100,
+    val lastSyncedAt: String = ""
+)
+
+
