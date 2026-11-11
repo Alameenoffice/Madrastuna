@@ -240,8 +240,7 @@ class SchoolRepository(context: Context) {
                 isCanteenWalletEnabled = obj.optBoolean("isCanteenWalletEnabled", parsedFeatures.canteenWalletEnabled),
                 principalFullName = obj.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" },
                 isSchoolOfficiallyActivated = obj.optBoolean("isSchoolOfficiallyActivated", false),
-                schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } },
-                isSuspended = obj.optBoolean("isSuspended", false) || !obj.optBoolean("isActive", true)
+                schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } }
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -436,7 +435,6 @@ class SchoolRepository(context: Context) {
             put("principalFullName", InputSanitizer.sanitize(config.principalFullName.ifBlank { "مدير المدرسة" }))
             put("isSchoolOfficiallyActivated", config.isSchoolOfficiallyActivated)
             put("schoolActivationCode", InputSanitizer.sanitizeSchoolId(config.schoolActivationCode.ifBlank { sid.ifBlank { "1001" } }))
-            put("isSuspended", config.isSuspended || !config.isActive)
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
@@ -2309,8 +2307,7 @@ class SchoolRepository(context: Context) {
                             adminUsername = o.optString("adminUsername", ""),
                             subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                             isSchoolOfficiallyActivated = o.optBoolean("isSchoolOfficiallyActivated", false),
-                            schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } },
-                            isSuspended = o.optBoolean("isSuspended", false) || !o.optBoolean("isActive", true)
+                            schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } }
                         )
                     )
                 }
@@ -2338,7 +2335,6 @@ class SchoolRepository(context: Context) {
                 put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
                 put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
                 put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
-                put("isSuspended", s.isSuspended || !s.isActive)
             })
         }
         val jsonStr = arr.toString()
@@ -2376,8 +2372,7 @@ class SchoolRepository(context: Context) {
             adminUsername = resolvedAdminUser,
             subscriptionExpiryDate = resolvedExpiry,
             isSchoolOfficiallyActivated = config.isSchoolOfficiallyActivated,
-            schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } },
-            isSuspended = config.isSuspended || !config.isActive
+            schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } }
         )
         if (existingIdx >= 0) {
             current[existingIdx] = summary
@@ -2457,189 +2452,6 @@ class SchoolRepository(context: Context) {
 
     fun saveDismissedBroadcastIds(ids: Set<String>) {
         prefs.edit().putStringSet("dismissed_dev_broadcast_ids", ids).apply()
-    }
-
-    fun getLastNotifiedBroadcastId(): String {
-        return prefs.getString("last_notified_dev_broadcast_id_v1", "") ?: ""
-    }
-
-    fun setLastNotifiedBroadcastId(id: String) {
-        if (id.isBlank()) return
-        prefs.edit().putString("last_notified_dev_broadcast_id_v1", id.trim()).apply()
-    }
-
-    fun getLastNotifiedUpdateVersionKey(): String {
-        return prefs.getString("last_notified_app_update_version_key_v1", "") ?: ""
-    }
-
-    fun setLastNotifiedUpdateVersionKey(key: String) {
-        if (key.isBlank()) return
-        prefs.edit().putString("last_notified_app_update_version_key_v1", key.trim()).apply()
-    }
-
-    fun getLastNotifiedOccasionKey(): String {
-        return prefs.getString("last_notified_occasion_banner_key_v1", "") ?: ""
-    }
-
-    fun setLastNotifiedOccasionKey(key: String) {
-        if (key.isBlank()) return
-        prefs.edit().putString("last_notified_occasion_banner_key_v1", key.trim()).apply()
-    }
-
-    /**
-     * Queries Firebase RTDB (schools.json) & schools_registry for the live status of a school.
-     */
-    suspend fun fetchLiveSchoolStatusFromCloud(schoolId: String): RemoteSchoolLiveStatus? {
-        return FirebaseCloudSync.fetchLiveSchoolStatusFromCloud(schoolId)
-    }
-
-    /**
-     * Purges all local cache data (SharedPreferences) for a school that was deleted from the cloud,
-     * including accounts, students, teachers, saved activation code, session, and registry entry.
-     */
-    fun purgeSchoolCacheCompletely(schoolId: String) {
-        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
-        if (cleanSid.isBlank()) return
-
-        val subCols = listOf(
-            FirebaseConfigConstants.COL_SETTINGS,
-            FirebaseConfigConstants.COL_USERS,
-            FirebaseConfigConstants.COL_SUBJECTS,
-            FirebaseConfigConstants.COL_ATTENDANCE,
-            FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK,
-            FirebaseConfigConstants.COL_GRADES,
-            FirebaseConfigConstants.COL_HONOR_ROLL,
-            FirebaseConfigConstants.COL_TUITION_FEES,
-            FirebaseConfigConstants.COL_REPORTS,
-            FirebaseConfigConstants.COL_MESSAGES,
-            FirebaseConfigConstants.COL_EVENTS_GALLERY,
-            FirebaseConfigConstants.COL_NOTIFICATIONS,
-            FirebaseConfigConstants.COL_SCHEDULES_PERIODS,
-            FirebaseConfigConstants.COL_EXAMS,
-            FirebaseConfigConstants.COL_LEAVE_REQUESTS,
-            FirebaseConfigConstants.COL_BUS_TRACKING,
-            FirebaseConfigConstants.COL_STUDY_MATERIALS,
-            FirebaseConfigConstants.COL_FEATURE_SETTINGS,
-            FirebaseConfigConstants.COL_DAILY_BEHAVIOR,
-            FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS,
-            FirebaseConfigConstants.COL_QUICK_QUIZZES,
-            FirebaseConfigConstants.COL_DISMISSAL_CALLS,
-            FirebaseConfigConstants.COL_LOST_AND_FOUND,
-            FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS,
-            FirebaseConfigConstants.COL_URGENT_ALERT,
-            FirebaseConfigConstants.COL_STUDENT_ACTIVITIES,
-            FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS,
-            FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
-            FirebaseConfigConstants.COL_USER_PROFILES,
-            FirebaseConfigConstants.COL_HOLIDAYS,
-            FirebaseConfigConstants.COL_TEACHER_RATINGS,
-            FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS
-        )
-
-        val editor = prefs.edit()
-        subCols.forEach { sub ->
-            editor.remove(scopedKey(cleanSid, sub))
-        }
-        editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods")
-        editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES)}_exams")
-        editor.remove("last_shown_urgent_alert_$cleanSid")
-        editor.remove("active_school_id")
-        editor.remove("active_user_session")
-        editor.putBoolean("school_security_gate_passed_v1", false)
-        editor.remove("verified_gate_school_code_v1")
-
-        val savedBio = loadBiometricCredentials()
-        if (savedBio != null && savedBio.schoolId.equals(cleanSid, ignoreCase = true)) {
-            editor.remove("biometric_saved_credentials")
-        }
-
-        val remainingSchools = loadRegisteredSchools().filterNot {
-            it.schoolId.equals(cleanSid, ignoreCase = true) ||
-                it.schoolActivationCode.equals(cleanSid, ignoreCase = true)
-        }
-        val arr = JSONArray()
-        remainingSchools.forEach { s ->
-            arr.put(JSONObject().apply {
-                put("schoolId", s.schoolId)
-                put("schoolName", InputSanitizer.sanitize(s.schoolName))
-                put("address", InputSanitizer.sanitize(s.address))
-                put("schoolStage", s.schoolStage)
-                put("schoolType", s.schoolType)
-                put("ministryAffiliation", s.ministryAffiliation.ifBlank { "وزارة التربية" })
-                put("schoolGenderType", s.schoolGenderType.ifBlank { "مدرسة بنين" })
-                put("createdAt", s.createdAt)
-                put("isActive", s.isActive)
-                put("adminUsername", s.adminUsername)
-                put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
-                put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
-                put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
-                put("isSuspended", s.isSuspended)
-            })
-        }
-        editor.putString("global_registered_schools", arr.toString())
-        editor.apply()
-    }
-
-    /**
-     * Synchronizes local cache (settings and global_registered_schools) with the live cloud
-     * suspension/activation flags without pushing back to the cloud.
-     */
-    fun updateLocalSchoolActivationAndSuspensionState(
-        schoolId: String,
-        isActive: Boolean,
-        isSuspended: Boolean,
-        isSchoolOfficiallyActivated: Boolean
-    ) {
-        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
-        if (cleanSid.isBlank()) return
-
-        val editor = prefs.edit()
-        val settingsKey = scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS)
-        val rawSettings = prefs.getString(settingsKey, null)
-        if (!rawSettings.isNullOrBlank()) {
-            runCatching {
-                val obj = JSONObject(rawSettings)
-                obj.put("isActive", isActive && !isSuspended)
-                obj.put("isSuspended", isSuspended || !isActive)
-                obj.put("isSchoolOfficiallyActivated", isSchoolOfficiallyActivated)
-                editor.putString(settingsKey, obj.toString())
-            }
-        }
-
-        val currentSchools = loadRegisteredSchools().map { s ->
-            if (s.schoolId.equals(cleanSid, ignoreCase = true) ||
-                s.schoolActivationCode.equals(cleanSid, ignoreCase = true)
-            ) {
-                s.copy(
-                    isActive = isActive && !isSuspended,
-                    isSuspended = isSuspended || !isActive,
-                    isSchoolOfficiallyActivated = isSchoolOfficiallyActivated
-                )
-            } else {
-                s
-            }
-        }
-        val arr = JSONArray()
-        currentSchools.forEach { s ->
-            arr.put(JSONObject().apply {
-                put("schoolId", s.schoolId)
-                put("schoolName", InputSanitizer.sanitize(s.schoolName))
-                put("address", InputSanitizer.sanitize(s.address))
-                put("schoolStage", s.schoolStage)
-                put("schoolType", s.schoolType)
-                put("ministryAffiliation", s.ministryAffiliation.ifBlank { "وزارة التربية" })
-                put("schoolGenderType", s.schoolGenderType.ifBlank { "مدرسة بنين" })
-                put("createdAt", s.createdAt)
-                put("isActive", s.isActive)
-                put("adminUsername", s.adminUsername)
-                put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
-                put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
-                put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
-                put("isSuspended", s.isSuspended)
-            })
-        }
-        editor.putString("global_registered_schools", arr.toString())
-        editor.apply()
     }
 
     /**

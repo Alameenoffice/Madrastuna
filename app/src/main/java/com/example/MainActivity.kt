@@ -192,7 +192,6 @@ fun MadrasatiRootApp(
     val loginLockoutUntilMs by viewModel.loginLockoutUntilMs.collectAsState()
     val failedLoginAttemptsCount by viewModel.failedLoginAttemptsCount.collectAsState()
     val isSchoolGatePassed by viewModel.isSchoolGatePassed.collectAsState()
-    val securityKillSwitchAlertMessage by viewModel.securityKillSwitchAlertMessage.collectAsState()
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -254,6 +253,13 @@ fun MadrasatiRootApp(
                     occasionThemeConfig = occasionThemeConfig,
                     discoveredSchoolName = activeDiscoveredSchoolName,
                     schoolLogoBase64 = activeSchoolLogoBase64
+                )
+            }
+            isDeveloperAuthenticated -> {
+                DeveloperControlPanelScreen(
+                    viewModel = viewModel,
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { viewModel.toggleDarkMode() }
                 )
             }
             isSchoolSetupUnlocked -> {
@@ -348,81 +354,6 @@ fun MadrasatiRootApp(
 
         // Global Smooth Interactive Image Lightbox Dialog
         GlobalImageLightboxDialog()
-
-        // Real-Time Remote Session Kill-Switch & Cache Purge Security Alert Modal
-        securityKillSwitchAlertMessage?.let { securityMsg ->
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissSecurityKillSwitchAlert() },
-                containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White,
-                shape = RoundedCornerShape(24.dp),
-                icon = {
-                    Surface(
-                        shape = CircleShape,
-                        color = DangerRed.copy(alpha = 0.14f),
-                        border = BorderStroke(1.2.dp, DangerRed.copy(alpha = 0.45f)),
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.GppMaybe,
-                                contentDescription = "تنبيه أمني",
-                                tint = DangerRed,
-                                modifier = Modifier.size(30.dp)
-                            )
-                        }
-                    }
-                },
-                title = {
-                    Text(
-                        text = "تنبيه أمني من النظام المركزي",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color.White else DeepForestGreen,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                },
-                text = {
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFFEF2F2)
-                        ),
-                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.35f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = securityMsg,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkMode) Color(0xFFFCA5A5) else Color(0xFF991B1B),
-                            textAlign = TextAlign.Center,
-                            lineHeight = 22.sp,
-                            modifier = Modifier.padding(14.dp)
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = { viewModel.dismissSecurityKillSwitchAlert() },
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = DeepEmerald,
-                            contentColor = Color.White
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(46.dp)
-                            .testTag("dismiss_security_kill_switch_alert_btn")
-                    ) {
-                        Text(
-                            text = "حسناً، فهمت",
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                }
-            )
-        }
 
         // Global Remote App Update Notification Modal / Banner (Managed by System Developer)
         val shouldShowUpdateModal = appUpdateConfig.isUpdateActive &&
@@ -1953,6 +1884,18 @@ fun AuthenticatedMainPlatform(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                // Admin 14-day Subscription Expiry Warning & Developer Broadcasts Banner (STRICTLY ADMIN ONLY)
+                if (currentUser?.role == UserRole.ADMIN) {
+                    AdminSubscriptionAndBroadcastBanner(
+                        schoolConfig = schoolConfig,
+                        developerBroadcasts = developerBroadcasts,
+                        dismissedBroadcastIds = dismissedBroadcastIds,
+                        onDismissBroadcast = { bcId ->
+                            viewModel.dismissDeveloperBroadcastForAdmin(bcId)
+                        }
+                    )
+                }
+
                 // Compact Calm Single-Row Top Bar for Parent & Student Accounts
                 if (currentUser?.role == UserRole.PARENT && parentChildren.isNotEmpty()) {
                     ParentMultiChildSwitcherBar(

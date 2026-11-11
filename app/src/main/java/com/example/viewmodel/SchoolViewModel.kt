@@ -32,11 +32,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _schoolConfig = MutableStateFlow(repo.loadSchoolConfig())
     val schoolConfig: StateFlow<SchoolConfig> = _schoolConfig.asStateFlow()
-    val currentSchool: StateFlow<SchoolConfig> = _schoolConfig.asStateFlow()
 
     private val _accounts = MutableStateFlow(repo.loadAccounts())
     val accounts: StateFlow<List<UserAccount>> = _accounts.asStateFlow()
-    val users: StateFlow<List<UserAccount>> = _accounts.asStateFlow()
 
     private val _students = MutableStateFlow(repo.loadStudents())
     val students: StateFlow<List<StudentRecord>> = _students.asStateFlow()
@@ -225,7 +223,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _registeredSchools = MutableStateFlow(repo.loadRegisteredSchools())
     val registeredSchools: StateFlow<List<RegisteredSchoolSummary>> = _registeredSchools.asStateFlow()
-    val schools: StateFlow<List<RegisteredSchoolSummary>> = _registeredSchools.asStateFlow()
 
     private val _developerVaultConfig = MutableStateFlow(repo.loadDeveloperVaultConfig())
     val developerVaultConfig: StateFlow<DeveloperVaultConfig> = _developerVaultConfig.asStateFlow()
@@ -236,13 +233,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _verifiedGateSchoolCode = MutableStateFlow(repo.getVerifiedGateSchoolCode())
     val verifiedGateSchoolCode: StateFlow<String> = _verifiedGateSchoolCode.asStateFlow()
-
-    private val _securityKillSwitchAlertMessage: MutableStateFlow<String?> = MutableStateFlow(null)
-    val securityKillSwitchAlertMessage: StateFlow<String?> = _securityKillSwitchAlertMessage.asStateFlow()
-
-    fun dismissSecurityKillSwitchAlert() {
-        _securityKillSwitchAlertMessage.value = null
-    }
 
     private val _showIndexedLeaveRequestsModal = MutableStateFlow(false)
     val showIndexedLeaveRequestsModal: StateFlow<Boolean> = _showIndexedLeaveRequestsModal.asStateFlow()
@@ -515,265 +505,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private fun isSchoolSubscriptionActive(schoolId: String): Boolean {
         if (schoolId.isBlank()) return true
         val regEntry = _registeredSchools.value.firstOrNull { it.schoolId.equals(schoolId, ignoreCase = true) }
-        if (regEntry != null && (!regEntry.isActive || regEntry.isSuspended)) return false
+        if (regEntry != null && !regEntry.isActive) return false
         val localCfg = repo.loadSchoolConfig(schoolId)
-        if (localCfg.isSetupCompleted && (!localCfg.isActive || localCfg.isSuspended)) return false
+        if (localCfg.isSetupCompleted && !localCfg.isActive) return false
         return true
-    }
-
-    /**
-     * Immediate Security Kill-Switch Force Logout:
-     * Terminates the active user session, clears in-memory credentials, returns the user to
-     * `SchoolActivationGateScreen` (or Login), displays a prominent security alert modal/card,
-     * and dispatches an external Android system push notification.
-     */
-    fun forceLogout(
-        reasonMessage: String = "",
-        returnToGate: Boolean = true,
-        fireExternalNotification: Boolean = true
-    ) {
-        repo.clearSession()
-        _activeSession.value = null
-        _currentUser.value = null
-        _selectedParentChildId.value = ""
-        _isDeveloperAuthenticated.value = false
-        _isSchoolSetupUnlocked.value = false
-        _activeSection.value = AppSection.DASHBOARD
-
-        if (returnToGate) {
-            repo.setSchoolSecurityGatePassed(false, "")
-            _verifiedGateSchoolCode.value = ""
-            _isSchoolGatePassed.value = false
-        }
-
-        if (reasonMessage.isNotBlank()) {
-            _securityKillSwitchAlertMessage.value = reasonMessage
-            showToastAlert(reasonMessage, isSuccess = false)
-            if (fireExternalNotification) {
-                SystemNotificationHelper.showSystemPushNotification(
-                    context = appContext,
-                    title = "تنبيه أمني من النظام المركزي",
-                    body = reasonMessage,
-                    tagId = "kill_switch_${reasonMessage.hashCode()}"
-                )
-            }
-        }
-    }
-
-    /**
-     * Evaluates the live cloud school status (polled every 3 seconds) and enforces Cases A, B, C, and D immediately.
-     */
-    private fun handleLiveRemoteSchoolStatus(sid: String, status: RemoteSchoolLiveStatus) {
-        val cleanSid = sid.trim()
-        if (cleanSid.isBlank()) return
-        val hasLoggedInUser = _currentUser.value != null
-        val isStandingOnSchoolLogin = _isSchoolGatePassed.value &&
-            (_schoolConfig.value.schoolId.equals(cleanSid, ignoreCase = true) ||
-                _verifiedGateSchoolCode.value.equals(cleanSid, ignoreCase = true))
-
-        // Case A: School Deleted permanently from Cloud Database
-        if (!status.existsInCloud) {
-            repo.purgeSchoolCacheCompletely(cleanSid)
-            _registeredSchools.value = repo.loadRegisteredSchools()
-            if (_schoolConfig.value.schoolId.equals(cleanSid, ignoreCase = true) ||
-                _verifiedGateSchoolCode.value.equals(cleanSid, ignoreCase = true)
-            ) {
-                _accounts.value = emptyList()
-                _students.value = emptyList()
-                _attendance.value = emptyList()
-                _schedules.value = emptyList()
-                _homeworks.value = emptyList()
-                _examSchedules.value = emptyList()
-                _grades.value = emptyList()
-                _tuitions.value = emptyList()
-                _reports.value = emptyList()
-                _chatMessages.value = emptyList()
-                _events.value = emptyList()
-                _notifications.value = emptyList()
-                _leaveRequests.value = emptyList()
-                _studyMaterials.value = emptyList()
-                _dailyBehaviors.value = emptyList()
-                _homeworkSubmissions.value = emptyList()
-                _quickQuizzes.value = emptyList()
-                _quickQuizAnswers.value = emptyList()
-                _dismissalCalls.value = emptyList()
-                _lostAndFoundItems.value = emptyList()
-                _privateSuggestions.value = emptyList()
-                _studentActivityPosts.value = emptyList()
-                _activityViolationReports.value = emptyList()
-                _userProfilesAndSanctions.value = emptyMap()
-                _teacherRatings.value = emptyList()
-                _issuedReportCards.value = emptyList()
-                _discoveredSchoolName.value = null
-                _schoolConfig.value = SchoolConfig(
-                    schoolId = "",
-                    isSetupCompleted = false,
-                    isActive = false,
-                    isSuspended = false,
-                    isSchoolOfficiallyActivated = false,
-                    schoolName = "مدرستي الذكية"
-                )
-            }
-            if (hasLoggedInUser || isStandingOnSchoolLogin) {
-                val msg = "تم إنهاء الجلسة وتسجيل الخروج: لم تعد هذه المدرسة مسجلة في النظام المركزي أو تم إلغاء بياناتها رسمياً."
-                forceLogout(
-                    reasonMessage = msg,
-                    returnToGate = true,
-                    fireExternalNotification = true
-                )
-            }
-            return
-        }
-
-        // Sync local cache with live cloud flags
-        repo.updateLocalSchoolActivationAndSuspensionState(
-            schoolId = cleanSid,
-            isActive = status.isActive,
-            isSuspended = status.isSuspended,
-            isSchoolOfficiallyActivated = status.isSchoolOfficiallyActivated
-        )
-        _registeredSchools.value = repo.loadRegisteredSchools()
-
-        // Case B: School Suspended or Temporarily Stopped (`isSuspended == true` or `!isActive`)
-        if (status.isSuspended || !status.isActive) {
-            if (_schoolConfig.value.schoolId.equals(cleanSid, ignoreCase = true)) {
-                _schoolConfig.value = _schoolConfig.value.copy(
-                    isActive = false,
-                    isSuspended = status.isSuspended
-                )
-            }
-            if (hasLoggedInUser || isStandingOnSchoolLogin) {
-                val msg = "تم تسجيل الخروج تلقائياً: تم إيقاف أو تجميد عمل المدرسة مؤقتاً من قِبل الإدارة المركزية للمنصة. يرجى مراجعة إدارة المدرسة."
-                forceLogout(
-                    reasonMessage = msg,
-                    returnToGate = true,
-                    fireExternalNotification = true
-                )
-            }
-            return
-        }
-
-        // Case C: School Gate Relocked (`!isSchoolOfficiallyActivated`)
-        if (!status.isSchoolOfficiallyActivated) {
-            if (_schoolConfig.value.schoolId.equals(cleanSid, ignoreCase = true)) {
-                _schoolConfig.value = _schoolConfig.value.copy(
-                    isSchoolOfficiallyActivated = false
-                )
-            }
-            if (hasLoggedInUser || isStandingOnSchoolLogin) {
-                val msg = "تم قفل بوابة المدرسة: يتطلب النظام إعادة تفعيل رمز المدرسة من قِبل مدير المدرسة للمتابعة."
-                forceLogout(
-                    reasonMessage = msg,
-                    returnToGate = true,
-                    fireExternalNotification = true
-                )
-            }
-            return
-        }
-
-        // Case D: School Reactivated & Unfrozen in Cloud (`existsInCloud && isActive && !isSuspended && isSchoolOfficiallyActivated`)
-        if (_schoolConfig.value.schoolId.equals(cleanSid, ignoreCase = true) &&
-            (!_schoolConfig.value.isActive || _schoolConfig.value.isSuspended || !_schoolConfig.value.isSchoolOfficiallyActivated)
-        ) {
-            _schoolConfig.value = _schoolConfig.value.copy(
-                isActive = true,
-                isSuspended = false,
-                isSchoolOfficiallyActivated = true
-            )
-            if (_securityKillSwitchAlertMessage.value != null) {
-                _securityKillSwitchAlertMessage.value = null
-            }
-        }
-    }
-
-    private fun checkAndNotifyNewDeveloperBroadcasts(
-        remoteBroadcasts: List<DeveloperBroadcastItem>,
-        allowSystemNotification: Boolean = true
-    ) {
-        val newest = remoteBroadcasts.firstOrNull() ?: return
-        val key = newest.id.ifBlank { "${newest.title}_${newest.createdAt}" }
-        val lastNotified = repo.getLastNotifiedBroadcastId()
-        if (key.isNotBlank() && key != lastNotified) {
-            repo.setLastNotifiedBroadcastId(key)
-            if (allowSystemNotification) {
-                val alertNotif = AppNotification(
-                    id = "dev_bc_$key",
-                    title = "إشعار النظام العام: ${newest.title}",
-                    body = newest.message,
-                    createdAt = newest.formattedCreatedAt,
-                    type = NotificationType.GENERAL,
-                    targetSection = AppSection.DASHBOARD.name
-                )
-                _latestBannerAlert.value = alertNotif
-                SystemNotificationHelper.showSystemPushNotification(
-                    context = appContext,
-                    title = "إشعار النظام العام: ${newest.title}",
-                    body = newest.message,
-                    tagId = "dev_bc_$key"
-                )
-            }
-        }
-    }
-
-    private fun checkAndNotifyNewAppUpdate(
-        parsedUpd: AppUpdateConfig,
-        allowSystemNotification: Boolean = true
-    ) {
-        if (!parsedUpd.isUpdateActive || parsedUpd.latestVersionName.isBlank()) return
-        val key = "${parsedUpd.latestVersionName}_${parsedUpd.releaseNotes.hashCode()}"
-        val lastKey = repo.getLastNotifiedUpdateVersionKey()
-        if (key != lastKey) {
-            repo.setLastNotifiedUpdateVersionKey(key)
-            if (allowSystemNotification) {
-                val title = "تحديث جديد للنظام (${parsedUpd.latestVersionName})"
-                val body = parsedUpd.releaseNotes.ifBlank { "يتوفر تحديث جديد لتطبيق مدرستي الذكية مع تحسينات ومزايا جديدة." }
-                _latestBannerAlert.value = AppNotification(
-                    id = "app_upd_$key",
-                    title = title,
-                    body = body,
-                    createdAt = SimpleDateFormat("yyyy/MM/dd • hh:mm a", Locale("ar")).format(Date()),
-                    type = NotificationType.GENERAL,
-                    targetSection = AppSection.DASHBOARD.name
-                )
-                SystemNotificationHelper.showSystemPushNotification(
-                    context = appContext,
-                    title = title,
-                    body = body,
-                    tagId = "app_upd_$key"
-                )
-            }
-        }
-    }
-
-    private fun checkAndNotifyNewOccasionBanner(
-        parsedThm: OccasionThemeConfig,
-        allowSystemNotification: Boolean = true
-    ) {
-        if (!parsedThm.isActive) return
-        val title = parsedThm.effectiveTitle
-        val body = parsedThm.effectiveBannerText
-        if (title.isBlank() && body.isBlank()) return
-        val key = "${parsedThm.themeType.name}_${title.hashCode()}_${body.hashCode()}"
-        val lastKey = repo.getLastNotifiedOccasionKey()
-        if (key != lastKey) {
-            repo.setLastNotifiedOccasionKey(key)
-            if (allowSystemNotification) {
-                _latestBannerAlert.value = AppNotification(
-                    id = "occ_thm_$key",
-                    title = title.ifBlank { "إشعار النظام العام" },
-                    body = body,
-                    createdAt = SimpleDateFormat("yyyy/MM/dd • hh:mm a", Locale("ar")).format(Date()),
-                    type = NotificationType.GENERAL,
-                    targetSection = AppSection.DASHBOARD.name
-                )
-                SystemNotificationHelper.showSystemPushNotification(
-                    context = appContext,
-                    title = title.ifBlank { "إشعار النظام العام" },
-                    body = body,
-                    tagId = "occ_thm_$key"
-                )
-            }
-        }
     }
 
     private fun mergeAttendanceIntoStudents(
@@ -912,9 +647,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     docName = "registry"
                 )?.let { remoteJson ->
                     val remoteSchools = repo.parseRegisteredSchoolsJson(remoteJson)
-                    if (remoteSchools.isNotEmpty() || remoteJson.trim() == "[]") {
-                        _registeredSchools.value = remoteSchools
-                        repo.saveRegisteredSchools(remoteSchools)
+                    if (remoteSchools.isNotEmpty()) {
+                        val merged = (remoteSchools + _registeredSchools.value)
+                            .distinctBy { it.schoolId }
+                        _registeredSchools.value = merged
+                        repo.saveRegisteredSchools(merged)
                     }
                 }
 
@@ -924,10 +661,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 )?.let { remoteJson ->
                     if (remoteJson.isNotBlank()) {
                         val remoteBroadcasts = repo.parseDeveloperBroadcastsJson(remoteJson)
-                        val hadPrevious = _developerBroadcasts.value.isNotEmpty()
                         _developerBroadcasts.value = remoteBroadcasts
                         repo.saveDeveloperBroadcastsLocalOnly(remoteBroadcasts)
-                        checkAndNotifyNewDeveloperBroadcasts(remoteBroadcasts, allowSystemNotification = hadPrevious || repo.getLastNotifiedBroadcastId().isNotBlank())
                     }
                 }
 
@@ -937,7 +672,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 )?.let { remoteUpdateJson ->
                     val parsed = repo.parseAppUpdateConfigJson(remoteUpdateJson)
                     _appUpdateConfig.value = parsed
-                    checkAndNotifyNewAppUpdate(parsed, allowSystemNotification = repo.getLastNotifiedUpdateVersionKey().isNotBlank())
                 }
 
                 FirebaseCloudSync.fetchGlobalCollectionPayload(
@@ -946,7 +680,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 )?.let { remoteThemeJson ->
                     val parsed = repo.parseOccasionThemeConfigJson(remoteThemeJson)
                     _occasionThemeConfig.value = parsed
-                    checkAndNotifyNewOccasionBanner(parsed, allowSystemNotification = repo.getLastNotifiedOccasionKey().isNotBlank())
                 }
 
                 FirebaseCloudSync.fetchGlobalCollectionPayload(
@@ -1185,44 +918,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 else -> cleanCode
             }
 
-            // Live Cloud Security Check before passing Gate (handles Deleted, Suspended, Relocked, or Reactivated)
-            val liveCloudStatus = try {
-                repo.fetchLiveSchoolStatusFromCloud(resolvedSid)
-            } catch (_: Exception) {
-                null
-            }
-            if (liveCloudStatus != null && cleanCode != "1001") {
-                if (!liveCloudStatus.existsInCloud) {
-                    repo.purgeSchoolCacheCompletely(resolvedSid)
-                    _registeredSchools.value = repo.loadRegisteredSchools()
-                    val msg = "تم إنهاء الجلسة وتسجيل الخروج: لم تعد هذه المدرسة مسجلة في النظام المركزي أو تم إلغاء بياناتها رسمياً."
-                    _securityKillSwitchAlertMessage.value = msg
-                    showToastAlert(msg, isSuccess = false)
-                    onResult(false, msg)
-                    return@launch
-                }
-                repo.updateLocalSchoolActivationAndSuspensionState(
-                    schoolId = resolvedSid,
-                    isActive = liveCloudStatus.isActive,
-                    isSuspended = liveCloudStatus.isSuspended,
-                    isSchoolOfficiallyActivated = liveCloudStatus.isSchoolOfficiallyActivated
-                )
-                _registeredSchools.value = repo.loadRegisteredSchools()
-                if (liveCloudStatus.isSuspended || !liveCloudStatus.isActive) {
-                    val msg = "تم تسجيل الخروج تلقائياً: تم إيقاف أو تجميد عمل المدرسة مؤقتاً من قِبل الإدارة المركزية للمنصة. يرجى مراجعة إدارة المدرسة."
-                    _securityKillSwitchAlertMessage.value = msg
-                    showToastAlert(msg, isSuccess = false)
-                    onResult(false, msg)
-                    return@launch
-                }
-                if (!liveCloudStatus.isSchoolOfficiallyActivated) {
-                    val msg = "تم قفل بوابة المدرسة: يتطلب النظام إعادة تفعيل رمز المدرسة من قِبل مدير المدرسة للمتابعة."
-                    showToastAlert(msg, isSuccess = false)
-                    onResult(false, msg)
-                    return@launch
-                }
-            }
-
             var cloudPulled = false
             try {
                 cloudPulled = repo.syncEssentialAuthFromCloud(resolvedSid)
@@ -1248,14 +943,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 return@launch
             }
 
-            if (targetCfg.isSuspended || (!targetCfg.isActive && targetCfg.isSetupCompleted)) {
-                val errMsg = "تم تسجيل الخروج تلقائياً: تم إيقاف أو تجميد عمل المدرسة مؤقتاً من قِبل الإدارة المركزية للمنصة. يرجى مراجعة إدارة المدرسة."
-                _securityKillSwitchAlertMessage.value = errMsg
-                showToastAlert(errMsg, isSuccess = false)
-                onResult(false, errMsg)
-                return@launch
-            }
-
             val isOfficiallyActivated = targetCfg.isSchoolOfficiallyActivated ||
                 (matchedReg?.isSchoolOfficiallyActivated == true) ||
                 cleanCode == "1001" ||
@@ -1275,7 +962,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     schoolId = "1001",
                     isSetupCompleted = true,
                     isActive = true,
-                    isSuspended = false,
                     isSchoolOfficiallyActivated = true,
                     schoolActivationCode = "1001"
                 )
@@ -1286,7 +972,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 reloadSchoolDataIntoMemory(finalSid)
             }
 
-            _securityKillSwitchAlertMessage.value = null
             _discoveredSchoolName.value = _schoolConfig.value.schoolName
             repo.setSchoolSecurityGatePassed(true, finalSid)
             _verifiedGateSchoolCode.value = finalSid
@@ -1596,26 +1281,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
      * and dispatches system push notifications ONLY to the strictly targeted user.
      */
     private fun startRealtimeCloudMonitor() {
-        // Dedicated 3-Second Real-Time Security Kill-Switch & Cache Purge Monitor
-        viewModelScope.launch {
-            while (isActive) {
-                delay(3000L)
-                val activeSid = _currentUser.value?.schoolId?.ifBlank { _schoolConfig.value.schoolId }
-                    ?: _schoolConfig.value.schoolId.ifBlank { _verifiedGateSchoolCode.value }
-                if (activeSid.isNotBlank() && activeSid != "1001" &&
-                    (_currentUser.value != null || _isSchoolGatePassed.value)
-                ) {
-                    try {
-                        val liveStatus = repo.fetchLiveSchoolStatusFromCloud(activeSid)
-                        if (liveStatus != null) {
-                            handleLiveRemoteSchoolStatus(activeSid, liveStatus)
-                        }
-                    } catch (_: Exception) {
-                    }
-                }
-            }
-        }
-
         viewModelScope.launch {
             while (isActive) {
                 delay(1500L)
@@ -1925,17 +1590,18 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
 
-                        // 14. Live sync: developer broadcasts for all users & School Principal (ADMIN)
-                        FirebaseCloudSync.fetchGlobalCollectionPayload(
-                            collectionName = FirebaseConfigConstants.COL_DEV_BROADCASTS,
-                            docName = "registry"
-                        )?.let { remoteBcJson ->
-                            if (remoteBcJson.isNotBlank()) {
-                                val parsedBc = repo.parseDeveloperBroadcastsJson(remoteBcJson)
-                                if (parsedBc != _developerBroadcasts.value) {
-                                    _developerBroadcasts.value = parsedBc
-                                    repo.saveDeveloperBroadcastsLocalOnly(parsedBc)
-                                    checkAndNotifyNewDeveloperBroadcasts(parsedBc, allowSystemNotification = true)
+                        // 14. Live sync: developer broadcasts for School Principal (ADMIN)
+                        if (user.role == UserRole.ADMIN) {
+                            FirebaseCloudSync.fetchGlobalCollectionPayload(
+                                collectionName = FirebaseConfigConstants.COL_DEV_BROADCASTS,
+                                docName = "registry"
+                            )?.let { remoteBcJson ->
+                                if (remoteBcJson.isNotBlank()) {
+                                    val parsedBc = repo.parseDeveloperBroadcastsJson(remoteBcJson)
+                                    if (parsedBc != _developerBroadcasts.value) {
+                                        _developerBroadcasts.value = parsedBc
+                                        repo.saveDeveloperBroadcastsLocalOnly(parsedBc)
+                                    }
                                 }
                             }
                         }
@@ -2124,21 +1790,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
-                // 16. Global App Update, Broadcasts & Occasion Theme live sync (active for all users including Login/Onboarding)
+                // 16. Global App Update & Occasion Theme live sync (active for all users including Login/Onboarding)
                 try {
-                    FirebaseCloudSync.fetchGlobalCollectionPayload(
-                        collectionName = FirebaseConfigConstants.COL_DEV_BROADCASTS,
-                        docName = "registry"
-                    )?.let { remoteBcJson ->
-                        if (remoteBcJson.isNotBlank()) {
-                            val parsedBc = repo.parseDeveloperBroadcastsJson(remoteBcJson)
-                            if (parsedBc != _developerBroadcasts.value) {
-                                _developerBroadcasts.value = parsedBc
-                                repo.saveDeveloperBroadcastsLocalOnly(parsedBc)
-                                checkAndNotifyNewDeveloperBroadcasts(parsedBc, allowSystemNotification = true)
-                            }
-                        }
-                    }
                     FirebaseCloudSync.fetchGlobalCollectionPayload(
                         collectionName = FirebaseConfigConstants.COL_APP_UPDATE_CONFIG,
                         docName = "registry"
@@ -2146,7 +1799,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         val parsedUpd = repo.parseAppUpdateConfigJson(remoteUpd)
                         if (parsedUpd != _appUpdateConfig.value) {
                             _appUpdateConfig.value = parsedUpd
-                            checkAndNotifyNewAppUpdate(parsedUpd, allowSystemNotification = true)
                         }
                     }
                     FirebaseCloudSync.fetchGlobalCollectionPayload(
@@ -2156,7 +1808,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         val parsedThm = repo.parseOccasionThemeConfigJson(remoteThm)
                         if (parsedThm != _occasionThemeConfig.value) {
                             _occasionThemeConfig.value = parsedThm
-                            checkAndNotifyNewOccasionBanner(parsedThm, allowSystemNotification = true)
                             val targetAlias = if (parsedThm.isActive) {
                                 parsedThm.effectiveAliasName.ifBlank { parsedThm.themeType.name }
                             } else {
@@ -3471,17 +3122,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             _discoveredSchoolName.value = localName
         }
         viewModelScope.launch {
-            val liveStatus = try {
-                repo.fetchLiveSchoolStatusFromCloud(extractedPrefix)
-            } catch (_: Exception) {
-                null
-            }
-            if (liveStatus != null && extractedPrefix != "1001") {
-                handleLiveRemoteSchoolStatus(extractedPrefix, liveStatus)
-                if (!liveStatus.existsInCloud || liveStatus.isSuspended || !liveStatus.isActive) {
-                    return@launch
-                }
-            }
             val fetchedName = repo.fetchSchoolNameFromSettings(extractedPrefix)
             if (!fetchedName.isNullOrBlank()) {
                 _discoveredSchoolName.value = fetchedName
@@ -3511,22 +3151,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         // Extract school code prefix (e.g. "105" from "105-1" or "105-ali")
         val extractedPrefix = FirebaseConfigConstants.extractSchoolPrefix(cleanUser)
-        val candidateSid = extractedPrefix ?: _schoolConfig.value.schoolId
-
-        // Launch an immediate live cloud status verification so if the school was reactivated in cloud (Case D)
-        // or suspended/deleted (Cases A/B/C), local cache is updated immediately.
-        if (candidateSid.isNotBlank() && candidateSid != "1001") {
-            viewModelScope.launch {
-                try {
-                    val liveStatus = repo.fetchLiveSchoolStatusFromCloud(candidateSid)
-                    if (liveStatus != null) {
-                        handleLiveRemoteSchoolStatus(candidateSid, liveStatus)
-                    }
-                } catch (_: Exception) {
-                }
-            }
-        }
-
         if (!extractedPrefix.isNullOrBlank()) {
             val knownSchoolName = repo.resolveSchoolNameLocally(extractedPrefix)
                 ?: _registeredSchools.value.firstOrNull { it.schoolId == extractedPrefix }?.schoolName
@@ -3546,18 +3170,6 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 _loginConnectingMessage.value = initialConnectingText
 
                 viewModelScope.launch {
-                    val liveStatus = try {
-                        repo.fetchLiveSchoolStatusFromCloud(extractedPrefix)
-                    } catch (_: Exception) {
-                        null
-                    }
-                    if (liveStatus != null && extractedPrefix != "1001") {
-                        handleLiveRemoteSchoolStatus(extractedPrefix, liveStatus)
-                        if (!liveStatus.existsInCloud || liveStatus.isSuspended || !liveStatus.isActive || !liveStatus.isSchoolOfficiallyActivated) {
-                            _loginConnectingMessage.value = null
-                            return@launch
-                        }
-                    }
                     val essentialPulled = repo.syncEssentialAuthFromCloud(extractedPrefix)
                     _loginConnectingMessage.value = null
                     if (essentialPulled) {
@@ -3632,26 +3244,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val resolvedSchoolId = matched.schoolId.ifBlank { currentSchoolId }
 
-        // Check if the school subscription is active (isActive && !isSuspended)
+        // Check if the school subscription is active (isActive)
         if (!isSchoolSubscriptionActive(resolvedSchoolId)) {
-            // Double-check live cloud status in case the school was just unfrozen/reactivated in cloud (Case D)
-            viewModelScope.launch {
-                val liveStatus = try {
-                    repo.fetchLiveSchoolStatusFromCloud(resolvedSchoolId)
-                } catch (_: Exception) {
-                    null
-                }
-                if (liveStatus != null) {
-                    handleLiveRemoteSchoolStatus(resolvedSchoolId, liveStatus)
-                    if (liveStatus.existsInCloud && liveStatus.isActive && !liveStatus.isSuspended && liveStatus.isSchoolOfficiallyActivated) {
-                        completeMemberLogin(cleanUser, cleanPass, resolvedSchoolId)
-                    }
-                }
-            }
-            val msg = "تم تسجيل الخروج تلقائياً: تم إيقاف أو تجميد عمل المدرسة مؤقتاً من قِبل الإدارة المركزية للمنصة. يرجى مراجعة إدارة المدرسة."
-            _securityKillSwitchAlertMessage.value = msg
-            showToastAlert(msg, isSuccess = false)
-            return Result.failure(IllegalStateException(msg))
+            showToastAlert("اشتراك المدرسة متوقف حالياً، يرجى مراجعة إدارة المنصة التقنية", isSuccess = false)
+            return Result.failure(IllegalStateException("اشتراك المدرسة متوقف حالياً، يرجى مراجعة إدارة المنصة التقنية"))
         }
 
         if (!matched.isActive) {

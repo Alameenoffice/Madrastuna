@@ -59,8 +59,6 @@ fun DashboardScreen(
     val tuitions by viewModel.tuitions.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val occasionThemeConfig by viewModel.occasionThemeConfig.collectAsState()
-    val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
-    val dismissedBroadcastIds by viewModel.dismissedBroadcastIds.collectAsState()
     val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
     val dismissalCalls by viewModel.dismissalCalls.collectAsState()
     val featureSettings by viewModel.featureSettings.collectAsState()
@@ -197,33 +195,18 @@ fun DashboardScreen(
                     modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 
-                // 2) SECOND (Directly BELOW the Emerald Welcome Banner): General System Broadcast (التعميمات والتحديثات) & Occasion Banner
-                if (isAdmin) {
-                    AdminSubscriptionAndBroadcastBanner(
-                        schoolConfig = schoolConfig,
-                        developerBroadcasts = developerBroadcasts,
-                        dismissedBroadcastIds = dismissedBroadcastIds,
-                        onDismissBroadcast = { bcId ->
-                            viewModel.dismissDeveloperBroadcastForAdmin(bcId)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .zIndex(3.5f)
-                    )
-                }
-
+                // 2) SECOND (Tucked seamlessly under Welcome Hero wave with 0.dp gap): Developer Broadcast + Principal Announcement
                 if (occasionThemeConfig.isActive) {
                     val devIconKey = occasionThemeConfig.resolvedIconKey
                     DeveloperSystemBroadcastBanner(
                         title = occasionThemeConfig.effectiveTitle,
                         subtitle = occasionThemeConfig.effectiveBannerText,
-                        badgeText = "إشعار النظام العام • ${devIconKey.arabicLabel}",
+                        badgeText = devIconKey.arabicLabel,
                         iconKey = devIconKey,
                         illustrationType = devIconKey.toThreeDIllustrationType(),
-                        topOverlapPadding = 0.dp,
+                        topOverlapPadding = 22.dp,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
+                            .seamlessWaveOverlap(26.dp)
                             .zIndex(3f)
                     )
                 }

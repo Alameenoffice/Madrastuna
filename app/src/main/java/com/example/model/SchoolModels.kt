@@ -458,23 +458,11 @@ data class RegisteredSchoolSummary(
     val adminUsername: String = "",
     val subscriptionExpiryDate: String = "2027-10-29",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001",
-    val isSuspended: Boolean = false
+    val schoolActivationCode: String = "1001"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
 }
-
-data class RemoteSchoolLiveStatus(
-    val schoolId: String = "",
-    val existsInCloud: Boolean = true,
-    val isActive: Boolean = true,
-    val isSuspended: Boolean = false,
-    val isSchoolOfficiallyActivated: Boolean = true,
-    val isVerifiedFromCloud: Boolean = false,
-    val schoolName: String = "",
-    val schoolActivationCode: String = ""
-)
 
 data class UrgentSchoolAlert(
     val id: String = "urgent_alert",
@@ -526,8 +514,7 @@ data class SchoolConfig(
     val isCanteenWalletEnabled: Boolean = true,
     val principalFullName: String = "مدير المدرسة",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001",
-    val isSuspended: Boolean = false
+    val schoolActivationCode: String = "1001"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -1775,13 +1762,7 @@ data class DeveloperBroadcastItem(
     val iconKey: String = OccasionIconKey.BELL.name,
     val imageBase64: String = "",
     val imageUrl: String = ""
-) {
-    val formattedCreatedAt: String
-        get() = DateCountdownHelper.formatBroadcastTimestamp(createdAt)
-
-    val resolvedIconKey: OccasionIconKey
-        get() = OccasionIconKey.fromKey(iconKey)
-}
+)
 
 data class StudentAutoBadge(
     val id: String,
@@ -1853,35 +1834,6 @@ object DateCountdownHelper {
             add(java.util.Calendar.DAY_OF_YEAR, daysToAdd)
         }
         return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(cal.time)
-    }
-
-    fun formatBroadcastTimestamp(rawDateStr: String): String {
-        val trimmed = ArabicTextNormalizer.normalizeDigitsToAscii(rawDateStr).trim()
-        if (trimmed.isBlank()) return ""
-        val compactMatch = Regex("^(\\d{4})(\\d{2})(\\d{2})(?:[T\\s•|-]+(.*))?$").find(trimmed)
-        if (compactMatch != null) {
-            val y = compactMatch.groupValues[1]
-            val m = compactMatch.groupValues[2]
-            val d = compactMatch.groupValues[3]
-            val timePart = compactMatch.groupValues[4].trim()
-                .replace("AM", "ص", ignoreCase = true)
-                .replace("PM", "م", ignoreCase = true)
-            return if (timePart.isNotBlank()) "$y/$m/$d • $timePart" else "$y/$m/$d"
-        }
-        val isoMatch = Regex("^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})(?:[T\\s•|-]+(.*))?$").find(trimmed)
-        if (isoMatch != null) {
-            val y = isoMatch.groupValues[1]
-            val m = isoMatch.groupValues[2].padStart(2, '0')
-            val d = isoMatch.groupValues[3].padStart(2, '0')
-            val timePart = isoMatch.groupValues[4].trim()
-                .replace("AM", "ص", ignoreCase = true)
-                .replace("PM", "م", ignoreCase = true)
-            return if (timePart.isNotBlank()) "$y/$m/$d • $timePart" else "$y/$m/$d"
-        }
-        return trimmed
-            .replace("-", "/")
-            .replace("AM", "ص", ignoreCase = true)
-            .replace("PM", "م", ignoreCase = true)
     }
 }
 
