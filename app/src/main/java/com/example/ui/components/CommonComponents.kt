@@ -27,7 +27,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import com.example.model.OccasionIconKey
-import com.example.model.OccasionThemeType
 import com.example.model.TeacherEvaluationSummary
 import kotlinx.coroutines.delay
 import androidx.compose.material3.*
@@ -40,12 +39,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -2188,52 +2185,23 @@ enum class ThreeDIllustrationType {
     UPDATE_SPARK_3D,
     CALENDAR_HOLIDAYS,
     CLOUD_OFFLINE_3D,
-    DIGITAL_LIBRARY_ILLUMINATED_BOOK_3D,
-    OCCASION_OFFICIAL_SHIELD_CAP_3D,
-    OCCASION_EID_ORNAMENT_3D,
-    OCCASION_NEW_YEAR_METEORS_3D,
-    OCCASION_MAWLID_GREEN_DOME_3D,
-    OCCASION_IRAQI_NATIONAL_FLAG_3D
-}
-
-fun OccasionThemeType.toThreeDIllustrationType(): ThreeDIllustrationType {
-    return when (this) {
-        OccasionThemeType.OFFICIAL -> ThreeDIllustrationType.OCCASION_OFFICIAL_SHIELD_CAP_3D
-        OccasionThemeType.RAMADAN, OccasionThemeType.RAMADAN_EID -> ThreeDIllustrationType.CRESCENT_LANTERN_3D
-        OccasionThemeType.EID -> ThreeDIllustrationType.OCCASION_EID_ORNAMENT_3D
-        OccasionThemeType.NEW_YEAR -> ThreeDIllustrationType.OCCASION_NEW_YEAR_METEORS_3D
-        OccasionThemeType.MAWLID_NABAWI -> ThreeDIllustrationType.OCCASION_MAWLID_GREEN_DOME_3D
-        OccasionThemeType.IRAQI_NATIONAL_DAY, OccasionThemeType.NATIONAL_DAY -> ThreeDIllustrationType.OCCASION_IRAQI_NATIONAL_FLAG_3D
-        OccasionThemeType.ACADEMIC_EXCELLENCE -> ThreeDIllustrationType.OCCASION_OFFICIAL_SHIELD_CAP_3D
-        OccasionThemeType.CUSTOM_MANUAL -> ThreeDIllustrationType.OCCASION_OFFICIAL_SHIELD_CAP_3D
-    }
+    DIGITAL_LIBRARY_ILLUMINATED_BOOK_3D
 }
 
 fun OccasionIconKey.toThreeDIllustrationType(): ThreeDIllustrationType {
     return when (this) {
         OccasionIconKey.BELL -> ThreeDIllustrationType.MEGAPHONE
         OccasionIconKey.GRADUATION_CAP,
-        OccasionIconKey.BOOK -> ThreeDIllustrationType.OCCASION_OFFICIAL_SHIELD_CAP_3D
-        OccasionIconKey.ROSE -> ThreeDIllustrationType.OCCASION_MAWLID_GREEN_DOME_3D
+        OccasionIconKey.BOOK,
+        OccasionIconKey.ROSE -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
         OccasionIconKey.CRESCENT -> ThreeDIllustrationType.CRESCENT_LANTERN_3D
         OccasionIconKey.TROPHY,
         OccasionIconKey.CROWN -> ThreeDIllustrationType.TROPHY_STARS
-        OccasionIconKey.CALENDAR -> ThreeDIllustrationType.OCCASION_NEW_YEAR_METEORS_3D
-        OccasionIconKey.STAR -> ThreeDIllustrationType.OCCASION_EID_ORNAMENT_3D
-        OccasionIconKey.SHIELD -> ThreeDIllustrationType.OCCASION_OFFICIAL_SHIELD_CAP_3D
-        OccasionIconKey.FLAG -> ThreeDIllustrationType.OCCASION_IRAQI_NATIONAL_FLAG_3D
+        OccasionIconKey.CALENDAR -> ThreeDIllustrationType.CALENDAR_HOLIDAYS
+        OccasionIconKey.STAR -> ThreeDIllustrationType.UPDATE_SPARK_3D
+        OccasionIconKey.SHIELD,
+        OccasionIconKey.FLAG -> ThreeDIllustrationType.SYSTEM_BROADCAST_3D
     }
-}
-
-@Composable
-fun AnimatedOccasionVectorCanvas(
-    themeType: OccasionThemeType,
-    modifier: Modifier = Modifier.size(64.dp)
-) {
-    ThreeDIllustrationBox(
-        type = themeType.toThreeDIllustrationType(),
-        modifier = modifier
-    )
 }
 
 /**
@@ -4599,545 +4567,6 @@ fun ThreeDIllustrationBox(
                     cap = StrokeCap.Round
                 )
             }
-
-            ThreeDIllustrationType.OCCASION_OFFICIAL_SHIELD_CAP_3D -> {
-                // 1. الوضع الرسمي الفخم (DEFAULT / OFFICIAL): درع أكاديمي زمردي ذهبي مع قبعة تخرج رسمية
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(
-                            Color(0xFF34D399).copy(alpha = glowPulseAlpha * 0.8f),
-                            Color(0xFFFBBF24).copy(alpha = glowPulseAlpha * 0.45f),
-                            Color.Transparent
-                        ),
-                        center = Offset(cx, cy),
-                        radius = w * 0.50f
-                    ),
-                    radius = w * 0.50f,
-                    center = Offset(cx, cy)
-                )
-                // Outer Golden Shield Frame
-                val outerShield = Path().apply {
-                    moveTo(cx, h * 0.22f)
-                    lineTo(w * 0.80f, h * 0.32f)
-                    lineTo(w * 0.75f, h * 0.62f)
-                    quadraticBezierTo(w * 0.68f, h * 0.80f, cx, h * 0.90f)
-                    quadraticBezierTo(w * 0.32f, h * 0.80f, w * 0.25f, h * 0.62f)
-                    lineTo(w * 0.20f, h * 0.32f)
-                    close()
-                }
-                drawPath(
-                    path = outerShield,
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))
-                    )
-                )
-                // Inner Royal Emerald Shield Core
-                val innerShield = Path().apply {
-                    moveTo(cx, h * 0.28f)
-                    lineTo(w * 0.74f, h * 0.36f)
-                    lineTo(w * 0.70f, h * 0.60f)
-                    quadraticBezierTo(w * 0.64f, h * 0.75f, cx, h * 0.84f)
-                    quadraticBezierTo(w * 0.36f, h * 0.75f, w * 0.30f, h * 0.60f)
-                    lineTo(w * 0.26f, h * 0.36f)
-                    close()
-                }
-                drawPath(
-                    path = innerShield,
-                    brush = Brush.verticalGradient(
-                        listOf(Color(0xFF059669), Color(0xFF064E3B), Color(0xFF022C22))
-                    )
-                )
-                // Open Book Emblem inside Shield
-                val shieldBook = Path().apply {
-                    moveTo(cx, h * 0.68f)
-                    quadraticBezierTo(w * 0.40f, h * 0.62f, w * 0.35f, h * 0.64f)
-                    lineTo(w * 0.35f, h * 0.50f)
-                    quadraticBezierTo(w * 0.42f, h * 0.48f, cx, h * 0.54f)
-                    quadraticBezierTo(w * 0.58f, h * 0.48f, w * 0.65f, h * 0.50f)
-                    lineTo(w * 0.65f, h * 0.64f)
-                    quadraticBezierTo(w * 0.60f, h * 0.62f, cx, h * 0.68f)
-                    close()
-                }
-                drawPath(path = shieldBook, color = Color(0xFFFEF08A).copy(alpha = 0.92f))
-
-                // Official Academic Graduation Cap floating at the top of the Shield
-                val capTopY = h * 0.12f
-                val capDiamond = Path().apply {
-                    moveTo(cx, capTopY)
-                    lineTo(w * 0.82f, capTopY + h * 0.11f)
-                    lineTo(cx, capTopY + h * 0.22f)
-                    lineTo(w * 0.18f, capTopY + h * 0.11f)
-                    close()
-                }
-                drawPath(
-                    path = capDiamond,
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFF0F172A), Color(0xFF064E3B), Color(0xFF1E293B))
-                    )
-                )
-                drawPath(
-                    path = capDiamond,
-                    color = Color(0xFFFBBF24),
-                    style = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round)
-                )
-                // Cap Skull Base
-                drawRoundRect(
-                    color = Color(0xFF065F46),
-                    topLeft = Offset(w * 0.36f, capTopY + h * 0.16f),
-                    size = Size(w * 0.28f, h * 0.08f),
-                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-                )
-                // Swaying Golden Tassel
-                val tasselSwingX = w * 0.76f + (waveExpandFactor - 1f) * w * 0.08f
-                drawLine(
-                    color = Color(0xFFFEF08A),
-                    start = Offset(cx, capTopY + h * 0.11f),
-                    end = Offset(tasselSwingX, capTopY + h * 0.27f),
-                    strokeWidth = 2.2.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawCircle(
-                    color = Color(0xFFF59E0B),
-                    radius = 3.5.dp.toPx(),
-                    center = Offset(tasselSwingX, capTopY + h * 0.28f)
-                )
-            }
-
-            ThreeDIllustrationType.OCCASION_EID_ORNAMENT_3D -> {
-                // 3. الأعياد المباركة (EID): شعار العيد الذهبي مع زخارف هندسية إسلامية مضيئة وأهلة احتفالية
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(
-                            Color(0xFFFDE047).copy(alpha = glowPulseAlpha * 0.85f),
-                            Color(0xFF10B981).copy(alpha = glowPulseAlpha * 0.45f),
-                            Color.Transparent
-                        ),
-                        center = Offset(cx, cy),
-                        radius = w * 0.52f
-                    ),
-                    radius = w * 0.52f,
-                    center = Offset(cx, cy)
-                )
-                // 8-Pointed Islamic Geometric Star Rub el Hizb (الزخرفة الهندسية الإسلامية الذهبية)
-                val sRadius = w * 0.31f * waveExpandFactor.coerceIn(0.94f, 1.06f)
-                val sq1 = Path().apply {
-                    moveTo(cx - sRadius, cy - sRadius)
-                    lineTo(cx + sRadius, cy - sRadius)
-                    lineTo(cx + sRadius, cy + sRadius)
-                    lineTo(cx - sRadius, cy + sRadius)
-                    close()
-                }
-                val sq2 = Path().apply {
-                    val d = sRadius * 1.414f
-                    moveTo(cx, cy - d)
-                    lineTo(cx + d, cy)
-                    lineTo(cx, cy + d)
-                    lineTo(cx - d, cy)
-                    close()
-                }
-                drawPath(
-                    path = sq2,
-                    brush = Brush.linearGradient(listOf(Color(0xFFF59E0B), Color(0xFF047857), Color(0xFFD97706)))
-                )
-                drawPath(
-                    path = sq1,
-                    brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309)))
-                )
-                drawPath(
-                    path = sq1,
-                    color = Color.White.copy(alpha = 0.65f),
-                    style = Stroke(width = 1.6.dp.toPx())
-                )
-                // Inner Emerald Medallion
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFF065F46), Color(0xFF022C22)),
-                        center = Offset(cx, cy),
-                        radius = w * 0.24f
-                    ),
-                    radius = w * 0.24f,
-                    center = Offset(cx, cy)
-                )
-                drawCircle(
-                    color = Color(0xFFFEF08A),
-                    radius = w * 0.24f,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = 1.8.dp.toPx())
-                )
-                // Festive Golden Crescent & Calligraphic Eid Arch inside Medallion
-                val eidCrescent = Path().apply {
-                    addOval(Rect(center = Offset(cx, cy + h * 0.02f), radius = w * 0.16f))
-                }
-                val eidCutout = Path().apply {
-                    addOval(Rect(center = Offset(cx, cy - h * 0.04f), radius = w * 0.14f))
-                }
-                val crescentResult = Path().apply {
-                    op(eidCrescent, eidCutout, PathOperation.Difference)
-                }
-                drawPath(
-                    path = crescentResult,
-                    brush = Brush.horizontalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B)))
-                )
-                // Calligraphic Flourish Curves & Festive Stars
-                drawCircle(color = Color(0xFFFEF08A), radius = 3.2.dp.toPx(), center = Offset(cx, cy - h * 0.06f))
-                drawCircle(color = Color(0xFF6EE7B7), radius = 2.4.dp.toPx(), center = Offset(cx - w * 0.08f, cy - h * 0.02f))
-                drawCircle(color = Color(0xFF6EE7B7), radius = 2.4.dp.toPx(), center = Offset(cx + w * 0.08f, cy - h * 0.02f))
-                // Outer Floating Festive Crescents & Sparkles
-                drawCircle(color = Color(0xFFFEF08A), radius = 3.dp.toPx() * waveExpandFactor, center = Offset(w * 0.16f, h * 0.20f))
-                drawCircle(color = Color(0xFFFEF08A), radius = 3.dp.toPx() * (2f - waveExpandFactor), center = Offset(w * 0.84f, h * 0.20f))
-            }
-
-            ThreeDIllustrationType.OCCASION_NEW_YEAR_METEORS_3D -> {
-                // 4. رأس السنة والعام الجديد (NEW_YEAR): شارة العام الدراسي/الميلادي الجديد مع شهب ضوئية ذهبية وزمردية متصاعدة
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(
-                            Color(0xFF34D399).copy(alpha = glowPulseAlpha * 0.75f),
-                            Color(0xFFFBBF24).copy(alpha = glowPulseAlpha * 0.55f),
-                            Color.Transparent
-                        ),
-                        center = Offset(cx, cy),
-                        radius = w * 0.52f
-                    ),
-                    radius = w * 0.52f,
-                    center = Offset(cx, cy)
-                )
-                // Ascending Golden & Emerald Light Meteors (شهب ضوئية ذهبية وزمردية متصاعدة)
-                val meteorShift = (waveExpandFactor - 0.85f) / 0.30f // 0..1
-                val meteorPositions = listOf(
-                    Triple(w * 0.20f, h * (0.78f - meteorShift * 0.22f), true),
-                    Triple(w * 0.80f, h * (0.72f - (1f - meteorShift) * 0.22f), false),
-                    Triple(w * 0.28f, h * (0.36f - meteorShift * 0.16f), false),
-                    Triple(w * 0.74f, h * (0.34f - (1f - meteorShift) * 0.16f), true)
-                )
-                meteorPositions.forEach { (mx, my, isGold) ->
-                    val headColor = if (isGold) Color(0xFFFEF08A) else Color(0xFF6EE7B7)
-                    val tailColor = if (isGold) Color(0xFFF59E0B) else Color(0xFF10B981)
-                    drawLine(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(headColor, tailColor.copy(alpha = 0.4f), Color.Transparent),
-                            startY = my,
-                            endY = my + h * 0.22f
-                        ),
-                        start = Offset(mx, my),
-                        end = Offset(mx - w * 0.06f, my + h * 0.22f),
-                        strokeWidth = 3.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                    drawCircle(color = headColor, radius = 3.8.dp.toPx(), center = Offset(mx, my))
-                }
-
-                // Central Royal Hexagonal New Year Badge
-                val hexBadge = Path().apply {
-                    val r = w * 0.28f
-                    for (i in 0..5) {
-                        val angleRad = Math.toRadians((60.0 * i) - 90.0)
-                        val px = cx + (r * kotlin.math.cos(angleRad)).toFloat()
-                        val py = cy + h * 0.04f + (r * kotlin.math.sin(angleRad)).toFloat()
-                        if (i == 0) moveTo(px, py) else lineTo(px, py)
-                    }
-                    close()
-                }
-                drawPath(
-                    path = hexBadge,
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFF065F46), Color(0xFF047857), Color(0xFF1E1B4B))
-                    )
-                )
-                drawPath(
-                    path = hexBadge,
-                    brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
-                    style = Stroke(width = 2.6.dp.toPx(), join = StrokeJoin.Round)
-                )
-                // Radiant North Star inside the New Year Badge
-                val starR1 = w * 0.16f * waveExpandFactor.coerceIn(0.92f, 1.08f)
-                val starR2 = w * 0.05f
-                val northStar = Path().apply {
-                    moveTo(cx, cy + h * 0.04f - starR1)
-                    lineTo(cx + starR2, cy + h * 0.04f - starR2)
-                    lineTo(cx + starR1, cy + h * 0.04f)
-                    lineTo(cx + starR2, cy + h * 0.04f + starR2)
-                    lineTo(cx, cy + h * 0.04f + starR1)
-                    lineTo(cx - starR2, cy + h * 0.04f + starR2)
-                    lineTo(cx - starR1, cy + h * 0.04f)
-                    lineTo(cx - starR2, cy + h * 0.04f - starR2)
-                    close()
-                }
-                drawPath(
-                    path = northStar,
-                    brush = Brush.radialGradient(
-                        listOf(Color.White, Color(0xFFFEF08A), Color(0xFFF59E0B)),
-                        center = Offset(cx, cy + h * 0.04f),
-                        radius = starR1
-                    )
-                )
-            }
-
-            ThreeDIllustrationType.OCCASION_MAWLID_GREEN_DOME_3D -> {
-                // 5. المولد النبوي الشريف (MAWLID / MAWLID_NABAWI): القبة الخضراء الشريفة ومنارة مسجد مزخرفة بهالة نورانية هادئة
-                // Serene Luminous Halo (هالة نورانية هادئة)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(
-                            Color(0xFFFEF08A).copy(alpha = glowPulseAlpha * 0.78f),
-                            Color(0xFF34D399).copy(alpha = glowPulseAlpha * 0.65f),
-                            Color.Transparent
-                        ),
-                        center = Offset(cx, cy * 0.92f),
-                        radius = w * 0.54f * waveExpandFactor.coerceIn(0.95f, 1.05f)
-                    ),
-                    radius = w * 0.54f * waveExpandFactor.coerceIn(0.95f, 1.05f),
-                    center = Offset(cx, cy * 0.92f)
-                )
-                // Halo Rings
-                drawCircle(
-                    color = Color(0xFFFEF08A).copy(alpha = 0.45f),
-                    radius = w * 0.42f * waveExpandFactor.coerceIn(0.95f, 1.05f),
-                    center = Offset(cx, cy * 0.92f),
-                    style = Stroke(width = 1.4.dp.toPx())
-                )
-
-                // Ornate Mosque Minaret on the Right (منارة المسجد النبوي المزخرفة)
-                drawRoundRect(
-                    brush = Brush.horizontalGradient(listOf(Color(0xFFF8FAFC), Color(0xFFE2E8F0), Color(0xFFCBD5E1))),
-                    topLeft = Offset(w * 0.68f, h * 0.28f),
-                    size = Size(w * 0.11f, h * 0.52f),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                )
-                // Minaret Balcony (الشرفة المزخرفة)
-                drawRoundRect(
-                    brush = Brush.horizontalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
-                    topLeft = Offset(w * 0.65f, h * 0.38f),
-                    size = Size(w * 0.17f, h * 0.045f),
-                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                )
-                // Minaret Conical Spire & Finial
-                val minaretSpire = Path().apply {
-                    moveTo(w * 0.735f, h * 0.14f)
-                    lineTo(w * 0.79f, h * 0.28f)
-                    lineTo(w * 0.68f, h * 0.28f)
-                    close()
-                }
-                drawPath(
-                    path = minaretSpire,
-                    brush = Brush.verticalGradient(listOf(Color(0xFF059669), Color(0xFF064E3B)))
-                )
-                drawCircle(color = Color(0xFFFEF08A), radius = 2.5.dp.toPx(), center = Offset(w * 0.735f, h * 0.12f))
-
-                // The Noble Prophet's Green Dome (القبة الخضراء الشريفة)
-                val greenDomePath = Path().apply {
-                    moveTo(w * 0.18f, h * 0.64f)
-                    cubicTo(
-                        w * 0.18f, h * 0.42f,
-                        w * 0.34f, h * 0.28f,
-                        w * 0.44f, h * 0.22f
-                    )
-                    cubicTo(
-                        w * 0.54f, h * 0.28f,
-                        w * 0.70f, h * 0.42f,
-                        w * 0.70f, h * 0.64f
-                    )
-                    close()
-                }
-                drawPath(
-                    path = greenDomePath,
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFF10B981), Color(0xFF059669), Color(0xFF064E3B))
-                    )
-                )
-                // Subtle Ribbed Highlights on the Green Dome
-                val domeHighlight = Path().apply {
-                    moveTo(w * 0.44f, h * 0.24f)
-                    quadraticBezierTo(w * 0.34f, h * 0.44f, w * 0.32f, h * 0.64f)
-                }
-                drawPath(
-                    path = domeHighlight,
-                    color = Color(0xFFA7F3D0).copy(alpha = 0.55f),
-                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                )
-                // Golden Finial & Crescent atop the Green Dome (هلال القبة الخضراء الذهبي)
-                drawLine(
-                    color = Color(0xFFFEF08A),
-                    start = Offset(w * 0.44f, h * 0.22f),
-                    end = Offset(w * 0.44f, h * 0.14f),
-                    strokeWidth = 2.4.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawCircle(color = Color(0xFFF59E0B), radius = 3.2.dp.toPx(), center = Offset(w * 0.44f, h * 0.13f))
-
-                // Mosque Base Wall with Arched Windows
-                drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(Color(0xFFFFFBEB), Color(0xFFE2E8F0))),
-                    topLeft = Offset(w * 0.14f, h * 0.63f),
-                    size = Size(w * 0.70f, h * 0.18f),
-                    cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
-                )
-                drawRoundRect(
-                    brush = Brush.horizontalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))),
-                    topLeft = Offset(w * 0.14f, h * 0.62f),
-                    size = Size(w * 0.70f, h * 0.035f),
-                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                )
-                // Glowing Arched Windows
-                for (winIdx in 0..2) {
-                    val wx = w * (0.23f + winIdx * 0.16f)
-                    drawRoundRect(
-                        color = Color(0xFF065F46),
-                        topLeft = Offset(wx, h * 0.68f),
-                        size = Size(w * 0.09f, h * 0.10f),
-                        cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
-                    )
-                    drawCircle(
-                        color = Color(0xFFFEF08A).copy(alpha = 0.85f),
-                        radius = 2.2.dp.toPx(),
-                        center = Offset(wx + w * 0.045f, h * 0.73f)
-                    )
-                }
-            }
-
-            ThreeDIllustrationType.OCCASION_IRAQI_NATIONAL_FLAG_3D -> {
-                // 6. العيد الوطني العراقي (NATIONAL_DAY / IRAQI_NATIONAL_DAY):
-                // العلم العراقي الأصيل (الأحمر والأبيض والأسود مع "الله أكبر" باللون الأخضر في المنتصف) يرفرف بتموج انسيابي مع شعار ذهبي
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(
-                            Color(0xFFFBBF24).copy(alpha = glowPulseAlpha * 0.7f),
-                            Color(0xFF10B981).copy(alpha = glowPulseAlpha * 0.45f),
-                            Color.Transparent
-                        ),
-                        center = Offset(cx, cy),
-                        radius = w * 0.52f
-                    ),
-                    radius = w * 0.52f,
-                    center = Offset(cx, cy)
-                )
-
-                // Golden Iraqi Crest / Map Medallion on the Right Behind Flagpole
-                drawCircle(
-                    brush = Brush.linearGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))),
-                    radius = w * 0.16f,
-                    center = Offset(w * 0.76f, h * 0.70f)
-                )
-                drawCircle(
-                    color = Color(0xFF064E3B),
-                    radius = w * 0.12f,
-                    center = Offset(w * 0.76f, h * 0.70f)
-                )
-                // Golden Tigris & Euphrates Palm/Shield motif inside medallion
-                drawLine(
-                    color = Color(0xFFFEF08A),
-                    start = Offset(w * 0.71f, h * 0.65f),
-                    end = Offset(w * 0.78f, h * 0.75f),
-                    strokeWidth = 2.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = Color(0xFFFEF08A),
-                    start = Offset(w * 0.75f, h * 0.64f),
-                    end = Offset(w * 0.81f, h * 0.74f),
-                    strokeWidth = 2.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-
-                // Golden Flagpole on the Left
-                drawLine(
-                    brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309))),
-                    start = Offset(w * 0.18f, h * 0.14f),
-                    end = Offset(w * 0.18f, h * 0.88f),
-                    strokeWidth = 3.8.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawCircle(
-                    color = Color(0xFFFEF08A),
-                    radius = 4.5.dp.toPx(),
-                    center = Offset(w * 0.18f, h * 0.13f)
-                )
-
-                // Waving Iraqi Flag (3 horizontal stripes: Red, White, Black)
-                val waveAmp = (waveExpandFactor - 1f) * h * 0.18f
-                val flagLeft = w * 0.20f
-                val flagRight = w * 0.84f
-                val stripeH = h * 0.15f
-                val topY0 = h * 0.18f
-
-                fun buildWavingStripePath(yStart: Float, heightVal: Float): Path {
-                    return Path().apply {
-                        moveTo(flagLeft, yStart)
-                        cubicTo(
-                            w * 0.42f, yStart - waveAmp - h * 0.03f,
-                            w * 0.64f, yStart + waveAmp + h * 0.03f,
-                            flagRight, yStart - waveAmp * 0.5f
-                        )
-                        lineTo(flagRight, yStart + heightVal - waveAmp * 0.5f)
-                        cubicTo(
-                            w * 0.64f, yStart + heightVal + waveAmp + h * 0.03f,
-                            w * 0.42f, yStart + heightVal - waveAmp - h * 0.03f,
-                            flagLeft, yStart + heightVal
-                        )
-                        close()
-                    }
-                }
-
-                // 1) Top Stripe: Authentic Iraqi Flag Red (#CE1126)
-                drawPath(
-                    path = buildWavingStripePath(topY0, stripeH),
-                    brush = Brush.horizontalGradient(listOf(Color(0xFFCE1126), Color(0xFFEF4444), Color(0xFFB91C1C)))
-                )
-                // 2) Middle Stripe: Pure White (#FFFFFF)
-                drawPath(
-                    path = buildWavingStripePath(topY0 + stripeH, stripeH),
-                    brush = Brush.horizontalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF8FAFC), Color(0xFFF1F5F9)))
-                )
-                // 3) Bottom Stripe: Deep Black (#0F172A / #000000)
-                drawPath(
-                    path = buildWavingStripePath(topY0 + stripeH * 2f, stripeH),
-                    brush = Brush.horizontalGradient(listOf(Color(0xFF090D16), Color(0xFF1E293B), Color(0xFF000000)))
-                )
-
-                // Kufic Green "الله أكبر" Emblem in the Center of the White Stripe (#007A3D)
-                val midY = topY0 + stripeH * 1.5f
-                val kuficGreen = Color(0xFF007A3D)
-                // Right word block ("الله") in Kufic geometric strokes
-                drawLine(
-                    color = kuficGreen,
-                    start = Offset(w * 0.56f, midY + h * 0.035f),
-                    end = Offset(w * 0.68f, midY + h * 0.035f),
-                    strokeWidth = 2.6.dp.toPx(),
-                    cap = StrokeCap.Square
-                )
-                for (stem in 0..2) {
-                    val sx = w * (0.57f + stem * 0.05f)
-                    drawLine(
-                        color = kuficGreen,
-                        start = Offset(sx, midY - h * 0.045f),
-                        end = Offset(sx, midY + h * 0.035f),
-                        strokeWidth = 2.4.dp.toPx(),
-                        cap = StrokeCap.Square
-                    )
-                }
-                // Left word block ("أكبر") in Kufic geometric strokes
-                drawLine(
-                    color = kuficGreen,
-                    start = Offset(w * 0.36f, midY + h * 0.035f),
-                    end = Offset(w * 0.50f, midY + h * 0.035f),
-                    strokeWidth = 2.6.dp.toPx(),
-                    cap = StrokeCap.Square
-                )
-                drawLine(
-                    color = kuficGreen,
-                    start = Offset(w * 0.49f, midY - h * 0.045f),
-                    end = Offset(w * 0.49f, midY + h * 0.035f),
-                    strokeWidth = 2.4.dp.toPx(),
-                    cap = StrokeCap.Square
-                )
-                drawLine(
-                    color = kuficGreen,
-                    start = Offset(w * 0.44f, midY - h * 0.04f),
-                    end = Offset(w * 0.39f, midY + h * 0.035f),
-                    strokeWidth = 2.4.dp.toPx(),
-                    cap = StrokeCap.Square
-                )
-            }
         }
     }
 }
@@ -5193,7 +4622,6 @@ fun DeveloperSystemBroadcastBanner(
     subtitle: String,
     modifier: Modifier = Modifier,
     badgeText: String = "إشعار النظام العام",
-    formattedTimestamp: String = "",
     iconKey: OccasionIconKey = OccasionIconKey.BELL,
     illustrationType: ThreeDIllustrationType = iconKey.toThreeDIllustrationType(),
     topOverlapPadding: Dp = 0.dp,
@@ -5277,7 +4705,7 @@ fun DeveloperSystemBroadcastBanner(
                 Box(
                     modifier = Modifier
                         .width(2.5.dp)
-                        .height(48.dp)
+                        .height(44.dp)
                         .clip(RoundedCornerShape(50))
                         .background(Color(0xFF059669).copy(alpha = 0.75f))
                 )
@@ -5286,37 +4714,17 @@ fun DeveloperSystemBroadcastBanner(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = badgeText,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF047857),
-                            maxLines = 1
-                        )
-                        if (formattedTimestamp.isNotBlank()) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFF047857).copy(alpha = 0.12f)
-                            ) {
-                                Text(
-                                    text = formattedTimestamp,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF065F46),
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        text = badgeText,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF047857),
+                        maxLines = 1
+                    )
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontSize = 15.5.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color(0xFF065F46),
                         maxLines = 1,
@@ -5328,7 +4736,7 @@ fun DeveloperSystemBroadcastBanner(
                         fontSize = 12.8.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0F172A),
-                        maxLines = 3,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

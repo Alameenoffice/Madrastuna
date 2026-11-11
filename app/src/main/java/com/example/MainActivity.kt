@@ -211,7 +211,7 @@ fun MadrasatiRootApp(
 
     LaunchedEffect(toastAlert?.id) {
         if (toastAlert != null) {
-            delay(3000)
+            delay(3600)
             viewModel.dismissToastAlert()
         }
     }
@@ -242,15 +242,9 @@ fun MadrasatiRootApp(
     }
 
     var showSplashScreen by remember { mutableStateOf(true) }
-    val isStandAloneMasterAdminConsole = remember { true }
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
-            isStandAloneMasterAdminConsole && !isSchoolSetupUnlocked -> {
-                com.example.ui.screens.MasterAdminStandaloneRootFlow(
-                    viewModel = viewModel
-                )
-            }
             !onboardingSeen -> {
                 OnboardingScreen(
                     isDarkMode = isDarkMode,
@@ -262,8 +256,10 @@ fun MadrasatiRootApp(
                 )
             }
             isDeveloperAuthenticated -> {
-                com.example.ui.screens.MasterSystemAdminConsoleScreen(
-                    viewModel = viewModel
+                DeveloperControlPanelScreen(
+                    viewModel = viewModel,
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { viewModel.toggleDarkMode() }
                 )
             }
             isSchoolSetupUnlocked -> {

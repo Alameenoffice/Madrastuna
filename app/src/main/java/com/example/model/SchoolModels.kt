@@ -446,8 +446,8 @@ data class SchoolLicense(
 )
 
 data class RegisteredSchoolSummary(
-    val schoolId: String = "1001",
-    val schoolName: String = "مدرستي النموذجية",
+    val schoolId: String,
+    val schoolName: String,
     val address: String = "",
     val schoolStage: String = "ثانوية",
     val schoolType: String = "مدرسة أهلية",
@@ -458,35 +458,11 @@ data class RegisteredSchoolSummary(
     val adminUsername: String = "",
     val subscriptionExpiryDate: String = "2027-10-29",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001",
-    val adminPasswordPlain: String = "123456",
-    val principalFullName: String = "مدير المدرسة",
-    val isSuspended: Boolean = !isActive,
-    val subscriptionStatus: String = if (isActive) "ACTIVE" else "SUSPENDED"
+    val schoolActivationCode: String = "1001"
 ) {
-    val tenantId: String get() = schoolId
-    val activationCode: String get() = schoolActivationCode.ifBlank { schoolId }
-    val adminPassword: String get() = adminPasswordPlain.ifBlank { "123456" }
-    val adminCustomPassword: String get() = adminPasswordPlain.ifBlank { "123456" }
-    val principalName: String get() = principalFullName.ifBlank { "مدير المدرسة" }
-    val isOfficiallyActivated: Boolean get() = isSchoolOfficiallyActivated
-
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
 }
-
-typealias SchoolTenantInfo = RegisteredSchoolSummary
-
-data class SchoolDetailedInspectionStats(
-    val school: RegisteredSchoolSummary = RegisteredSchoolSummary(),
-    val principalAccount: UserAccount? = null,
-    val adminPasswordDisplay: String = "123456",
-    val teachers: List<UserAccount> = emptyList(),
-    val students: List<StudentRecord> = emptyList(),
-    val sectionsMap: Map<String, Int> = emptyMap(),
-    val attendanceRatePercent: Int = 96,
-    val activityPostsCount: Int = 0
-)
 
 data class UrgentSchoolAlert(
     val id: String = "urgent_alert",
@@ -538,9 +514,7 @@ data class SchoolConfig(
     val isCanteenWalletEnabled: Boolean = true,
     val principalFullName: String = "مدير المدرسة",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001",
-    val isSuspended: Boolean = !isActive,
-    val subscriptionStatus: String = if (isActive) "ACTIVE" else "SUSPENDED"
+    val schoolActivationCode: String = "1001"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -1092,12 +1066,6 @@ data class StudentRecord(
     val ageYears: Int = 0,
     val presentDays: Int = 0
 ) {
-    val averageScore: Int
-        get() = excellencePoints.coerceIn(50, 100)
-
-    val attendanceRate: Int
-        get() = (100 - (absenceDays * 2)).coerceIn(75, 100)
-
     val isGenderSpecified: Boolean
         get() {
             val g = gender.trim()
@@ -1785,83 +1753,16 @@ enum class BusEventType(
 }
 
 data class DeveloperBroadcastItem(
-    val id: String = "",
-    val title: String = "",
-    val message: String = "",
+    val id: String,
+    val title: String,
+    val message: String,
     val senderName: String = "إدارة المنصة التقنية",
-    val createdAt: String = "",
+    val createdAt: String,
     val targetSchoolId: String = "ALL",
     val iconKey: String = OccasionIconKey.BELL.name,
     val imageBase64: String = "",
-    val imageUrl: String = "",
-    val targetAudienceRole: String = "ALL",
-    val isActive: Boolean = true
-) {
-    val targetAudienceArabicLabel: String
-        get() = when (targetAudienceRole.uppercase()) {
-            "ADMIN" -> "مدراء المدارس"
-            "TEACHER" -> "المعلمون"
-            "STUDENT" -> "الطلاب وأولياء الأمور"
-            else -> "الجميع"
-        }
-
-    val formattedCreatedAt: String
-        get() {
-            val raw = ArabicTextNormalizer.normalizeDigitsToAscii(createdAt).trim()
-            if (raw.isEmpty()) return "اليوم"
-            if (raw.contains("•") && raw.contains("/")) return raw
-            // Handle compact 8-digit date e.g. 20261111 or 12-digit 202611110855
-            val compactMatch = Regex("^(\\d{4})(\\d{2})(\\d{2})(?:(\\d{2})(\\d{2}))?$").find(raw)
-            if (compactMatch != null) {
-                val y = compactMatch.groupValues[1]
-                val m = compactMatch.groupValues[2]
-                val d = compactMatch.groupValues[3]
-                val hh = compactMatch.groupValues[4]
-                val mm = compactMatch.groupValues[5]
-                return if (hh.isNotEmpty() && mm.isNotEmpty()) {
-                    val hInt = hh.toIntOrNull() ?: 0
-                    val amPm = if (hInt >= 12) "م" else "ص"
-                    val h12 = when {
-                        hInt == 0 -> 12
-                        hInt > 12 -> hInt - 12
-                        else -> hInt
-                    }
-                    "$y/$m/$d • ${String.format(java.util.Locale.US, "%02d:%s", h12, mm)} $amPm"
-                } else {
-                    "$y/$m/$d"
-                }
-            }
-            // Handle standard yyyy-MM-dd hh:mm a or yyyy/MM/dd HH:mm
-            val fullMatch = Regex("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})(?:\\s+(\\d{1,2}):(\\d{2})(?:\\s*(AM|PM|am|pm|ص|م))?)?").find(raw)
-            if (fullMatch != null) {
-                val y = fullMatch.groupValues[1]
-                val m = fullMatch.groupValues[2].padStart(2, '0')
-                val d = fullMatch.groupValues[3].padStart(2, '0')
-                val hh = fullMatch.groupValues[4]
-                val mm = fullMatch.groupValues[5]
-                val mer = fullMatch.groupValues[6]
-                return if (hh.isNotEmpty() && mm.isNotEmpty()) {
-                    val hInt = hh.toIntOrNull() ?: 0
-                    val amPm = when {
-                        mer.equals("PM", ignoreCase = true) || mer == "م" -> "م"
-                        mer.equals("AM", ignoreCase = true) || mer == "ص" -> "ص"
-                        hInt >= 12 -> "م"
-                        else -> "ص"
-                    }
-                    val h12 = when {
-                        mer.isNotEmpty() -> hInt
-                        hInt == 0 -> 12
-                        hInt > 12 -> hInt - 12
-                        else -> hInt
-                    }
-                    "$y/$m/$d • ${String.format(java.util.Locale.US, "%02d:%s", h12, mm)} $amPm"
-                } else {
-                    "$y/$m/$d"
-                }
-            }
-            return raw.replace("-", "/")
-        }
-}
+    val imageUrl: String = ""
+)
 
 data class StudentAutoBadge(
     val id: String,
@@ -2270,42 +2171,6 @@ enum class OccasionThemeType(
         defaultPrimaryHex = "#064E3B",
         defaultGradientHex = "#D97706",
         emojiSymbol = ""
-    ),
-    RAMADAN(
-        arabicLabel = "شهر رمضان المبارك",
-        badgeTitle = "نفحات شهر رمضان المبارك",
-        bannerGreeting = "رمضان كريم ومبارك على جميع إدارات المدارس والكادر التدريسي والطلاب",
-        launcherAliasName = ".MainActivityRamadan",
-        defaultPrimaryHex = "#064E3B",
-        defaultGradientHex = "#B45309",
-        emojiSymbol = ""
-    ),
-    EID(
-        arabicLabel = "الأعياد المباركة",
-        badgeTitle = "فرحة العيد السعيد",
-        bannerGreeting = "عيدكم مبارك وكل عام وأسرتنا التربوية والطلابية بألف خير",
-        launcherAliasName = ".MainActivityRamadan",
-        defaultPrimaryHex = "#065F46",
-        defaultGradientHex = "#D97706",
-        emojiSymbol = ""
-    ),
-    MAWLID_NABAWI(
-        arabicLabel = "المولد النبوي الشريف",
-        badgeTitle = "ذكرى المولد النبوي الشريف",
-        bannerGreeting = "نبارك لكم ذكرى المولد النبوي الشريف أعاده الله بالخير والبركات",
-        launcherAliasName = ".MainActivityHonor",
-        defaultPrimaryHex = "#064E3B",
-        defaultGradientHex = "#059669",
-        emojiSymbol = ""
-    ),
-    IRAQI_NATIONAL_DAY(
-        arabicLabel = "العيد الوطني العراقي",
-        badgeTitle = "احتفالية العيد الوطني العراقي",
-        bannerGreeting = "كل عام والعراق العظيم وأسرتنا التعليمية بألف خير وازدهار",
-        launcherAliasName = ".MainActivityNational",
-        defaultPrimaryHex = "#047857",
-        defaultGradientHex = "#0F766E",
-        emojiSymbol = ""
     );
 
     val iconEmoji: String
@@ -2323,21 +2188,8 @@ enum class OccasionThemeType(
     val greetingBanner: String
         get() = bannerGreeting
 
-    val defaultOccasionIconKey: OccasionIconKey
-        get() = when (this) {
-            OFFICIAL -> OccasionIconKey.SHIELD
-            RAMADAN, RAMADAN_EID -> OccasionIconKey.CRESCENT
-            EID -> OccasionIconKey.STAR
-            NEW_YEAR -> OccasionIconKey.CALENDAR
-            MAWLID_NABAWI -> OccasionIconKey.ROSE
-            IRAQI_NATIONAL_DAY, NATIONAL_DAY -> OccasionIconKey.FLAG
-            ACADEMIC_EXCELLENCE -> OccasionIconKey.GRADUATION_CAP
-            CUSTOM_MANUAL -> OccasionIconKey.BELL
-        }
-
     companion object {
         val DEFAULT: OccasionThemeType = OFFICIAL
-        val MAWLID: OccasionThemeType = MAWLID_NABAWI
     }
 }
 

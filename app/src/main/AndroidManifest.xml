@@ -25,7 +25,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="إدارة نظام مدرستي"
+        android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
@@ -48,7 +48,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
-            android:label="إدارة نظام مدرستي"
+            android:label="@string/app_name"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -62,7 +62,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_ramadan"
             android:roundIcon="@drawable/ic_launcher_ramadan"
-            android:label="إدارة نظام مدرستي"
+            android:label="@string/app_name"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -76,7 +76,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_newyear"
             android:roundIcon="@drawable/ic_launcher_newyear"
-            android:label="إدارة نظام مدرستي"
+            android:label="@string/app_name"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -90,7 +90,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_honor"
             android:roundIcon="@drawable/ic_launcher_honor"
-            android:label="إدارة نظام مدرستي"
+            android:label="@string/app_name"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

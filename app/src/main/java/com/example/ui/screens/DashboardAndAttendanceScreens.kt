@@ -59,8 +59,6 @@ fun DashboardScreen(
     val tuitions by viewModel.tuitions.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val occasionThemeConfig by viewModel.occasionThemeConfig.collectAsState()
-    val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
-    val dismissedBroadcastIds by viewModel.dismissedBroadcastIds.collectAsState()
     val dailyBehaviors by viewModel.dailyBehaviors.collectAsState()
     val dismissalCalls by viewModel.dismissalCalls.collectAsState()
     val featureSettings by viewModel.featureSettings.collectAsState()
@@ -83,23 +81,6 @@ fun DashboardScreen(
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isTeacher = currentUser?.role == UserRole.TEACHER
     val isAdmin = currentUser?.role == UserRole.ADMIN
-
-    val visibleDevBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds, currentUser?.role) {
-        val role = currentUser?.role
-        developerBroadcasts.filter { bc: DeveloperBroadcastItem ->
-            val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-            val notDismissed = bc.id !in dismissedBroadcastIds && key !in dismissedBroadcastIds
-            val roleMatches = when (bc.targetAudienceRole.uppercase().trim()) {
-                "", "ALL" -> true
-                "ADMIN" -> role == UserRole.ADMIN
-                "TEACHER" -> role == UserRole.TEACHER
-                "STUDENT" -> role == UserRole.STUDENT || role == UserRole.PARENT
-                else -> true
-            }
-            bc.isActive && notDismissed && roleMatches
-        }
-    }
-    val latestDevBroadcast: DeveloperBroadcastItem? = visibleDevBroadcasts.firstOrNull()
 
     var isEditingUrgentAlertRequested by remember { mutableStateOf(false) }
     var dashboardBehaviorVisibleCount by remember(selectedParentChildId) { mutableStateOf(3) }
@@ -141,7 +122,7 @@ fun DashboardScreen(
     ) {
         // Zero-Gap Seamless Full-Bleed Wave Stack:
         // 1) FIRST at the very top: 3D Royal Welcome Wave Hero ("مرحباً بك، ...")
-        // 2) SECOND (0.dp gap): Developer System Broadcast + Occasion Banner + Principal School Announcement
+        // 2) SECOND (0.dp gap): Developer System Broadcast + Principal School Announcement
         // 3) THIRD (0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
         item {
             val welcomeSubtitle = when {
@@ -211,64 +192,25 @@ fun DashboardScreen(
                     onBottomActionClick = if (isAdmin) {
                         { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) }
                     } else null,
-                    modifier = edgeToEdgeWaveModifier.zIndex(5f)
+                    modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 
-                // 2A) Central Developer System Broadcast Banner (Directly below Emerald Welcome Banner)
-                if (latestDevBroadcast != null) {
-                    DeveloperSystemBroadcastBanner(
-                        title = latestDevBroadcast.title,
-                        subtitle = latestDevBroadcast.message,
-                        badgeText = "إشعار النظام العام • ${latestDevBroadcast.targetAudienceArabicLabel}",
-                        formattedTimestamp = latestDevBroadcast.formattedCreatedAt,
-                        illustrationType = ThreeDIllustrationType.SYSTEM_BROADCAST_3D,
-                        topOverlapPadding = 22.dp,
-                        onDismiss = {
-                            val key = latestDevBroadcast.id.ifBlank {
-                                "${latestDevBroadcast.title}_${latestDevBroadcast.createdAt}"
-                            }
-                            viewModel.dismissDeveloperBroadcastForAdmin(key)
-                            if (latestDevBroadcast.id.isNotBlank()) {
-                                viewModel.dismissDeveloperBroadcastForAdmin(latestDevBroadcast.id)
-                            }
-                        },
-                        modifier = Modifier
-                            .seamlessWaveOverlap(26.dp)
-                            .zIndex(4f)
-                            .testTag("dashboard_developer_broadcast_banner")
-                    )
-
-                    if (latestDevBroadcast.imageBase64.isNotBlank() || latestDevBroadcast.imageUrl.isNotBlank()) {
-                        DeveloperAttachedImageBannerSection(
-                            imageBase64 = latestDevBroadcast.imageBase64,
-                            imageUrl = latestDevBroadcast.imageUrl
-                        )
-                    }
-                }
-
-                // 2B) Seasonal / Occasion Banner (with bespoke 3D Vector Canvas per occasion)
+                // 2) SECOND (Tucked seamlessly under Welcome Hero wave with 0.dp gap): Developer Broadcast + Principal Announcement
                 if (occasionThemeConfig.isActive) {
                     val devIconKey = occasionThemeConfig.resolvedIconKey
-                    val occasionIllustration = if (occasionThemeConfig.themeType != OccasionThemeType.CUSTOM_MANUAL) {
-                        occasionThemeConfig.themeType.toThreeDIllustrationType()
-                    } else {
-                        devIconKey.toThreeDIllustrationType()
-                    }
-                    val occasionOverlap = if (latestDevBroadcast != null) 18.dp else 26.dp
                     DeveloperSystemBroadcastBanner(
                         title = occasionThemeConfig.effectiveTitle,
                         subtitle = occasionThemeConfig.effectiveBannerText,
-                        badgeText = occasionThemeConfig.themeType.arabicLabel,
+                        badgeText = devIconKey.arabicLabel,
                         iconKey = devIconKey,
-                        illustrationType = occasionIllustration,
-                        topOverlapPadding = occasionOverlap - 4.dp,
+                        illustrationType = devIconKey.toThreeDIllustrationType(),
+                        topOverlapPadding = 22.dp,
                         modifier = Modifier
-                            .seamlessWaveOverlap(occasionOverlap)
+                            .seamlessWaveOverlap(26.dp)
                             .zIndex(3f)
                     )
                 }
 
-                // 2C) School Principal Announcement / Holiday Banner
                 if (shouldShowUrgentAlertBanner || todayHolidayLabel != null) {
                     val schoolBannerTitle = if (shouldShowUrgentAlertBanner) {
                         activeUrgentAlert.authorName.ifBlank { "تبليغ إداري هام" }
@@ -280,7 +222,7 @@ fun DashboardScreen(
                     } else {
                         "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
                     }
-                    val overlapWithAbove = if (latestDevBroadcast != null || occasionThemeConfig.isActive) 18.dp else 26.dp
+                    val overlapWithAbove = if (occasionThemeConfig.isActive) 18.dp else 26.dp
 
                     ThreeDMegaphoneAnnouncementBanner(
                         title = schoolBannerTitle,
@@ -308,7 +250,7 @@ fun DashboardScreen(
 
                 // 3) THIRD (Tucked seamlessly under Announcements/Welcome with 0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
                 if (featureSettings.showTopTeacherOnHome && topRatedTeachers.isNotEmpty() && topTeacherSummary != null) {
-                    val hasBannerAbove = latestDevBroadcast != null || occasionThemeConfig.isActive || shouldShowUrgentAlertBanner || todayHolidayLabel != null
+                    val hasBannerAbove = occasionThemeConfig.isActive || shouldShowUrgentAlertBanner || todayHolidayLabel != null
                     val spotlightOverlap = if (hasBannerAbove) 18.dp else 26.dp
                     SeamlessWaveTeacherSpotlightSection(
                         teacherName = topTeacherSummary.teacher.fullName,
