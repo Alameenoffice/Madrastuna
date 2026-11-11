@@ -2280,6 +2280,352 @@ class SchoolRepository(context: Context) {
         )
     }
 
+    fun getMasterDeveloperSecretCode(): String {
+        return prefs.getString("master_developer_secret_code_v1", "DEV-2026")?.trim()?.ifBlank { "DEV-2026" } ?: "DEV-2026"
+    }
+
+    fun setMasterDeveloperSecretCode(newCode: String) {
+        val clean = InputSanitizer.sanitize(newCode.trim()).ifBlank { "DEV-2026" }
+        prefs.edit().putString("master_developer_secret_code_v1", clean).apply()
+    }
+
+    fun discoverLocalSchoolIds(): List<String> {
+        val ids = mutableSetOf<String>()
+        val active = getActiveSchoolId()
+        if (active.isNotBlank() && active != "default_school") ids.add(active)
+        try {
+            prefs.all.keys.forEach { key ->
+                if (key.startsWith("schools/")) {
+                    val parts = key.split("/")
+                    if (parts.size >= 2) {
+                        val sid = parts[1].trim()
+                        if (sid.isNotBlank() && sid != "default_school") {
+                            ids.add(sid)
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return ids.toList()
+    }
+
+    fun ensureDefaultDiscoveredSchoolsIfEmpty(): List<RegisteredSchoolSummary> {
+        val existing = loadRegisteredSchools().toMutableList()
+        for (localSid in discoverLocalSchoolIds()) {
+            if (existing.none { it.schoolId.equals(localSid, ignoreCase = true) }) {
+                val cfg = loadSchoolConfig(localSid)
+                val accs = loadAccounts(localSid)
+                val adminAcc = accs.firstOrNull { it.role == UserRole.ADMIN }
+                existing.add(
+                    RegisteredSchoolSummary(
+                        schoolId = localSid,
+                        schoolName = cfg.schoolName.ifBlank { "ثانوية المتفوقين النموذجية" },
+                        address = cfg.address,
+                        schoolStage = cfg.schoolStage.arabicLabel,
+                        schoolType = cfg.schoolType.arabicLabel,
+                        ministryAffiliation = cfg.ministryAffiliation.ifBlank { "وزارة التربية" },
+                        schoolGenderType = cfg.schoolGenderType.ifBlank { "مدرسة بنين" },
+                        createdAt = cfg.createdAt.ifBlank { "2026-10-29" },
+                        isActive = cfg.isActive,
+                        adminUsername = adminAcc?.username ?: "${localSid}-admin",
+                        subscriptionExpiryDate = cfg.subscriptionExpiryDate.ifBlank { "2027-10-29" },
+                        isSchoolOfficiallyActivated = cfg.isSchoolOfficiallyActivated || accs.isNotEmpty(),
+                        schoolActivationCode = cfg.schoolActivationCode.ifBlank { localSid },
+                        adminPasswordPlain = adminAcc?.password?.takeIf { it.length <= 24 } ?: "123456",
+                        principalFullName = adminAcc?.fullName?.ifBlank { cfg.principalFullName } ?: cfg.principalFullName.ifBlank { "مدير المدرسة" }
+                    )
+                )
+            }
+        }
+        if (existing.isEmpty()) {
+            val defaultSchool1001 = RegisteredSchoolSummary(
+                schoolId = "1001",
+                schoolName = "ثانوية المتفوقين النموذجية",
+                address = "بغداد - المنصور",
+                schoolStage = SchoolStage.SECONDARY.arabicLabel,
+                schoolType = SchoolType.PRIVATE.arabicLabel,
+                ministryAffiliation = "وزارة التربية",
+                schoolGenderType = "مدرسة بنين",
+                createdAt = "2026-10-01",
+                isActive = true,
+                adminUsername = "1001-admin",
+                subscriptionExpiryDate = "2027-10-29",
+                isSchoolOfficiallyActivated = true,
+                schoolActivationCode = "1001",
+                adminPasswordPlain = "123456",
+                principalFullName = "أ. حيدر عبد الكريم المنصوري"
+            )
+            val defaultSchool1002 = RegisteredSchoolSummary(
+                schoolId = "1002",
+                schoolName = "مدرسة الفراهيدي الابتدائية الأهلية",
+                address = "نينوى - الموصل",
+                schoolStage = SchoolStage.PRIMARY.arabicLabel,
+                schoolType = SchoolType.PRIVATE.arabicLabel,
+                ministryAffiliation = "وزارة التربية",
+                schoolGenderType = "مدرسة مختلطة",
+                createdAt = "2026-10-15",
+                isActive = true,
+                adminUsername = "1002-admin",
+                subscriptionExpiryDate = "2027-10-29",
+                isSchoolOfficiallyActivated = true,
+                schoolActivationCode = "1002",
+                adminPasswordPlain = "123456",
+                principalFullName = "أ. محمود سالم الطائي"
+            )
+            existing.add(defaultSchool1001)
+            existing.add(defaultSchool1002)
+            saveRegisteredSchools(existing)
+        }
+        return existing
+    }
+
+    fun loadAccountsWithAutoDiscovery(schoolId: String): List<UserAccount> {
+        val cleanSid = schoolId.ifBlank { "1001" }
+        val stored = loadAccounts(cleanSid)
+        if (stored.isNotEmpty()) return stored
+
+        val reg = loadRegisteredSchools().firstOrNull { it.schoolId.equals(cleanSid, ignoreCase = true) }
+        val isPrimary = reg?.schoolStage?.contains("ابتدائ") == true
+        val defaultGrades = if (isPrimary) {
+            listOf("الأول الابتدائي", "الثاني الابتدائي", "الثالث الابتدائي", "الرابع الابتدائي", "الخامس الابتدائي", "السادس الابتدائي")
+        } else {
+            listOf("الأول المتوسط", "الثاني المتوسط", "الثالث المتوسط", "الرابع العلمي", "الخامس العلمي", "السادس العلمي")
+        }
+        val principalName = reg?.principalFullName?.ifBlank { "أ. حيدر عبد الكريم المنصوري" } ?: "أ. حيدر عبد الكريم المنصوري"
+        val adminPass = reg?.adminPasswordPlain?.ifBlank { "123456" } ?: "123456"
+
+        val autoAccounts = listOf(
+            UserAccount(
+                id = "admin_${cleanSid}",
+                username = "${cleanSid}-admin",
+                password = adminPass,
+                fullName = principalName,
+                role = UserRole.ADMIN,
+                isActive = true,
+                phone = "07701234567",
+                specialty = "مدير المدرسة العام",
+                assignedClasses = "جميع الصفوف والشعب",
+                schoolId = cleanSid,
+                gender = "ذكر",
+                ageYears = 45
+            ),
+            UserAccount(
+                id = "t1_${cleanSid}",
+                username = "${cleanSid}-t1",
+                password = "123456",
+                fullName = "أ. مصطفى كاظم الربيعي",
+                role = UserRole.TEACHER,
+                isActive = true,
+                phone = "07712345671",
+                specialty = "الرياضيات",
+                assignedClasses = "${defaultGrades[0]} - أ | ${defaultGrades[1]} - أ",
+                gradeClass = defaultGrades[0],
+                sectionName = "أ",
+                schoolId = cleanSid,
+                gender = "ذكر",
+                ageYears = 36
+            ),
+            UserAccount(
+                id = "t2_${cleanSid}",
+                username = "${cleanSid}-t2",
+                password = "123456",
+                fullName = "أ. نور الهدى جاسم",
+                role = UserRole.TEACHER,
+                isActive = true,
+                phone = "07712345672",
+                specialty = "اللغة العربية",
+                assignedClasses = "${defaultGrades[0]} - ب | ${defaultGrades[2]} - أ",
+                gradeClass = defaultGrades[0],
+                sectionName = "ب",
+                schoolId = cleanSid,
+                gender = "أنثى",
+                ageYears = 32
+            ),
+            UserAccount(
+                id = "t3_${cleanSid}",
+                username = "${cleanSid}-t3",
+                password = "123456",
+                fullName = "أ. علي حسين الشمري",
+                role = UserRole.TEACHER,
+                isActive = true,
+                phone = "07712345673",
+                specialty = "اللغة الإنكليزية",
+                assignedClasses = "${defaultGrades[1]} - أ | ${defaultGrades[2]} - ب",
+                gradeClass = defaultGrades[1],
+                sectionName = "أ",
+                schoolId = cleanSid,
+                gender = "ذكر",
+                ageYears = 34
+            ),
+            UserAccount(
+                id = "t4_${cleanSid}",
+                username = "${cleanSid}-t4",
+                password = "123456",
+                fullName = "أ. زينب عبد الله العبيدي",
+                role = UserRole.TEACHER,
+                isActive = true,
+                phone = "07712345674",
+                specialty = if (isPrimary) "العلوم" else "الفيزياء والكيمياء",
+                assignedClasses = "${defaultGrades.getOrElse(3) { defaultGrades[0] }} - أ",
+                gradeClass = defaultGrades.getOrElse(3) { defaultGrades[0] },
+                sectionName = "أ",
+                schoolId = cleanSid,
+                gender = "أنثى",
+                ageYears = 30
+            )
+        )
+        return autoAccounts
+    }
+
+    fun loadStudentsWithAutoDiscovery(schoolId: String): List<StudentRecord> {
+        val cleanSid = schoolId.ifBlank { "1001" }
+        val storedStudents = loadStudents(cleanSid).toMutableList()
+        val storedAccounts = loadAccounts(cleanSid)
+
+        // Merge any student accounts from `users` that aren't in `honor_roll`
+        val studentAccounts = storedAccounts.filter { it.role == UserRole.STUDENT }
+        for (stuAcc in studentAccounts) {
+            val matchId = stuAcc.linkedStudentId.ifBlank { stuAcc.id }
+            val alreadyInList = storedStudents.any {
+                it.id == matchId || it.id == stuAcc.id || it.studentName.trim() == stuAcc.fullName.trim()
+            }
+            if (!alreadyInList && stuAcc.fullName.isNotBlank()) {
+                storedStudents.add(
+                    StudentRecord(
+                        id = matchId.ifBlank { "stu_${stuAcc.id}" },
+                        studentName = stuAcc.fullName,
+                        gradeClass = stuAcc.gradeClass.ifBlank { "الأول المتوسط" },
+                        sectionName = stuAcc.sectionName.ifBlank { "أ" },
+                        parentName = "ولي أمر ${stuAcc.fullName}",
+                        parentPhone = stuAcc.phone.ifBlank { "07701234567" },
+                        address = stuAcc.address,
+                        studentUsername = stuAcc.username.ifBlank { "${cleanSid}-s1" },
+                        studentPassword = stuAcc.password.ifBlank { "123456" },
+                        parentUsername = "${cleanSid}-p1",
+                        parentPassword = "123456",
+                        excellencePoints = 94,
+                        schoolId = cleanSid,
+                        gender = stuAcc.gender,
+                        ageYears = stuAcc.ageYears
+                    )
+                )
+            }
+        }
+
+        if (storedStudents.isNotEmpty()) return storedStudents
+
+        val reg = loadRegisteredSchools().firstOrNull { it.schoolId.equals(cleanSid, ignoreCase = true) }
+        val isPrimary = reg?.schoolStage?.contains("ابتدائ") == true
+        val g1 = if (isPrimary) "الأول الابتدائي" else "الأول المتوسط"
+        val g2 = if (isPrimary) "الثاني الابتدائي" else "الثاني المتوسط"
+        val g3 = if (isPrimary) "السادس الابتدائي" else "الثالث المتوسط"
+
+        return listOf(
+            StudentRecord(
+                id = "stu_${cleanSid}_1",
+                studentName = "يوسف أحمد عبد الرحمن",
+                gradeClass = g1,
+                sectionName = "أ",
+                parentName = "أحمد عبد الرحمن",
+                parentPhone = "07701112233",
+                studentUsername = "${cleanSid}-1",
+                studentPassword = "123456",
+                parentUsername = "${cleanSid}-p1",
+                parentPassword = "123456",
+                excellencePoints = 98,
+                isOnHonorRoll = true,
+                honorTitle = "وسام التفوق الذهبي",
+                schoolId = cleanSid,
+                gender = "ذكر",
+                ageYears = if (isPrimary) 7 else 13
+            ),
+            StudentRecord(
+                id = "stu_${cleanSid}_2",
+                studentName = "مريم حيدر الكيلاني",
+                gradeClass = g1,
+                sectionName = "ب",
+                parentName = "حيدر الكيلاني",
+                parentPhone = "07701112234",
+                studentUsername = "${cleanSid}-2",
+                studentPassword = "123456",
+                parentUsername = "${cleanSid}-p2",
+                parentPassword = "123456",
+                excellencePoints = 96,
+                isOnHonorRoll = true,
+                honorTitle = "متميزة",
+                schoolId = cleanSid,
+                gender = "أنثى",
+                ageYears = if (isPrimary) 7 else 13
+            ),
+            StudentRecord(
+                id = "stu_${cleanSid}_3",
+                studentName = "عبد الله عمر الدليمي",
+                gradeClass = g2,
+                sectionName = "أ",
+                parentName = "عمر الدليمي",
+                parentPhone = "07701112235",
+                studentUsername = "${cleanSid}-3",
+                studentPassword = "123456",
+                parentUsername = "${cleanSid}-p3",
+                parentPassword = "123456",
+                excellencePoints = 93,
+                schoolId = cleanSid,
+                gender = "ذكر",
+                ageYears = if (isPrimary) 8 else 14
+            ),
+            StudentRecord(
+                id = "stu_${cleanSid}_4",
+                studentName = "فاطمة الزهراء محمد",
+                gradeClass = g2,
+                sectionName = "ب",
+                parentName = "محمد التميمي",
+                parentPhone = "07701112236",
+                studentUsername = "${cleanSid}-4",
+                studentPassword = "123456",
+                parentUsername = "${cleanSid}-p4",
+                parentPassword = "123456",
+                excellencePoints = 97,
+                isOnHonorRoll = true,
+                schoolId = cleanSid,
+                gender = "أنثى",
+                ageYears = if (isPrimary) 8 else 14
+            ),
+            StudentRecord(
+                id = "stu_${cleanSid}_5",
+                studentName = "حسن علي الخفاجي",
+                gradeClass = g3,
+                sectionName = "أ",
+                parentName = "علي الخفاجي",
+                parentPhone = "07701112237",
+                studentUsername = "${cleanSid}-5",
+                studentPassword = "123456",
+                parentUsername = "${cleanSid}-p5",
+                parentPassword = "123456",
+                excellencePoints = 94,
+                schoolId = cleanSid,
+                gender = "ذكر",
+                ageYears = if (isPrimary) 12 else 15
+            ),
+            StudentRecord(
+                id = "stu_${cleanSid}_6",
+                studentName = "سارة خالد العبيدي",
+                gradeClass = g3,
+                sectionName = "ج",
+                parentName = "خالد العبيدي",
+                parentPhone = "07701112238",
+                studentUsername = "${cleanSid}-6",
+                studentPassword = "123456",
+                parentUsername = "${cleanSid}-p6",
+                parentPassword = "123456",
+                excellencePoints = 95,
+                schoolId = cleanSid,
+                gender = "أنثى",
+                ageYears = if (isPrimary) 12 else 15
+            )
+        )
+    }
+
     fun loadRegisteredSchools(): List<RegisteredSchoolSummary> {
         val raw = prefs.getString("global_registered_schools", null) ?: return emptyList()
         return parseRegisteredSchoolsJson(raw)
@@ -2307,7 +2653,9 @@ class SchoolRepository(context: Context) {
                             adminUsername = o.optString("adminUsername", ""),
                             subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                             isSchoolOfficiallyActivated = o.optBoolean("isSchoolOfficiallyActivated", false),
-                            schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } }
+                            schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } },
+                            adminPasswordPlain = o.optString("adminPasswordPlain", "123456").ifBlank { "123456" },
+                            principalFullName = o.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" }
                         )
                     )
                 }
@@ -2335,6 +2683,8 @@ class SchoolRepository(context: Context) {
                 put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
                 put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
                 put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
+                put("adminPasswordPlain", s.adminPasswordPlain.ifBlank { "123456" })
+                put("principalFullName", InputSanitizer.sanitize(s.principalFullName.ifBlank { "مدير المدرسة" }))
             })
         }
         val jsonStr = arr.toString()
@@ -2359,6 +2709,7 @@ class SchoolRepository(context: Context) {
         val resolvedExpiry = config.subscriptionExpiryDate.ifBlank {
             if (existingIdx >= 0) current[existingIdx].subscriptionExpiryDate else "2027-10-29"
         }
+        val existingPass = if (existingIdx >= 0) current[existingIdx].adminPasswordPlain else "123456"
         val summary = RegisteredSchoolSummary(
             schoolId = config.schoolId,
             schoolName = config.schoolName,
@@ -2372,7 +2723,9 @@ class SchoolRepository(context: Context) {
             adminUsername = resolvedAdminUser,
             subscriptionExpiryDate = resolvedExpiry,
             isSchoolOfficiallyActivated = config.isSchoolOfficiallyActivated,
-            schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } }
+            schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } },
+            adminPasswordPlain = existingPass,
+            principalFullName = config.principalFullName.ifBlank { "مدير المدرسة" }
         )
         if (existingIdx >= 0) {
             current[existingIdx] = summary
@@ -2403,7 +2756,9 @@ class SchoolRepository(context: Context) {
                         targetSchoolId = o.optString("targetSchoolId", "ALL"),
                         iconKey = o.optString("iconKey", "BELL").ifBlank { "BELL" },
                         imageBase64 = o.optString("imageBase64", ""),
-                        imageUrl = o.optString("imageUrl", "")
+                        imageUrl = o.optString("imageUrl", ""),
+                        targetAudienceRole = o.optString("targetAudienceRole", "ALL").ifBlank { "ALL" },
+                        isActive = o.optBoolean("isActive", true)
                     )
                 )
             }
@@ -2441,6 +2796,8 @@ class SchoolRepository(context: Context) {
                 put("iconKey", b.iconKey.ifBlank { "BELL" })
                 put("imageBase64", b.imageBase64)
                 put("imageUrl", InputSanitizer.sanitize(b.imageUrl))
+                put("targetAudienceRole", b.targetAudienceRole.ifBlank { "ALL" })
+                put("isActive", b.isActive)
             })
         }
         return arr.toString()
@@ -4178,53 +4535,7 @@ class SchoolRepository(context: Context) {
     fun loadOfficialPrimaryCurriculumBooks(): List<com.example.ui.screens.CurriculumBookItem> {
         return com.example.ui.screens.IraqiCurriculumCatalog.defaultPrimaryBooks
     }
-
-    // =========================================================================
-    // 19. MASTER SYSTEM ADMIN CONSOLE HELPERS (إدارة نظام مدرستي المركزي للمطور)
-    // =========================================================================
-
-    fun loadMasterDeveloperSecretCode(): String {
-        val saved = prefs.getString("master_developer_secret_access_code", null)?.trim().orEmpty()
-        return saved.ifBlank { "DEV-2026" }
-    }
-
-    fun saveMasterDeveloperSecretCode(newCode: String) {
-        val clean = InputSanitizer.sanitize(newCode.trim()).ifBlank { "DEV-2026" }
-        prefs.edit().putString("master_developer_secret_access_code", clean).apply()
-        val payload = JSONObject().apply {
-            put("secretAccessCode", clean)
-            put("updatedAt", System.currentTimeMillis())
-        }.toString()
-        FirebaseCloudSync.pushGlobalCollectionAsync(
-            collectionName = FirebaseConfigConstants.COL_SYSTEM_SECURE_CONFIG,
-            docName = "master_console_secret",
-            jsonPayload = payload
-        )
-    }
-
-    fun savePlainAdminPasswordNote(schoolId: String, plainPassword: String) {
-        val cleanSid = schoolId.trim()
-        if (cleanSid.isBlank()) return
-        prefs.edit().putString("master_admin_plain_pass_$cleanSid", plainPassword.trim()).apply()
-    }
-
-    fun loadPlainAdminPasswordNote(schoolId: String): String {
-        val cleanSid = schoolId.trim()
-        if (cleanSid.isBlank()) return "123456"
-        return prefs.getString("master_admin_plain_pass_$cleanSid", null)?.takeIf { it.isNotBlank() } ?: "123456"
-    }
-
-    fun saveSchoolConfigForTargetSchool(config: SchoolConfig, targetSchoolId: String) {
-        val sid = targetSchoolId.trim().ifBlank { config.schoolId.trim() }
-        if (sid.isBlank()) return
-        val previousActiveSid = getActiveSchoolId()
-        saveSchoolConfig(config.copy(schoolId = sid))
-        if (previousActiveSid.isNotBlank() && previousActiveSid != sid) {
-            setActiveSchoolId(previousActiveSid)
-        }
-    }
 }
-
 
 
 

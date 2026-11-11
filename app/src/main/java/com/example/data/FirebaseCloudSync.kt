@@ -598,6 +598,30 @@ object FirebaseCloudSync {
     }
 
     /**
+     * Auto-discovers all school IDs stored under `/schools` in Firebase RTDB (`https://madrasati-app-d51dd-default-rtdb.firebaseio.com`).
+     */
+    suspend fun fetchAllSchoolIdsFromCloud(): List<String> = withContext(Dispatchers.IO) {
+        val discovered = mutableListOf<String>()
+        try {
+            val shallowUrl = "${FirebaseConfigConstants.DATABASE_URL}/schools.json?shallow=true"
+            val response = executeHttpGet(shallowUrl)
+            if (!response.isNullOrBlank() && response != "null") {
+                val obj = JSONObject(response)
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val rawKey = keys.next().trim()
+                    val cleanSid = InputSanitizer.sanitizeSchoolId(rawKey)
+                    if (cleanSid.isNotBlank() && cleanSid != "default_school") {
+                        discovered.add(cleanSid)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        discovered.distinct()
+    }
+
+    /**
      * Deeply deletes a school's entire node and all sub-collections from Firebase RTDB & Firestore,
      * plus any associated license documents.
      */

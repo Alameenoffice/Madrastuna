@@ -104,7 +104,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_national"
             android:roundIcon="@drawable/ic_launcher_national"
-            android:label="إدارة نظام مدرستي"
+            android:label="@string/app_name"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -118,7 +118,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_mawlid"
             android:roundIcon="@drawable/ic_launcher_mawlid"
-            android:label="إدارة نظام مدرستي"
+            android:label="@string/app_name"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

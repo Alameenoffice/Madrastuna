@@ -1143,10 +1143,14 @@ fun OccasionVectorEmblem(
 
     val resolvedIconKey = iconKey ?: when (themeType) {
         OccasionThemeType.OFFICIAL -> OccasionIconKey.CROWN
-        OccasionThemeType.RAMADAN_EID -> OccasionIconKey.CRESCENT
+        OccasionThemeType.RAMADAN_EID,
+        OccasionThemeType.RAMADAN,
+        OccasionThemeType.EID,
+        OccasionThemeType.MAWLID_NABAWI -> OccasionIconKey.CRESCENT
         OccasionThemeType.NEW_YEAR -> OccasionIconKey.GRADUATION_CAP
         OccasionThemeType.ACADEMIC_EXCELLENCE -> OccasionIconKey.TROPHY
-        OccasionThemeType.NATIONAL_DAY -> OccasionIconKey.FLAG
+        OccasionThemeType.NATIONAL_DAY,
+        OccasionThemeType.IRAQI_NATIONAL_DAY -> OccasionIconKey.FLAG
         OccasionThemeType.CUSTOM_MANUAL -> OccasionIconKey.CROWN
     }
 

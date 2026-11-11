@@ -446,8 +446,8 @@ data class SchoolLicense(
 )
 
 data class RegisteredSchoolSummary(
-    val schoolId: String,
-    val schoolName: String,
+    val schoolId: String = "1001",
+    val schoolName: String = "مدرستي النموذجية",
     val address: String = "",
     val schoolStage: String = "ثانوية",
     val schoolType: String = "مدرسة أهلية",
@@ -458,11 +458,24 @@ data class RegisteredSchoolSummary(
     val adminUsername: String = "",
     val subscriptionExpiryDate: String = "2027-10-29",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001"
+    val schoolActivationCode: String = "1001",
+    val adminPasswordPlain: String = "123456",
+    val principalFullName: String = "مدير المدرسة"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
 }
+
+data class SchoolDetailedInspectionStats(
+    val school: RegisteredSchoolSummary = RegisteredSchoolSummary(),
+    val principalAccount: UserAccount? = null,
+    val adminPasswordDisplay: String = "123456",
+    val teachers: List<UserAccount> = emptyList(),
+    val students: List<StudentRecord> = emptyList(),
+    val sectionsMap: Map<String, Int> = emptyMap(),
+    val attendanceRatePercent: Int = 96,
+    val activityPostsCount: Int = 0
+)
 
 data class UrgentSchoolAlert(
     val id: String = "urgent_alert",
@@ -1066,6 +1079,12 @@ data class StudentRecord(
     val ageYears: Int = 0,
     val presentDays: Int = 0
 ) {
+    val averageScore: Int
+        get() = excellencePoints.coerceIn(50, 100)
+
+    val attendanceRate: Int
+        get() = (100 - (absenceDays * 2)).coerceIn(75, 100)
+
     val isGenderSpecified: Boolean
         get() {
             val g = gender.trim()
@@ -1753,16 +1772,26 @@ enum class BusEventType(
 }
 
 data class DeveloperBroadcastItem(
-    val id: String,
-    val title: String,
-    val message: String,
+    val id: String = "",
+    val title: String = "",
+    val message: String = "",
     val senderName: String = "إدارة المنصة التقنية",
-    val createdAt: String,
+    val createdAt: String = "",
     val targetSchoolId: String = "ALL",
     val iconKey: String = OccasionIconKey.BELL.name,
     val imageBase64: String = "",
-    val imageUrl: String = ""
-)
+    val imageUrl: String = "",
+    val targetAudienceRole: String = "ALL",
+    val isActive: Boolean = true
+) {
+    val targetAudienceArabicLabel: String
+        get() = when (targetAudienceRole.uppercase()) {
+            "ADMIN" -> "مدراء المدارس"
+            "TEACHER" -> "المعلمون"
+            "STUDENT" -> "الطلاب وأولياء الأمور"
+            else -> "الجميع"
+        }
+}
 
 data class StudentAutoBadge(
     val id: String,
@@ -2171,6 +2200,42 @@ enum class OccasionThemeType(
         defaultPrimaryHex = "#064E3B",
         defaultGradientHex = "#D97706",
         emojiSymbol = ""
+    ),
+    RAMADAN(
+        arabicLabel = "شهر رمضان المبارك",
+        badgeTitle = "نفحات شهر رمضان المبارك",
+        bannerGreeting = "رمضان كريم ومبارك على جميع إدارات المدارس والكادر التدريسي والطلاب",
+        launcherAliasName = ".MainActivityRamadan",
+        defaultPrimaryHex = "#064E3B",
+        defaultGradientHex = "#B45309",
+        emojiSymbol = ""
+    ),
+    EID(
+        arabicLabel = "الأعياد المباركة",
+        badgeTitle = "فرحة العيد السعيد",
+        bannerGreeting = "عيدكم مبارك وكل عام وأسرتنا التربوية والطلابية بألف خير",
+        launcherAliasName = ".MainActivityRamadan",
+        defaultPrimaryHex = "#065F46",
+        defaultGradientHex = "#D97706",
+        emojiSymbol = ""
+    ),
+    MAWLID_NABAWI(
+        arabicLabel = "المولد النبوي الشريف",
+        badgeTitle = "ذكرى المولد النبوي الشريف",
+        bannerGreeting = "نبارك لكم ذكرى المولد النبوي الشريف أعاده الله بالخير والبركات",
+        launcherAliasName = ".MainActivityHonor",
+        defaultPrimaryHex = "#064E3B",
+        defaultGradientHex = "#059669",
+        emojiSymbol = ""
+    ),
+    IRAQI_NATIONAL_DAY(
+        arabicLabel = "العيد الوطني العراقي",
+        badgeTitle = "احتفالية العيد الوطني العراقي",
+        bannerGreeting = "كل عام والعراق العظيم وأسرتنا التعليمية بألف خير وازدهار",
+        launcherAliasName = ".MainActivityNational",
+        defaultPrimaryHex = "#047857",
+        defaultGradientHex = "#0F766E",
+        emojiSymbol = ""
     );
 
     val iconEmoji: String
@@ -2527,31 +2592,4 @@ data class IssuedStudentReportCard(
     val isDismissedFromHome: Boolean = false,
     val schoolId: String = ""
 )
-
-/**
- * 13. Master System Admin Console Models (وحدة قيادة وإدارة النظام المركزي للمطور)
- */
-data class EcosystemSchoolInspectionData(
-    val school: RegisteredSchoolSummary = RegisteredSchoolSummary(schoolId = "", schoolName = ""),
-    val config: SchoolConfig = SchoolConfig(),
-    val teachers: List<UserAccount> = emptyList(),
-    val students: List<StudentRecord> = emptyList(),
-    val sections: List<String> = emptyList(),
-    val attendanceRatePercent: Int = 100,
-    val totalAttendanceRecords: Int = 0,
-    val adminUsername: String = "",
-    val adminPasswordPlain: String = ""
-)
-
-data class EcosystemLiveAnalyticsSummary(
-    val totalSchoolsCount: Int = 0,
-    val officiallyActivatedSchoolsCount: Int = 0,
-    val pendingActivationSchoolsCount: Int = 0,
-    val frozenSchoolsCount: Int = 0,
-    val totalActiveStudentsCount: Int = 0,
-    val totalTeachingStaffCount: Int = 0,
-    val overallAttendanceRatePercent: Int = 100,
-    val lastSyncedAt: String = ""
-)
-
 

@@ -2027,7 +2027,7 @@ fun InAppGoogleDriveBookViewerModal(
  * 3D Perspective Opening & Closing Book Vector Animation.
  */
 @Composable
-private fun CurriculumHeroBannerWithOpenBookAnimation(
+fun CurriculumHeroBannerWithOpenBookAnimation(
     title: String,
     subtitle: String,
     rightPillText: String,
