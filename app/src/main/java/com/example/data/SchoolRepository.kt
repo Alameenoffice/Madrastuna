@@ -240,7 +240,10 @@ class SchoolRepository(context: Context) {
                 isCanteenWalletEnabled = obj.optBoolean("isCanteenWalletEnabled", parsedFeatures.canteenWalletEnabled),
                 principalFullName = obj.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" },
                 isSchoolOfficiallyActivated = obj.optBoolean("isSchoolOfficiallyActivated", false),
-                schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } }
+                schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } },
+                isSuspended = obj.optBoolean("isSuspended", !obj.optBoolean("isActive", true)),
+                activeBusEvent = obj.optString("activeBusEvent", ""),
+                activeBusEventTimestamp = obj.optString("activeBusEventTimestamp", "")
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -435,6 +438,9 @@ class SchoolRepository(context: Context) {
             put("principalFullName", InputSanitizer.sanitize(config.principalFullName.ifBlank { "مدير المدرسة" }))
             put("isSchoolOfficiallyActivated", config.isSchoolOfficiallyActivated)
             put("schoolActivationCode", InputSanitizer.sanitizeSchoolId(config.schoolActivationCode.ifBlank { sid.ifBlank { "1001" } }))
+            put("isSuspended", config.isSuspended || !config.isActive)
+            put("activeBusEvent", InputSanitizer.sanitize(config.activeBusEvent))
+            put("activeBusEventTimestamp", InputSanitizer.sanitize(config.activeBusEventTimestamp))
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
@@ -1021,7 +1027,8 @@ class SchoolRepository(context: Context) {
                         enrollmentHistory = parsedEnrollmentHistory,
                         archivedYearlySummaries = parsedArchivedSummaries,
                         gender = o.optString("gender", "").trim().let { if (it == "غير محدد") "" else it },
-                        ageYears = o.optInt("ageYears", o.optInt("age", 0)).coerceAtLeast(0)
+                        ageYears = o.optInt("ageYears", o.optInt("age", 0)).coerceAtLeast(0),
+                        isReportCardSentByPrincipal = o.optBoolean("isReportCardSentByPrincipal", false)
                     )
                 )
             }
@@ -1189,6 +1196,7 @@ class SchoolRepository(context: Context) {
                 put("gender", if (s.isGenderSpecified) InputSanitizer.sanitize(s.normalizedGenderLabel) else "")
                 put("ageYears", s.effectiveAgeYears)
                 put("age", s.effectiveAgeYears)
+                put("isReportCardSentByPrincipal", s.isReportCardSentByPrincipal)
             })
         }
         val jsonStr = arr.toString()
@@ -2307,7 +2315,8 @@ class SchoolRepository(context: Context) {
                             adminUsername = o.optString("adminUsername", ""),
                             subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                             isSchoolOfficiallyActivated = o.optBoolean("isSchoolOfficiallyActivated", false),
-                            schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } }
+                            schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } },
+                            isSuspended = o.optBoolean("isSuspended", !o.optBoolean("isActive", true))
                         )
                     )
                 }
@@ -2335,6 +2344,7 @@ class SchoolRepository(context: Context) {
                 put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
                 put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
                 put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
+                put("isSuspended", s.isSuspended || !s.isActive)
             })
         }
         val jsonStr = arr.toString()
@@ -2372,7 +2382,8 @@ class SchoolRepository(context: Context) {
             adminUsername = resolvedAdminUser,
             subscriptionExpiryDate = resolvedExpiry,
             isSchoolOfficiallyActivated = config.isSchoolOfficiallyActivated,
-            schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } }
+            schoolActivationCode = config.schoolActivationCode.ifBlank { config.schoolId.ifBlank { "1001" } },
+            isSuspended = config.isSuspended || !config.isActive
         )
         if (existingIdx >= 0) {
             current[existingIdx] = summary
@@ -3748,6 +3759,64 @@ class SchoolRepository(context: Context) {
         saveRegisteredSchools(remainingSchools)
 
         FirebaseCloudSync.deleteSchoolNodesFromCloudAsync(cleanSid, matchedLicenseCodes)
+    }
+
+    /**
+     * Clears the local cache and session for a specific school when it is suspended or deleted from the cloud.
+     */
+    fun clearLocalSchoolCacheOnly(schoolId: String) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return
+
+        val subCols = listOf(
+            FirebaseConfigConstants.COL_SETTINGS,
+            FirebaseConfigConstants.COL_USERS,
+            FirebaseConfigConstants.COL_SUBJECTS,
+            FirebaseConfigConstants.COL_ATTENDANCE,
+            FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK,
+            FirebaseConfigConstants.COL_GRADES,
+            FirebaseConfigConstants.COL_HONOR_ROLL,
+            FirebaseConfigConstants.COL_TUITION_FEES,
+            FirebaseConfigConstants.COL_REPORTS,
+            FirebaseConfigConstants.COL_MESSAGES,
+            FirebaseConfigConstants.COL_EVENTS_GALLERY,
+            FirebaseConfigConstants.COL_NOTIFICATIONS,
+            FirebaseConfigConstants.COL_SCHEDULES_PERIODS,
+            FirebaseConfigConstants.COL_EXAMS,
+            FirebaseConfigConstants.COL_LEAVE_REQUESTS,
+            FirebaseConfigConstants.COL_BUS_TRACKING,
+            FirebaseConfigConstants.COL_STUDY_MATERIALS,
+            FirebaseConfigConstants.COL_FEATURE_SETTINGS,
+            FirebaseConfigConstants.COL_DAILY_BEHAVIOR,
+            FirebaseConfigConstants.COL_HOMEWORK_SUBMISSIONS,
+            FirebaseConfigConstants.COL_QUICK_QUIZZES,
+            FirebaseConfigConstants.COL_DISMISSAL_CALLS,
+            FirebaseConfigConstants.COL_LOST_AND_FOUND,
+            FirebaseConfigConstants.COL_PRIVATE_SUGGESTIONS,
+            FirebaseConfigConstants.COL_URGENT_ALERT,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITIES,
+            FirebaseConfigConstants.COL_STUDENT_ACTIVITY_COMMENTS,
+            FirebaseConfigConstants.COL_ACTIVITY_REPORTS,
+            FirebaseConfigConstants.COL_USER_PROFILES,
+            FirebaseConfigConstants.COL_HOLIDAYS,
+            FirebaseConfigConstants.COL_TEACHER_RATINGS,
+            FirebaseConfigConstants.COL_ISSUED_REPORT_CARDS
+        )
+
+        val editor = prefs.edit()
+        subCols.forEach { sub ->
+            editor.remove(scopedKey(cleanSid, sub))
+        }
+        editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods")
+        editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES)}_exams")
+        editor.remove("last_shown_urgent_alert_$cleanSid")
+        if (getActiveSchoolId() == cleanSid) {
+            editor.remove("active_school_id")
+            editor.remove("active_user_session")
+            editor.putBoolean("school_security_gate_passed", false)
+            editor.remove("verified_gate_school_code")
+        }
+        editor.apply()
     }
 
     /**

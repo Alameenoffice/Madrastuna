@@ -458,7 +458,8 @@ data class RegisteredSchoolSummary(
     val adminUsername: String = "",
     val subscriptionExpiryDate: String = "2027-10-29",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001"
+    val schoolActivationCode: String = "1001",
+    val isSuspended: Boolean = false
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -514,7 +515,10 @@ data class SchoolConfig(
     val isCanteenWalletEnabled: Boolean = true,
     val principalFullName: String = "مدير المدرسة",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001"
+    val schoolActivationCode: String = "1001",
+    val isSuspended: Boolean = false,
+    val activeBusEvent: String = "",
+    val activeBusEventTimestamp: String = ""
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -1064,7 +1068,8 @@ data class StudentRecord(
     val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList(),
     val gender: String = "",
     val ageYears: Int = 0,
-    val presentDays: Int = 0
+    val presentDays: Int = 0,
+    val isReportCardSentByPrincipal: Boolean = false
 ) {
     val isGenderSpecified: Boolean
         get() {
@@ -1749,7 +1754,21 @@ enum class BusEventType(
         arabicLabel = "انطلاق العودة للمنزل",
         notificationTitle = "انطلاق خط العودة إلى المنزل",
         notificationBodyTemplate = "انطلق خط النقل المدرسي الآن للعودة إلى المنزل وعلى متنه ابنكم (%s)."
-    )
+    );
+
+    val shortButtonLabel: String
+        get() = when (this) {
+            MORNING_DEPARTURE -> "انطلاق صباحي"
+            ARRIVED_AT_SCHOOL -> "وصل للمدرسة"
+            RETURN_HOME_DEPARTURE -> "رحلة العودة"
+        }
+
+    val liveRouteStatusText: String
+        get() = when (this) {
+            MORNING_DEPARTURE -> "الباص في الطريق نحو المدرسة الآن..."
+            ARRIVED_AT_SCHOOL -> "وصل الباص إلى المدرسة بسلام"
+            RETURN_HOME_DEPARTURE -> "غادر الباص المدرسة في رحلة العودة للمنازل"
+        }
 }
 
 data class DeveloperBroadcastItem(

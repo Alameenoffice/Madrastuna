@@ -3311,7 +3311,7 @@ fun ExamsAndGradesScreen(
                 val myLatestCard = remember(issuedReportCards, myStu?.id) {
                     myStu?.id?.let { viewModel.getLatestIssuedReportCardForStudent(it) }
                 }
-                if (myLatestCard != null) {
+                if (myStu?.isReportCardSentByPrincipal == true && myLatestCard != null) {
                     ParentIssuedReportCardArrivalBanner(
                         reportCard = myLatestCard,
                         onClick = { viewModel.openCelebrationReportCardModal(myLatestCard) }
@@ -3384,37 +3384,43 @@ fun ExamsAndGradesScreen(
                 }
             }
 
-            // 3rd Main Tab: إصدار الكارتات والنتائج
-            val isReportCardsTab = selectedTab == 2
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = if (isReportCardsTab) Color(0xFF047857) else Color(0xFFFFFBEB),
-                border = BorderStroke(
-                    1.4.dp,
-                    if (isReportCardsTab) Color(0xFFFDE68A) else Color(0xFFF59E0B).copy(alpha = 0.55f)
-                ),
-                shadowElevation = if (isReportCardsTab) 7.dp else 2.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 46.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { selectedTab = 2 }
-                    .testTag("tab_smart_report_cards_hub")
-            ) {
-                Box(
+            // 3rd Main Tab: إصدار الكارتات والنتائج (Principal Only) / كارت الدرجات الرسمي (Student & Parent)
+            if (currentUser?.role == UserRole.ADMIN || isParentOrStudent) {
+                val isReportCardsTab = selectedTab == 2
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isReportCardsTab) Color(0xFF047857) else Color(0xFFFFFBEB),
+                    border = BorderStroke(
+                        1.4.dp,
+                        if (isReportCardsTab) Color(0xFFFDE68A) else Color(0xFFF59E0B).copy(alpha = 0.55f)
+                    ),
+                    shadowElevation = if (isReportCardsTab) 7.dp else 2.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 11.dp),
-                    contentAlignment = Alignment.Center
+                        .heightIn(min = 46.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { selectedTab = 2 }
+                        .testTag("tab_smart_report_cards_hub")
                 ) {
-                    Text(
-                        text = "إصدار الكارتات والنتائج",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isReportCardsTab) Color.White else Color(0xFF78350F),
-                        maxLines = 1,
-                        softWrap = false
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 11.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (currentUser?.role == UserRole.ADMIN) {
+                                "إصدار الكارتات والنتائج"
+                            } else {
+                                "كارت الدرجات الرسمي"
+                            },
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isReportCardsTab) Color.White else Color(0xFF78350F),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
         }
@@ -3529,22 +3535,58 @@ fun ExamsAndGradesScreen(
                                     if (myBadges.isNotEmpty()) {
                                         StudentAutoBadgesRow(badges = myBadges)
                                     }
-                                    OutlinedButton(
-                                        onClick = {
-                                            val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
-                                                context = context,
-                                                student = myStu,
-                                                grades = allSubjectsReport,
-                                                schoolConfig = schoolConfig
-                                            )
-                                            viewModel.showBannerMessage(msg)
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("تصدير / طباعة بطاقة الدرجات الرسمية (PDF)")
+                                    if (myStu.isReportCardSentByPrincipal) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                                    context = context,
+                                                    student = myStu,
+                                                    grades = allSubjectsReport,
+                                                    schoolConfig = schoolConfig
+                                                )
+                                                viewModel.showBannerMessage(msg)
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("btn_export_official_report_card_pdf"),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("تصدير / طباعة بطاقة الدرجات الرسمية (PDF)")
+                                        }
+                                    } else {
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("report_card_pending_principal_approval_card"),
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = Color.White,
+                                            border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "كارت الدرجات الرسمي قيد المراجعة والاعتماد",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF065F46),
+                                                    textAlign = TextAlign.Center
+                                                )
+                                                Text(
+                                                    text = "سيظهر كارت النتائج النهائي هنا فور إصداره وإرساله رسمياً من قِبل مدير المدرسة.",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF475569),
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -4909,11 +4951,20 @@ fun ExamsAndGradesScreen(
             // =========================================================================
             if (isParentOrStudent) {
                 val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
-                val myIssuedCards = remember(issuedReportCards, myStu?.id) {
-                    issuedReportCards.filter { it.studentId == myStu?.id }
+                val isReportCardSent = myStu?.isReportCardSentByPrincipal == true
+                val myIssuedCards = remember(issuedReportCards, myStu?.id, isReportCardSent) {
+                    if (isReportCardSent) {
+                        issuedReportCards.filter { it.studentId == myStu?.id }
+                    } else {
+                        emptyList()
+                    }
                 }
-                val livePreviewCard = remember(myStu, grades, selectedReportCardPeriod) {
-                    myStu?.let { viewModel.buildStudentReportCardPreview(it, selectedReportCardPeriod) }
+                val livePreviewCard = remember(myStu, grades, selectedReportCardPeriod, isReportCardSent) {
+                    if (isReportCardSent && myStu != null) {
+                        viewModel.buildStudentReportCardPreview(myStu, selectedReportCardPeriod)
+                    } else {
+                        null
+                    }
                 }
 
                 LazyColumn(
@@ -4937,136 +4988,242 @@ fun ExamsAndGradesScreen(
                         )
                     }
 
-                    if (myIssuedCards.isNotEmpty()) {
-                        item {
-                            Text(
-                                text = "الكارتات المدرسية الرسمية الصادرة من إدارة المدرسة (${myIssuedCards.size}):",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF047857)
-                            )
-                        }
-                        items(myIssuedCards, key = { it.id }) { card ->
+                    if (!isReportCardSent) {
+                        item(key = "student_report_card_pending_notice") {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { viewModel.openCelebrationReportCardModal(card) },
-                                shape = RoundedCornerShape(20.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (card.isOverallPassed) Color(0xFFECFDF5) else Color(0xFFFFFBEB)
-                                ),
-                                border = BorderStroke(
-                                    1.5.dp,
-                                    if (card.isOverallPassed) Color(0xFF10B981) else Color(0xFFF59E0B)
-                                )
+                                    .testTag("student_report_card_pending_notice_card"),
+                                shape = RoundedCornerShape(22.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                border = BorderStroke(1.5.dp, Color(0xFF10B981).copy(alpha = 0.55f)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                             ) {
-                                Column(
+                                Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                colors = listOf(
+                                                    Color(0xFFECFDF5).copy(alpha = 0.85f),
+                                                    Color.White
+                                                )
+                                            )
+                                        )
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 28.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = card.periodType.arabicTitle,
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFF064E3B)
-                                            )
-                                            Text(
-                                                text = "تاريخ الإصدار: ${card.issuedAt} • مصادقة: ${card.principalName}",
-                                                fontSize = 11.5.sp,
-                                                color = Color(0xFF475569)
-                                            )
-                                        }
                                         Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = if (card.isOverallPassed) Color(0xFF059669) else Color(0xFFD97706)
+                                            shape = CircleShape,
+                                            color = Color(0xFFD1FAE5),
+                                            border = BorderStroke(1.2.dp, Color(0xFF10B981)),
+                                            modifier = Modifier.size(64.dp)
                                         ) {
-                                            Text(
-                                                text = if (card.isOverallPassed) "ناجح (${card.averagePercent}%)" else "مكمل / متابعة (${card.averagePercent}%)",
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White,
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.WorkspacePremium,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF047857),
+                                                    modifier = Modifier.size(34.dp)
+                                                )
+                                            }
                                         }
-                                    }
-                                    Button(
-                                        onClick = { viewModel.openCelebrationReportCardModal(card) },
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color(0xFF047857),
-                                            contentColor = Color.White
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Icon(Icons.Filled.WorkspacePremium, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
+
                                         Text(
-                                            text = "فتح الكارت المدرسي الذكي والنتيجة الكاملة",
-                                            fontWeight = FontWeight.ExtraBold
+                                            text = "كارت الدرجات الرسمي قيد المراجعة والاعتماد",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF064E3B),
+                                            textAlign = TextAlign.Center
+                                        )
+
+                                        Text(
+                                            text = "سيظهر كارت النتائج النهائي هنا فور إصداره وإرساله رسمياً من قِبل مدير المدرسة.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF475569),
+                                            textAlign = TextAlign.Center,
+                                            lineHeight = 22.sp
                                         )
                                     }
                                 }
                             }
                         }
-                    }
-
-                    if (livePreviewCard != null) {
-                        item {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
-                                border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
-                            ) {
-                                Column(
+                    } else {
+                        if (myIssuedCards.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "الكارتات المدرسية الرسمية الصادرة من إدارة المدرسة (${myIssuedCards.size}):",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF047857)
+                                )
+                            }
+                            items(myIssuedCards, key = { it.id }) { card ->
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Text(
-                                        text = "معاينة الكارت المدرسي حسب الفصل:",
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF065F46)
+                                        .clickable { viewModel.openCelebrationReportCardModal(card) },
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (card.isOverallPassed) Color(0xFFECFDF5) else Color(0xFFFFFBEB)
+                                    ),
+                                    border = BorderStroke(
+                                        1.5.dp,
+                                        if (card.isOverallPassed) Color(0xFF10B981) else Color(0xFFF59E0B)
                                     )
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        items(ReportCardPeriodType.entries) { pType ->
-                                            FilterChip(
-                                                selected = selectedReportCardPeriod == pType,
-                                                onClick = { selectedReportCardPeriod = pType },
-                                                label = { Text(pType.arabicTitle, maxLines = 1, softWrap = false) }
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = card.periodType.arabicTitle,
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF064E3B)
+                                                )
+                                                Text(
+                                                    text = "تاريخ الإصدار: ${card.issuedAt} • مصادقة: ${card.principalName}",
+                                                    fontSize = 11.5.sp,
+                                                    color = Color(0xFF475569)
+                                                )
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = if (card.isOverallPassed) Color(0xFF059669) else Color(0xFFD97706)
+                                            ) {
+                                                Text(
+                                                    text = if (card.isOverallPassed) "ناجح (${card.averagePercent}%)" else "مكمل / متابعة (${card.averagePercent}%)",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                        Button(
+                                            onClick = { viewModel.openCelebrationReportCardModal(card) },
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFF047857),
+                                                contentColor = Color.White
+                                            ),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(Icons.Filled.WorkspacePremium, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "فتح الكارت المدرسي الذكي والنتيجة الكاملة",
+                                                fontWeight = FontWeight.ExtraBold
                                             )
                                         }
                                     }
-                                    Button(
-                                        onClick = { viewModel.openCelebrationReportCardModal(livePreviewCard) },
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color(0xFF059669),
-                                            contentColor = Color.White
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
+                                }
+                            }
+                        }
+
+                        if (livePreviewCard != null && myStu != null) {
+                            item {
+                                val studentSubjects = viewModel.getSubjectsForClass(myStu.gradeClass, null)
+                                val myGrades = grades.filter { it.studentId == myStu.id }
+                                val allSubjectsReport = studentSubjects.map { subjName ->
+                                    val dynamicScale = viewModel.getDefaultMaxScoreForClassAndSubject(myStu.gradeClass, subjName)
+                                    myGrades.firstOrNull { it.subjectName == subjName } ?: SubjectGrade(
+                                        id = "temp_$subjName",
+                                        schoolId = schoolConfig.schoolId,
+                                        studentId = myStu.id,
+                                        studentName = myStu.studentName,
+                                        gradeClass = myStu.gradeClass,
+                                        subjectName = subjName,
+                                        maxScoreScale = dynamicScale,
+                                        dailyScore = 0,
+                                        month1Score = 0,
+                                        month2Score = 0,
+                                        midYearScore = 0,
+                                        finalExamScore = 0
+                                    )
+                                }
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        Icon(Icons.Filled.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "استعراض (${selectedReportCardPeriod.arabicTitle}) بتصميم الشهادة الفاخرة",
+                                            text = "معاينة الكارت المدرسي المعتمد حسب الفصل:",
                                             fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 12.sp,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Ellipsis
+                                            color = Color(0xFF065F46)
                                         )
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            items(ReportCardPeriodType.entries) { pType ->
+                                                FilterChip(
+                                                    selected = selectedReportCardPeriod == pType,
+                                                    onClick = { selectedReportCardPeriod = pType },
+                                                    label = { Text(pType.arabicTitle, maxLines = 1, softWrap = false) }
+                                                )
+                                            }
+                                        }
+                                        Button(
+                                            onClick = { viewModel.openCelebrationReportCardModal(livePreviewCard) },
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFF059669),
+                                                contentColor = Color.White
+                                            ),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(Icons.Filled.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "استعراض (${selectedReportCardPeriod.arabicTitle}) بتصميم الشهادة الفاخرة",
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 12.sp,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                                    context = context,
+                                                    student = myStu,
+                                                    grades = allSubjectsReport,
+                                                    schoolConfig = schoolConfig
+                                                )
+                                                viewModel.showBannerMessage(msg)
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("btn_export_official_report_card_pdf_tab2"),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("تصدير / طباعة بطاقة الدرجات الرسمية (PDF)")
+                                        }
                                     }
                                 }
                             }
@@ -5306,7 +5463,7 @@ fun ExamsAndGradesScreen(
 
                     // Student Cards List with Pass/Fail status, Preview & Send to Parent
                     items(studentPreviewCards, key = { "${it.first.id}_${selectedReportCardPeriod.name}" }) { (stu, previewCard) ->
-                        val alreadyIssued = issuedReportCards.any {
+                        val alreadyIssued = stu.isReportCardSentByPrincipal || issuedReportCards.any {
                             it.studentId == stu.id && it.periodType == selectedReportCardPeriod
                         }
                         Card(
@@ -5436,12 +5593,33 @@ fun ExamsAndGradesScreen(
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                text = if (alreadyIssued) "تم الإرسال (إعادة إرسال)" else "إرسال الكارت لولي الأمر",
+                                                text = if (alreadyIssued) "تم الإرسال (تحديث)" else "إرسال الكارت لولي الأمر",
                                                 fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 maxLines = 1,
                                                 softWrap = false
                                             )
+                                        }
+
+                                        if (alreadyIssued) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.revokeStudentReportCard(stu, selectedReportCardPeriod)
+                                                },
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.2.dp, DangerRed),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                                modifier = Modifier.weight(0.85f)
+                                            ) {
+                                                Text(
+                                                    text = "إلغاء الإرسال",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DangerRed,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
                                         }
                                     }
                                 }

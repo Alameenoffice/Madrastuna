@@ -1325,231 +1325,210 @@ fun CurriculumBooksScreen(
     )
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
                 .testTag("curriculum_books_screen"),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 4.dp, bottom = 100.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            // 1. Royal 3D Wave Hero Header with Floating Smart Knowledge Hub Vector Animation on the left
+            item(key = "curriculum_hero_banner") {
+                CurriculumHeroBannerWithOpenBookAnimation(
+                    title = "المناهج الدراسية والكتب الرسمية",
+                    subtitle = "تصفح وقراءة كافة الكتب المنهجية المعتمدة مباشرة داخل المنصة",
+                    rightPillText = "منهج وزارة التربية المعتمد",
+                    leftPillText = "${allBooks.size.coerceAtLeast(56)} كتاب منهجي"
+                )
+            }
 
-            // Royal 3D Wave Hero Header with exclusive Opening & Closing 3D Book Vector Animation on the left
-            CurriculumHeroBannerWithOpenBookAnimation(
-                title = "المناهج الدراسية والكتب الرسمية",
-                subtitle = "تصفح وقراءة كافة الكتب المنهجية المعتمدة مباشرة داخل المنصة",
-                rightPillText = "منهج وزارة التربية المعتمد",
-                leftPillText = "${allBooks.size.coerceAtLeast(56)} كتاب منهجي"
-            )
-
-            // Unified Luxury Filter Card for Stages, Grade Classes & Search (Zero text clipping)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
-                ),
-                border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            // 2. Unified Luxury Filter Card for Stages, Grade Classes & Search (Zero text clipping)
+            item(key = "curriculum_filter_card") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    // 1. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية) — Zero clipping, no cramped icons
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isDarkMode) Color(0xFF0F172A) else AdaptiveSoftSurface)
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        CurriculumAcademicStage.entries.forEach { stage ->
-                            val isSelected = selectedStage == stage && searchQuery.isBlank()
-                            Surface(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedStage = stage
-                                    selectedGradeClass = stage.gradeClasses.first()
-                                },
-                                shape = RoundedCornerShape(11.dp),
-                                color = if (isSelected) RoyalGreen else Color.Transparent,
-                                shadowElevation = if (isSelected) 3.dp else 0.dp,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .testTag("curriculum_stage_tab_${stage.name}")
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
+                        // 1. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية) — Zero clipping
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isDarkMode) Color(0xFF0F172A) else AdaptiveSoftSurface)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CurriculumAcademicStage.entries.forEach { stage ->
+                                val isSelected = selectedStage == stage && searchQuery.isBlank()
+                                Surface(
+                                    onClick = {
+                                        searchQuery = ""
+                                        selectedStage = stage
+                                        selectedGradeClass = stage.gradeClasses.first()
+                                    },
+                                    shape = RoundedCornerShape(11.dp),
+                                    color = if (isSelected) RoyalGreen else Color.Transparent,
+                                    shadowElevation = if (isSelected) 3.dp else 0.dp,
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 4.dp)
+                                        .weight(1f)
+                                        .height(42.dp)
+                                        .testTag("curriculum_stage_tab_${stage.name}")
                                 ) {
-                                    Text(
-                                        text = stage.shortBadge,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                        color = if (isSelected) {
-                                            Color.White
-                                        } else if (isDarkMode) {
-                                            Color(0xFFE2E8F0)
-                                        } else {
-                                            DeepForestGreen
-                                        },
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = stage.shortBadge,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                            color = if (isSelected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFE2E8F0)
+                                            } else {
+                                                DeepForestGreen
+                                            },
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // 2. Grade Classes Horizontal Filter Chips (matching ScheduleAndHomeworkScreen)
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(horizontal = 2.dp)
-                    ) {
-                        items(selectedStage.gradeClasses) { gradeClass ->
-                            val isGradeSelected = selectedGradeClass == gradeClass && searchQuery.isBlank()
-                            val gradeBookCount = remember(allBooks, selectedStage, gradeClass) {
-                                allBooks.count { it.stage == selectedStage && it.gradeClass == gradeClass }
-                            }
-                            Surface(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedGradeClass = gradeClass
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isGradeSelected) {
-                                    DeepEmerald
-                                } else if (isDarkMode) {
-                                    Color(0xFF0F172A)
-                                } else {
-                                    AdaptiveSoftSurface
-                                },
-                                border = BorderStroke(
-                                    width = if (isGradeSelected) 1.4.dp else 1.dp,
-                                    color = if (isGradeSelected) GoldAccent else AdaptiveSoftBorder
-                                ),
-                                shadowElevation = if (isGradeSelected) 2.dp else 0.dp,
-                                modifier = Modifier
-                                    .height(38.dp)
-                                    .testTag("curriculum_grade_chip_$gradeClass")
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(horizontal = 14.dp)
+                        // 2. Grade Classes Horizontal Filter Chips
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(horizontal = 2.dp)
+                        ) {
+                            items(selectedStage.gradeClasses) { gradeClass ->
+                                val isGradeSelected = selectedGradeClass == gradeClass && searchQuery.isBlank()
+                                val gradeBookCount = remember(allBooks, selectedStage, gradeClass) {
+                                    allBooks.count { it.stage == selectedStage && it.gradeClass == gradeClass }
+                                }
+                                Surface(
+                                    onClick = {
+                                        searchQuery = ""
+                                        selectedGradeClass = gradeClass
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isGradeSelected) {
+                                        DeepEmerald
+                                    } else if (isDarkMode) {
+                                        Color(0xFF0F172A)
+                                    } else {
+                                        AdaptiveSoftSurface
+                                    },
+                                    border = BorderStroke(
+                                        width = if (isGradeSelected) 1.4.dp else 1.dp,
+                                        color = if (isGradeSelected) GoldAccent else AdaptiveSoftBorder
+                                    ),
+                                    shadowElevation = if (isGradeSelected) 2.dp else 0.dp,
+                                    modifier = Modifier
+                                        .height(38.dp)
+                                        .testTag("curriculum_grade_chip_$gradeClass")
                                 ) {
-                                    Text(
-                                        text = if (gradeBookCount > 0) {
-                                            "$gradeClass ($gradeBookCount)"
-                                        } else {
-                                            gradeClass
-                                        },
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = if (isGradeSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                        color = if (isGradeSelected) {
-                                            Color.White
-                                        } else if (isDarkMode) {
-                                            Color(0xFFA7F3D0)
-                                        } else {
-                                            DeepForestGreen
-                                        },
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(horizontal = 14.dp)
+                                    ) {
+                                        Text(
+                                            text = if (gradeBookCount > 0) {
+                                                "$gradeClass ($gradeBookCount)"
+                                            } else {
+                                                gradeClass
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = if (isGradeSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                            color = if (isGradeSelected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFA7F3D0)
+                                            } else {
+                                                DeepForestGreen
+                                            },
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // 3. Search Bar with Custom Animated Canvas Vector Icons
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = {
-                            Text(
-                                text = "ابحث عن اسم الكتاب أو الصف الدراسي...",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        },
-                        leadingIcon = {
-                            AnimatedSearchVectorIcon(
-                                tint = DeepEmerald,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotBlank()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    AnimatedClearVectorIcon(
-                                        tint = if (isDarkMode) Color(0xFF94A3B8) else DeepEmerald,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                        // 3. Search Bar with Custom Animated Canvas Vector Icons
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = {
+                                Text(
+                                    text = "ابحث عن اسم الكتاب أو الصف الدراسي...",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            leadingIcon = {
+                                AnimatedSearchVectorIcon(
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (searchQuery.isNotBlank()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        AnimatedClearVectorIcon(
+                                            tint = if (isDarkMode) Color(0xFF94A3B8) else DeepEmerald,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("curriculum_search_input")
-                    )
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("curriculum_search_input")
+                        )
+                    }
                 }
             }
 
-            // Smooth AnimatedContent when switching between stages or grades
-            AnimatedContent(
-                targetState = Triple(selectedStage, selectedGradeClass, displayedBooks),
-                transitionSpec = {
-                    (fadeIn(animationSpec = tween(260)) +
-                        slideInHorizontally(animationSpec = tween(260)) { fullWidth -> fullWidth / 10 })
-                        .togetherWith(
-                            fadeOut(animationSpec = tween(180)) +
-                                slideOutHorizontally(animationSpec = tween(180)) { fullWidth -> -fullWidth / 12 }
-                        )
-                        .using(SizeTransform(clip = false))
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                label = "curriculum_grade_animated_content"
-            ) { (stageState, gradeState, booksForState) ->
-                if (booksForState.isEmpty()) {
+            // 3. Books List or Elegant Empty Stage Card inside the unified LazyColumn
+            if (displayedBooks.isEmpty()) {
+                item(key = "curriculum_empty_stage_${selectedStage.name}_$selectedGradeClass") {
                     InteractiveSmartLibraryStageView(
-                        selectedStage = stageState,
-                        selectedGradeClass = gradeState,
+                        selectedStage = selectedStage,
+                        selectedGradeClass = selectedGradeClass,
                         hasActiveSearchQuery = searchQuery.isNotBlank(),
                         isDarkMode = isDarkMode
                     )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight()
-                            .testTag("curriculum_books_list"),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 96.dp)
-                    ) {
-                        items(booksForState, key = { it.id }) { book ->
-                            CurriculumBookOfficialCard(
-                                book = book,
-                                isDarkMode = isDarkMode,
-                                onDirectOpenBook = {
-                                    activeBookInViewer = book
-                                }
-                            )
+                }
+            } else {
+                items(displayedBooks, key = { it.id }) { book ->
+                    CurriculumBookOfficialCard(
+                        book = book,
+                        isDarkMode = isDarkMode,
+                        onDirectOpenBook = {
+                            activeBookInViewer = book
                         }
-                    }
+                    )
                 }
             }
         }
@@ -1566,9 +1545,9 @@ fun CurriculumBooksScreen(
 }
 
 /**
- * Interactive Animated Stage for Intermediate & Preparatory Curriculum Stages:
- * Displays `OpeningAndClosing3DBookVectorAnimation` in the center of the stage card
- * with clean, non-technical Arabic copy.
+ * Elegant White Card for Stages whose books haven't been uploaded yet:
+ * Displays the Floating Smart Knowledge Hub Vector Animation in the center of the card
+ * with the exact requested copy.
  */
 @Composable
 private fun InteractiveSmartLibraryStageView(
@@ -1579,14 +1558,13 @@ private fun InteractiveSmartLibraryStageView(
 ) {
     Box(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp)
                 .testTag("curriculum_stage_pending_notice_card"),
             shape = RoundedCornerShape(26.dp),
             colors = CardDefaults.cardColors(
@@ -1610,8 +1588,8 @@ private fun InteractiveSmartLibraryStageView(
                                 )
                             } else {
                                 listOf(
-                                    Color(0xFFECFDF5).copy(alpha = 0.85f),
-                                    Color.White
+                                    Color.White,
+                                    Color(0xFFECFDF5).copy(alpha = 0.55f)
                                 )
                             }
                         )
@@ -1622,11 +1600,11 @@ private fun InteractiveSmartLibraryStageView(
                         .fillMaxWidth()
                         .padding(horizontal = 22.dp, vertical = 28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // Exclusive 3D Opening & Closing Book Vector Animation in the center of the stage card
+                    // Floating Smart Knowledge Hub Vector Animation in the center of the stage card
                     OpeningAndClosing3DBookVectorAnimation(
-                        modifier = Modifier.size(124.dp),
+                        modifier = Modifier.size(128.dp),
                         isDarkMode = isDarkMode
                     )
 
@@ -1657,7 +1635,7 @@ private fun InteractiveSmartLibraryStageView(
                         text = if (hasActiveSearchQuery) {
                             "لا توجد كتب مطابقة لعبارة البحث الحالية"
                         } else {
-                            "كتب هذه المرحلة قيد التجهيز والإضافة قريباً"
+                            "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
@@ -1665,6 +1643,17 @@ private fun InteractiveSmartLibraryStageView(
                         textAlign = TextAlign.Center,
                         lineHeight = 24.sp
                     )
+
+                    if (!hasActiveSearchQuery) {
+                        Text(
+                            text = "سيتم إدراج الكتب الرسمية قريباً من قِبل الإدارة المركزية.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp
+                        )
+                    }
                 }
             }
         }
@@ -2240,37 +2229,45 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
 }
 
 /**
- * Perspective 3D Vector Book Animation (`OpeningAndClosing3DBookVectorAnimation`):
- * Exclusively designed for the Curriculum screen:
- * 1. Emerald & Gold Book Cover (`غلاف الكتاب الزمردي والذهبي`): Left and right covers open and close
- *    at a smooth perspective angle like breathing wings (`wingAngle` oscillating via `sin(progress)`).
- * 2. Live Flipping Pages (`حركة تقليب الأوراق الحية`): 3 layers of Ivory-White pages drawn with curved
- *    Bezier paths (`quadraticBezierTo` / `cubicTo`) rising and flipping from right to left one after
- *    another in an infinite smooth loop, with realistic Book Spine Shadow and a rising golden light aura.
+ * Floating Smart Knowledge Hub Vector Animation (`مشهد المنصة المعرفية الذكية العائمة`):
+ * Replaces the old yellow book animation with a creative academic Bezier vector scene:
+ * - A 3D Emerald & Gold Digital Knowledge Platform floating in mid-air (`Path.cubicTo` & `LinearGradient`).
+ * - Translucent holographic knowledge screens hovering above the platform.
+ * - Science (atom), Mathematics (pi/geometry), and Languages (arabic/globe) symbols swimming
+ *   in smooth elliptical orbits with golden light pulses.
  */
 @Composable
 fun OpeningAndClosing3DBookVectorAnimation(
     modifier: Modifier = Modifier.size(108.dp),
     isDarkMode: Boolean = false
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "perspective_3d_open_book_anim")
-    val wingPhase by infiniteTransition.animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(label = "floating_smart_knowledge_hub_anim")
+    val hoverPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            animation = tween(durationMillis = 3600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "book_wing_breath_phase"
+        label = "hub_hover_phase"
     )
-    val pageCycle by infiniteTransition.animateFloat(
+    val orbitPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 6400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "hub_orbit_phase"
+    )
+    val pulseFrac by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "book_3_pages_flip_cycle"
+        label = "hub_golden_pulse"
     )
 
     Canvas(
@@ -2278,299 +2275,417 @@ fun OpeningAndClosing3DBookVectorAnimation(
     ) {
         val w = size.width
         val h = size.height
-        val cx = w * 0.5f
-        val cy = h * 0.56f
+        val cx = w * 0.50f
+        val cy = h * 0.54f
+        val floatY = sin(hoverPhase) * (h * 0.032f)
 
-        // Smooth opening/closing wing oscillation (opens wide and gently closes partway like breathing wings)
-        val wingBreath = (sin(wingPhase) + 1f) * 0.5f // 0..1
-        val openSpread = 0.72f + wingBreath * 0.28f   // 0.72..1.0 horizontal spread
-        val wingLift = (1f - wingBreath) * (h * 0.085f) // wings rise as the book closes slightly
-        val floatOffset = sin(wingPhase) * (h * 0.025f)
-
-        val spineTopY = cy - h * 0.14f + floatOffset
-        val spineBottomY = cy + h * 0.25f + floatOffset
-        val halfSpanX = w * 0.40f * openSpread
-
-        // 1. Golden Light Aura rising from between the open pages
+        // 1. Ambient Golden & Emerald Energy Aura
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFFDE68A).copy(alpha = 0.48f + 0.18f * wingBreath),
-                    Color(0xFFF59E0B).copy(alpha = 0.20f),
-                    Color(0xFF10B981).copy(alpha = 0.10f),
+                    Color(0xFFFDE68A).copy(alpha = 0.42f + 0.18f * pulseFrac),
+                    Color(0xFF10B981).copy(alpha = 0.22f),
                     Color.Transparent
                 ),
-                center = Offset(cx, spineTopY - h * 0.04f),
-                radius = w * (0.42f + 0.06f * wingBreath)
+                center = Offset(cx, cy - h * 0.06f + floatY),
+                radius = w * (0.46f + 0.04f * pulseFrac)
             ),
-            radius = w * (0.42f + 0.06f * wingBreath),
-            center = Offset(cx, spineTopY - h * 0.04f)
+            radius = w * (0.46f + 0.04f * pulseFrac),
+            center = Offset(cx, cy - h * 0.06f + floatY)
         )
 
-        // Rising golden light rays / sparkles above the open book
-        for (rayIdx in -1..1) {
-            val rayDrift = ((pageCycle + (rayIdx + 1) * 0.33f) % 1f)
-            val rx = cx + rayIdx * (w * 0.12f) * (0.6f + rayDrift * 0.5f)
-            val ry = spineTopY - h * (0.06f + rayDrift * 0.22f)
-            val rayAlpha = (1f - rayDrift) * 0.75f
-            drawCircle(
-                color = Color(0xFFFDE68A).copy(alpha = rayAlpha),
-                radius = (2.6f + (1f - rayDrift) * 2.2f).dp.toPx() * (w / 108.dp.toPx()).coerceIn(0.6f, 1.5f),
-                center = Offset(rx, ry)
-            )
-        }
-
-        // Soft drop shadow beneath the floating 3D book
+        // Soft levitation shadow under the 3D platform
+        val shadowScale = 1f - (sin(hoverPhase) * 0.08f)
         drawOval(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF042F24).copy(alpha = if (isDarkMode) 0.42f else 0.24f),
+                    Color(0xFF042F24).copy(alpha = if (isDarkMode) 0.48f else 0.24f),
                     Color.Transparent
                 ),
-                center = Offset(cx, spineBottomY + h * 0.10f),
-                radius = halfSpanX * 0.95f
+                center = Offset(cx, h * 0.88f),
+                radius = w * 0.36f * shadowScale
             ),
-            topLeft = Offset(cx - halfSpanX * 0.85f, spineBottomY + h * 0.05f),
-            size = Size(halfSpanX * 1.70f, h * 0.11f)
+            topLeft = Offset(cx - w * 0.34f * shadowScale, h * 0.83f),
+            size = Size(w * 0.68f * shadowScale, h * 0.10f)
         )
 
-        // 2. Emerald & Gold Book Covers (Left & Right Perspective Wings)
-        val coverOuterTopY = spineTopY - h * 0.07f - wingLift
-        val coverOuterBottomY = spineBottomY - h * 0.04f - wingLift
-        val coverThickness = h * 0.035f
+        // 2. 3D Floating Emerald & Gold Digital Platform (Bezier Isometric Pedestal)
+        val platY = cy + h * 0.18f + floatY
+        val platRx = w * 0.36f
+        val platRy = h * 0.11f
+        val platDepth = h * 0.085f
 
-        // Left Emerald Cover Wing
-        val leftCoverPath = Path().apply {
-            moveTo(cx, spineBottomY + coverThickness)
+        // Lower 3D metallic gold & deep emerald base rim
+        val baseBodyPath = Path().apply {
+            moveTo(cx - platRx, platY)
             cubicTo(
-                cx - halfSpanX * 0.42f, spineBottomY + coverThickness - h * 0.03f,
-                cx - halfSpanX * 0.78f, coverOuterBottomY + coverThickness + h * 0.02f,
-                cx - halfSpanX * 1.05f, coverOuterBottomY + coverThickness
+                cx - platRx * 0.92f, platY + platRy + platDepth,
+                cx + platRx * 0.92f, platY + platRy + platDepth,
+                cx + platRx, platY
             )
-            lineTo(cx - halfSpanX * 1.02f, coverOuterTopY)
             cubicTo(
-                cx - halfSpanX * 0.70f, coverOuterTopY - h * 0.03f,
-                cx - halfSpanX * 0.35f, spineTopY - h * 0.02f,
-                cx, spineTopY + coverThickness * 0.4f
+                cx + platRx * 0.55f, platY + platRy * 0.95f,
+                cx - platRx * 0.55f, platY + platRy * 0.95f,
+                cx - platRx, platY
             )
             close()
         }
         drawPath(
-            path = leftCoverPath,
+            path = baseBodyPath,
             brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF059669)),
-                start = Offset(cx, spineBottomY),
-                end = Offset(cx - halfSpanX, coverOuterTopY)
+                colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFFD97706), Color(0xFF042F24)),
+                start = Offset(cx - platRx, platY),
+                end = Offset(cx + platRx, platY + platDepth)
+            )
+        )
+
+        // Upper 3D emerald deck surface drawn with smooth Bezier curves
+        val topDeckPath = Path().apply {
+            moveTo(cx - platRx, platY)
+            cubicTo(
+                cx - platRx * 0.55f, platY - platRy * 1.15f,
+                cx + platRx * 0.55f, platY - platRy * 1.15f,
+                cx + platRx, platY
+            )
+            cubicTo(
+                cx + platRx * 0.55f, platY + platRy * 1.15f,
+                cx - platRx * 0.55f, platY + platRy * 1.15f,
+                cx - platRx, platY
+            )
+            close()
+        }
+        drawPath(
+            path = topDeckPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF10B981), Color(0xFF059669), Color(0xFF064E3B)),
+                start = Offset(cx, platY - platRy),
+                end = Offset(cx, platY + platRy)
             )
         )
         drawPath(
-            path = leftCoverPath,
-            color = GoldAccent,
+            path = topDeckPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFDE68A), GoldAccent, Color(0xFFF59E0B)),
+                start = Offset(cx - platRx, platY),
+                end = Offset(cx + platRx, platY)
+            ),
             style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
         )
 
-        // Right Emerald Cover Wing
-        val rightCoverPath = Path().apply {
-            moveTo(cx, spineBottomY + coverThickness)
-            cubicTo(
-                cx + halfSpanX * 0.42f, spineBottomY + coverThickness - h * 0.03f,
-                cx + halfSpanX * 0.78f, coverOuterBottomY + coverThickness + h * 0.02f,
-                cx + halfSpanX * 1.05f, coverOuterBottomY + coverThickness
-            )
-            lineTo(cx + halfSpanX * 1.02f, coverOuterTopY)
-            cubicTo(
-                cx + halfSpanX * 0.70f, coverOuterTopY - h * 0.03f,
-                cx + halfSpanX * 0.35f, spineTopY - h * 0.02f,
-                cx, spineTopY + coverThickness * 0.4f
-            )
-            close()
-        }
-        drawPath(
-            path = rightCoverPath,
-            brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF059669)),
-                start = Offset(cx, spineBottomY),
-                end = Offset(cx + halfSpanX, coverOuterTopY)
-            )
-        )
-        drawPath(
-            path = rightCoverPath,
-            color = GoldAccent,
-            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
-        )
-
-        // 3. Base Ivory-White Open Page Stacks (Curved Bezier Arch on Left & Right)
-        val pageSpanX = halfSpanX * 0.94f
-        val pageOuterTopY = coverOuterTopY - h * 0.025f
-        val pageOuterBottomY = coverOuterBottomY - h * 0.015f
-
-        val leftRestingPage = Path().apply {
-            moveTo(cx, spineBottomY)
-            cubicTo(
-                cx - pageSpanX * 0.35f, spineBottomY - h * 0.06f,
-                cx - pageSpanX * 0.72f, pageOuterBottomY - h * 0.02f,
-                cx - pageSpanX, pageOuterBottomY
-            )
-            lineTo(cx - pageSpanX * 0.97f, pageOuterTopY)
-            cubicTo(
-                cx - pageSpanX * 0.68f, pageOuterTopY - h * 0.055f,
-                cx - pageSpanX * 0.32f, spineTopY - h * 0.065f,
-                cx, spineTopY
-            )
-            close()
-        }
-        drawPath(
-            path = leftRestingPage,
-            brush = Brush.horizontalGradient(
+        // Glowing golden core emitter ring on platform deck
+        drawOval(
+            brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFFFFDF7),
-                    Color(0xFFFAF6EE),
-                    Color(0xFFE2DCCD)
+                    Color(0xFFFDE68A),
+                    Color(0xFFF59E0B).copy(alpha = 0.65f),
+                    Color.Transparent
                 ),
-                startX = cx - pageSpanX,
-                endX = cx
-            )
-        )
-        drawPath(
-            path = leftRestingPage,
-            color = Color(0xFFD6CEBF),
-            style = Stroke(width = 1.1.dp.toPx(), join = StrokeJoin.Round)
+                center = Offset(cx, platY),
+                radius = platRx * 0.55f
+            ),
+            topLeft = Offset(cx - platRx * 0.48f, platY - platRy * 0.48f),
+            size = Size(platRx * 0.96f, platRy * 0.96f)
         )
 
-        val rightRestingPage = Path().apply {
-            moveTo(cx, spineBottomY)
+        // Holographic upward light cone from the platform core
+        val beamPath = Path().apply {
+            moveTo(cx - platRx * 0.36f, platY)
+            lineTo(cx - platRx * 0.72f, cy - h * 0.28f + floatY)
             cubicTo(
-                cx + pageSpanX * 0.35f, spineBottomY - h * 0.06f,
-                cx + pageSpanX * 0.72f, pageOuterBottomY - h * 0.02f,
-                cx + pageSpanX, pageOuterBottomY
+                cx - platRx * 0.25f, cy - h * 0.34f + floatY,
+                cx + platRx * 0.25f, cy - h * 0.34f + floatY,
+                cx + platRx * 0.72f, cy - h * 0.28f + floatY
             )
-            lineTo(cx + pageSpanX * 0.97f, pageOuterTopY)
-            cubicTo(
-                cx + pageSpanX * 0.68f, pageOuterTopY - h * 0.055f,
-                cx + pageSpanX * 0.32f, spineTopY - h * 0.065f,
-                cx, spineTopY
-            )
+            lineTo(cx + platRx * 0.36f, platY)
             close()
         }
         drawPath(
-            path = rightRestingPage,
-            brush = Brush.horizontalGradient(
-                colors = listOf(
-                    Color(0xFFE2DCCD),
-                    Color(0xFFFAF6EE),
-                    Color(0xFFFFFDF7)
-                ),
-                startX = cx,
-                endX = cx + pageSpanX
-            )
-        )
-        drawPath(
-            path = rightRestingPage,
-            color = Color(0xFFD6CEBF),
-            style = Stroke(width = 1.1.dp.toPx(), join = StrokeJoin.Round)
-        )
-
-        // Subtle text lines on resting left & right pages
-        for (lineIdx in 1..3) {
-            val frac = lineIdx * 0.22f
-            val ly = spineTopY + (spineBottomY - spineTopY) * frac
-            drawQuadraticBezierLine(
-                start = Offset(cx - pageSpanX * 0.18f, ly - h * 0.01f),
-                control = Offset(cx - pageSpanX * 0.50f, ly - h * 0.045f),
-                end = Offset(cx - pageSpanX * 0.80f, ly - h * 0.02f),
-                color = Color(0xFF059669).copy(alpha = 0.25f),
-                strokeWidth = 1.3.dp.toPx()
-            )
-            drawQuadraticBezierLine(
-                start = Offset(cx + pageSpanX * 0.18f, ly - h * 0.01f),
-                control = Offset(cx + pageSpanX * 0.50f, ly - h * 0.045f),
-                end = Offset(cx + pageSpanX * 0.80f, ly - h * 0.02f),
-                color = Color(0xFF059669).copy(alpha = 0.25f),
-                strokeWidth = 1.3.dp.toPx()
-            )
-        }
-
-        // 4. 3 Layers of Live Flipping Ivory-White Pages (Right-to-Left Continuous Bezier Flip)
-        for (layer in 0 until 3) {
-            val layerProgress = (pageCycle + layer / 3f) % 1f
-            // Smooth S-curve easing for each page flip
-            val eased = (1f - cos(layerProgress * PI).toFloat()) * 0.5f
-            val angleRad = eased * PI.toFloat() // 0 (right) -> PI (left)
-            val cosA = cos(angleRad)            // +1 (right) -> -1 (left)
-            val sinA = sin(angleRad)            // 0 -> 1 (top of arch) -> 0
-
-            val tipX = cx + cosA * (pageSpanX * 0.94f)
-            val archLift = sinA * (h * 0.20f)
-            val tipTopY = pageOuterTopY - archLift
-            val tipBottomY = pageOuterBottomY - archLift * 0.88f
-
-            val ctrlX = cx + cosA * (pageSpanX * 0.46f)
-            val ctrlLift = sinA * (h * 0.25f) + h * 0.04f
-
-            val flippingPagePath = Path().apply {
-                moveTo(cx, spineBottomY)
-                quadraticBezierTo(
-                    ctrlX,
-                    spineBottomY - ctrlLift,
-                    tipX,
-                    tipBottomY
-                )
-                lineTo(tipX, tipTopY)
-                quadraticBezierTo(
-                    ctrlX,
-                    spineTopY - ctrlLift,
-                    cx,
-                    spineTopY
-                )
-                close()
-            }
-
-            val pageAlpha = (0.96f - sinA * 0.06f).coerceIn(0.85f, 0.98f)
-            drawPath(
-                path = flippingPagePath,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFFEAE3D2).copy(alpha = pageAlpha),
-                        Color(0xFFFFFDF7).copy(alpha = pageAlpha),
-                        Color(0xFFFAF6EE).copy(alpha = pageAlpha)
-                    ),
-                    start = Offset(cx, (spineTopY + spineBottomY) * 0.5f),
-                    end = Offset(tipX, (tipTopY + tipBottomY) * 0.5f)
-                )
-            )
-            drawPath(
-                path = flippingPagePath,
-                color = GoldAccent.copy(alpha = 0.55f + sinA * 0.30f),
-                style = Stroke(width = 1.2.dp.toPx(), join = StrokeJoin.Round)
-            )
-        }
-
-        // 5. Realistic Book Spine Shadow & Golden Spine Clasp in Center
-        drawRect(
-            brush = Brush.horizontalGradient(
+            path = beamPath,
+            brush = Brush.verticalGradient(
                 colors = listOf(
                     Color.Transparent,
-                    Color(0xFF042F24).copy(alpha = 0.30f),
-                    Color(0xFF042F24).copy(alpha = 0.12f),
-                    Color.Transparent
+                    Color(0xFF34D399).copy(alpha = 0.14f + 0.08f * pulseFrac),
+                    Color(0xFFFDE68A).copy(alpha = 0.28f + 0.10f * pulseFrac)
                 ),
-                startX = cx - w * 0.07f,
-                endX = cx + w * 0.07f
-            ),
-            topLeft = Offset(cx - w * 0.07f, spineTopY),
-            size = Size(w * 0.14f, spineBottomY - spineTopY)
+                startY = cy - h * 0.32f + floatY,
+                endY = platY
+            )
         )
-        drawLine(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFFFDE68A), GoldAccent, Color(0xFFB45309)),
-                startY = spineTopY,
-                endY = spineBottomY + coverThickness
+
+        // 3. Hovering Translucent Knowledge Screens (Main Central Screen + 2 Side Floating Panels)
+        val centerScreenY = cy - h * 0.09f + floatY * 1.25f
+        val leftScreenLift = sin(hoverPhase + 1.1f) * (h * 0.022f)
+        val rightScreenLift = cos(hoverPhase + 0.7f) * (h * 0.022f)
+
+        // Left Tilted Knowledge Screen (Bezier perspective quad)
+        val leftScreenPath = Path().apply {
+            moveTo(cx - w * 0.36f, centerScreenY - h * 0.10f + leftScreenLift)
+            lineTo(cx - w * 0.17f, centerScreenY - h * 0.15f + leftScreenLift)
+            lineTo(cx - w * 0.17f, centerScreenY + h * 0.05f + leftScreenLift)
+            lineTo(cx - w * 0.36f, centerScreenY + h * 0.09f + leftScreenLift)
+            close()
+        }
+        drawPath(
+            path = leftScreenPath,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF065F46).copy(alpha = 0.82f),
+                    Color(0xFF10B981).copy(alpha = 0.55f)
+                ),
+                start = Offset(cx - w * 0.36f, centerScreenY - h * 0.12f),
+                end = Offset(cx - w * 0.17f, centerScreenY + h * 0.08f)
+            )
+        )
+        drawPath(
+            path = leftScreenPath,
+            color = Color(0xFFA7F3D0).copy(alpha = 0.85f),
+            style = Stroke(width = 1.3.dp.toPx(), join = StrokeJoin.Round)
+        )
+        // Mini chart wave inside left screen
+        val miniWavePath = Path().apply {
+            moveTo(cx - w * 0.33f, centerScreenY + h * 0.01f + leftScreenLift)
+            cubicTo(
+                cx - w * 0.29f, centerScreenY - h * 0.08f + leftScreenLift,
+                cx - w * 0.24f, centerScreenY + h * 0.04f + leftScreenLift,
+                cx - w * 0.20f, centerScreenY - h * 0.06f + leftScreenLift
+            )
+        }
+        drawPath(
+            path = miniWavePath,
+            color = Color(0xFFFDE68A),
+            style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
+        )
+
+        // Right Tilted Knowledge Screen (Bezier perspective quad)
+        val rightScreenPath = Path().apply {
+            moveTo(cx + w * 0.17f, centerScreenY - h * 0.15f + rightScreenLift)
+            lineTo(cx + w * 0.36f, centerScreenY - h * 0.10f + rightScreenLift)
+            lineTo(cx + w * 0.36f, centerScreenY + h * 0.09f + rightScreenLift)
+            lineTo(cx + w * 0.17f, centerScreenY + h * 0.05f + rightScreenLift)
+            close()
+        }
+        drawPath(
+            path = rightScreenPath,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF10B981).copy(alpha = 0.55f),
+                    Color(0xFF065F46).copy(alpha = 0.82f)
+                ),
+                start = Offset(cx + w * 0.17f, centerScreenY - h * 0.12f),
+                end = Offset(cx + w * 0.36f, centerScreenY + h * 0.08f)
+            )
+        )
+        drawPath(
+            path = rightScreenPath,
+            color = Color(0xFFA7F3D0).copy(alpha = 0.85f),
+            style = Stroke(width = 1.3.dp.toPx(), join = StrokeJoin.Round)
+        )
+        // Knowledge lines on right screen
+        for (row in 0..2) {
+            val ry = centerScreenY - h * 0.07f + row * (h * 0.042f) + rightScreenLift
+            drawLine(
+                color = if (row == 0) Color(0xFFFDE68A) else Color.White.copy(alpha = 0.80f),
+                start = Offset(cx + w * 0.20f, ry),
+                end = Offset(cx + w * 0.33f, ry + h * 0.015f),
+                strokeWidth = 1.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        }
+
+        // Central Main Holographic Knowledge Portal Screen
+        val mainScreenW = w * 0.36f
+        val mainScreenH = h * 0.27f
+        val mainScreenTopLeft = Offset(cx - mainScreenW * 0.5f, centerScreenY - mainScreenH * 0.55f)
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF042F24).copy(alpha = 0.92f),
+                    Color(0xFF065F46).copy(alpha = 0.88f),
+                    Color(0xFF059669).copy(alpha = 0.85f)
+                ),
+                start = mainScreenTopLeft,
+                end = Offset(mainScreenTopLeft.x + mainScreenW, mainScreenTopLeft.y + mainScreenH)
             ),
-            start = Offset(cx, spineTopY),
-            end = Offset(cx, spineBottomY + coverThickness),
-            strokeWidth = 2.6.dp.toPx(),
+            topLeft = mainScreenTopLeft,
+            size = Size(mainScreenW, mainScreenH),
+            cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+        )
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFDE68A), GoldAccent, Color(0xFF6EE7B7)),
+                start = mainScreenTopLeft,
+                end = Offset(mainScreenTopLeft.x + mainScreenW, mainScreenTopLeft.y + mainScreenH)
+            ),
+            topLeft = mainScreenTopLeft,
+            size = Size(mainScreenW, mainScreenH),
+            cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx()),
+            style = Stroke(width = 1.8.dp.toPx())
+        )
+
+        // Glowing Knowledge Emblem (Bezier Digital Graduation Crest + Neural Nodes) inside Central Screen
+        val emblemCy = mainScreenTopLeft.y + mainScreenH * 0.44f
+        val capPath = Path().apply {
+            moveTo(cx, emblemCy - mainScreenH * 0.22f)
+            lineTo(cx + mainScreenW * 0.30f, emblemCy - mainScreenH * 0.06f)
+            lineTo(cx, emblemCy + mainScreenH * 0.10f)
+            lineTo(cx - mainScreenW * 0.30f, emblemCy - mainScreenH * 0.06f)
+            close()
+        }
+        drawPath(
+            path = capPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B)),
+                start = Offset(cx - mainScreenW * 0.30f, emblemCy),
+                end = Offset(cx + mainScreenW * 0.30f, emblemCy)
+            )
+        )
+        // Glowing progress lines below crest
+        drawLine(
+            color = Color(0xFFA7F3D0),
+            start = Offset(cx - mainScreenW * 0.28f, mainScreenTopLeft.y + mainScreenH * 0.72f),
+            end = Offset(cx + mainScreenW * 0.28f, mainScreenTopLeft.y + mainScreenH * 0.72f),
+            strokeWidth = 2.dp.toPx(),
             cap = StrokeCap.Round
         )
+        drawLine(
+            color = Color(0xFFFDE68A),
+            start = Offset(cx - mainScreenW * 0.18f, mainScreenTopLeft.y + mainScreenH * 0.84f),
+            end = Offset(cx + mainScreenW * 0.18f, mainScreenTopLeft.y + mainScreenH * 0.84f),
+            strokeWidth = 1.6.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+
+        // 4. Smooth Elliptical Orbits with Science, Math & Language Symbols + Golden Light Pulses
+        val orbitRx = w * 0.44f
+        val orbitRy = h * 0.14f
+        val orbitCenterY = cy - h * 0.02f + floatY * 0.6f
+
+        rotate(degrees = -12f, pivot = Offset(cx, orbitCenterY)) {
+            drawOval(
+                color = GoldAccent.copy(alpha = 0.42f),
+                topLeft = Offset(cx - orbitRx, orbitCenterY - orbitRy),
+                size = Size(orbitRx * 2f, orbitRy * 2f),
+                style = Stroke(width = 1.2.dp.toPx())
+            )
+        }
+        rotate(degrees = 14f, pivot = Offset(cx, orbitCenterY)) {
+            drawOval(
+                color = Color(0xFF6EE7B7).copy(alpha = 0.38f),
+                topLeft = Offset(cx - orbitRx * 0.92f, orbitCenterY - orbitRy * 0.88f),
+                size = Size(orbitRx * 1.84f, orbitRy * 1.76f),
+                style = Stroke(width = 1.1.dp.toPx())
+            )
+        }
+
+        // 3 Orbiting Knowledge Nodes: 0 = Science (Atom), 1 = Math (Geometry/Pi), 2 = Languages (Dialogue/Globe)
+        for (nodeIdx in 0..2) {
+            val angle = orbitPhase + (nodeIdx * 2f * PI.toFloat() / 3f)
+            val nodeX = cx + cos(angle) * (orbitRx * 0.92f)
+            val nodeY = orbitCenterY + sin(angle) * (orbitRy * 1.25f) - h * 0.12f * sin(angle * 0.5f)
+            val badgeR = (w * 0.088f).coerceAtLeast(14f)
+
+            // Outer golden pulse halo
+            drawCircle(
+                color = Color(0xFFFDE68A).copy(alpha = 0.28f + 0.18f * pulseFrac),
+                radius = badgeR * (1.35f + 0.15f * pulseFrac),
+                center = Offset(nodeX, nodeY)
+            )
+            // Orbiter badge background
+            drawCircle(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color(0xFF065F46), Color(0xFF042F24)),
+                    start = Offset(nodeX - badgeR, nodeY - badgeR),
+                    end = Offset(nodeX + badgeR, nodeY + badgeR)
+                ),
+                radius = badgeR,
+                center = Offset(nodeX, nodeY)
+            )
+            drawCircle(
+                color = GoldAccent,
+                radius = badgeR,
+                center = Offset(nodeX, nodeY),
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+
+            when (nodeIdx) {
+                0 -> {
+                    // Science Symbol: Atomic crossed ellipses + golden nucleus
+                    rotate(degrees = 30f, pivot = Offset(nodeX, nodeY)) {
+                        drawOval(
+                            color = Color(0xFF6EE7B7),
+                            topLeft = Offset(nodeX - badgeR * 0.65f, nodeY - badgeR * 0.26f),
+                            size = Size(badgeR * 1.30f, badgeR * 0.52f),
+                            style = Stroke(width = 1.2.dp.toPx())
+                        )
+                    }
+                    rotate(degrees = -30f, pivot = Offset(nodeX, nodeY)) {
+                        drawOval(
+                            color = Color(0xFF6EE7B7),
+                            topLeft = Offset(nodeX - badgeR * 0.65f, nodeY - badgeR * 0.26f),
+                            size = Size(badgeR * 1.30f, badgeR * 0.52f),
+                            style = Stroke(width = 1.2.dp.toPx())
+                        )
+                    }
+                    drawCircle(
+                        color = Color(0xFFFDE68A),
+                        radius = badgeR * 0.22f,
+                        center = Offset(nodeX, nodeY)
+                    )
+                }
+                1 -> {
+                    // Mathematics Symbol: Golden Pi / Delta Geometry emblem
+                    val r = badgeR * 0.52f
+                    drawLine(
+                        color = Color(0xFFFDE68A),
+                        start = Offset(nodeX - r, nodeY - r * 0.55f),
+                        end = Offset(nodeX + r, nodeY - r * 0.55f),
+                        strokeWidth = 1.8.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color(0xFFFDE68A),
+                        start = Offset(nodeX - r * 0.45f, nodeY - r * 0.55f),
+                        end = Offset(nodeX - r * 0.55f, nodeY + r * 0.70f),
+                        strokeWidth = 1.6.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color(0xFFFDE68A),
+                        start = Offset(nodeX + r * 0.45f, nodeY - r * 0.55f),
+                        end = Offset(nodeX + r * 0.55f, nodeY + r * 0.70f),
+                        strokeWidth = 1.6.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+                else -> {
+                    // Languages Symbol: Stylized Arabic 'ض' / Crescent Curve & Star Dot
+                    val r = badgeR * 0.52f
+                    val langPath = Path().apply {
+                        moveTo(nodeX - r * 0.75f, nodeY + r * 0.15f)
+                        cubicTo(
+                            nodeX - r * 0.40f, nodeY - r * 0.85f,
+                            nodeX + r * 0.65f, nodeY - r * 0.65f,
+                            nodeX + r * 0.75f, nodeY + r * 0.25f
+                        )
+                        cubicTo(
+                            nodeX + r * 0.25f, nodeY + r * 0.80f,
+                            nodeX - r * 0.45f, nodeY + r * 0.75f,
+                            nodeX - r * 0.75f, nodeY + r * 0.15f
+                        )
+                    }
+                    drawPath(
+                        path = langPath,
+                        color = Color(0xFFA7F3D0),
+                        style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    drawCircle(
+                        color = Color(0xFFFDE68A),
+                        radius = badgeR * 0.18f,
+                        center = Offset(nodeX, nodeY - r * 0.55f)
+                    )
+                }
+            }
+        }
     }
 }
 
