@@ -75,13 +75,6 @@ fun DashboardScreen(
         viewModel.getTopRatedTeacherSummaries(limit = 3, accountsList = accounts, ratingsList = teacherRatings, currentUserAccount = currentUser)
     }
 
-    val activeSystemBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds, schoolConfig.schoolId) {
-        developerBroadcasts.filter { bc ->
-            (bc.targetSchoolId == "ALL" || bc.targetSchoolId.isBlank() || bc.targetSchoolId == schoolConfig.schoolId) &&
-                bc.id !in dismissedBroadcastIds
-        }
-    }
-
     val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
     val todayHolidayLabel = remember(holidaysConfig, todayIso) {
         viewModel.getHolidayLabelForDate(todayIso)
@@ -129,9 +122,10 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 0.dp, bottom = 28.dp)
     ) {
+        // Zero-Gap Seamless Full-Bleed Wave Stack:
         // 1) FIRST at the very top: 3D Royal Welcome Wave Hero ("مرحباً بك، ...")
-        // 2) SECOND directly below Welcome Banner: System General Broadcast Card + Seasonal Occasion Card
-        // 3) THIRD: Principal School Announcement + Top 3 Auto-Rotating Rated Teachers Wave Spotlight
+        // 2) SECOND (0.dp gap): Developer System Broadcast + Principal School Announcement
+        // 3) THIRD (0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
         item {
             val welcomeSubtitle = when {
                 isParentOrStudent && myStudent != null ->
@@ -203,34 +197,35 @@ fun DashboardScreen(
                     modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 
-                // 2) SECOND (Directly below the Emerald Welcome Banner, RoundedCornerShape(20.dp), zero white border, formatted date/time):
-                //    General System Broadcasts (التعميمات والتحديثات) & Seasonal Occasion Banner (المناسبات الموسمية)
-                if (activeSystemBroadcasts.isNotEmpty() || occasionThemeConfig.isActive) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        activeSystemBroadcasts.forEach { broadcast ->
-                            val resolvedBcIcon = OccasionIconKey.fromKey(broadcast.iconKey)
-                            DeveloperSystemBroadcastBanner(
-                                title = broadcast.title,
-                                subtitle = broadcast.message,
-                                badgeText = "إشعار النظام العام • ${broadcast.senderName.ifBlank { "الإدارة المركزية للمنصة" }}",
-                                iconKey = resolvedBcIcon,
-                                illustrationType = ThreeDIllustrationType.MEGAPHONE,
-                                createdAtText = broadcast.createdAt,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
+                // 2) SECOND (Directly BELOW the Emerald Welcome Banner): General System Broadcast (التعميمات والتحديثات) & Occasion Banner
+                if (isAdmin) {
+                    AdminSubscriptionAndBroadcastBanner(
+                        schoolConfig = schoolConfig,
+                        developerBroadcasts = developerBroadcasts,
+                        dismissedBroadcastIds = dismissedBroadcastIds,
+                        onDismissBroadcast = { bcId ->
+                            viewModel.dismissDeveloperBroadcastForAdmin(bcId)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(3.5f)
+                    )
+                }
 
-                        if (occasionThemeConfig.isActive) {
-                            LiveOccasionBannerCard(
-                                config = occasionThemeConfig,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
+                if (occasionThemeConfig.isActive) {
+                    val devIconKey = occasionThemeConfig.resolvedIconKey
+                    DeveloperSystemBroadcastBanner(
+                        title = occasionThemeConfig.effectiveTitle,
+                        subtitle = occasionThemeConfig.effectiveBannerText,
+                        badgeText = "إشعار النظام العام • ${devIconKey.arabicLabel}",
+                        iconKey = devIconKey,
+                        illustrationType = devIconKey.toThreeDIllustrationType(),
+                        topOverlapPadding = 0.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .zIndex(3f)
+                    )
                 }
 
                 if (shouldShowUrgentAlertBanner || todayHolidayLabel != null) {
@@ -244,23 +239,15 @@ fun DashboardScreen(
                     } else {
                         "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
                     }
-                    val hasSystemCardsAbove = activeSystemBroadcasts.isNotEmpty() || occasionThemeConfig.isActive
-                    if (hasSystemCardsAbove) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                    }
-                    val overlapWithAbove = if (hasSystemCardsAbove) 0.dp else 22.dp
+                    val overlapWithAbove = if (occasionThemeConfig.isActive) 18.dp else 26.dp
 
                     ThreeDMegaphoneAnnouncementBanner(
                         title = schoolBannerTitle,
                         subtitle = schoolBannerSubtitle,
-                        topOverlapPadding = if (hasSystemCardsAbove) 8.dp else 18.dp,
-                        modifier = if (hasSystemCardsAbove) {
-                            edgeToEdgeWaveModifier.zIndex(2f)
-                        } else {
-                            Modifier
-                                .seamlessWaveOverlap(overlapWithAbove)
-                                .zIndex(2f)
-                        },
+                        topOverlapPadding = overlapWithAbove - 4.dp,
+                        modifier = Modifier
+                            .seamlessWaveOverlap(overlapWithAbove)
+                            .zIndex(2f),
                         onClick = when {
                             isAdmin && todayHolidayLabel != null && !shouldShowUrgentAlertBanner -> {
                                 { viewModel.openHolidaysManagementModal() }
@@ -278,18 +265,10 @@ fun DashboardScreen(
                     )
                 }
 
-                // 3) THIRD: Top 3 Auto-Rotating Rated Teachers Wave Spotlight
+                // 3) THIRD (Tucked seamlessly under Announcements/Welcome with 0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
                 if (featureSettings.showTopTeacherOnHome && topRatedTeachers.isNotEmpty() && topTeacherSummary != null) {
-                    val hasSystemCardsAbove = activeSystemBroadcasts.isNotEmpty() || occasionThemeConfig.isActive
-                    val hasAnnouncementAbove = shouldShowUrgentAlertBanner || todayHolidayLabel != null
-                    if (hasSystemCardsAbove && !hasAnnouncementAbove) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                    }
-                    val spotlightOverlap = when {
-                        hasAnnouncementAbove -> 18.dp
-                        hasSystemCardsAbove -> 0.dp
-                        else -> 26.dp
-                    }
+                    val hasBannerAbove = occasionThemeConfig.isActive || shouldShowUrgentAlertBanner || todayHolidayLabel != null
+                    val spotlightOverlap = if (hasBannerAbove) 18.dp else 26.dp
                     SeamlessWaveTeacherSpotlightSection(
                         teacherName = topTeacherSummary.teacher.fullName,
                         teacherSubjects = topTeacherSummary.teacher.specialty,
@@ -297,20 +276,16 @@ fun DashboardScreen(
                         totalRatingsCount = topTeacherSummary.totalRatingsCount,
                         topTeachers = topRatedTeachers,
                         isAdmin = isAdmin,
-                        topOverlapPadding = (spotlightOverlap - 4.dp).coerceAtLeast(8.dp),
+                        topOverlapPadding = spotlightOverlap - 4.dp,
                         onOpenEvaluationSection = {
                             viewModel.navigateToSection(AppSection.TEACHER_EVALUATION)
                         },
                         onHideFromHome = {
                             viewModel.toggleShowTopTeacherOnHome(false)
                         },
-                        modifier = if (spotlightOverlap > 0.dp) {
-                            Modifier
-                                .seamlessWaveOverlap(spotlightOverlap)
-                                .zIndex(1f)
-                        } else {
-                            edgeToEdgeWaveModifier.zIndex(1f)
-                        }
+                        modifier = Modifier
+                            .seamlessWaveOverlap(spotlightOverlap)
+                            .zIndex(1f)
                     )
                 }
             }

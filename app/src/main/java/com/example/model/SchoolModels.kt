@@ -465,6 +465,17 @@ data class RegisteredSchoolSummary(
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
 }
 
+data class RemoteSchoolLiveStatus(
+    val schoolId: String = "",
+    val existsInCloud: Boolean = true,
+    val isActive: Boolean = true,
+    val isSuspended: Boolean = false,
+    val isSchoolOfficiallyActivated: Boolean = true,
+    val isVerifiedFromCloud: Boolean = false,
+    val schoolName: String = "",
+    val schoolActivationCode: String = ""
+)
+
 data class UrgentSchoolAlert(
     val id: String = "urgent_alert",
     val schoolId: String = "",
@@ -535,22 +546,6 @@ data class ToastAlertMessage(
     val id: String,
     val message: String,
     val isSuccess: Boolean = true,
-    val timestamp: Long = System.currentTimeMillis()
-)
-
-enum class RemoteSchoolLiveStatus {
-    ACTIVE_AND_VERIFIED,
-    DELETED,
-    SUSPENDED,
-    GATE_LOCKED,
-    UNREACHABLE_OR_OFFLINE
-}
-
-data class RemoteSchoolSessionAlert(
-    val id: String = "remote_security_alert_${System.currentTimeMillis()}",
-    val title: String = "تنبيه أمني من النظام المركزي",
-    val message: String = "",
-    val statusType: RemoteSchoolLiveStatus = RemoteSchoolLiveStatus.SUSPENDED,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -981,69 +976,6 @@ object ArabicTextNormalizer {
             val d = sepMatch.groupValues[3].padStart(2, '0')
             return "$y-$m-$d"
         }
-        return ascii
-    }
-
-    /**
-     * Formats raw system broadcast / notification timestamps cleanly into "YYYY/MM/DD • HH:MM ص/م"
-     * or "YYYY/MM/DD", fixing concatenated digit strings like "20261111" or "202611110906".
-     */
-    fun formatSystemBroadcastDateTime(raw: String): String {
-        val ascii = normalizeDigitsToAscii(raw.trim())
-        if (ascii.isEmpty()) return "اليوم"
-
-        // Case 1: Pure digits e.g. "20261111" (8 digits) or "202611110906" (12 digits)
-        if (ascii.all { it.isDigit() }) {
-            if (ascii.length == 8) {
-                val y = ascii.substring(0, 4)
-                val m = ascii.substring(4, 6)
-                val d = ascii.substring(6, 8)
-                return "$y/$m/$d"
-            }
-            if (ascii.length >= 12) {
-                val y = ascii.substring(0, 4)
-                val m = ascii.substring(4, 6)
-                val d = ascii.substring(6, 8)
-                val hh24 = ascii.substring(8, 10).toIntOrNull() ?: 0
-                val mm = ascii.substring(10, 12)
-                val period = if (hh24 < 12) "ص" else "م"
-                val hh12 = when {
-                    hh24 == 0 -> 12
-                    hh24 > 12 -> hh24 - 12
-                    else -> hh24
-                }.toString().padStart(2, '0')
-                return "$y/$m/$d • $hh12:$mm $period"
-            }
-        }
-
-        // Case 2: Contains date and optional time e.g. "2026-11-11 09:06" or "2026/11/11 - 09:06 ص"
-        val dateTimeRegex = Regex("(\\d{4})[-/.]?(\\d{1,2})[-/.]?(\\d{1,2})(?:[\\sT•|\\-]+(\\d{1,2}):(\\d{2})(?:\\s*([صم]|[AaPp][Mm]))?)?")
-        val match = dateTimeRegex.find(ascii)
-        if (match != null) {
-            val y = match.groupValues[1]
-            val m = match.groupValues[2].padStart(2, '0')
-            val d = match.groupValues[3].padStart(2, '0')
-            val rawHour = match.groupValues[4]
-            val rawMin = match.groupValues[5]
-            val rawPeriod = match.groupValues[6]
-            if (rawHour.isNotEmpty() && rawMin.isNotEmpty()) {
-                val hInt = rawHour.toIntOrNull() ?: 0
-                val period = when {
-                    rawPeriod.contains("م") || rawPeriod.equals("PM", ignoreCase = true) -> "م"
-                    rawPeriod.contains("ص") || rawPeriod.equals("AM", ignoreCase = true) -> "ص"
-                    hInt >= 12 -> "م"
-                    else -> "ص"
-                }
-                val h12 = when {
-                    hInt == 0 -> 12
-                    hInt > 12 -> hInt - 12
-                    else -> hInt
-                }.toString().padStart(2, '0')
-                return "$y/$m/$d • $h12:$rawMin $period"
-            }
-            return "$y/$m/$d"
-        }
-
         return ascii
     }
 
@@ -1843,7 +1775,13 @@ data class DeveloperBroadcastItem(
     val iconKey: String = OccasionIconKey.BELL.name,
     val imageBase64: String = "",
     val imageUrl: String = ""
-)
+) {
+    val formattedCreatedAt: String
+        get() = DateCountdownHelper.formatBroadcastTimestamp(createdAt)
+
+    val resolvedIconKey: OccasionIconKey
+        get() = OccasionIconKey.fromKey(iconKey)
+}
 
 data class StudentAutoBadge(
     val id: String,
@@ -1915,6 +1853,35 @@ object DateCountdownHelper {
             add(java.util.Calendar.DAY_OF_YEAR, daysToAdd)
         }
         return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(cal.time)
+    }
+
+    fun formatBroadcastTimestamp(rawDateStr: String): String {
+        val trimmed = ArabicTextNormalizer.normalizeDigitsToAscii(rawDateStr).trim()
+        if (trimmed.isBlank()) return ""
+        val compactMatch = Regex("^(\\d{4})(\\d{2})(\\d{2})(?:[T\\s•|-]+(.*))?$").find(trimmed)
+        if (compactMatch != null) {
+            val y = compactMatch.groupValues[1]
+            val m = compactMatch.groupValues[2]
+            val d = compactMatch.groupValues[3]
+            val timePart = compactMatch.groupValues[4].trim()
+                .replace("AM", "ص", ignoreCase = true)
+                .replace("PM", "م", ignoreCase = true)
+            return if (timePart.isNotBlank()) "$y/$m/$d • $timePart" else "$y/$m/$d"
+        }
+        val isoMatch = Regex("^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})(?:[T\\s•|-]+(.*))?$").find(trimmed)
+        if (isoMatch != null) {
+            val y = isoMatch.groupValues[1]
+            val m = isoMatch.groupValues[2].padStart(2, '0')
+            val d = isoMatch.groupValues[3].padStart(2, '0')
+            val timePart = isoMatch.groupValues[4].trim()
+                .replace("AM", "ص", ignoreCase = true)
+                .replace("PM", "م", ignoreCase = true)
+            return if (timePart.isNotBlank()) "$y/$m/$d • $timePart" else "$y/$m/$d"
+        }
+        return trimmed
+            .replace("-", "/")
+            .replace("AM", "ص", ignoreCase = true)
+            .replace("PM", "م", ignoreCase = true)
     }
 }
 

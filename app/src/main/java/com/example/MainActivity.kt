@@ -192,7 +192,7 @@ fun MadrasatiRootApp(
     val loginLockoutUntilMs by viewModel.loginLockoutUntilMs.collectAsState()
     val failedLoginAttemptsCount by viewModel.failedLoginAttemptsCount.collectAsState()
     val isSchoolGatePassed by viewModel.isSchoolGatePassed.collectAsState()
-    val remoteSecurityAlert by viewModel.remoteSecurityKillSwitchAlert.collectAsState()
+    val securityKillSwitchAlertMessage by viewModel.securityKillSwitchAlertMessage.collectAsState()
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -329,80 +329,6 @@ fun MadrasatiRootApp(
             }
         }
 
-        // Real-Time Remote Session Kill-Switch Security Alert Dialog
-        remoteSecurityAlert?.let { securityAlert ->
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissRemoteSecurityKillSwitchAlert() },
-                containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White,
-                shape = RoundedCornerShape(24.dp),
-                icon = {
-                    Surface(
-                        shape = CircleShape,
-                        color = DangerRed.copy(alpha = 0.14f),
-                        border = BorderStroke(1.2.dp, DangerRed.copy(alpha = 0.45f)),
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.Security,
-                                contentDescription = null,
-                                tint = DangerRed,
-                                modifier = Modifier.size(30.dp)
-                            )
-                        }
-                    }
-                },
-                title = {
-                    Text(
-                        text = securityAlert.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color.White else Color(0xFF991B1B),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                },
-                text = {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFFEF2F2),
-                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.28f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = securityAlert.message,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkMode) Color(0xFFFECACA) else Color(0xFF7F1D1D),
-                            textAlign = TextAlign.Center,
-                            lineHeight = 23.sp,
-                            modifier = Modifier.padding(14.dp)
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = { viewModel.dismissRemoteSecurityKillSwitchAlert() },
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = DeepEmerald,
-                            contentColor = Color.White
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(46.dp)
-                            .testTag("dismiss_remote_security_alert_btn")
-                    ) {
-                        Text(
-                            text = "حسناً، فهمت",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                }
-            )
-        }
-
         // Choreographed Multi-Element Vector Splash Screen on Launch
         AnimatedVisibility(
             visible = showSplashScreen,
@@ -423,9 +349,85 @@ fun MadrasatiRootApp(
         // Global Smooth Interactive Image Lightbox Dialog
         GlobalImageLightboxDialog()
 
+        // Real-Time Remote Session Kill-Switch & Cache Purge Security Alert Modal
+        securityKillSwitchAlertMessage?.let { securityMsg ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissSecurityKillSwitchAlert() },
+                containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White,
+                shape = RoundedCornerShape(24.dp),
+                icon = {
+                    Surface(
+                        shape = CircleShape,
+                        color = DangerRed.copy(alpha = 0.14f),
+                        border = BorderStroke(1.2.dp, DangerRed.copy(alpha = 0.45f)),
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.GppMaybe,
+                                contentDescription = "تنبيه أمني",
+                                tint = DangerRed,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                    }
+                },
+                title = {
+                    Text(
+                        text = "تنبيه أمني من النظام المركزي",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDarkMode) Color.White else DeepForestGreen,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                text = {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFFEF2F2)
+                        ),
+                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = securityMsg,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDarkMode) Color(0xFFFCA5A5) else Color(0xFF991B1B),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.dismissSecurityKillSwitchAlert() },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeepEmerald,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .testTag("dismiss_security_kill_switch_alert_btn")
+                    ) {
+                        Text(
+                            text = "حسناً، فهمت",
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            )
+        }
+
         // Global Remote App Update Notification Modal / Banner (Managed by System Developer)
         val shouldShowUpdateModal = appUpdateConfig.isUpdateActive &&
             appUpdateConfig.apkDownloadUrl.isNotBlank() &&
+            !isDeveloperAuthenticated &&
             (appUpdateConfig.isForceUpdate || dismissedUpdateVersion != appUpdateConfig.latestVersionName)
 
         if (shouldShowUpdateModal) {

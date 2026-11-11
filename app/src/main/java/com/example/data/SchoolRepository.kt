@@ -213,12 +213,10 @@ class SchoolRepository(context: Context) {
                 mergeEmbeddedTeacherRatingsIntoLocalCache(embeddedRatingsArr.toString(), resolvedSchoolId)
             }
 
-            val rawSuspended = obj.optBoolean("isSuspended", false)
-            val rawActive = obj.optBoolean("isActive", true) && !rawSuspended
             SchoolConfig(
                 schoolId = resolvedSchoolId,
                 isSetupCompleted = obj.optBoolean("isSetupCompleted", false),
-                isActive = rawActive,
+                isActive = obj.optBoolean("isActive", true),
                 createdAt = obj.optString("createdAt", "2026-10-29"),
                 schoolName = obj.optString("schoolName", "مدرستي النموذجية"),
                 address = ArabicTextNormalizer.cleanDefaultAddress(obj.optString("address", "")),
@@ -243,7 +241,7 @@ class SchoolRepository(context: Context) {
                 principalFullName = obj.optString("principalFullName", "مدير المدرسة").ifBlank { "مدير المدرسة" },
                 isSchoolOfficiallyActivated = obj.optBoolean("isSchoolOfficiallyActivated", false),
                 schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } },
-                isSuspended = rawSuspended
+                isSuspended = obj.optBoolean("isSuspended", false) || !obj.optBoolean("isActive", true)
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -2297,8 +2295,6 @@ class SchoolRepository(context: Context) {
                 val o = arr.getJSONObject(i)
                 val sid = o.optString("schoolId").trim()
                 if (sid.isNotEmpty()) {
-                    val rawSuspended = o.optBoolean("isSuspended", false)
-                    val rawActive = o.optBoolean("isActive", true) && !rawSuspended
                     list.add(
                         RegisteredSchoolSummary(
                             schoolId = sid,
@@ -2309,12 +2305,12 @@ class SchoolRepository(context: Context) {
                             ministryAffiliation = o.optString("ministryAffiliation", "وزارة التربية").ifBlank { "وزارة التربية" },
                             schoolGenderType = o.optString("schoolGenderType", "مدرسة بنين").ifBlank { "مدرسة بنين" },
                             createdAt = o.optString("createdAt", "2026-10-29"),
-                            isActive = rawActive,
+                            isActive = o.optBoolean("isActive", true),
                             adminUsername = o.optString("adminUsername", ""),
                             subscriptionExpiryDate = o.optString("subscriptionExpiryDate", "2027-10-29").ifBlank { "2027-10-29" },
                             isSchoolOfficiallyActivated = o.optBoolean("isSchoolOfficiallyActivated", false),
                             schoolActivationCode = o.optString("schoolActivationCode", sid.ifBlank { "1001" }).ifBlank { sid.ifBlank { "1001" } },
-                            isSuspended = rawSuspended
+                            isSuspended = o.optBoolean("isSuspended", false) || !o.optBoolean("isActive", true)
                         )
                     )
                 }
@@ -2337,7 +2333,7 @@ class SchoolRepository(context: Context) {
                 put("ministryAffiliation", s.ministryAffiliation.ifBlank { "وزارة التربية" })
                 put("schoolGenderType", s.schoolGenderType.ifBlank { "مدرسة بنين" })
                 put("createdAt", s.createdAt)
-                put("isActive", s.isActive && !s.isSuspended)
+                put("isActive", s.isActive)
                 put("adminUsername", s.adminUsername)
                 put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
                 put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
@@ -2376,7 +2372,7 @@ class SchoolRepository(context: Context) {
             ministryAffiliation = config.ministryAffiliation.ifBlank { "وزارة التربية" },
             schoolGenderType = config.schoolGenderType.ifBlank { "مدرسة بنين" },
             createdAt = config.createdAt.ifBlank { "2026-10-29" },
-            isActive = config.isActive && !config.isSuspended,
+            isActive = config.isActive,
             adminUsername = resolvedAdminUser,
             subscriptionExpiryDate = resolvedExpiry,
             isSchoolOfficiallyActivated = config.isSchoolOfficiallyActivated,
@@ -2464,7 +2460,7 @@ class SchoolRepository(context: Context) {
     }
 
     fun getLastNotifiedBroadcastId(): String {
-        return prefs.getString("last_notified_dev_broadcast_id_v1", "")?.trim().orEmpty()
+        return prefs.getString("last_notified_dev_broadcast_id_v1", "") ?: ""
     }
 
     fun setLastNotifiedBroadcastId(id: String) {
@@ -2472,27 +2468,34 @@ class SchoolRepository(context: Context) {
         prefs.edit().putString("last_notified_dev_broadcast_id_v1", id.trim()).apply()
     }
 
-    fun getLastNotifiedAppUpdateSignature(): String {
-        return prefs.getString("last_notified_app_update_sig_v1", "")?.trim().orEmpty()
+    fun getLastNotifiedUpdateVersionKey(): String {
+        return prefs.getString("last_notified_app_update_version_key_v1", "") ?: ""
     }
 
-    fun setLastNotifiedAppUpdateSignature(sig: String) {
-        if (sig.isBlank()) return
-        prefs.edit().putString("last_notified_app_update_sig_v1", sig.trim()).apply()
+    fun setLastNotifiedUpdateVersionKey(key: String) {
+        if (key.isBlank()) return
+        prefs.edit().putString("last_notified_app_update_version_key_v1", key.trim()).apply()
     }
 
-    fun getLastNotifiedOccasionSignature(): String {
-        return prefs.getString("last_notified_occasion_sig_v1", "")?.trim().orEmpty()
+    fun getLastNotifiedOccasionKey(): String {
+        return prefs.getString("last_notified_occasion_banner_key_v1", "") ?: ""
     }
 
-    fun setLastNotifiedOccasionSignature(sig: String) {
-        if (sig.isBlank()) return
-        prefs.edit().putString("last_notified_occasion_sig_v1", sig.trim()).apply()
+    fun setLastNotifiedOccasionKey(key: String) {
+        if (key.isBlank()) return
+        prefs.edit().putString("last_notified_occasion_banner_key_v1", key.trim()).apply()
     }
 
     /**
-     * Purges all local cache (`SharedPreferences`) for a school that was deleted from the cloud,
-     * including accounts, students, teachers, settings, activation gate code, and session.
+     * Queries Firebase RTDB (schools.json) & schools_registry for the live status of a school.
+     */
+    suspend fun fetchLiveSchoolStatusFromCloud(schoolId: String): RemoteSchoolLiveStatus? {
+        return FirebaseCloudSync.fetchLiveSchoolStatusFromCloud(schoolId)
+    }
+
+    /**
+     * Purges all local cache data (SharedPreferences) for a school that was deleted from the cloud,
+     * including accounts, students, teachers, saved activation code, session, and registry entry.
      */
     fun purgeSchoolCacheCompletely(schoolId: String) {
         val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
@@ -2540,18 +2543,20 @@ class SchoolRepository(context: Context) {
         editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_SCHEDULES_HOMEWORK)}_periods")
         editor.remove("${scopedKey(cleanSid, FirebaseConfigConstants.COL_GRADES)}_exams")
         editor.remove("last_shown_urgent_alert_$cleanSid")
+        editor.remove("active_school_id")
+        editor.remove("active_user_session")
+        editor.putBoolean("school_security_gate_passed_v1", false)
+        editor.remove("verified_gate_school_code_v1")
 
-        if (getActiveSchoolId() == cleanSid) {
-            editor.remove("active_school_id")
-            editor.remove("active_user_session")
-        }
-        if (getVerifiedGateSchoolCode() == cleanSid || getVerifiedGateSchoolCode().isBlank()) {
-            editor.putBoolean("school_security_gate_passed_v1", false)
-            editor.remove("verified_gate_school_code_v1")
+        val savedBio = loadBiometricCredentials()
+        if (savedBio != null && savedBio.schoolId.equals(cleanSid, ignoreCase = true)) {
+            editor.remove("biometric_saved_credentials")
         }
 
-        // Remove from local registered schools cache without pushing back to cloud
-        val remainingSchools = loadRegisteredSchools().filterNot { it.schoolId == cleanSid }
+        val remainingSchools = loadRegisteredSchools().filterNot {
+            it.schoolId.equals(cleanSid, ignoreCase = true) ||
+                it.schoolActivationCode.equals(cleanSid, ignoreCase = true)
+        }
         val arr = JSONArray()
         remainingSchools.forEach { s ->
             arr.put(JSONObject().apply {
@@ -2563,208 +2568,78 @@ class SchoolRepository(context: Context) {
                 put("ministryAffiliation", s.ministryAffiliation.ifBlank { "وزارة التربية" })
                 put("schoolGenderType", s.schoolGenderType.ifBlank { "مدرسة بنين" })
                 put("createdAt", s.createdAt)
-                put("isActive", s.isActive && !s.isSuspended)
+                put("isActive", s.isActive)
                 put("adminUsername", s.adminUsername)
                 put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
                 put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
                 put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
-                put("isSuspended", s.isSuspended || !s.isActive)
+                put("isSuspended", s.isSuspended)
             })
         }
         editor.putString("global_registered_schools", arr.toString())
-
-        // Also clear biometric saved credentials if they belonged to this school
-        val bio = loadBiometricCredentials()
-        if (bio != null && bio.schoolId == cleanSid) {
-            editor.remove("biometric_saved_credentials")
-        }
         editor.apply()
     }
 
     /**
-     * Immediately clears any local suspension/deactivation state for a school when reactivated in the cloud (Case D).
+     * Synchronizes local cache (settings and global_registered_schools) with the live cloud
+     * suspension/activation flags without pushing back to the cloud.
      */
-    fun clearSchoolSuspensionCacheLocally(schoolId: String) {
+    fun updateLocalSchoolActivationAndSuspensionState(
+        schoolId: String,
+        isActive: Boolean,
+        isSuspended: Boolean,
+        isSchoolOfficiallyActivated: Boolean
+    ) {
         val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
         if (cleanSid.isBlank()) return
 
-        val rawSettings = prefs.getString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), null)
+        val editor = prefs.edit()
+        val settingsKey = scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS)
+        val rawSettings = prefs.getString(settingsKey, null)
         if (!rawSettings.isNullOrBlank()) {
             runCatching {
                 val obj = JSONObject(rawSettings)
-                obj.put("isActive", true)
-                obj.put("isSuspended", false)
-                obj.put("isSchoolOfficiallyActivated", true)
-                prefs.edit().putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), obj.toString()).apply()
+                obj.put("isActive", isActive && !isSuspended)
+                obj.put("isSuspended", isSuspended || !isActive)
+                obj.put("isSchoolOfficiallyActivated", isSchoolOfficiallyActivated)
+                editor.putString(settingsKey, obj.toString())
             }
         }
 
-        val currentRegistry = loadRegisteredSchools().toMutableList()
-        val idx = currentRegistry.indexOfFirst { it.schoolId == cleanSid }
-        if (idx >= 0) {
-            val item = currentRegistry[idx]
-            if (!item.isActive || item.isSuspended || !item.isSchoolOfficiallyActivated) {
-                currentRegistry[idx] = item.copy(
-                    isActive = true,
-                    isSuspended = false,
-                    isSchoolOfficiallyActivated = true
+        val currentSchools = loadRegisteredSchools().map { s ->
+            if (s.schoolId.equals(cleanSid, ignoreCase = true) ||
+                s.schoolActivationCode.equals(cleanSid, ignoreCase = true)
+            ) {
+                s.copy(
+                    isActive = isActive && !isSuspended,
+                    isSuspended = isSuspended || !isActive,
+                    isSchoolOfficiallyActivated = isSchoolOfficiallyActivated
                 )
-                val arr = JSONArray()
-                currentRegistry.forEach { s ->
-                    arr.put(JSONObject().apply {
-                        put("schoolId", s.schoolId)
-                        put("schoolName", InputSanitizer.sanitize(s.schoolName))
-                        put("address", InputSanitizer.sanitize(s.address))
-                        put("schoolStage", s.schoolStage)
-                        put("schoolType", s.schoolType)
-                        put("ministryAffiliation", s.ministryAffiliation.ifBlank { "وزارة التربية" })
-                        put("schoolGenderType", s.schoolGenderType.ifBlank { "مدرسة بنين" })
-                        put("createdAt", s.createdAt)
-                        put("isActive", s.isActive && !s.isSuspended)
-                        put("adminUsername", s.adminUsername)
-                        put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
-                        put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
-                        put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
-                        put("isSuspended", s.isSuspended || !s.isActive)
-                    })
-                }
-                prefs.edit().putString("global_registered_schools", arr.toString()).apply()
+            } else {
+                s
             }
         }
-    }
-
-    /**
-     * Real-time 3-second cloud security inspector:
-     * Checks https://madrasati-app-d51dd-default-rtdb.firebaseio.com/schools.json (and schools/{schoolId}.json + schools_registry)
-     * to detect immediately if the school was:
-     *   - Case A: Deleted from cloud -> RemoteSchoolLiveStatus.DELETED
-     *   - Case B: Suspended or deactivated (isSuspended == true || !isActive) -> RemoteSchoolLiveStatus.SUSPENDED
-     *   - Case C: School gate relocked (!isSchoolOfficiallyActivated) -> RemoteSchoolLiveStatus.GATE_LOCKED
-     *   - Case D: Reactivated -> clears local suspension cache and returns RemoteSchoolLiveStatus.ACTIVE_AND_VERIFIED
-     */
-    suspend fun checkLiveSchoolSecurityStatusFromCloud(schoolId: String): RemoteSchoolLiveStatus = coroutineScope {
-        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
-        if (cleanSid.isBlank()) return@coroutineScope RemoteSchoolLiveStatus.UNREACHABLE_OR_OFFLINE
-
-        if (FirebaseCloudSync.wasRecentlyWrittenLocally(cleanSid, FirebaseConfigConstants.COL_SETTINGS, 12000L)) {
-            return@coroutineScope RemoteSchoolLiveStatus.ACTIVE_AND_VERIFIED
+        val arr = JSONArray()
+        currentSchools.forEach { s ->
+            arr.put(JSONObject().apply {
+                put("schoolId", s.schoolId)
+                put("schoolName", InputSanitizer.sanitize(s.schoolName))
+                put("address", InputSanitizer.sanitize(s.address))
+                put("schoolStage", s.schoolStage)
+                put("schoolType", s.schoolType)
+                put("ministryAffiliation", s.ministryAffiliation.ifBlank { "وزارة التربية" })
+                put("schoolGenderType", s.schoolGenderType.ifBlank { "مدرسة بنين" })
+                put("createdAt", s.createdAt)
+                put("isActive", s.isActive)
+                put("adminUsername", s.adminUsername)
+                put("subscriptionExpiryDate", s.subscriptionExpiryDate.ifBlank { "2027-10-29" })
+                put("isSchoolOfficiallyActivated", s.isSchoolOfficiallyActivated)
+                put("schoolActivationCode", s.schoolActivationCode.ifBlank { s.schoolId.ifBlank { "1001" } })
+                put("isSuspended", s.isSuspended)
+            })
         }
-
-        val rtdbNodeDeferred = async { FirebaseCloudSync.fetchLiveSchoolNodeJson(cleanSid) }
-        val rtdbRootDeferred = async { FirebaseCloudSync.fetchLiveRtdbSchoolsRootJson() }
-        val registryDeferred = async {
-            FirebaseCloudSync.fetchGlobalCollectionPayload(
-                collectionName = FirebaseConfigConstants.COL_SCHOOLS_REGISTRY,
-                docName = "registry"
-            )
-        }
-        val settingsPayloadDeferred = async {
-            FirebaseCloudSync.fetchSubCollectionPayload(cleanSid, FirebaseConfigConstants.COL_SETTINGS)
-        }
-
-        val rtdbNodeRaw = rtdbNodeDeferred.await()
-        val rtdbRootRaw = rtdbRootDeferred.await()
-        val registryRaw = registryDeferred.await()
-        val settingsPayloadRaw = settingsPayloadDeferred.await()
-
-        // If all cloud endpoints failed (device offline or unit test environment), do not false-trigger logout
-        if (rtdbNodeRaw == null && rtdbRootRaw == null && registryRaw == null && settingsPayloadRaw == null) {
-            return@coroutineScope RemoteSchoolLiveStatus.UNREACHABLE_OR_OFFLINE
-        }
-
-        // Update local schools registry if cloud returned a valid registry array
-        val parsedRegistry: List<RegisteredSchoolSummary>? = if (!registryRaw.isNullOrBlank()) {
-            prefs.edit().putString("global_registered_schools", registryRaw).apply()
-            parseRegisteredSchoolsJson(registryRaw)
-        } else {
-            null
-        }
-        val registryEntry = parsedRegistry?.firstOrNull { it.schoolId == cleanSid }
-
-        // Check RTDB schools.json / schools/{schoolId}.json existence
-        val rtdbIndicatesDeleted = (rtdbNodeRaw != null && rtdbNodeRaw.trim() == "null") ||
-            (rtdbRootRaw != null && (rtdbRootRaw.trim() == "null" || runCatching {
-                val rootObj = JSONObject(rtdbRootRaw)
-                !rootObj.has(cleanSid)
-            }.getOrDefault(false)))
-
-        val registryIndicatesDeleted = parsedRegistry != null && registryEntry == null
-        val settingsIndicatesDeleted = settingsPayloadRaw.isNullOrBlank() || settingsPayloadRaw.trim() == "null"
-
-        // Case A: School Deleted from Cloud
-        if ((rtdbIndicatesDeleted && settingsIndicatesDeleted) ||
-            (registryIndicatesDeleted && rtdbIndicatesDeleted) ||
-            (registryIndicatesDeleted && settingsIndicatesDeleted && parsedRegistry.isNotEmpty())
-        ) {
-            return@coroutineScope RemoteSchoolLiveStatus.DELETED
-        }
-
-        // Parse live settings JSON from either settingsPayloadRaw or rtdbNodeRaw
-        val effectiveSettingsStr: String? = when {
-            !settingsPayloadRaw.isNullOrBlank() && settingsPayloadRaw.trim() != "null" -> settingsPayloadRaw
-            !rtdbNodeRaw.isNullOrBlank() && rtdbNodeRaw.trim() != "null" -> {
-                runCatching {
-                    val nodeObj = JSONObject(rtdbNodeRaw)
-                    val settingsNode = nodeObj.optJSONObject("settings")
-                    settingsNode?.optString("payloadJson", "")?.takeIf { it.isNotBlank() }
-                        ?: settingsNode?.optJSONObject("config")?.optString("payloadJson", "")?.takeIf { it.isNotBlank() }
-                        ?: nodeObj.optString("payloadJson", "").takeIf { it.isNotBlank() }
-                        ?: nodeObj.toString()
-                }.getOrNull()
-            }
-            else -> null
-        }
-
-        var cloudIsActive = true
-        var cloudIsSuspended = false
-        var cloudIsGateActivated = true
-        var foundAuthoritativeStatus = false
-
-        if (!effectiveSettingsStr.isNullOrBlank()) {
-            runCatching {
-                val sObj = JSONObject(effectiveSettingsStr)
-                if (sObj.has("isActive") || sObj.has("isSuspended") || sObj.has("isSchoolOfficiallyActivated") || sObj.has("schoolName")) {
-                    foundAuthoritativeStatus = true
-                    cloudIsSuspended = sObj.optBoolean("isSuspended", false) ||
-                        sObj.optString("status", "").equals("suspended", ignoreCase = true)
-                    cloudIsActive = sObj.optBoolean("isActive", true) && !cloudIsSuspended
-                    if (sObj.has("isSchoolOfficiallyActivated")) {
-                        cloudIsGateActivated = sObj.optBoolean("isSchoolOfficiallyActivated", true)
-                    }
-                    // Keep local settings cache in sync with cloud
-                    prefs.edit().putString(scopedKey(cleanSid, FirebaseConfigConstants.COL_SETTINGS), effectiveSettingsStr).apply()
-                }
-            }
-        }
-
-        if (registryEntry != null) {
-            foundAuthoritativeStatus = true
-            if (registryEntry.isSuspended || !registryEntry.isActive) {
-                cloudIsSuspended = true
-                cloudIsActive = false
-            }
-            if (!registryEntry.isSchoolOfficiallyActivated) {
-                cloudIsGateActivated = false
-            }
-        }
-
-        if (!foundAuthoritativeStatus) {
-            return@coroutineScope RemoteSchoolLiveStatus.UNREACHABLE_OR_OFFLINE
-        }
-
-        // Case B: School Suspended or Deactivated (isSuspended == true || !isActive)
-        if (cloudIsSuspended || !cloudIsActive) {
-            return@coroutineScope RemoteSchoolLiveStatus.SUSPENDED
-        }
-
-        // Case C: School Gate Relocked (!isSchoolOfficiallyActivated)
-        if (!cloudIsGateActivated) {
-            return@coroutineScope RemoteSchoolLiveStatus.GATE_LOCKED
-        }
-
-        // Case D: School is Active & Verified in Cloud -> clear any stale local suspension cache immediately
-        clearSchoolSuspensionCacheLocally(cleanSid)
-        return@coroutineScope RemoteSchoolLiveStatus.ACTIVE_AND_VERIFIED
+        editor.putString("global_registered_schools", arr.toString())
+        editor.apply()
     }
 
     /**

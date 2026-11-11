@@ -1738,30 +1738,42 @@ fun AdminSubscriptionAndBroadcastBanner(
     onDismissBroadcast: (String) -> Unit = {}
 ) {
     var isExpiryWarningDismissed by remember { mutableStateOf(false) }
+    var isBroadcastBannerDismissed by remember { mutableStateOf(false) }
 
     val daysRemaining = schoolConfig.daysUntilExpiry()
     val showExpiryWarning = schoolConfig.isWithinRenewalWarningWindow() && !isExpiryWarningDismissed
+    val visibleBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds, isBroadcastBannerDismissed) {
+        if (isBroadcastBannerDismissed) {
+            emptyList()
+        } else {
+            developerBroadcasts.filterNot { bc ->
+                val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                bc.id in dismissedBroadcastIds || key in dismissedBroadcastIds
+            }
+        }
+    }
+    val latestBroadcast = visibleBroadcasts.firstOrNull()
 
-    if (!showExpiryWarning) return
+    if (!showExpiryWarning && latestBroadcast == null) return
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(top = 6.dp, bottom = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (showExpiryWarning) {
             val isExpired = daysRemaining <= 0
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = if (isExpired) DangerRed.copy(alpha = 0.12f) else DeepEmerald.copy(alpha = 0.10f),
-                border = BorderStroke(1.dp, if (isExpired) DangerRed else DeepEmerald.copy(alpha = 0.45f))
+                shadowElevation = 2.dp
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+                        .padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -1804,6 +1816,47 @@ fun AdminSubscriptionAndBroadcastBanner(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        if (latestBroadcast != null) {
+            val formattedDate = latestBroadcast.formattedCreatedAt
+            val cleanSubtitle = if (formattedDate.isNotBlank()) {
+                "${latestBroadcast.message}  •  $formattedDate"
+            } else {
+                latestBroadcast.message
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_developer_broadcast_banner"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                DeveloperSystemBroadcastBanner(
+                    title = latestBroadcast.title,
+                    subtitle = cleanSubtitle,
+                    badgeText = "إشعار النظام العام • ${ formattedDate.ifBlank { "تعميم رسمي" } }",
+                    iconKey = latestBroadcast.resolvedIconKey,
+                    illustrationType = latestBroadcast.resolvedIconKey.toThreeDIllustrationType(),
+                    topOverlapPadding = 0.dp,
+                    onDismiss = {
+                        isBroadcastBannerDismissed = true
+                        developerBroadcasts.forEach { bc ->
+                            val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                            onDismissBroadcast(key)
+                            if (bc.id.isNotBlank()) {
+                                onDismissBroadcast(bc.id)
+                            }
+                        }
+                    }
+                )
+
+                if (latestBroadcast.imageBase64.isNotBlank() || latestBroadcast.imageUrl.isNotBlank()) {
+                    DeveloperAttachedImageBannerSection(
+                        imageBase64 = latestBroadcast.imageBase64,
+                        imageUrl = latestBroadcast.imageUrl
+                    )
                 }
             }
         }

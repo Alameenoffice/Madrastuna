@@ -2398,6 +2398,24 @@ fun ThreeDIllustrationBox(
         ),
         label = "continuous_rotation"
     )
+    val armWaveAngle by infiniteTransition.animateFloat(
+        initialValue = -11f,
+        targetValue = 14f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1350, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "character_arm_wave_angle"
+    )
+    val headNodOffset by infiniteTransition.animateFloat(
+        initialValue = -1.8f,
+        targetValue = 2.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "character_head_nod_offset"
+    )
 
     Canvas(
         modifier = modifier.graphicsLayer {
@@ -2413,314 +2431,408 @@ fun ThreeDIllustrationBox(
 
         when (type) {
             ThreeDIllustrationType.BOOKS_GRADUATION_CAP -> {
-                // Interactive Academic Vector Character (Pro Bézier Vector Character Animation)
-                // Royal Emerald & Gold Academic Attire + Soft Light Aura + Floating Smart Orbits + Welcoming Hand Wave + Glowing Smart Tablet/Badge
-                val wavePhaseRad = (continuousRotation * Math.PI / 180.0).toFloat() * 3f
-                val handWaveOffset = kotlin.math.sin(wavePhaseRad) * (w * 0.045f)
-                val orbitOffset = kotlin.math.cos(wavePhaseRad) * (h * 0.03f)
+                // =========================================================================
+                // PRO BÉZIER VECTOR ACADEMIC CHARACTER ANIMATION (شخصية أكاديمية فيكتورية تفاعلية حية)
+                // Royal Emerald & Gold Academic Leader with soft halo, floating smart orbitals,
+                // continuous breathing, welcoming hand wave, head nod, and glowing academic tablet.
+                // =========================================================================
 
-                // 1) Soft Radial Light Aura & Floating Smart Orbits
+                // 1) Soft Radial Glowing Aura & Floating Smart Orbitals
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFFFEF08A).copy(alpha = 0.36f * glowPulseAlpha),
-                            Color(0xFF34D399).copy(alpha = 0.28f * glowPulseAlpha),
+                            Color(0xFF34D399).copy(alpha = glowPulseAlpha * 0.95f),
+                            Color(0xFFFBBF24).copy(alpha = glowPulseAlpha * 0.38f),
                             Color.Transparent
                         ),
-                        center = Offset(cx, cy * 0.96f),
-                        radius = w * 0.54f
+                        center = Offset(cx, cy * 1.02f),
+                        radius = w * 0.52f
                     ),
-                    radius = w * 0.54f,
-                    center = Offset(cx, cy * 0.96f)
+                    radius = w * 0.52f,
+                    center = Offset(cx, cy * 1.02f)
                 )
 
-                // Floating elliptical smart orbit ring behind the character
-                val backOrbitPath = Path().apply {
-                    moveTo(w * 0.10f, h * 0.62f + orbitOffset)
-                    cubicTo(
-                        w * 0.22f, h * 0.42f - orbitOffset,
-                        w * 0.78f, h * 0.42f + orbitOffset,
-                        w * 0.90f, h * 0.62f - orbitOffset
+                //Tilted Smart Orbital Rings around the Academic Character
+                rotate(degrees = -14f + armWaveAngle * 0.25f, pivot = Offset(cx, cy * 1.08f)) {
+                    drawOval(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFFDE68A).copy(alpha = 0.72f),
+                                Color(0xFF34D399).copy(alpha = 0.25f),
+                                Color(0xFFFBBF24).copy(alpha = 0.78f)
+                            )
+                        ),
+                        topLeft = Offset(w * 0.05f, h * 0.56f),
+                        size = Size(w * 0.90f, h * 0.28f),
+                        style = Stroke(width = 1.9.dp.toPx())
                     )
-                    cubicTo(
-                        w * 0.78f, h * 0.80f + orbitOffset,
-                        w * 0.22f, h * 0.80f - orbitOffset,
-                        w * 0.10f, h * 0.62f + orbitOffset
-                    )
-                    close()
                 }
-                drawPath(
-                    path = backOrbitPath,
-                    brush = Brush.linearGradient(
+
+                // Floating Golden & Emerald Knowledge Nodes on the Orbit
+                val orbitRad = Math.toRadians(continuousRotation.toDouble())
+                val orb1X = cx + (w * 0.43f) * kotlin.math.cos(orbitRad).toFloat()
+                val orb1Y = (h * 0.70f) + (h * 0.12f) * kotlin.math.sin(orbitRad).toFloat()
+                val orb2X = cx - (w * 0.41f) * kotlin.math.cos(orbitRad).toFloat()
+                val orb2Y = (h * 0.34f) - (h * 0.10f) * kotlin.math.sin(orbitRad).toFloat()
+                drawCircle(
+                    color = Color(0xFFFDE68A),
+                    radius = 3.2.dp.toPx(),
+                    center = Offset(orb1X, orb1Y)
+                )
+                drawCircle(
+                    color = Color(0xFF6EE7B7),
+                    radius = 2.6.dp.toPx(),
+                    center = Offset(orb2X, orb2Y)
+                )
+
+                // Soft Pedestal Shadow under the character
+                drawOval(
+                    brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFFFDE68A).copy(alpha = 0.65f),
-                            Color(0xFF34D399).copy(alpha = 0.35f),
-                            Color(0xFFFBBF24).copy(alpha = 0.65f)
+                            Color(0xFF022C22).copy(alpha = 0.52f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, h * 0.90f),
+                        radius = w * 0.36f
+                    ),
+                    topLeft = Offset(w * 0.18f, h * 0.84f),
+                    size = Size(w * 0.64f, h * 0.11f)
+                )
+
+                // 2) Waving Right Arm (Behind/Side of Torso) with Smooth Bézier Curve & Hand
+                rotate(degrees = armWaveAngle, pivot = Offset(w * 0.31f, h * 0.58f)) {
+                    val wavingArmPath = Path().apply {
+                        moveTo(w * 0.33f, h * 0.58f)
+                        cubicTo(
+                            w * 0.20f, h * 0.55f,
+                            w * 0.13f, h * 0.44f,
+                            w * 0.15f, h * 0.34f
                         )
-                    ),
-                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
-                )
-
-                // Floating smart orbit nodes (glowing academic spheres)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFFFEF9C3), Color(0xFFF59E0B))
-                    ),
-                    radius = w * 0.042f,
-                    center = Offset(w * 0.14f, h * 0.46f + orbitOffset)
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFFA7F3D0), Color(0xFF10B981))
-                    ),
-                    radius = w * 0.036f,
-                    center = Offset(w * 0.86f, h * 0.40f - orbitOffset)
-                )
-
-                // 2) Royal Emerald & Gold Academic Gown / Shoulders (drawn with Path.cubicTo)
-                val gownPath = Path().apply {
-                    moveTo(w * 0.22f, h * 0.88f)
-                    cubicTo(
-                        w * 0.22f, h * 0.62f,
-                        w * 0.34f, h * 0.54f,
-                        w * 0.50f, h * 0.54f
+                        cubicTo(
+                            w * 0.17f, h * 0.30f,
+                            w * 0.23f, h * 0.31f,
+                            w * 0.24f, h * 0.36f
+                        )
+                        cubicTo(
+                            w * 0.24f, h * 0.43f,
+                            w * 0.29f, h * 0.50f,
+                            w * 0.36f, h * 0.53f
+                        )
+                        close()
+                    }
+                    drawPath(
+                        path = wavingArmPath,
+                        brush = Brush.linearGradient(
+                            colors = listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF064E3B)),
+                            start = Offset(w * 0.15f, h * 0.32f),
+                            end = Offset(w * 0.35f, h * 0.58f)
+                        )
                     )
-                    cubicTo(
-                        w * 0.66f, h * 0.54f,
-                        w * 0.78f, h * 0.62f,
-                        w * 0.78f, h * 0.88f
+                    // Golden Cuff on Waving Sleeve
+                    drawLine(
+                        color = Color(0xFFFBBF24),
+                        start = Offset(w * 0.15f, h * 0.36f),
+                        end = Offset(w * 0.23f, h * 0.37f),
+                        strokeWidth = 2.4.dp.toPx(),
+                        cap = StrokeCap.Round
                     )
-                    quadraticBezierTo(w * 0.50f, h * 0.94f, w * 0.22f, h * 0.88f)
+                    // Welcoming Sculpted Hand (Bézier Palm & Thumb)
+                    val palmCenter = Offset(w * 0.185f, h * 0.295f)
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFFDE6D2), Color(0xFFF3C6A8)),
+                            center = palmCenter,
+                            radius = w * 0.065f
+                        ),
+                        radius = w * 0.052f,
+                        center = palmCenter
+                    )
+                    // Subtle motion wave arc next to the waving hand
+                    val waveArcPath = Path().apply {
+                        moveTo(w * 0.09f, h * 0.29f)
+                        quadraticBezierTo(w * 0.06f, h * 0.23f, w * 0.12f, h * 0.19f)
+                    }
+                    drawPath(
+                        path = waveArcPath,
+                        color = Color(0xFFFDE68A).copy(alpha = 0.78f),
+                        style = Stroke(width = 1.7.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+
+                // 3) Academic Character Torso & Royal Emerald Gown/Suit (Sculpted with cubicTo)
+                val torsoPath = Path().apply {
+                    moveTo(w * 0.25f, h * 0.87f)
+                    cubicTo(
+                        w * 0.24f, h * 0.68f,
+                        w * 0.29f, h * 0.53f,
+                        w * 0.38f, h * 0.50f
+                    )
+                    lineTo(w * 0.62f, h * 0.50f)
+                    cubicTo(
+                        w * 0.71f, h * 0.53f,
+                        w * 0.76f, h * 0.68f,
+                        w * 0.75f, h * 0.87f
+                    )
+                    quadraticBezierTo(w * 0.50f, h * 0.93f, w * 0.25f, h * 0.87f)
                     close()
                 }
                 drawPath(
-                    path = gownPath,
-                    brush = Brush.linearGradient(
+                    path = torsoPath,
+                    brush = Brush.verticalGradient(
                         colors = listOf(
                             Color(0xFF10B981),
                             Color(0xFF047857),
                             Color(0xFF064E3B)
                         ),
-                        start = Offset(w * 0.22f, h * 0.54f),
-                        end = Offset(w * 0.78f, h * 0.92f)
+                        startY = h * 0.50f,
+                        endY = h * 0.90f
                     )
                 )
+                drawPath(
+                    path = torsoPath,
+                    color = Color(0xFFFBBF24).copy(alpha = 0.75f),
+                    style = Stroke(width = 1.5.dp.toPx(), join = StrokeJoin.Round)
+                )
 
-                // Golden Royal Academic Stole / Lapels over the emerald gown
-                val stolePath = Path().apply {
-                    moveTo(w * 0.39f, h * 0.55f)
-                    quadraticBezierTo(w * 0.50f, h * 0.72f, w * 0.61f, h * 0.55f)
-                    lineTo(w * 0.66f, h * 0.58f)
-                    quadraticBezierTo(w * 0.50f, h * 0.82f, w * 0.34f, h * 0.58f)
+                // White Crisp Academic Shirt V-Collar & Royal Gold Tie/Lapels
+                val shirtCollarPath = Path().apply {
+                    moveTo(w * 0.42f, h * 0.50f)
+                    lineTo(w * 0.58f, h * 0.50f)
+                    lineTo(w * 0.50f, h * 0.69f)
                     close()
                 }
                 drawPath(
-                    path = stolePath,
+                    path = shirtCollarPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color.White, Color(0xFFE2E8F0))
+                    )
+                )
+                // Royal Gold Academic Stole / Lapel Trim
+                val leftLapelPath = Path().apply {
+                    moveTo(w * 0.39f, h * 0.50f)
+                    quadraticBezierTo(w * 0.43f, h * 0.64f, w * 0.46f, h * 0.88f)
+                }
+                val rightLapelPath = Path().apply {
+                    moveTo(w * 0.61f, h * 0.50f)
+                    quadraticBezierTo(w * 0.57f, h * 0.64f, w * 0.54f, h * 0.88f)
+                }
+                drawPath(
+                    path = leftLapelPath,
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFDE68A), Color(0xFFD97706))),
+                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                )
+                drawPath(
+                    path = rightLapelPath,
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFDE68A), Color(0xFFD97706))),
+                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                )
+                // Royal Gold Tie
+                val tiePath = Path().apply {
+                    moveTo(w * 0.485f, h * 0.53f)
+                    lineTo(w * 0.515f, h * 0.53f)
+                    lineTo(w * 0.525f, h * 0.65f)
+                    lineTo(w * 0.50f, h * 0.70f)
+                    lineTo(w * 0.475f, h * 0.65f)
+                    close()
+                }
+                drawPath(
+                    path = tiePath,
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFBBF24), Color(0xFFB45309)))
+                )
+
+                // 4) Left Arm Holding a Glowing Smart Academic Tablet / Badge
+                val tabletShiftY = headNodOffset * 0.7f
+                val tabletRectTopLeft = Offset(w * 0.60f, h * 0.55f + tabletShiftY)
+                val tabletSize = Size(w * 0.24f, h * 0.27f)
+                val tabletPath = Path().apply {
+                    moveTo(tabletRectTopLeft.x + w * 0.03f, tabletRectTopLeft.y)
+                    lineTo(tabletRectTopLeft.x + tabletSize.width, tabletRectTopLeft.y - h * 0.02f)
+                    lineTo(tabletRectTopLeft.x + tabletSize.width - w * 0.03f, tabletRectTopLeft.y + tabletSize.height)
+                    lineTo(tabletRectTopLeft.x, tabletRectTopLeft.y + tabletSize.height + h * 0.02f)
+                    close()
+                }
+                drawPath(
+                    path = tabletPath,
                     brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFFFEF08A),
-                            Color(0xFFF59E0B),
-                            Color(0xFFD97706)
-                        )
-                    )
-                )
-
-                // Crisp White Shirt Collar & Emerald Tie
-                val collarPath = Path().apply {
-                    moveTo(w * 0.43f, h * 0.54f)
-                    lineTo(w * 0.50f, h * 0.65f)
-                    lineTo(w * 0.57f, h * 0.54f)
-                    close()
-                }
-                drawPath(collarPath, color = Color(0xFFF8FAFC))
-
-                // 3) Welcoming Right Arm & Hand Waving Smoothly (Bézier curve arm + palm)
-                val wavingArmPath = Path().apply {
-                    moveTo(w * 0.28f, h * 0.64f)
-                    cubicTo(
-                        w * 0.16f, h * 0.60f,
-                        w * 0.12f + handWaveOffset * 0.6f, h * 0.48f,
-                        w * 0.17f + handWaveOffset, h * 0.37f
-                    )
-                    cubicTo(
-                        w * 0.21f + handWaveOffset, h * 0.34f,
-                        w * 0.25f + handWaveOffset, h * 0.38f,
-                        w * 0.24f + handWaveOffset * 0.7f, h * 0.46f
-                    )
-                    cubicTo(
-                        w * 0.22f + handWaveOffset * 0.4f, h * 0.54f,
-                        w * 0.26f, h * 0.58f,
-                        w * 0.33f, h * 0.61f
-                    )
-                    close()
-                }
-                drawPath(
-                    path = wavingArmPath,
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFF34D399), Color(0xFF059669))
-                    )
-                )
-                // Waving hand with warm skin tone gradient & golden cuff
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))
-                    ),
-                    radius = w * 0.052f,
-                    center = Offset(w * 0.19f + handWaveOffset, h * 0.36f)
-                )
-
-                // 4) Left Arm Holding a Glowing Smart Academic Tablet / Golden Badge
-                val tabletX = w * 0.64f
-                val tabletY = h * 0.56f + orbitOffset * 0.4f
-                val smartTabletPath = Path().apply {
-                    moveTo(tabletX, tabletY)
-                    lineTo(tabletX + w * 0.20f, tabletY - h * 0.05f)
-                    lineTo(tabletX + w * 0.17f, tabletY + h * 0.20f)
-                    lineTo(tabletX - w * 0.03f, tabletY + h * 0.25f)
-                    close()
-                }
-                drawPath(
-                    path = smartTabletPath,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFFFEF9C3),
-                            Color(0xFFFBBF24),
-                            Color(0xFFD97706)
-                        )
+                        colors = listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFF59E0B)),
+                        start = tabletRectTopLeft,
+                        end = Offset(tabletRectTopLeft.x + tabletSize.width, tabletRectTopLeft.y + tabletSize.height)
                     )
                 )
                 drawPath(
-                    path = smartTabletPath,
-                    color = Color.White.copy(alpha = 0.85f),
-                    style = Stroke(width = 1.4.dp.toPx())
+                    path = tabletPath,
+                    color = Color.White.copy(alpha = 0.90f),
+                    style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round)
                 )
-                // Glowing star emblem on the smart tablet
+                // Glowing Emerald Star Emblem inside the Academic Tablet
+                val badgeCenter = Offset(
+                    tabletRectTopLeft.x + tabletSize.width * 0.50f,
+                    tabletRectTopLeft.y + tabletSize.height * 0.48f
+                )
                 drawCircle(
                     color = Color(0xFF047857),
-                    radius = w * 0.035f,
-                    center = Offset(tabletX + w * 0.085f, tabletY + h * 0.095f)
+                    radius = w * 0.055f,
+                    center = badgeCenter
+                )
+                drawCircle(
+                    color = Color(0xFFFDE68A),
+                    radius = w * 0.024f * waveExpandFactor,
+                    center = badgeCenter
+                )
+                // Left Hand clasping the Academic Tablet
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFDE6D2), Color(0xFFF3C6A8)),
+                        center = Offset(tabletRectTopLeft.x + w * 0.02f, tabletRectTopLeft.y + tabletSize.height * 0.55f),
+                        radius = w * 0.05f
+                    ),
+                    radius = w * 0.042f,
+                    center = Offset(tabletRectTopLeft.x + w * 0.02f, tabletRectTopLeft.y + tabletSize.height * 0.55f)
                 )
 
-                // 5) Character Head, Friendly Academic Expression & Royal Emerald Beret/Crest
-                val headCenterY = h * 0.37f
-                // Neck
+                // 5) Neck & Sculpted Bézier Head with Gentle Welcoming Nod (`headNodOffset`)
+                val nodY = headNodOffset
                 drawRoundRect(
-                    color = Color(0xFFFCD34D),
-                    topLeft = Offset(w * 0.45f, h * 0.47f),
-                    size = Size(w * 0.10f, h * 0.09f),
-                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    brush = Brush.verticalGradient(listOf(Color(0xFFF3C6A8), Color(0xFFE5B293))),
+                    topLeft = Offset(w * 0.455f, h * 0.43f + nodY * 0.5f),
+                    size = Size(w * 0.09f, h * 0.09f),
+                    cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
                 )
-                // Sculpted Head with soft radial shading
+
+                // Face Contour using Smooth Bézier Curves
                 val facePath = Path().apply {
-                    moveTo(w * 0.36f, headCenterY - h * 0.05f)
+                    moveTo(w * 0.36f, h * 0.27f + nodY)
                     cubicTo(
-                        w * 0.36f, headCenterY - h * 0.16f,
-                        w * 0.64f, headCenterY - h * 0.16f,
-                        w * 0.64f, headCenterY - h * 0.05f
+                        w * 0.36f, h * 0.18f + nodY,
+                        w * 0.64f, h * 0.18f + nodY,
+                        w * 0.64f, h * 0.27f + nodY
                     )
                     cubicTo(
-                        w * 0.65f, headCenterY + h * 0.09f,
-                        w * 0.57f, headCenterY + h * 0.15f,
-                        w * 0.50f, headCenterY + h * 0.15f
+                        w * 0.65f, h * 0.39f + nodY,
+                        w * 0.58f, h * 0.46f + nodY,
+                        w * 0.50f, h * 0.46f + nodY
                     )
                     cubicTo(
-                        w * 0.43f, headCenterY + h * 0.15f,
-                        w * 0.35f, headCenterY + h * 0.09f,
-                        w * 0.36f, headCenterY - h * 0.05f
+                        w * 0.42f, h * 0.46f + nodY,
+                        w * 0.35f, h * 0.39f + nodY,
+                        w * 0.36f, h * 0.27f + nodY
                     )
                     close()
                 }
                 drawPath(
                     path = facePath,
                     brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFFEF3C7),
-                            Color(0xFFFDE68A),
-                            Color(0xFFF59E0B)
-                        ),
-                        center = Offset(w * 0.48f, headCenterY),
+                        colors = listOf(Color(0xFFFFEFE2), Color(0xFFF8D3B8), Color(0xFFEEBE9A)),
+                        center = Offset(w * 0.48f, h * 0.31f + nodY),
                         radius = w * 0.20f
                     )
                 )
 
-                // Modern Academic Glasses (Golden rimmed smart frames)
-                drawRoundRect(
-                    color = Color(0xFF064E3B),
-                    topLeft = Offset(w * 0.39f, headCenterY - h * 0.02f),
-                    size = Size(w * 0.09f, h * 0.055f),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx()),
-                    style = Stroke(width = 1.6.dp.toPx())
+                // Expressive Eyes, Brows & Warm Welcoming Smile (Bézier curves)
+                drawCircle(
+                    color = Color(0xFF0F172A),
+                    radius = 2.1.dp.toPx(),
+                    center = Offset(w * 0.445f, h * 0.32f + nodY)
                 )
-                drawRoundRect(
-                    color = Color(0xFF064E3B),
-                    topLeft = Offset(w * 0.52f, headCenterY - h * 0.02f),
-                    size = Size(w * 0.09f, h * 0.055f),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx()),
-                    style = Stroke(width = 1.6.dp.toPx())
+                drawCircle(
+                    color = Color(0xFF0F172A),
+                    radius = 2.1.dp.toPx(),
+                    center = Offset(w * 0.555f, h * 0.32f + nodY)
                 )
-                drawLine(
-                    color = Color(0xFF064E3B),
-                    start = Offset(w * 0.48f, headCenterY + h * 0.005f),
-                    end = Offset(w * 0.52f, headCenterY + h * 0.005f),
-                    strokeWidth = 1.5.dp.toPx()
+                // Eye catchlights
+                drawCircle(
+                    color = Color.White,
+                    radius = 0.8.dp.toPx(),
+                    center = Offset(w * 0.440f, h * 0.314f + nodY)
                 )
-                // Friendly welcoming smile (quadraticBezierTo)
+                drawCircle(
+                    color = Color.White,
+                    radius = 0.8.dp.toPx(),
+                    center = Offset(w * 0.550f, h * 0.314f + nodY)
+                )
+                // Eyebrows
+                val leftBrow = Path().apply {
+                    moveTo(w * 0.415f, h * 0.292f + nodY)
+                    quadraticBezierTo(w * 0.445f, h * 0.276f + nodY, w * 0.472f, h * 0.290f + nodY)
+                }
+                val rightBrow = Path().apply {
+                    moveTo(w * 0.528f, h * 0.290f + nodY)
+                    quadraticBezierTo(w * 0.555f, h * 0.276f + nodY, w * 0.585f, h * 0.292f + nodY)
+                }
+                drawPath(leftBrow, color = Color(0xFF1E293B), style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(rightBrow, color = Color(0xFF1E293B), style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round))
+
+                // Warm Welcoming Smile
                 val smilePath = Path().apply {
-                    moveTo(w * 0.44f, headCenterY + h * 0.07f)
-                    quadraticBezierTo(
-                        w * 0.50f, headCenterY + h * 0.115f,
-                        w * 0.56f, headCenterY + h * 0.07f
-                    )
+                    moveTo(w * 0.455f, h * 0.382f + nodY)
+                    quadraticBezierTo(w * 0.50f, h * 0.418f + nodY, w * 0.545f, h * 0.382f + nodY)
                 }
                 drawPath(
                     path = smilePath,
-                    color = Color(0xFF064E3B),
+                    color = Color(0xFF065F46),
                     style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                 )
 
-                // Royal Emerald & Gold Academic Crown/Cap Crest (No black graduation cap!)
-                val royalCapPath = Path().apply {
-                    moveTo(w * 0.33f, headCenterY - h * 0.07f)
+                // 6) Royal Emerald & Gold Academic Crest Cap (تاج/بيريه أكاديمي زمردي وذهبي ملكي)
+                val academicHairAndBand = Path().apply {
+                    moveTo(w * 0.35f, h * 0.26f + nodY)
                     cubicTo(
-                        w * 0.36f, headCenterY - h * 0.22f,
-                        w * 0.64f, headCenterY - h * 0.22f,
-                        w * 0.67f, headCenterY - h * 0.07f
+                        w * 0.35f, h * 0.17f + nodY,
+                        w * 0.65f, h * 0.17f + nodY,
+                        w * 0.65f, h * 0.26f + nodY
                     )
-                    quadraticBezierTo(
-                        w * 0.50f, headCenterY - h * 0.12f,
-                        w * 0.33f, headCenterY - h * 0.07f
-                    )
+                    quadraticBezierTo(w * 0.50f, h * 0.22f + nodY, w * 0.35f, h * 0.26f + nodY)
                     close()
                 }
                 drawPath(
-                    path = royalCapPath,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF34D399),
-                            Color(0xFF059669),
-                            Color(0xFF065F46)
-                        )
+                    path = academicHairAndBand,
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFF064E3B), Color(0xFF047857), Color(0xFF064E3B))
                     )
                 )
-                // Golden band & glowing academic star on the emerald cap
-                val goldBandPath = Path().apply {
-                    moveTo(w * 0.34f, headCenterY - h * 0.07f)
+
+                val royalCrownBrim = Path().apply {
+                    moveTo(w * 0.24f, h * 0.17f + nodY)
+                    lineTo(w * 0.50f, h * 0.25f + nodY)
+                    lineTo(w * 0.76f, h * 0.17f + nodY)
+                    lineTo(w * 0.50f, h * 0.09f + nodY)
+                    close()
+                }
+                drawPath(
+                    path = royalCrownBrim,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF10B981), Color(0xFF047857), Color(0xFF064E3B))
+                    )
+                )
+                drawPath(
+                    path = royalCrownBrim,
+                    color = Color(0xFFFDE68A),
+                    style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round)
+                )
+
+                // Swinging Golden Tassel on the Academic Crown
+                drawCircle(
+                    color = Color(0xFFFDE68A),
+                    radius = 2.6.dp.toPx(),
+                    center = Offset(w * 0.50f, h * 0.17f + nodY)
+                )
+                val tasselSwingX = (armWaveAngle * 0.32f)
+                val tasselPath = Path().apply {
+                    moveTo(w * 0.50f, h * 0.17f + nodY)
                     quadraticBezierTo(
-                        w * 0.50f, headCenterY - h * 0.115f,
-                        w * 0.66f, headCenterY - h * 0.07f
+                        w * 0.66f, h * 0.19f + nodY,
+                        w * 0.71f + tasselSwingX * 0.4f, h * 0.31f + nodY
                     )
                 }
                 drawPath(
-                    path = goldBandPath,
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFFEF08A))
-                    ),
-                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                    path = tasselPath,
+                    color = Color(0xFFFBBF24),
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                 )
                 drawCircle(
-                    color = Color(0xFFFEF08A),
-                    radius = w * 0.028f,
-                    center = Offset(w * 0.50f, headCenterY - h * 0.14f)
+                    color = Color(0xFFF59E0B),
+                    radius = 2.8.dp.toPx(),
+                    center = Offset(w * 0.71f + tasselSwingX * 0.4f, h * 0.32f + nodY)
                 )
             }
 
@@ -4717,185 +4829,150 @@ private val SeamlessFullWidthWaveShape = GenericShape { size, _ ->
  * - بدون أي صندوق مستطيل أو RoundedCornerShape أو BorderStroke نهائياً.
  * - ممتد من الحافة للحافة (Edge-to-Edge) بتموجات مائية ناعمة ومجسم أنيميشن 3D ديناميكي حسب اختيار المطور.
  */
-/**
- * 1) بطاقة إشعار النظام العام / التعميمات والتحديثات الموحدة (Sleek RoundedCornerShape(20.dp) Card):
- * - توضع أسفل بنر الترحيب الأخضر مباشرةً بعرض كامل `fillMaxWidth()` وحواف دائرية أنيقة `RoundedCornerShape(20.dp)` وظل خفيف.
- * - بدون أي خلفية خضراء مقطوعة أو إطار أبيض مشوه، مع عرض التاريخ والوقت مفصولين بوضوح (`2026/11/11 • 09:06 ص`).
- */
 @Composable
 fun DeveloperSystemBroadcastBanner(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
     badgeText: String = "إشعار النظام العام",
-    createdAtText: String = "",
     iconKey: OccasionIconKey = OccasionIconKey.BELL,
     illustrationType: ThreeDIllustrationType = iconKey.toThreeDIllustrationType(),
     topOverlapPadding: Dp = 0.dp,
     onDismiss: (() -> Unit)? = null
 ) {
-    val formattedDateTime = remember(createdAtText, badgeText) {
-        if (createdAtText.isNotBlank()) {
-            com.example.model.ArabicTextNormalizer.formatSystemBroadcastDateTime(createdAtText)
-        } else {
-            ""
-        }
+    val bannerShape = if (topOverlapPadding > 0.dp) {
+        SeamlessFullWidthWaveShape
+    } else {
+        RoundedCornerShape(20.dp)
     }
-
-    Card(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 6.dp,
-                shape = RoundedCornerShape(20.dp),
-                ambientColor = Color(0xFF047857).copy(alpha = 0.16f),
-                spotColor = Color(0xFF047857).copy(alpha = 0.20f)
+                elevation = if (topOverlapPadding > 0.dp) 0.dp else 4.dp,
+                shape = bannerShape,
+                ambientColor = Color(0xFF047857).copy(alpha = 0.18f),
+                spotColor = Color(0xFF047857).copy(alpha = 0.22f)
             )
-            .clip(RoundedCornerShape(20.dp)),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .clip(bannerShape)
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFFD1FAE5),
+                        Color(0xFFE0F7EE),
+                        Color(0xFFA7F3D0)
+                    )
+                )
+            )
     ) {
-        Box(
+        // Subtle inner wave ribbon drawn on Canvas (zero box border)
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            val ribbonPath = Path().apply {
+                moveTo(0f, h * 0.65f)
+                cubicTo(
+                    w * 0.35f, h * 0.42f,
+                    w * 0.65f, h * 0.88f,
+                    w, h * 0.58f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = ribbonPath,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFF10B981).copy(alpha = 0.14f),
+                        Color(0xFF059669).copy(alpha = 0.08f),
+                        Color(0xFF34D399).copy(alpha = 0.16f)
+                    )
+                )
+            )
+        }
+
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFFECFDF5),
-                            Color(0xFFD1FAE5),
-                            Color(0xFFA7F3D0)
-                        ),
-                        start = Offset(0f, 0f),
-                        end = Offset(900f, 350f)
-                    )
-                )
+                .padding(
+                    start = 18.dp,
+                    end = 18.dp,
+                    top = 18.dp + topOverlapPadding,
+                    bottom = 18.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Subtle Bézier wave accent inside the rounded card
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val w = size.width
-                val h = size.height
-                val ribbonPath = Path().apply {
-                    moveTo(0f, h * 0.68f)
-                    cubicTo(
-                        w * 0.35f, h * 0.46f,
-                        w * 0.65f, h * 0.88f,
-                        w, h * 0.60f
-                    )
-                    lineTo(w, h)
-                    lineTo(0f, h)
-                    close()
-                }
-                drawPath(
-                    path = ribbonPath,
-                    brush = Brush.horizontalGradient(
-                        listOf(
-                            Color(0xFF10B981).copy(alpha = 0.13f),
-                            Color(0xFF059669).copy(alpha = 0.08f),
-                            Color(0xFF34D399).copy(alpha = 0.15f)
-                        )
-                    )
-                )
-            }
-
+            // Right side in RTL: Circular dark-emerald action/dismiss icon + vertical emerald bar + text
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF047857))
+                        .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (onDismiss != null) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF047857))
-                                .clickable { onDismiss() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "إغلاق إشعار النظام العام",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(46.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF059669))
+                    Icon(
+                        imageVector = if (onDismiss != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "إشعار النظام العام",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
                     )
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFF047857).copy(alpha = 0.12f)
-                            ) {
-                                Text(
-                                    text = badgeText,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF047857),
-                                    maxLines = 1,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                            if (formattedDateTime.isNotBlank()) {
-                                Text(
-                                    text = formattedDateTime,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF065F46).copy(alpha = 0.85f),
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontSize = 15.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF064E3B),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            lineHeight = 18.sp
-                        )
-                    }
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
-
-                ThreeDIllustrationBox(
-                    type = illustrationType,
-                    modifier = Modifier.size(64.dp)
+                Box(
+                    modifier = Modifier
+                        .width(2.5.dp)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFF059669).copy(alpha = 0.75f))
                 )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF047857),
+                        maxLines = 1
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF065F46),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 12.8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Left side in RTL: Dynamic 3D Animated Illustration selected by Developer
+            ThreeDIllustrationBox(
+                type = illustrationType,
+                modifier = Modifier.size(72.dp)
+            )
         }
     }
 }

@@ -1331,7 +1331,7 @@ fun CurriculumBooksScreen(
                 .padding(horizontal = 16.dp)
                 .testTag("curriculum_books_screen"),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(top = 6.dp, bottom = 100.dp)
+            contentPadding = PaddingValues(top = 4.dp, bottom = 100.dp)
         ) {
             // 1. Royal 3D Wave Hero Header with exclusive Opening & Closing 3D Book Vector Animation on the left
             item(key = "curriculum_hero_banner") {
@@ -1360,7 +1360,7 @@ fun CurriculumBooksScreen(
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // A. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية)
+                        // A. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية) — Zero clipping
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1412,13 +1412,13 @@ fun CurriculumBooksScreen(
                             }
                         }
 
-                        // B. Grade Classes Horizontal Scrollable Filter Chips (LazyRow with clean contentPadding & uniform height)
+                        // B. Grade Classes Horizontal Filter Chips (Uniform height & smooth horizontal scroll)
                         LazyRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(horizontal = 4.dp)
                         ) {
-                            items(selectedStage.gradeClasses, key = { it }) { gradeClass ->
+                            items(selectedStage.gradeClasses) { gradeClass ->
                                 val isGradeSelected = selectedGradeClass == gradeClass && searchQuery.isBlank()
                                 val gradeBookCount = remember(allBooks, selectedStage, gradeClass) {
                                     allBooks.count { it.stage == selectedStage && it.gradeClass == gradeClass }
@@ -1510,7 +1510,7 @@ fun CurriculumBooksScreen(
                 }
             }
 
-            // 3. Books List or Elegant Empty Stage Card (All scrolling seamlessly with the top banner)
+            // 3. Books List or Elegant Empty State Card inside the same continuous LazyColumn
             if (displayedBooks.isEmpty()) {
                 item(key = "curriculum_empty_stage_${selectedStage.name}_$selectedGradeClass") {
                     InteractiveSmartLibraryStageView(
@@ -1521,7 +1521,10 @@ fun CurriculumBooksScreen(
                     )
                 }
             } else {
-                items(displayedBooks, key = { it.id }) { book ->
+                items(
+                    items = displayedBooks,
+                    key = { it.id }
+                ) { book ->
                     CurriculumBookOfficialCard(
                         book = book,
                         isDarkMode = isDarkMode,
@@ -1547,7 +1550,7 @@ fun CurriculumBooksScreen(
 /**
  * Interactive Animated Stage for Intermediate & Preparatory Curriculum Stages:
  * Displays `OpeningAndClosing3DBookVectorAnimation` in the center of the stage card
- * with clear emerald title and calm explanatory description.
+ * with clean, non-technical Arabic copy.
  */
 @Composable
 private fun InteractiveSmartLibraryStageView(
@@ -1598,11 +1601,11 @@ private fun InteractiveSmartLibraryStageView(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 28.dp),
+                        .padding(horizontal = 22.dp, vertical = 30.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // Exclusive 3D Opening & Closing Book Vector Animation in the top/center of the stage card
+                    // Exclusive 3D Bézier Opening & Closing Book Vector Animation in the center of the stage card
                     OpeningAndClosing3DBookVectorAnimation(
                         modifier = Modifier.size(132.dp),
                         isDarkMode = isDarkMode
@@ -1631,7 +1634,6 @@ private fun InteractiveSmartLibraryStageView(
                         }
                     }
 
-                    // Clear Emerald Title
                     Text(
                         text = if (hasActiveSearchQuery) {
                             "لا توجد كتب مطابقة لعبارة البحث الحالية"
@@ -1639,17 +1641,16 @@ private fun InteractiveSmartLibraryStageView(
                             "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد"
                         },
                         style = MaterialTheme.typography.titleMedium,
-                        fontSize = 17.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = if (isDarkMode) Color(0xFF34D399) else DeepForestGreen,
                         textAlign = TextAlign.Center,
                         lineHeight = 25.sp
                     )
 
-                    // Calm Explanatory Description
                     Text(
                         text = if (hasActiveSearchQuery) {
-                            "يرجى تجربة البحث باسم كتاب آخر أو اختيار صف دراسي مختلف من الشريط العلوي."
+                            "جرب البحث باسم كتاب آخر أو اختر المرحلة والصف الدراسي من الأعلى."
                         } else {
                             "يجري العمل حالياً على تجهيز وربط الكتب المنهجية الرسمية لهذا الصف، وستتوفر قريباً للتصفح المباشر."
                         },
@@ -1658,7 +1659,7 @@ private fun InteractiveSmartLibraryStageView(
                         fontWeight = FontWeight.SemiBold,
                         color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
                         textAlign = TextAlign.Center,
-                        lineHeight = 22.sp
+                        lineHeight = 21.sp
                     )
                 }
             }
@@ -2128,7 +2129,7 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 24.dp),
+                .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
@@ -2144,7 +2145,7 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Verified,
@@ -2158,7 +2159,8 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -2171,7 +2173,7 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
@@ -2184,10 +2186,11 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
                         Text(
                             text = leftPillText,
                             style = MaterialTheme.typography.labelMedium,
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -2500,16 +2503,20 @@ fun OpeningAndClosing3DBookVectorAnimation(
 
             val flippingPagePath = Path().apply {
                 moveTo(cx, spineBottomY)
-                quadraticBezierTo(
+                cubicTo(
+                    cx + cosA * (pageSpanX * 0.28f),
+                    spineBottomY - ctrlLift * 0.85f,
                     ctrlX,
                     spineBottomY - ctrlLift,
                     tipX,
                     tipBottomY
                 )
                 lineTo(tipX, tipTopY)
-                quadraticBezierTo(
+                cubicTo(
                     ctrlX,
                     spineTopY - ctrlLift,
+                    cx + cosA * (pageSpanX * 0.28f),
+                    spineTopY - ctrlLift * 0.85f,
                     cx,
                     spineTopY
                 )
