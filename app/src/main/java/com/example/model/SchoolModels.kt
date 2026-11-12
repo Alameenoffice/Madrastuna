@@ -550,7 +550,12 @@ data class SchoolConfig(
     val busDriverName: String = "السائق المعتمد للخط المدرسي",
     val busDriverPhone: String = "",
     val busVehicleNumber: String = "مركبة النقل المدرسي الحديثة",
-    val busDriverPhotoBase64: String = ""
+    val busDriverPhotoBase64: String = "",
+    val busRouteAreaName: String = "",
+    val busDriverIdentityDetails: String = "",
+    val isDriverAccountEnabled: Boolean = false,
+    val busDriverUsername: String = "",
+    val busDriverPassword: String = ""
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -591,7 +596,8 @@ data class UserAccount(
     val canModerateActivities: Boolean = false,
     val canManageCanteen: Boolean = false,
     val gender: String = "",
-    val ageYears: Int = 0
+    val ageYears: Int = 0,
+    val isBusDriverAccount: Boolean = false
 ) {
     val isGenderSpecified: Boolean
         get() {
@@ -1085,6 +1091,10 @@ data class StudentRecord(
     val busDriverName: String = "",
     val busDriverPhone: String = "",
     val busVehicleNumber: String = "",
+    val busBoardingStatus: String = "",
+    val busBoardingTimestamp: String = "",
+    val busBoardingDateIso: String = "",
+    val busBoardingDriverName: String = "",
     val schoolId: String = "",
     val dailyAttendance: Map<String, String> = emptyMap(),
     val todayStatus: String = "",
@@ -1812,6 +1822,20 @@ enum class BusEventType(
             ARRIVED_AT_SCHOOL -> "وصل الباص إلى المدرسة بسلام"
             RETURN_HOME_DEPARTURE -> "غادر الباص المدرسة في رحلة العودة للمنازل"
         }
+}
+
+enum class BusBoardingScanMode(
+    val arabicTitle: String,
+    val shortBadgeLabel: String
+) {
+    BOARDING(
+        arabicTitle = "تسجيل صعود طالب للباص (مسح الباركود QR)",
+        shortBadgeLabel = "صعد إلى الباص"
+    ),
+    ALIGHTING(
+        arabicTitle = "تسجيل نزول طالب بسلام (مسح الباركود QR)",
+        shortBadgeLabel = "نزل من الباص بسلام"
+    )
 }
 
 data class DeveloperBroadcastItem(

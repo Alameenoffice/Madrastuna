@@ -403,9 +403,27 @@ fun DashboardScreen(
                 if (myStudent.isBusSubscribed && (featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE)) {
                     ParentStudentLiveBusAlertBannerCard(
                         studentName = myStudent.fullNameWithFather,
-                        routeName = myStudent.busRouteName,
+                        routeName = myStudent.busRouteName.ifBlank { schoolConfig.busRouteAreaName },
                         activeBusEventName = schoolConfig.activeBusEvent,
                         activeBusTimestamp = schoolConfig.activeBusEventTimestamp,
+                        onClick = { viewModel.navigateToSection(AppSection.SCHOOL_TRANSPORT) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp)
+                    )
+                }
+
+                // إشعارات الصعود والنزول التفاعلية بتقنية بيزيير لدى ولي الأمر والطالب (Bezier Interactive Boarding Status Card)
+                if (myStudent.busBoardingStatus.isNotBlank() && myStudent.busBoardingTimestamp.isNotBlank()) {
+                    val effectiveDriverForBoarding = myStudent.busBoardingDriverName
+                        .ifBlank { myStudent.busDriverName }
+                        .ifBlank { schoolConfig.busDriverName }
+                        .ifBlank { "السائق المعتمد" }
+                    BezierInteractiveBoardingStatusCard(
+                        studentName = myStudent.fullNameWithFather,
+                        boardingStatus = myStudent.busBoardingStatus,
+                        boardingTimestamp = myStudent.busBoardingTimestamp,
+                        driverName = effectiveDriverForBoarding,
                         onClick = { viewModel.navigateToSection(AppSection.SCHOOL_TRANSPORT) },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -10249,11 +10267,25 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                         }
                     } else {
                         val effectiveRouteName = myChildForParent.busRouteName
-                            .takeIf { it.isNotBlank() } ?: "الخط الصباحي والمسائي المعتمد"
+                            .takeIf { it.isNotBlank() && it != "الخط الصباحي والمسائي" }
+                            ?: schoolConfig.busRouteAreaName.takeIf { it.isNotBlank() }
+                            ?: myChildForParent.busRouteName.ifBlank { "الخط الصباحي والمسائي المعتمد" }
                         val effectiveDriverName = myChildForParent.busDriverName
                             .takeIf { it.isNotBlank() } ?: schoolConfig.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" }
                         val effectiveVehicleNumber = myChildForParent.busVehicleNumber
                             .takeIf { it.isNotBlank() } ?: schoolConfig.busVehicleNumber.ifBlank { "مركبة النقل المدرسي الحديثة" }
+
+                        // إشعار الصعود والنزول التفاعلي بتقنية بيزيير داخل قسم النقل المدرسي لولي الأمر والطالب
+                        if (myChildForParent.busBoardingStatus.isNotBlank() && myChildForParent.busBoardingTimestamp.isNotBlank()) {
+                            BezierInteractiveBoardingStatusCard(
+                                studentName = myChildForParent.fullNameWithFather,
+                                boardingStatus = myChildForParent.busBoardingStatus,
+                                boardingTimestamp = myChildForParent.busBoardingTimestamp,
+                                driverName = myChildForParent.busBoardingDriverName.ifBlank { effectiveDriverName },
+                                onClick = {},
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
                         // بطاقة "بيانات خط الطالب والسائق المعتمد"
                         Card(
@@ -10561,7 +10593,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                             softWrap = false
                                         )
                                     }
-                                    if (isSelected) {
+                                     if (isSelected) {
                                         Surface(
                                             shape = RoundedCornerShape(50),
                                             color = Color(0xFFFDE68A).copy(alpha = 0.22f),
@@ -10575,6 +10607,468 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                                 maxLines = 1,
                                                 softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // =========================================================================
+            // أولاً (للمدير): لوحة "إعدادات الخطوط وبيانات السائقين" + التحكم بكشف هوية السائق
+            // =========================================================================
+            if (isAdmin) {
+                item {
+                    var inlineDriverName by remember(schoolConfig.busDriverName) {
+                        mutableStateOf(
+                            schoolConfig.busDriverName.takeIf { it != "السائق المعتمد للخط المدرسي" }.orEmpty()
+                        )
+                    }
+                    var inlineDriverPhone by remember(schoolConfig.busDriverPhone) {
+                        mutableStateOf(schoolConfig.busDriverPhone)
+                    }
+                    var inlineVehicleNumber by remember(schoolConfig.busVehicleNumber) {
+                        mutableStateOf(
+                            schoolConfig.busVehicleNumber.takeIf { it != "مركبة النقل المدرسي الحديثة" }.orEmpty()
+                        )
+                    }
+                    var inlineRouteArea by remember(schoolConfig.busRouteAreaName) {
+                        mutableStateOf(schoolConfig.busRouteAreaName)
+                    }
+                    var inlineIdentityDetails by remember(schoolConfig.busDriverIdentityDetails) {
+                        mutableStateOf(schoolConfig.busDriverIdentityDetails)
+                    }
+                    var inlineAllowIdentity by remember(schoolConfig.allowParentToViewDriverIdentity) {
+                        mutableStateOf(schoolConfig.allowParentToViewDriverIdentity)
+                    }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .testTag("admin_driver_and_route_settings_panel"),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                        border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.55f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF065F46),
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Badge,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFDE68A),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                                Column {
+                                    Text(
+                                        text = "إعدادات الخطوط وبيانات السائقين",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46)
+                                    )
+                                    Text(
+                                        text = "إدارة معلومات السائق، مسار الخط، المركبة، وصلاحية كشف الهوية لأولياء الأمور",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(color = Color(0xFFD1FAE5))
+
+                            OutlinedTextField(
+                                value = inlineDriverName,
+                                onValueChange = { inlineDriverName = it },
+                                label = { Text("اسم السائق الكامل") },
+                                placeholder = { Text("أدخل اسم السائق الكامل") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Person, contentDescription = null, tint = Color(0xFF059669))
+                                },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("driver_settings_name_input")
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = inlineDriverPhone,
+                                    onValueChange = { inlineDriverPhone = it },
+                                    label = { Text("رقم هاتف السائق") },
+                                    placeholder = { Text("أدخل رقم هاتف السائق") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("driver_settings_phone_input")
+                                )
+                                OutlinedTextField(
+                                    value = inlineVehicleNumber,
+                                    onValueChange = { inlineVehicleNumber = it },
+                                    label = { Text("نوع ورقم المركبة") },
+                                    placeholder = { Text("أدخل نوع ورقم المركبة") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("driver_settings_vehicle_input")
+                                )
+                            }
+
+                            OutlinedTextField(
+                                value = inlineRouteArea,
+                                onValueChange = { inlineRouteArea = it },
+                                label = { Text("مسار / منطقة الخط المدرسي") },
+                                placeholder = { Text("أدخل اسم الخط أو المنطقة السكنية") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Route, contentDescription = null, tint = Color(0xFF059669))
+                                },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("driver_settings_route_area_input")
+                            )
+
+                            OutlinedTextField(
+                                value = inlineIdentityDetails,
+                                onValueChange = { inlineIdentityDetails = it },
+                                label = { Text("تفاصيل هوية السائق وإجازة السوق") },
+                                placeholder = { Text("أدخل رقم الهوية أو تفاصيل إجازة السوق الموثقة") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.VerifiedUser, contentDescription = null, tint = Color(0xFF059669))
+                                },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("driver_settings_identity_details_input")
+                            )
+
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFF059669))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "السماح لأولياء الأمور بكشف وعرض هوية السائق وتفاصيله",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Switch(
+                                        checked = inlineAllowIdentity,
+                                        onCheckedChange = {
+                                            inlineAllowIdentity = it
+                                            viewModel.updateSchoolBusDriverConfig(
+                                                driverName = inlineDriverName,
+                                                driverPhone = inlineDriverPhone,
+                                                vehicleNumber = inlineVehicleNumber,
+                                                allowParentToViewDriverIdentity = it,
+                                                routeAreaName = inlineRouteArea,
+                                                driverIdentityDetails = inlineIdentityDetails
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("allow_parent_view_driver_identity_switch"),
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = Color(0xFF059669)
+                                        )
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    viewModel.updateSchoolBusDriverConfig(
+                                        driverName = inlineDriverName,
+                                        driverPhone = inlineDriverPhone,
+                                        vehicleNumber = inlineVehicleNumber,
+                                        allowParentToViewDriverIdentity = inlineAllowIdentity,
+                                        routeAreaName = inlineRouteArea,
+                                        driverIdentityDetails = inlineIdentityDetails
+                                    )
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("save_driver_and_route_settings_btn"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF059669),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "حفظ إعدادات الخطوط وبيانات السائق",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // =========================================================================
+                // ثانياً (للمدير): بطاقة "منظومة حساب السائق الذكي ومسح باركود الطلبة"
+                // =========================================================================
+                item {
+                    var driverAccEnabled by remember(schoolConfig.isDriverAccountEnabled) {
+                        mutableStateOf(schoolConfig.isDriverAccountEnabled)
+                    }
+                    var driverUserField by remember(schoolConfig.busDriverUsername, schoolConfig.schoolId) {
+                        mutableStateOf(
+                            schoolConfig.busDriverUsername.ifBlank {
+                                FirebaseConfigConstants.applySchoolPrefix(schoolConfig.schoolId, "driver1")
+                            }
+                        )
+                    }
+                    var driverPassField by remember(schoolConfig.busDriverPassword) {
+                        mutableStateOf(schoolConfig.busDriverPassword.ifBlank { "2026" })
+                    }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .testTag("smart_driver_account_qr_system_card"),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF042F24)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                        border = BorderStroke(1.5.dp, Color(0xFFFBBF24))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFF065F46),
+                                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.QrCodeScanner,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFDE68A),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "منظومة حساب السائق الذكي ومسح باركود الطلبة",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = "واجهة حصرية للسائق لمسح باركود صعود ونزول طلاب الخط وإشعار أولياء الأمور فوراً",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFFA7F3D0),
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF064E3B),
+                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.6f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "تفعيل حساب السائق المستقل لواجهة باركود الصعود والنزول",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFDE68A),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Switch(
+                                        checked = driverAccEnabled,
+                                        onCheckedChange = { enabled ->
+                                            driverAccEnabled = enabled
+                                            viewModel.updateBusDriverAccountSettings(
+                                                isEnabled = enabled,
+                                                driverUsernameInput = driverUserField,
+                                                driverPasswordInput = driverPassField
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("enable_independent_driver_account_switch"),
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color(0xFF042F24),
+                                            checkedTrackColor = Color(0xFFFBBF24)
+                                        )
+                                    )
+                                }
+                            }
+
+                            if (driverAccEnabled) {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = driverUserField,
+                                            onValueChange = { driverUserField = it },
+                                            label = { Text("اسم مستخدم السائق (User)", color = Color(0xFFA7F3D0)) },
+                                            singleLine = true,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = Color(0xFFFBBF24),
+                                                unfocusedBorderColor = Color(0xFF10B981)
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("driver_account_username_input")
+                                        )
+                                        OutlinedTextField(
+                                            value = driverPassField,
+                                            onValueChange = { driverPassField = it },
+                                            label = { Text("كلمة المرور", color = Color(0xFFA7F3D0)) },
+                                            singleLine = true,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = Color(0xFFFBBF24),
+                                                unfocusedBorderColor = Color(0xFF10B981)
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("driver_account_password_input")
+                                        )
+                                    }
+
+                                    Text(
+                                        text = "معرّف دخول السائق المعتمد: (${FirebaseConfigConstants.applySchoolPrefix(schoolConfig.schoolId, driverUserField)}) • عند تسجيل الدخول به تفتح للسائق واجهة مسح باركود الصعود والنزول فقط.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFFFDE68A),
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val generatedUser = FirebaseConfigConstants.applySchoolPrefix(
+                                                    schoolConfig.schoolId,
+                                                    "driver${(10..99).random()}"
+                                                )
+                                                val generatedPass = (1000..9999).random().toString()
+                                                driverUserField = generatedUser
+                                                driverPassField = generatedPass
+                                                viewModel.updateBusDriverAccountSettings(
+                                                    isEnabled = true,
+                                                    driverUsernameInput = generatedUser,
+                                                    driverPasswordInput = generatedPass
+                                                )
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 46.dp)
+                                                .testTag("generate_driver_credentials_btn")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFDE68A),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "توليد تلقائي",
+                                                color = Color(0xFFFDE68A),
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 12.5.sp
+                                            )
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                viewModel.updateBusDriverAccountSettings(
+                                                    isEnabled = true,
+                                                    driverUsernameInput = driverUserField,
+                                                    driverPasswordInput = driverPassField
+                                                )
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFFFBBF24),
+                                                contentColor = Color(0xFF042F24)
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 46.dp)
+                                                .testTag("save_driver_credentials_btn")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Save,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "حفظ حساب السائق",
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 12.5.sp
                                             )
                                         }
                                     }
@@ -10853,8 +11347,11 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
             ?: schoolConfig.busDriverPhone.ifBlank { schoolConfig.phone }
         val dVehicle = targetStu?.busVehicleNumber?.takeIf { it.isNotBlank() }
             ?: schoolConfig.busVehicleNumber.ifBlank { "مركبة النقل المدرسي الحديثة" }
-        val dRoute = targetStu?.busRouteName?.takeIf { it.isNotBlank() }
+        val dRoute = targetStu?.busRouteName?.takeIf { it.isNotBlank() && it != "الخط الصباحي والمسائي" }
+            ?: schoolConfig.busRouteAreaName.takeIf { it.isNotBlank() }
+            ?: targetStu?.busRouteName?.ifBlank { "الخط الصباحي والمسائي المعتمد" }
             ?: "الخط الصباحي والمسائي المعتمد"
+        val dIdentityDetails = schoolConfig.busDriverIdentityDetails.ifBlank { "هوية وإجازة سوق عمومية موثقة لدى إدارة المدرسة" }
 
         AlertDialog(
             onDismissRequest = { showVerifiedDriverIdModal = false },
@@ -10962,6 +11459,12 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                 color = Color.White
                             )
                             Text(
+                                text = "تفاصيل الهوية: $dIdentityDetails",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE2E8F0)
+                            )
+                            Text(
                                 text = "رقم هاتف السائق: ${dPhone.ifBlank { "متاح عبر إدارة المدرسة" }}",
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
@@ -11011,6 +11514,8 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
         var editDriverName by remember(schoolConfig) { mutableStateOf(schoolConfig.busDriverName) }
         var editDriverPhone by remember(schoolConfig) { mutableStateOf(schoolConfig.busDriverPhone) }
         var editVehicleNumber by remember(schoolConfig) { mutableStateOf(schoolConfig.busVehicleNumber) }
+        var editRouteArea by remember(schoolConfig) { mutableStateOf(schoolConfig.busRouteAreaName) }
+        var editIdentityDetails by remember(schoolConfig) { mutableStateOf(schoolConfig.busDriverIdentityDetails) }
         var editAllowIdentity by remember(schoolConfig) { mutableStateOf(schoolConfig.allowParentToViewDriverIdentity) }
 
         AlertDialog(
@@ -11018,7 +11523,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Filled.Badge, contentDescription = null, tint = Color(0xFF059669))
-                    Text("إعدادات السائق المعتمد وهوية المركبة", fontWeight = FontWeight.ExtraBold)
+                    Text("إعدادات الخطوط وبيانات السائقين", fontWeight = FontWeight.ExtraBold)
                 }
             },
             text = {
@@ -11029,7 +11534,8 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                     OutlinedTextField(
                         value = editDriverName,
                         onValueChange = { editDriverName = it },
-                        label = { Text("اسم السائق المعتمد الكامل") },
+                        label = { Text("اسم السائق الكامل") },
+                        placeholder = { Text("أدخل اسم السائق الكامل") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -11037,6 +11543,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                         value = editDriverPhone,
                         onValueChange = { editDriverPhone = it },
                         label = { Text("رقم هاتف السائق للاتصال المباشر") },
+                        placeholder = { Text("أدخل رقم هاتف السائق") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -11044,6 +11551,23 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                         value = editVehicleNumber,
                         onValueChange = { editVehicleNumber = it },
                         label = { Text("نوع ورقم المركبة") },
+                        placeholder = { Text("أدخل نوع ورقم المركبة") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editRouteArea,
+                        onValueChange = { editRouteArea = it },
+                        label = { Text("مسار / منطقة الخط") },
+                        placeholder = { Text("أدخل اسم الخط أو المنطقة السكنية") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editIdentityDetails,
+                        onValueChange = { editIdentityDetails = it },
+                        label = { Text("تفاصيل هوية السائق") },
+                        placeholder = { Text("أدخل تفاصيل الهوية وإجازة السوق") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -11061,7 +11585,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "السماح لولي الأمر بكشف هوية وتفاصيل السائق المعتمد",
+                                text = "السماح لأولياء الأمور بكشف وعرض هوية السائق وتفاصيله",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF065F46),
@@ -11082,7 +11606,9 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                             driverName = editDriverName,
                             driverPhone = editDriverPhone,
                             vehicleNumber = editVehicleNumber,
-                            allowParentToViewDriverIdentity = editAllowIdentity
+                            allowParentToViewDriverIdentity = editAllowIdentity,
+                            routeAreaName = editRouteArea,
+                            driverIdentityDetails = editIdentityDetails
                         )
                         showEditDriverSettingsModal = false
                     },
@@ -11102,7 +11628,12 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
     // One-Tap Modal to Add / Subscribe Any Student to the School Bus Line (for Principal / Supervisor)
     if (showAddStudentToBusDialog && canControlFleet) {
         var modalSearch by remember { mutableStateOf("") }
-        var modalRouteName by remember { mutableStateOf("") }
+        var modalRouteName by remember { mutableStateOf(schoolConfig.busRouteAreaName) }
+        var modalDriverName by remember {
+            mutableStateOf(
+                schoolConfig.busDriverName.takeIf { it != "السائق المعتمد للخط المدرسي" }.orEmpty()
+            )
+        }
         val modalCandidates = remember(unsubscribedStudents, modalSearch) {
             val q = modalSearch.trim()
             if (q.isEmpty()) unsubscribedStudents
@@ -11124,14 +11655,22 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 420.dp),
+                        .heightIn(max = 440.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedTextField(
                         value = modalRouteName,
                         onValueChange = { modalRouteName = it },
-                        label = { Text("اسم الخط / السائق أو المنطقة (اختياري)") },
-                        placeholder = { Text("أدخل اسم الخط والمنطقة ورقم المركبة") },
+                        label = { Text("مسار الخط أو المنطقة السكنية") },
+                        placeholder = { Text("أدخل اسم الخط أو المنطقة السكنية") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = modalDriverName,
+                        onValueChange = { modalDriverName = it },
+                        label = { Text("اسم السائق الكامل (اختياري)") },
+                        placeholder = { Text("أدخل اسم السائق الكامل") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -11185,7 +11724,10 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                                 viewModel.updateStudentBusSubscription(
                                                     studentId = cand.id,
                                                     isSubscribed = true,
-                                                    busRouteName = modalRouteName.trim().ifBlank { "الخط الصباحي والمسائي" }
+                                                    busRouteName = modalRouteName.trim().ifBlank {
+                                                        schoolConfig.busRouteAreaName.ifBlank { "الخط الصباحي والمسائي" }
+                                                    },
+                                                    busDriverName = modalDriverName.trim()
                                                 )
                                             },
                                             shape = RoundedCornerShape(10.dp),
@@ -11461,5 +12003,823 @@ private fun ThreeDIsometricBezierSchoolBusHeroAnimation(
         }
     }
 }
+
+/**
+ * إشعارات الصعود والنزول التفاعلية بتقنية بيزيير لدى ولي الأمر والطالب
+ * (`Bezier Interactive Boarding Status Card`)
+ */
+@Composable
+fun BezierInteractiveBoardingStatusCard(
+    studentName: String,
+    boardingStatus: String,
+    boardingTimestamp: String,
+    driverName: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isBoarded = boardingStatus.equals(BusBoardingScanMode.BOARDING.name, ignoreCase = true) ||
+        boardingStatus.contains("BOARD", ignoreCase = true)
+    val infiniteTransition = rememberInfiniteTransition(label = "bezier_boarding_status_anim")
+    val pulsePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse_phase"
+    )
+    val floatY by infiniteTransition.animateFloat(
+        initialValue = -2.5f,
+        targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1350, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "float_y"
+    )
+
+    val statusHeadline = if (isBoarded) {
+        "صعد الطالب ($studentName) إلى الباص الآن بسلام • الساعة ${formatBusTimestampPretty(boardingTimestamp)} مع السائق ($driverName)"
+    } else {
+        "نزل الطالب ($studentName) من الباص ووصل بسلام • الساعة ${formatBusTimestampPretty(boardingTimestamp)}"
+    }
+
+    Card(
+        onClick = onClick,
+        modifier = modifier.testTag("bezier_interactive_boarding_status_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isBoarded) Color(0xFF042F24) else Color(0xFF064E3B)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        border = BorderStroke(1.6.dp, Color(0xFFFBBF24))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Interactive Bezier Vector Scene (3D Emerald Bus + Gold Verification Shield on Boarding, or Safe Arrival Shield Wave on Alighting)
+            Canvas(
+                modifier = Modifier.size(66.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val cy = h * 0.52f + floatY.dp.toPx()
+
+                // Ambient Bezier Sonar / Safety Waves
+                for (i in 0..1) {
+                    val p = ((pulsePhase + i * 0.5f) % 1f)
+                    drawCircle(
+                        color = Color(0xFFFDE68A).copy(alpha = (1f - p) * 0.28f),
+                        radius = w * (0.28f + p * 0.22f),
+                        center = Offset(w * 0.5f, h * 0.5f),
+                        style = Stroke(width = 1.8.dp.toPx())
+                    )
+                }
+
+                // Bottom Wavy Bezier Track
+                val waveTrack = Path().apply {
+                    moveTo(w * 0.08f, h * 0.84f)
+                    cubicTo(
+                        w * 0.36f, h * 0.76f,
+                        w * 0.64f, h * 0.92f,
+                        w * 0.92f, h * 0.82f
+                    )
+                }
+                drawPath(
+                    path = waveTrack,
+                    color = Color(0xFF34D399),
+                    style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                if (isBoarded) {
+                    // 3D Emerald Bus Body with Golden Verification Badge
+                    val busPath = Path().apply {
+                        moveTo(w * 0.14f, cy + h * 0.14f)
+                        lineTo(w * 0.14f, cy - h * 0.06f)
+                        cubicTo(
+                            w * 0.15f, cy - h * 0.18f,
+                            w * 0.26f, cy - h * 0.22f,
+                            w * 0.42f, cy - h * 0.22f
+                        )
+                        lineTo(w * 0.80f, cy - h * 0.22f)
+                        cubicTo(
+                            w * 0.86f, cy - h * 0.22f,
+                            w * 0.88f, cy - h * 0.14f,
+                            w * 0.88f, cy + h * 0.14f
+                        )
+                        close()
+                    }
+                    drawPath(
+                        path = busPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFF34D399), Color(0xFF059669), Color(0xFF065F46))
+                        )
+                    )
+                    drawPath(
+                        path = busPath,
+                        color = Color(0xFFFDE68A),
+                        style = Stroke(width = 1.3.dp.toPx())
+                    )
+                    // Wheels
+                    drawCircle(color = Color(0xFFFBBF24), radius = 4.dp.toPx(), center = Offset(w * 0.30f, cy + h * 0.16f))
+                    drawCircle(color = Color(0xFFFBBF24), radius = 4.dp.toPx(), center = Offset(w * 0.72f, cy + h * 0.16f))
+
+                    // Golden Check Badge on Top-Right
+                    drawCircle(
+                        color = Color(0xFFFBBF24),
+                        radius = 8.dp.toPx(),
+                        center = Offset(w * 0.80f, cy - h * 0.22f)
+                    )
+                } else {
+                    // Safe Arrival Bezier Shield & Home Arch
+                    val shieldPath = Path().apply {
+                        moveTo(w * 0.50f, cy - h * 0.30f)
+                        cubicTo(
+                            w * 0.78f, cy - h * 0.26f,
+                            w * 0.84f, cy + h * 0.04f,
+                            w * 0.50f, cy + h * 0.26f
+                        )
+                        cubicTo(
+                            w * 0.16f, cy + h * 0.04f,
+                            w * 0.22f, cy - h * 0.26f,
+                            w * 0.50f, cy - h * 0.30f
+                        )
+                        close()
+                    }
+                    drawPath(
+                        path = shieldPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFD97706))
+                        )
+                    )
+                    val checkPath = Path().apply {
+                        moveTo(w * 0.38f, cy - h * 0.02f)
+                        lineTo(w * 0.47f, cy + h * 0.08f)
+                        lineTo(w * 0.64f, cy - h * 0.10f)
+                    }
+                    drawPath(
+                        path = checkPath,
+                        color = Color(0xFF042F24),
+                        style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFFFDE68A).copy(alpha = 0.20f),
+                    border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                ) {
+                    Text(
+                        text = if (isBoarded) "تأكيد صعود للباص بالباركود ✓" else "تأكيد نزول ووصول آمن بالباركود ✓",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFFDE68A),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
+                    )
+                }
+                Text(
+                    text = statusHeadline,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+/**
+ * واجهة السائق الحصرية عند تسجيل الدخول (`DriverExclusiveScannerScreen`):
+ * عندما يسجل السائق دخوله بحسابه المستقل، يفتح له التطبيق هذه الواجهة الحصرية فقط
+ * (لا يرى فيها أي قسم من أقسام المدرسة الأخرى) لمسح باركود صعود ونزول طلاب خطه وتأكيد حركتهم.
+ */
+@Composable
+fun DriverExclusiveScannerScreen(
+    viewModel: SchoolViewModel
+) {
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
+    val students by viewModel.students.collectAsState()
+
+    val subscribedStudents = remember(students, schoolConfig.schoolId) {
+        students.filter {
+            (it.schoolId.isEmpty() || it.schoolId == schoolConfig.schoolId) &&
+                it.isActive &&
+                it.isBusSubscribed
+        }
+    }
+
+    var activeScanMode by remember { mutableStateOf(BusBoardingScanMode.BOARDING) }
+    var manualQrOrSearchQuery by remember { mutableStateOf("") }
+    var lastScannedStudent by remember { mutableStateOf<StudentRecord?>(null) }
+    var lastScanModeConfirmed by remember { mutableStateOf(BusBoardingScanMode.BOARDING) }
+    var showCameraScanner by remember { mutableStateOf(true) }
+
+    val resolvedBusEvent = remember(schoolConfig.activeBusEvent) {
+        BusEventType.entries.firstOrNull { it.name == schoolConfig.activeBusEvent } ?: BusEventType.MORNING_DEPARTURE
+    }
+    var activeBusState by remember(resolvedBusEvent) { mutableStateOf(resolvedBusEvent) }
+
+    val driverDisplayName = schoolConfig.busDriverName
+        .ifBlank { currentUser?.fullName.orEmpty() }
+        .ifBlank { "السائق المعتمد للخط المدرسي" }
+    val driverRouteDisplay = schoolConfig.busRouteAreaName
+        .ifBlank { "الخط الصباحي والمسائي المعتمد" }
+    val driverVehicleDisplay = schoolConfig.busVehicleNumber
+        .ifBlank { "مركبة النقل المدرسي الحديثة" }
+
+    val fullWidthWavyBannerShape = remember {
+        GenericShape { size, _ ->
+            val w = size.width
+            val h = size.height
+            val bottomWaveDepth = (h * 0.11f).coerceIn(18f, 34f)
+            moveTo(0f, 0f)
+            lineTo(w, 0f)
+            lineTo(w, h - bottomWaveDepth)
+            cubicTo(
+                w * 0.68f, h + bottomWaveDepth * 0.95f,
+                w * 0.32f, h - bottomWaveDepth * 1.45f,
+                0f, h - bottomWaveDepth * 0.35f
+            )
+            close()
+        }
+    }
+
+    val filteredLineStudents = remember(subscribedStudents, manualQrOrSearchQuery) {
+        val q = manualQrOrSearchQuery.trim()
+        if (q.isEmpty()) subscribedStudents
+        else subscribedStudents.filter {
+            it.fullNameWithFather.contains(q, ignoreCase = true) ||
+                it.gradeClass.contains(q, ignoreCase = true) ||
+                it.busRouteName.contains(q, ignoreCase = true)
+        }
+    }
+
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("driver_exclusive_scanner_screen"),
+        containerColor = MaterialTheme.colorScheme.background
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentPadding = PaddingValues(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // 1) البنر الزمردي الملكي الحصري للسائق بكامل عرض الشاشة مع التموج السفلي
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 10.dp,
+                            shape = fullWidthWavyBannerShape,
+                            ambientColor = Color(0xFF047857).copy(alpha = 0.32f),
+                            spotColor = Color(0xFF0F3D5E).copy(alpha = 0.38f)
+                        )
+                        .clip(fullWidthWavyBannerShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF059669),
+                                    Color(0xFF047857),
+                                    Color(0xFF0F3D5E)
+                                ),
+                                start = Offset(0f, 0f),
+                                end = Offset(980f, 680f)
+                            )
+                        )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.18f),
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DirectionsBus,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFDE68A),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "بوابة السائق المعتمد • ${schoolConfig.schoolName}",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { viewModel.logout() },
+                                shape = RoundedCornerShape(50),
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("driver_exclusive_logout_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                                    contentDescription = "تسجيل الخروج",
+                                    tint = Color(0xFFFDE68A),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "خروج آمن",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFFDE68A)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Text(
+                                    text = "السائق: $driverDisplayName",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "الخط: $driverRouteDisplay • المركبة: $driverVehicleDisplay",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFFDE68A),
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "عدد الطلاب المشمولين بخطك: (${subscribedStudents.size}) طالب مسجل",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 12.5.sp,
+                                    color = Color.White.copy(alpha = 0.92f),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            ThreeDIsometricBezierSchoolBusHeroAnimation(
+                                modifier = Modifier.size(102.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2) أزرار اختيار وضعية المسح الضوئي (صعود طالب للباص / نزول طالب بسلام)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    border = BorderStroke(1.2.dp, Color(0xFF059669))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "اختر وضعية مسح باركود الطلبة (QR):",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF065F46)
+                        )
+
+                        BusBoardingScanMode.entries.forEach { mode ->
+                            val isSelected = activeScanMode == mode
+                            Button(
+                                onClick = { activeScanMode = mode },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 52.dp)
+                                    .testTag("driver_scan_mode_btn_${mode.name}"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) {
+                                        if (mode == BusBoardingScanMode.BOARDING) Color(0xFF059669) else Color(0xFF0F3D5E)
+                                    } else {
+                                        Color(0xFF042F24).copy(alpha = 0.85f)
+                                    },
+                                    contentColor = Color.White
+                                ),
+                                border = if (isSelected) BorderStroke(2.dp, Color(0xFFFBBF24)) else null
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (mode == BusBoardingScanMode.BOARDING) Icons.Filled.QrCodeScanner else Icons.Filled.VerifiedUser,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFDE68A),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Text(
+                                            text = mode.arabicTitle,
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White
+                                        )
+                                    }
+                                    if (isSelected) {
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFFFDE68A),
+                                            modifier = Modifier.padding(start = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "نشط ✓",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF042F24),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // الكاميرا الحية لمسح باركود هوية الطالب (studentId / MADRASATI|...)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "الماسح الضوئي المباشر لهوية الطالب:",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF065F46)
+                            )
+                            TextButton(onClick = { showCameraScanner = !showCameraScanner }) {
+                                Text(
+                                    text = if (showCameraScanner) "إخفاء الكاميرا" else "تشغيل الكاميرا",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF059669)
+                                )
+                            }
+                        }
+
+                        if (showCameraScanner) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(230.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(2.dp, Color(0xFF059669))
+                            ) {
+                                com.example.util.StandardQrCodeHelper.LiveCameraQrScannerBox(
+                                    students = subscribedStudents,
+                                    onQrCodeScanned = { scannedPayload ->
+                                        val updatedStu = viewModel.recordStudentBusBoardingByQrOrId(
+                                            qrOrStudentId = scannedPayload,
+                                            scanMode = activeScanMode
+                                        )
+                                        if (updatedStu != null) {
+                                            lastScannedStudent = updatedStu
+                                            lastScanModeConfirmed = activeScanMode
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+
+                        // Last Scanned Student Immediate Bezier Confirmation Banner
+                        lastScannedStudent?.let { confirmedStu ->
+                            BezierInteractiveBoardingStatusCard(
+                                studentName = confirmedStu.fullNameWithFather,
+                                boardingStatus = lastScanModeConfirmed.name,
+                                boardingTimestamp = confirmedStu.busBoardingTimestamp,
+                                driverName = driverDisplayName,
+                                onClick = {},
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 3) أزرار إشعار المسار العام للخط (انطلاق صباحي / وصول للمدرسة / انطلاق العودة)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "تحديث حالة مسار الباص العام لجميع أولياء أمور الخط:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF065F46)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            BusEventType.entries.forEach { ev ->
+                                val isSel = activeBusState == ev
+                                Button(
+                                    onClick = {
+                                        activeBusState = ev
+                                        viewModel.sendBusTrackingAlert(ev)
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 44.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isSel) Color(0xFF059669) else Color(0xFF064E3B),
+                                        contentColor = Color.White
+                                    ),
+                                    border = if (isSel) BorderStroke(1.5.dp, Color(0xFFFDE68A)) else null
+                                ) {
+                                    Text(
+                                        text = ev.shortButtonLabel,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4) قائمة الطلاب المسجلين في خط السائق فقط لتأكيد صعودهم أو نزولهم
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "قائمة طلاب الخط المسجلين (${filteredLineStudents.size} طالب)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF065F46)
+                        )
+                        Text(
+                            text = "يمكنك مسح باركود هوية الطالب بالكاميرا أعلاه أو تأكيد الصعود والنزول مباشرة من القائمة:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        OutlinedTextField(
+                            value = manualQrOrSearchQuery,
+                            onValueChange = { manualQrOrSearchQuery = it },
+                            label = { Text("بحث باسم الطالب في الخط أو مسح الكود...") },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            if (filteredLineStudents.isEmpty()) {
+                item {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFECFDF5),
+                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                    ) {
+                        Text(
+                            text = "لا يوجد طلاب مشمولون بالخط مطابقون للبحث حالياً.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF065F46),
+                            modifier = Modifier.padding(20.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                items(filteredLineStudents, key = { "driver_line_stu_${it.id}" }) { stu ->
+                    val isBoardedNow = stu.busBoardingStatus == BusBoardingScanMode.BOARDING.name
+                    val isAlightedNow = stu.busBoardingStatus == BusBoardingScanMode.ALIGHTING.name
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .testTag("driver_student_item_${stu.id}"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        border = BorderStroke(
+                            1.dp,
+                            when {
+                                isBoardedNow -> Color(0xFF059669)
+                                isAlightedNow -> Color(0xFFF59E0B)
+                                else -> Color(0xFFD1FAE5)
+                            }
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Base64AvatarImage(
+                                        base64Data = stu.photoBase64,
+                                        fallbackIcon = Icons.Filled.Person,
+                                        contentDescription = stu.fullNameWithFather,
+                                        size = 44.dp
+                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = stu.fullNameWithFather,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "${ArabicTextNormalizer.cleanPureClassName(stu.gradeClass)} - شعبة ${ArabicTextNormalizer.cleanPureSectionName(stu.sectionName)} • ${stu.busRouteName.ifBlank { driverRouteDisplay }}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                if (stu.busBoardingStatus.isNotBlank() && stu.busBoardingTimestamp.isNotBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (isBoardedNow) Color(0xFFECFDF5) else Color(0xFFFEF3C7),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isBoardedNow) Color(0xFF059669) else Color(0xFFD97706)
+                                        )
+                                    ) {
+                                        Text(
+                                            text = if (isBoardedNow) {
+                                                "صعد إلى الباص • ${stu.busBoardingTimestamp}"
+                                            } else {
+                                                "نزل بسلام • ${stu.busBoardingTimestamp}"
+                                            },
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isBoardedNow) Color(0xFF065F46) else Color(0xFFB45309),
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        val updatedStu = viewModel.recordStudentBusBoardingByQrOrId(
+                                            qrOrStudentId = stu.id,
+                                            scanMode = BusBoardingScanMode.BOARDING
+                                        )
+                                        if (updatedStu != null) {
+                                            lastScannedStudent = updatedStu
+                                            lastScanModeConfirmed = BusBoardingScanMode.BOARDING
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 44.dp)
+                                        .testTag("driver_confirm_boarding_${stu.id}"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isBoardedNow) Color(0xFF047857) else Color(0xFF059669),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(Icons.Filled.DirectionsBus, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "صعد إلى الباص",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+
+                                Button(
+                                    onClick = {
+                                        val updatedStu = viewModel.recordStudentBusBoardingByQrOrId(
+                                            qrOrStudentId = stu.id,
+                                            scanMode = BusBoardingScanMode.ALIGHTING
+                                        )
+                                        if (updatedStu != null) {
+                                            lastScannedStudent = updatedStu
+                                            lastScanModeConfirmed = BusBoardingScanMode.ALIGHTING
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 44.dp)
+                                        .testTag("driver_confirm_alighting_${stu.id}"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isAlightedNow) Color(0xFFB45309) else Color(0xFF0F3D5E),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(Icons.Filled.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "نزل من الباص بسلام",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 

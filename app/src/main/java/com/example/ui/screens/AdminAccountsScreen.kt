@@ -109,6 +109,7 @@ fun AdminAccountsScreen(
     val teachers = remember(accounts, searchQuery, selectedClassFilter, selectedSubjectFilter) {
         accounts.filter { acc ->
             acc.role == UserRole.TEACHER &&
+                !acc.isBusDriverAccount &&
                 (searchQuery.isBlank() ||
                     acc.fullName.contains(searchQuery, ignoreCase = true) ||
                     acc.username.contains(searchQuery, ignoreCase = true) ||
@@ -160,7 +161,7 @@ fun AdminAccountsScreen(
                     subtitle = heroSubtitle,
                     rightPillText = schoolConfig.schoolStage.arabicLabel,
                     rightPillIcon = Icons.Filled.School,
-                    leftPillText = "${students.size} طالب • ${accounts.count { it.role == UserRole.TEACHER }} $staffSingular",
+                    leftPillText = "${students.size} طالب • ${accounts.count { it.role == UserRole.TEACHER && !it.isBusDriverAccount }} $staffSingular",
                     leftPillIcon = Icons.Filled.Groups,
                     illustrationType = ThreeDIllustrationType.USER_MANAGEMENT_AVATARS_3D
                 )
@@ -2555,7 +2556,26 @@ fun AdminAccountsScreen(
         var isBusSubscribed by remember(currentStu) { mutableStateOf(currentStu?.isBusSubscribed ?: false) }
         var busRouteName by remember(currentStu) {
             mutableStateOf(
-                currentStu?.busRouteName?.takeIf { it.isNotBlank() && it != "الخط الصباحي والمسائي" } ?: ""
+                currentStu?.busRouteName?.takeIf { it.isNotBlank() && it != "الخط الصباحي والمسائي" }
+                    ?: schoolConfig.busRouteAreaName
+            )
+        }
+        var busDriverNameInput by remember(currentStu) {
+            mutableStateOf(
+                currentStu?.busDriverName?.takeIf { it.isNotBlank() }
+                    ?: schoolConfig.busDriverName.takeIf { it != "السائق المعتمد للخط المدرسي" }.orEmpty()
+            )
+        }
+        var busDriverPhoneInput by remember(currentStu) {
+            mutableStateOf(
+                currentStu?.busDriverPhone?.takeIf { it.isNotBlank() }
+                    ?: schoolConfig.busDriverPhone
+            )
+        }
+        var busVehicleNumberInput by remember(currentStu) {
+            mutableStateOf(
+                currentStu?.busVehicleNumber?.takeIf { it.isNotBlank() }
+                    ?: schoolConfig.busVehicleNumber.takeIf { it != "مركبة النقل المدرسي الحديثة" }.orEmpty()
             )
         }
 
@@ -2883,8 +2903,8 @@ fun AdminAccountsScreen(
                                         OutlinedTextField(
                                             value = busRouteName,
                                             onValueChange = { busRouteName = it },
-                                            label = { Text("اسم الخط / السائق أو المنطقة السكنية (اختياري)") },
-                                            placeholder = { Text("أدخل اسم الخط والمنطقة ورقم المركبة") },
+                                            label = { Text("مسار الخط أو المنطقة السكنية") },
+                                            placeholder = { Text("أدخل اسم الخط أو المنطقة السكنية") },
                                             leadingIcon = {
                                                 Icon(
                                                     imageVector = Icons.Filled.Route,
@@ -2897,6 +2917,44 @@ fun AdminAccountsScreen(
                                                 .fillMaxWidth()
                                                 .testTag("student_bus_route_name_input")
                                         )
+                                        OutlinedTextField(
+                                            value = busDriverNameInput,
+                                            onValueChange = { busDriverNameInput = it },
+                                            label = { Text("اسم السائق الكامل (اختياري)") },
+                                            placeholder = { Text("أدخل اسم السائق الكامل") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Badge,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669)
+                                                )
+                                            },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("student_bus_driver_name_input")
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = busDriverPhoneInput,
+                                                onValueChange = { busDriverPhoneInput = it },
+                                                label = { Text("رقم هاتف السائق") },
+                                                placeholder = { Text("أدخل رقم الهاتف") },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            OutlinedTextField(
+                                                value = busVehicleNumberInput,
+                                                onValueChange = { busVehicleNumberInput = it },
+                                                label = { Text("نوع ورقم المركبة") },
+                                                placeholder = { Text("أدخل رقم المركبة") },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2997,7 +3055,9 @@ fun AdminAccountsScreen(
                             return@VectorActionButton
                         }
                         if (studentName.isNotBlank() && parentName.isNotBlank()) {
-                            val resolvedRoute = busRouteName.trim().ifBlank { "الخط الصباحي والمسائي" }
+                            val resolvedRoute = busRouteName.trim().ifBlank {
+                                schoolConfig.busRouteAreaName.ifBlank { "الخط الصباحي والمسائي" }
+                            }
                             viewModel.requireOnlineAndExecute {
                                 if (currentStu == null) {
                                     viewModel.addStudentAndParentAccounts(
@@ -3016,7 +3076,10 @@ fun AdminAccountsScreen(
                                         gender = studentGender,
                                         ageYears = studentAgeYears,
                                         isBusSubscribed = isBusSubscribed,
-                                        busRouteName = resolvedRoute
+                                        busRouteName = resolvedRoute,
+                                        busDriverName = busDriverNameInput.trim(),
+                                        busDriverPhone = busDriverPhoneInput.trim(),
+                                        busVehicleNumber = busVehicleNumberInput.trim()
                                     )
                                 } else {
                                     viewModel.updateStudentAndParentAccounts(
@@ -3035,7 +3098,10 @@ fun AdminAccountsScreen(
                                         gender = studentGender,
                                         ageYears = studentAgeYears,
                                         isBusSubscribed = isBusSubscribed,
-                                        busRouteName = resolvedRoute
+                                        busRouteName = resolvedRoute,
+                                        busDriverName = busDriverNameInput.trim(),
+                                        busDriverPhone = busDriverPhoneInput.trim(),
+                                        busVehicleNumber = busVehicleNumberInput.trim()
                                     )
                                 }
                                 showStudentDialog = false

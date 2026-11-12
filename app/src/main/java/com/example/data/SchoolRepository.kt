@@ -248,7 +248,12 @@ class SchoolRepository(context: Context) {
                 busDriverName = obj.optString("busDriverName", "السائق المعتمد للخط المدرسي").ifBlank { "السائق المعتمد للخط المدرسي" },
                 busDriverPhone = obj.optString("busDriverPhone", ""),
                 busVehicleNumber = obj.optString("busVehicleNumber", "مركبة النقل المدرسي الحديثة").ifBlank { "مركبة النقل المدرسي الحديثة" },
-                busDriverPhotoBase64 = obj.optString("busDriverPhotoBase64", "")
+                busDriverPhotoBase64 = obj.optString("busDriverPhotoBase64", ""),
+                busRouteAreaName = obj.optString("busRouteAreaName", ""),
+                busDriverIdentityDetails = obj.optString("busDriverIdentityDetails", ""),
+                isDriverAccountEnabled = obj.optBoolean("isDriverAccountEnabled", false),
+                busDriverUsername = obj.optString("busDriverUsername", ""),
+                busDriverPassword = obj.optString("busDriverPassword", "")
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -451,6 +456,11 @@ class SchoolRepository(context: Context) {
             put("busDriverPhone", InputSanitizer.sanitize(config.busDriverPhone))
             put("busVehicleNumber", InputSanitizer.sanitize(config.busVehicleNumber))
             put("busDriverPhotoBase64", config.busDriverPhotoBase64)
+            put("busRouteAreaName", InputSanitizer.sanitize(config.busRouteAreaName))
+            put("busDriverIdentityDetails", InputSanitizer.sanitize(config.busDriverIdentityDetails))
+            put("isDriverAccountEnabled", config.isDriverAccountEnabled)
+            put("busDriverUsername", InputSanitizer.sanitizeUsername(config.busDriverUsername))
+            put("busDriverPassword", InputSanitizer.sanitize(config.busDriverPassword))
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
@@ -753,7 +763,8 @@ class SchoolRepository(context: Context) {
                         canModerateActivities = o.optBoolean("canModerateActivities", false),
                         canManageCanteen = o.optBoolean("canManageCanteen", false),
                         gender = o.optString("gender", "").trim().let { if (it == "غير محدد") "" else it },
-                        ageYears = o.optInt("ageYears", o.optInt("age", 0)).coerceAtLeast(0)
+                        ageYears = o.optInt("ageYears", o.optInt("age", 0)).coerceAtLeast(0),
+                        isBusDriverAccount = o.optBoolean("isBusDriverAccount", false)
                     )
                 )
             }
@@ -806,6 +817,7 @@ class SchoolRepository(context: Context) {
                 put("gender", if (acc.isGenderSpecified) InputSanitizer.sanitize(acc.normalizedGenderLabel) else "")
                 put("ageYears", acc.effectiveAgeYears)
                 put("age", acc.effectiveAgeYears)
+                put("isBusDriverAccount", acc.isBusDriverAccount)
                 if (acc.role == UserRole.TEACHER) {
                     val teacherSpecificRatings = existingRatings.filter {
                         it.teacherId == acc.id ||
@@ -1017,6 +1029,10 @@ class SchoolRepository(context: Context) {
                         busDriverName = o.optString("busDriverName", ""),
                         busDriverPhone = o.optString("busDriverPhone", ""),
                         busVehicleNumber = o.optString("busVehicleNumber", ""),
+                        busBoardingStatus = o.optString("busBoardingStatus", ""),
+                        busBoardingTimestamp = o.optString("busBoardingTimestamp", ""),
+                        busBoardingDateIso = ArabicTextNormalizer.normalizeDateIso(o.optString("busBoardingDateIso", "")),
+                        busBoardingDriverName = o.optString("busBoardingDriverName", ""),
                         schoolId = itemSchoolId,
                         dailyAttendance = dailyAttMap,
                         todayStatus = effectiveTodayStatus,
@@ -1120,6 +1136,10 @@ class SchoolRepository(context: Context) {
                 put("busDriverName", InputSanitizer.sanitize(s.busDriverName))
                 put("busDriverPhone", InputSanitizer.sanitize(s.busDriverPhone))
                 put("busVehicleNumber", InputSanitizer.sanitize(s.busVehicleNumber))
+                put("busBoardingStatus", InputSanitizer.sanitize(s.busBoardingStatus))
+                put("busBoardingTimestamp", InputSanitizer.sanitize(s.busBoardingTimestamp))
+                put("busBoardingDateIso", ArabicTextNormalizer.normalizeDateIso(s.busBoardingDateIso))
+                put("busBoardingDriverName", InputSanitizer.sanitize(s.busBoardingDriverName))
                 put("schoolId", schoolId)
                 put("dailyAttendance", dailyAttJson)
                 put("todayStatus", effectiveTodayStatus)

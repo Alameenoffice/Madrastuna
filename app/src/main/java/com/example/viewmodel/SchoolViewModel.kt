@@ -489,6 +489,22 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
             val matchedUser = _accounts.value.firstOrNull {
                 it.id == savedSession.userId && it.isActive && (it.schoolId.isEmpty() || it.schoolId == currentSchoolId)
+            } ?: run {
+                val cfg = _schoolConfig.value
+                if (cfg.isDriverAccountEnabled && savedSession.userId == "acc_bus_driver_$currentSchoolId") {
+                    UserAccount(
+                        id = "acc_bus_driver_$currentSchoolId",
+                        username = cfg.busDriverUsername,
+                        password = cfg.busDriverPassword,
+                        fullName = cfg.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" },
+                        role = UserRole.TEACHER,
+                        isActive = true,
+                        phone = cfg.busDriverPhone,
+                        specialty = "سائق الخط المدرسي",
+                        schoolId = currentSchoolId,
+                        isBusDriverAccount = true
+                    )
+                } else null
             }
             if (matchedUser != null) {
                 _currentUser.value = matchedUser
@@ -3276,7 +3292,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     ): Result<UserAccount> {
         val currentSchoolId = targetSchoolId.ifBlank { _schoolConfig.value.schoolId }
 
-        val matched = _accounts.value.firstOrNull { acc ->
+        val matchedFromAccounts = _accounts.value.firstOrNull { acc ->
             val exactMatch = acc.username.equals(cleanUser, ignoreCase = true)
             val prefixedCandidate = if (currentSchoolId.isNotBlank()) {
                 FirebaseConfigConstants.applySchoolPrefix(currentSchoolId, cleanUser)
@@ -3286,7 +3302,36 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             (exactMatch || prefixedMatch) &&
                 com.example.util.SecurityShieldHelper.verifyPassword(cleanPass, acc.password) &&
                 (currentSchoolId.isEmpty() || acc.schoolId.isEmpty() || acc.schoolId == currentSchoolId)
-        } ?: run {
+        }
+
+        val matchedFromDriverConfig: UserAccount? = run {
+            val cfg = _schoolConfig.value
+            val cfgDriverUser = cfg.busDriverUsername.trim()
+            val cfgDriverPass = cfg.busDriverPassword.trim()
+            if (cfgDriverUser.isNotEmpty() && cfgDriverPass.isNotEmpty()) {
+                val exactMatch = cfgDriverUser.equals(cleanUser, ignoreCase = true)
+                val prefixedCandidate = if (currentSchoolId.isNotBlank()) {
+                    FirebaseConfigConstants.applySchoolPrefix(currentSchoolId, cleanUser)
+                } else cleanUser
+                val prefixedMatch = cfgDriverUser.equals(prefixedCandidate, ignoreCase = true)
+                if ((exactMatch || prefixedMatch) && com.example.util.SecurityShieldHelper.verifyPassword(cleanPass, cfgDriverPass)) {
+                    UserAccount(
+                        id = "acc_bus_driver_$currentSchoolId",
+                        username = cfgDriverUser,
+                        password = cfgDriverPass,
+                        fullName = cfg.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" },
+                        role = UserRole.TEACHER,
+                        isActive = cfg.isDriverAccountEnabled,
+                        phone = cfg.busDriverPhone,
+                        specialty = "سائق الخط المدرسي",
+                        schoolId = currentSchoolId,
+                        isBusDriverAccount = true
+                    )
+                } else null
+            } else null
+        }
+
+        val matched = matchedFromDriverConfig ?: matchedFromAccounts ?: run {
             registerFailedLoginAttempt()
             val lockUntil = _loginLockoutUntilMs.value
             val errMsg = if (lockUntil > System.currentTimeMillis()) {
@@ -3310,6 +3355,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return Result.failure(IllegalStateException("تم إيقاف/إلغاء تفعيل المدرسة من قِبل الإدارة المركزية"))
         }
 
+        if (matched.isBusDriverAccount && !_schoolConfig.value.isDriverAccountEnabled) {
+            showToastAlert("حساب السائق المستقل غير مفعّل حالياً من قبل مدير المدرسة", isSuccess = false)
+            return Result.failure(IllegalStateException("حساب السائق المستقل غير مفعّل حالياً من قبل مدير المدرسة"))
+        }
+
         if (!matched.isActive) {
             showToastAlert("هذا الحساب موقوف حالياً من قبل إدارة المدرسة", isSuccess = false)
             return Result.failure(IllegalStateException("هذا الحساب موقوف حالياً من قبل إدارة المدرسة"))
@@ -3330,7 +3380,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _isSchoolSetupUnlocked.value = false
         _activeSection.value = AppSection.DASHBOARD
 
-        showToastAlert("مرحباً بك ${matched.fullName} (${matched.role.arabicTitle})", isSuccess = true)
+        val roleGreeting = if (matched.isBusDriverAccount) "سائق الخط المدرسي المعتمد" else matched.role.arabicTitle
+        showToastAlert("مرحباً بك ${matched.fullName} ($roleGreeting)", isSuccess = true)
         return Result.success(matched)
     }
 
@@ -3724,7 +3775,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         gender: String = "ذكر",
         ageYears: Int = 0,
         isBusSubscribed: Boolean = false,
-        busRouteName: String = "الخط الصباحي والمسائي"
+        busRouteName: String = "الخط الصباحي والمسائي",
+        busDriverName: String = "",
+        busDriverPhone: String = "",
+        busVehicleNumber: String = ""
     ): StudentRecord? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val cleanStuName = InputSanitizer.sanitize(studentName)
@@ -3745,6 +3799,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val pUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawPUser)
         val pPass = InputSanitizer.sanitize(parentPassword).ifBlank { (1000..9999).random().toString() }
         val cleanBusRoute = InputSanitizer.sanitize(busRouteName).ifBlank { "الخط الصباحي والمسائي" }
+        val cleanDriverName = InputSanitizer.sanitize(busDriverName)
+        val cleanDriverPhone = InputSanitizer.sanitize(busDriverPhone)
+        val cleanVehicleNumber = InputSanitizer.sanitize(busVehicleNumber)
 
         val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
             gradeClass,
@@ -3771,6 +3828,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             schoolId = sid,
             isBusSubscribed = isBusSubscribed,
             busRouteName = cleanBusRoute,
+            busDriverName = cleanDriverName,
+            busDriverPhone = cleanDriverPhone,
+            busVehicleNumber = cleanVehicleNumber,
             gender = gender.ifBlank { "ذكر" },
             ageYears = ageYears.coerceAtLeast(0)
         )
@@ -3868,7 +3928,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         gender: String? = null,
         ageYears: Int? = null,
         isBusSubscribed: Boolean? = null,
-        busRouteName: String? = null
+        busRouteName: String? = null,
+        busDriverName: String? = null,
+        busDriverPhone: String? = null,
+        busVehicleNumber: String? = null
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
@@ -3902,6 +3965,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     schoolId = sid,
                     isBusSubscribed = isBusSubscribed ?: s.isBusSubscribed,
                     busRouteName = busRouteName?.let { InputSanitizer.sanitize(it).ifBlank { "الخط الصباحي والمسائي" } } ?: s.busRouteName,
+                    busDriverName = busDriverName?.let { InputSanitizer.sanitize(it) } ?: s.busDriverName,
+                    busDriverPhone = busDriverPhone?.let { InputSanitizer.sanitize(it) } ?: s.busDriverPhone,
+                    busVehicleNumber = busVehicleNumber?.let { InputSanitizer.sanitize(it) } ?: s.busVehicleNumber,
                     gender = gender?.takeIf { it.isNotBlank() } ?: s.gender,
                     ageYears = ageYears?.coerceAtLeast(0) ?: s.ageYears
                 )
@@ -5273,18 +5339,29 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun updateStudentBusSubscription(
         studentId: String,
         isSubscribed: Boolean,
-        busRouteName: String = "الخط الصباحي والمسائي"
+        busRouteName: String = "الخط الصباحي والمسائي",
+        busDriverName: String = "",
+        busDriverPhone: String = "",
+        busVehicleNumber: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
-        val cleanRoute = InputSanitizer.sanitize(busRouteName).ifBlank { "الخط الصباحي والمسائي" }
+        val cleanRoute = InputSanitizer.sanitize(busRouteName).ifBlank {
+            _schoolConfig.value.busRouteAreaName.ifBlank { "الخط الصباحي والمسائي" }
+        }
+        val cleanDriver = InputSanitizer.sanitize(busDriverName)
+        val cleanPhone = InputSanitizer.sanitize(busDriverPhone)
+        val cleanVehicle = InputSanitizer.sanitize(busVehicleNumber)
         var targetName = ""
         val updated = _students.value.map { s ->
             if (s.id == studentId) {
                 targetName = s.fullNameWithFather
                 s.copy(
                     isBusSubscribed = isSubscribed,
-                    busRouteName = if (isSubscribed) cleanRoute else s.busRouteName
+                    busRouteName = if (isSubscribed) cleanRoute else s.busRouteName,
+                    busDriverName = if (isSubscribed && cleanDriver.isNotBlank()) cleanDriver else s.busDriverName,
+                    busDriverPhone = if (isSubscribed && cleanPhone.isNotBlank()) cleanPhone else s.busDriverPhone,
+                    busVehicleNumber = if (isSubscribed && cleanVehicle.isNotBlank()) cleanVehicle else s.busVehicleNumber
                 )
             } else s
         }
@@ -5303,19 +5380,188 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         driverPhone: String,
         vehicleNumber: String,
         allowParentToViewDriverIdentity: Boolean,
-        driverPhotoBase64: String = _schoolConfig.value.busDriverPhotoBase64
+        driverPhotoBase64: String = _schoolConfig.value.busDriverPhotoBase64,
+        routeAreaName: String = _schoolConfig.value.busRouteAreaName,
+        driverIdentityDetails: String = _schoolConfig.value.busDriverIdentityDetails
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val cleanDriverName = InputSanitizer.sanitize(driverName).ifBlank { "السائق المعتمد للخط المدرسي" }
+        val cleanDriverPhone = InputSanitizer.sanitize(driverPhone)
+        val cleanVehicleNumber = InputSanitizer.sanitize(vehicleNumber).ifBlank { "مركبة النقل المدرسي الحديثة" }
+        val cleanRouteArea = InputSanitizer.sanitize(routeAreaName)
+        val cleanIdentityDetails = InputSanitizer.sanitize(driverIdentityDetails)
+
         val updatedConfig = _schoolConfig.value.copy(
-            busDriverName = InputSanitizer.sanitize(driverName).ifBlank { "السائق المعتمد للخط المدرسي" },
-            busDriverPhone = InputSanitizer.sanitize(driverPhone),
-            busVehicleNumber = InputSanitizer.sanitize(vehicleNumber).ifBlank { "مركبة النقل المدرسي الحديثة" },
+            busDriverName = cleanDriverName,
+            busDriverPhone = cleanDriverPhone,
+            busVehicleNumber = cleanVehicleNumber,
             allowParentToViewDriverIdentity = allowParentToViewDriverIdentity,
-            busDriverPhotoBase64 = driverPhotoBase64
+            busDriverPhotoBase64 = driverPhotoBase64,
+            busRouteAreaName = cleanRouteArea,
+            busDriverIdentityDetails = cleanIdentityDetails
         )
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
-        showToastAlert("تم حفظ بيانات السائق والمركبة وصلاحية عرض الهوية لأولياء الأمور", isSuccess = true)
+
+        // Keep driver account fullName & phone synced if driver account exists
+        val driverAccId = "acc_bus_driver_$sid"
+        if (_accounts.value.any { it.id == driverAccId || it.isBusDriverAccount }) {
+            val updatedAccs = _accounts.value.map { acc ->
+                if (acc.id == driverAccId || acc.isBusDriverAccount) {
+                    acc.copy(
+                        fullName = cleanDriverName,
+                        phone = cleanDriverPhone,
+                        photoBase64 = driverPhotoBase64.ifBlank { acc.photoBase64 }
+                    )
+                } else acc
+            }
+            _accounts.value = updatedAccs
+            repo.saveAccounts(updatedAccs, sid)
+        }
+
+        showToastAlert("تم حفظ إعدادات الخطوط وبيانات السائق وصلاحية كشف الهوية بنجاح", isSuccess = true)
+    }
+
+    fun updateBusDriverAccountSettings(
+        isEnabled: Boolean,
+        driverUsernameInput: String,
+        driverPasswordInput: String
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        val rawUser = InputSanitizer.sanitizeUsername(driverUsernameInput).ifBlank { "driver1" }
+        val prefixedDriverUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawUser)
+        val cleanPass = InputSanitizer.sanitize(driverPasswordInput).ifBlank { "1234" }
+
+        val updatedConfig = _schoolConfig.value.copy(
+            isDriverAccountEnabled = isEnabled,
+            busDriverUsername = prefixedDriverUser,
+            busDriverPassword = cleanPass
+        )
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+
+        val driverAccId = "acc_bus_driver_$sid"
+        val driverAcc = UserAccount(
+            id = driverAccId,
+            username = prefixedDriverUser,
+            password = cleanPass,
+            fullName = updatedConfig.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" },
+            role = UserRole.TEACHER,
+            isActive = isEnabled,
+            phone = updatedConfig.busDriverPhone,
+            specialty = "سائق الخط المدرسي",
+            photoBase64 = updatedConfig.busDriverPhotoBase64,
+            schoolId = sid,
+            isBusDriverAccount = true
+        )
+        val filteredAccs = _accounts.value.filterNot { it.id == driverAccId || it.isBusDriverAccount }
+        val updatedAccs = filteredAccs + driverAcc
+        _accounts.value = updatedAccs
+        repo.saveAccounts(updatedAccs, sid)
+
+        if (isEnabled) {
+            showToastAlert(
+                "تم تفعيل حساب السائق المستقل بنجاح • المستخدم: ($prefixedDriverUser) • الرمز: ($cleanPass)",
+                isSuccess = true
+            )
+        } else {
+            showToastAlert("تم إيقاف حساب السائق المستقل", isSuccess = true)
+        }
+    }
+
+    /**
+     * Records a student's boarding or alighting from the school bus via QR code scan or quick selection,
+     * updates the student's live boarding status (`busBoardingStatus`, `busBoardingTimestamp`, `busBoardingDateIso`, `busBoardingDriverName`),
+     * and dispatches an instant notification to the parent and student.
+     */
+    fun recordStudentBusBoardingByQrOrId(
+        qrOrStudentId: String,
+        scanMode: BusBoardingScanMode
+    ): StudentRecord? {
+        val user = _currentUser.value ?: return null
+        if (!user.isBusDriverAccount && user.role != UserRole.ADMIN && user.role != UserRole.TEACHER) {
+            showToastAlert("هذه الصلاحية مخصصة للسائق المعتمد أو إدارة المدرسة فقط", isSuccess = false)
+            return null
+        }
+
+        val cleanInput = qrOrStudentId.trim()
+        if (cleanInput.isEmpty()) {
+            showToastAlert("يرجى مسح باركود هوية الطالب أولاً", isSuccess = false)
+            return null
+        }
+
+        val sid = _schoolConfig.value.schoolId
+        val schoolStudents = _students.value.filter { (it.schoolId.isEmpty() || it.schoolId == sid) && it.isActive }
+        val pipeParts = cleanInput.split("|").map { it.trim() }
+        val extractedStuIdFromPipe = if (pipeParts.size >= 3 && pipeParts[0].equals("MADRASATI", ignoreCase = true)) {
+            pipeParts[2]
+        } else ""
+
+        val matchedStudent = schoolStudents.firstOrNull { stu ->
+            stu.qrCodeValue.equals(cleanInput, ignoreCase = true) ||
+                stu.walletBarcode.equals(cleanInput, ignoreCase = true) ||
+                (extractedStuIdFromPipe.isNotEmpty() && stu.id.equals(extractedStuIdFromPipe, ignoreCase = true)) ||
+                cleanInput.contains("|${stu.id}|", ignoreCase = true) ||
+                stu.id.equals(cleanInput, ignoreCase = true) ||
+                stu.studentUsername.equals(cleanInput, ignoreCase = true) ||
+                cleanInput.endsWith("-${stu.id}", ignoreCase = true) ||
+                stu.studentName.equals(cleanInput, ignoreCase = true) ||
+                stu.fullNameWithFather.equals(cleanInput, ignoreCase = true)
+        }
+
+        if (matchedStudent == null) {
+            showToastAlert("لم يتم العثور على طالب مطابق لرمز الباركود الممسوح", isSuccess = false)
+            return null
+        }
+
+        com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
+
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
+        val resolvedDriverName = matchedStudent.busDriverName
+            .ifBlank { _schoolConfig.value.busDriverName }
+            .ifBlank { user.fullName }
+            .ifBlank { "السائق المعتمد" }
+
+        var updatedTarget: StudentRecord? = null
+        val updatedList = _students.value.map { s ->
+            if (s.id == matchedStudent.id) {
+                val copyStu = s.copy(
+                    isBusSubscribed = true,
+                    busBoardingStatus = scanMode.name,
+                    busBoardingTimestamp = timeNow,
+                    busBoardingDateIso = todayIso,
+                    busBoardingDriverName = resolvedDriverName
+                )
+                updatedTarget = copyStu
+                copyStu
+            } else s
+        }
+        _students.value = updatedList
+        repo.saveStudents(updatedList, sid)
+
+        val notifTitle: String
+        val notifBody: String
+        if (scanMode == BusBoardingScanMode.BOARDING) {
+            notifTitle = "صعود الطالب إلى الباص المدرسي بسلام"
+            notifBody = "صعد الطالب (${matchedStudent.fullNameWithFather}) إلى الباص الآن بسلام • الساعة $timeNow مع السائق ($resolvedDriverName)"
+        } else {
+            notifTitle = "نزول الطالب من الباص ووصوله بسلام"
+            notifBody = "نزل الطالب (${matchedStudent.fullNameWithFather}) من الباص ووصل بسلام • الساعة $timeNow"
+        }
+
+        pushNotification(
+            title = notifTitle,
+            body = notifBody,
+            type = NotificationType.ATTENDANCE,
+            targetStudentId = matchedStudent.id,
+            targetSection = AppSection.SCHOOL_TRANSPORT.name
+        )
+
+        showToastAlert(notifBody, isSuccess = true)
+        return updatedTarget
     }
 
     /**

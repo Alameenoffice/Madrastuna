@@ -330,6 +330,9 @@ fun MadrasatiRootApp(
                     onSwitchSchoolCodeGate = { viewModel.returnToSchoolSecurityGate() }
                 )
             }
+            currentUser?.isBusDriverAccount == true -> {
+                com.example.ui.screens.DriverExclusiveScannerScreen(viewModel = viewModel)
+            }
             else -> {
                 AuthenticatedMainPlatform(viewModel = viewModel)
             }
