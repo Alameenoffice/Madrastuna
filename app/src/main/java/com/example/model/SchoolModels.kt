@@ -458,38 +458,11 @@ data class RegisteredSchoolSummary(
     val adminUsername: String = "",
     val subscriptionExpiryDate: String = "2027-10-29",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001",
-    val isSuspended: Boolean = false,
-    val principalFullName: String = "مدير المدرسة",
-    val adminPasswordPlain: String = "123456"
+    val schoolActivationCode: String = "1001"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
 }
-
-typealias SchoolTenantInfo = RegisteredSchoolSummary
-
-data class RemoteSchoolLiveStatus(
-    val schoolId: String = "",
-    val existsInCloud: Boolean = true,
-    val isActive: Boolean = true,
-    val isSuspended: Boolean = false,
-    val isSchoolOfficiallyActivated: Boolean = true,
-    val isVerifiedFromCloud: Boolean = true,
-    val schoolName: String = "",
-    val schoolActivationCode: String = ""
-)
-
-data class SchoolDetailedInspectionStats(
-    val school: RegisteredSchoolSummary,
-    val students: List<StudentRecord> = emptyList(),
-    val teachers: List<UserAccount> = emptyList(),
-    val principalAccount: UserAccount? = null,
-    val adminPasswordDisplay: String = "123456",
-    val attendanceRatePercent: Int = 96,
-    val sectionsMap: Map<String, Int> = emptyMap(),
-    val activityPostsCount: Int = 0
-)
 
 data class UrgentSchoolAlert(
     val id: String = "urgent_alert",
@@ -541,10 +514,7 @@ data class SchoolConfig(
     val isCanteenWalletEnabled: Boolean = true,
     val principalFullName: String = "مدير المدرسة",
     val isSchoolOfficiallyActivated: Boolean = false,
-    val schoolActivationCode: String = "1001",
-    val isSuspended: Boolean = false,
-    val activeBusEvent: String = "",
-    val activeBusEventTimestamp: String = ""
+    val schoolActivationCode: String = "1001"
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -1013,12 +983,6 @@ object ArabicTextNormalizer {
         if (cleaned == legacyCity || cleaned == legacyDistrict || cleaned == "-" || cleaned == "—") return ""
         return cleaned
     }
-
-    fun formatSystemBroadcastDateTime(raw: String): String {
-        val trimmed = raw.trim()
-        if (trimmed.isEmpty()) return ""
-        return normalizeDigitsToAscii(trimmed)
-    }
 }
 
 enum class CanteenTransactionType(val arabicLabel: String) {
@@ -1100,8 +1064,7 @@ data class StudentRecord(
     val archivedYearlySummaries: List<ArchivedYearlySummary> = emptyList(),
     val gender: String = "",
     val ageYears: Int = 0,
-    val presentDays: Int = 0,
-    val isReportCardSentByPrincipal: Boolean = false
+    val presentDays: Int = 0
 ) {
     val isGenderSpecified: Boolean
         get() {
@@ -1156,8 +1119,6 @@ data class StudentRecord(
     val walletBalanceIqd: Int get() = walletBalance
     val dailySpendLimitIqd: Int get() = dailySpendLimit
     val overallAverage: String get() = "$excellencePoints%"
-    val averageScore: Int get() = excellencePoints
-    val attendanceRate: Int get() = (100 - (absenceDays * 3)).coerceIn(75, 100)
 
     val qrCodeValue: String
         get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
@@ -1788,21 +1749,7 @@ enum class BusEventType(
         arabicLabel = "انطلاق العودة للمنزل",
         notificationTitle = "انطلاق خط العودة إلى المنزل",
         notificationBodyTemplate = "انطلق خط النقل المدرسي الآن للعودة إلى المنزل وعلى متنه ابنكم (%s)."
-    );
-
-    val shortButtonLabel: String
-        get() = when (this) {
-            MORNING_DEPARTURE -> "انطلاق صباحي"
-            ARRIVED_AT_SCHOOL -> "وصل للمدرسة"
-            RETURN_HOME_DEPARTURE -> "رحلة العودة"
-        }
-
-    val liveRouteStatusText: String
-        get() = when (this) {
-            MORNING_DEPARTURE -> "الباص في الطريق نحو المدرسة الآن..."
-            ARRIVED_AT_SCHOOL -> "وصل الباص إلى المدرسة بسلام"
-            RETURN_HOME_DEPARTURE -> "غادر الباص المدرسة في رحلة العودة للمنازل"
-        }
+    )
 }
 
 data class DeveloperBroadcastItem(
@@ -1814,24 +1761,8 @@ data class DeveloperBroadcastItem(
     val targetSchoolId: String = "ALL",
     val iconKey: String = OccasionIconKey.BELL.name,
     val imageBase64: String = "",
-    val imageUrl: String = "",
-    val isActive: Boolean = true,
-    val targetRole: String = "ALL"
-) {
-    val formattedCreatedAt: String
-        get() = ArabicTextNormalizer.formatSystemBroadcastDateTime(createdAt)
-
-    val resolvedIconKey: OccasionIconKey
-        get() = OccasionIconKey.fromKey(iconKey)
-
-    val targetAudienceArabicLabel: String
-        get() = when (targetRole.trim().uppercase()) {
-            "ADMIN" -> "مدراء المدارس"
-            "TEACHER" -> "الكادر التدريسي"
-            "STUDENT" -> "الطلاب وأولياء الأمور"
-            else -> "جميع المدارس والمستخدمين"
-        }
-}
+    val imageUrl: String = ""
+)
 
 data class StudentAutoBadge(
     val id: String,
@@ -2259,10 +2190,6 @@ enum class OccasionThemeType(
 
     companion object {
         val DEFAULT: OccasionThemeType = OFFICIAL
-        val RAMADAN: OccasionThemeType = RAMADAN_EID
-        val EID: OccasionThemeType = RAMADAN_EID
-        val MAWLID_NABAWI: OccasionThemeType = RAMADAN_EID
-        val IRAQI_NATIONAL_DAY: OccasionThemeType = NATIONAL_DAY
     }
 }
 
