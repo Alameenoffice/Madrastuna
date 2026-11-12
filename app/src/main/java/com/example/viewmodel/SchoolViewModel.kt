@@ -9438,10 +9438,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val isMatch = clean.equals(expected, ignoreCase = true) ||
             clean.equals("DEV-2026", ignoreCase = true) ||
             com.example.util.SecurityShieldHelper.verifyDeveloperCredentials(
-                inputIdentifier = clean,
-                inputPassword = clean,
-                remoteVaultUserHash = _developerVaultConfig.value.usernameHash,
-                remoteVaultPassHash = _developerVaultConfig.value.passwordHash
+                schoolCodeInput = clean,
+                passwordInput = clean,
+                cloudUsernameHash = _developerVaultConfig.value.usernameHash,
+                cloudPasswordHash = _developerVaultConfig.value.passwordHash
             )
         return if (isMatch) {
             _isDeveloperAuthenticated.value = true
