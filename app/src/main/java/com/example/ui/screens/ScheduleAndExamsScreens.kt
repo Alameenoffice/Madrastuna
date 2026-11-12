@@ -3388,7 +3388,7 @@ fun ExamsAndGradesScreen(
                 }
             }
 
-            // 3rd Main Tab: إصدار الكارتات والنتائج (Visible to Admin/Teacher only; hidden for Student & Parent)
+            // 3rd Main Tab: إصدار الكارتات والنتائج (Administrative tab — hidden for Student and Parent accounts)
             if (!isParentOrStudent) {
                 val isReportCardsTab = selectedTab == 2
                 Surface(
@@ -3440,10 +3440,6 @@ fun ExamsAndGradesScreen(
                 if (myStu != null) {
                     val myGrades = grades.filter { it.studentId == myStu.id }
                     val myBadges = viewModel.getStudentAutoBadges(myStu.id)
-                    val myIssuedCards = remember(issuedReportCards, myStu.id) {
-                        issuedReportCards.filter { it.studentId == myStu.id }
-                    }
-                    val isReportCardApprovedByPrincipal = myIssuedCards.isNotEmpty()
                     val studentSubjects = viewModel.getSubjectsForClass(myStu.gradeClass, null)
                     val allSubjectsReport = studentSubjects.map { subjName ->
                         val dynamicScale = viewModel.getDefaultMaxScoreForClassAndSubject(myStu.gradeClass, subjName)
@@ -3482,6 +3478,16 @@ fun ExamsAndGradesScreen(
                         else -> "راسب"
                     }
 
+                    val myIssuedCards = remember(issuedReportCards, myStu.id) {
+                        issuedReportCards.filter { it.studentId == myStu.id }
+                    }
+                    val isFinalReportApprovedByPrincipal = remember(myIssuedCards, myGrades, allSubjectsReport) {
+                        myIssuedCards.isNotEmpty() ||
+                            (myGrades.isNotEmpty() &&
+                                allSubjectsReport.isNotEmpty() &&
+                                allSubjectsReport.all { it.isApprovedByPrincipal })
+                    }
+
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -3491,36 +3497,36 @@ fun ExamsAndGradesScreen(
                             renderTopTabsHeader()
                         }
                         item(key = "student_report_card_header_${myStu.id}") {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                            if (isFinalReportApprovedByPrincipal) {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(18.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                    )
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "كشف درجات الطالب: ${myStu.fullNameWithFather}",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = "الصف: ${myStu.gradeClass} • شعبة (${myStu.sectionName})",
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                        }
-                                        if (isReportCardApprovedByPrincipal) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "كشف درجات الطالب: ${myStu.fullNameWithFather}",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "الصف: ${myStu.gradeClass} • شعبة (${myStu.sectionName})",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
                                             Column(horizontalAlignment = Alignment.End) {
                                                 NoWrapBadge(
                                                     text = if (allSubjectsCompleted) "المعدل النهائي: $overallAvg%" else "مؤشر المتابعة: $overallAvg%",
@@ -3537,100 +3543,92 @@ fun ExamsAndGradesScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    if (myBadges.isNotEmpty()) {
-                                        StudentAutoBadgesRow(badges = myBadges)
-                                    }
-
-                                    // Show Final Report Card Preview & PDF Export ONLY if issued/sent by the Principal
-                                    if (isReportCardApprovedByPrincipal) {
-                                        val latestCard = myIssuedCards.first()
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
+                                        if (myBadges.isNotEmpty()) {
+                                            StudentAutoBadgesRow(badges = myBadges)
+                                        }
+                                        myIssuedCards.firstOrNull()?.let { latestIssuedCard ->
                                             Button(
-                                                onClick = {
-                                                    viewModel.openCelebrationReportCardModal(latestCard)
-                                                },
-                                                modifier = Modifier.weight(1f),
+                                                onClick = { viewModel.openCelebrationReportCardModal(latestIssuedCard) },
+                                                modifier = Modifier.fillMaxWidth(),
                                                 shape = RoundedCornerShape(12.dp),
                                                 colors = ButtonDefaults.buttonColors(
                                                     containerColor = Color(0xFF047857),
                                                     contentColor = Color.White
                                                 )
                                             ) {
-                                                Icon(Icons.Filled.Verified, contentDescription = null, modifier = Modifier.size(17.dp))
+                                                Icon(Icons.Filled.WorkspacePremium, contentDescription = null)
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
-                                                    text = "معاينة الكارت الرسمي",
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    maxLines = 1
-                                                )
-                                            }
-
-                                            OutlinedButton(
-                                                onClick = {
-                                                    val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
-                                                        context = context,
-                                                        student = myStu,
-                                                        grades = allSubjectsReport,
-                                                        schoolConfig = schoolConfig
-                                                    )
-                                                    viewModel.showBannerMessage(msg)
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                                shape = RoundedCornerShape(12.dp)
-                                            ) {
-                                                Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(17.dp))
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = "تحميل PDF",
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    maxLines = 1
+                                                    text = "فتح الكارت المدرسي الرسمي المعتمد (${latestIssuedCard.periodType.arabicTitle})",
+                                                    fontWeight = FontWeight.ExtraBold
                                                 )
                                             }
                                         }
-                                    } else {
-                                        // Elegant card when the report card has not yet been issued/approved by the Principal
-                                        Surface(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .testTag("pending_principal_report_card_notice"),
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = Color(0xFFFFFBEB),
-                                            border = BorderStroke(1.2.dp, Color(0xFFF59E0B).copy(alpha = 0.55f))
+                                        OutlinedButton(
+                                            onClick = {
+                                                val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                                    context = context,
+                                                    student = myStu,
+                                                    grades = allSubjectsReport,
+                                                    schoolConfig = schoolConfig
+                                                )
+                                                viewModel.showBannerMessage(msg)
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
                                         ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                Surface(
-                                                    shape = CircleShape,
-                                                    color = Color(0xFFFEF3C7),
-                                                    modifier = Modifier.size(36.dp)
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.HourglassTop,
-                                                            contentDescription = null,
-                                                            tint = Color(0xFFB45309),
-                                                            modifier = Modifier.size(19.dp)
-                                                        )
-                                                    }
-                                                }
-                                                Text(
-                                                    text = "كارت الدرجات الرسمي قيد المراجعة والاعتماد من إدارة المدرسة",
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color(0xFF92400E),
-                                                    modifier = Modifier.weight(1f)
+                                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("تصدير / طباعة بطاقة الدرجات الرسمية (PDF)")
+                                        }
+                                    }
+                                }
+                            } else {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("student_report_card_pending_approval_card"),
+                                    shape = RoundedCornerShape(18.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                                    border = BorderStroke(1.4.dp, Color(0xFFF59E0B).copy(alpha = 0.55f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color(0xFFFEF3C7),
+                                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.45f)),
+                                            modifier = Modifier.size(46.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.HourglassTop,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFB45309),
+                                                    modifier = Modifier.size(24.dp)
                                                 )
                                             }
+                                        }
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "كارت الدرجات الرسمي قيد المراجعة والاعتماد من إدارة المدرسة",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF78350F)
+                                            )
+                                            Text(
+                                                text = "الطالب: ${myStu.fullNameWithFather} • الصف: ${myStu.gradeClass} (${myStu.sectionName}) — ستتوفر البطاقة النهائية وملف الـ PDF فور اعتمادها رسمياً من مدير المدرسة.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFF92400E)
+                                            )
                                         }
                                     }
                                 }

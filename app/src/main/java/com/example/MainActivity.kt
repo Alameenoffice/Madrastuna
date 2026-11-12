@@ -1884,11 +1884,11 @@ fun AuthenticatedMainPlatform(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                // Developer Broadcasts are displayed directly below the Welcome Hero Banner in DashboardScreen
+                // Admin 14-day Subscription Expiry Warning & Developer Broadcasts Banner (on non-Dashboard screens; on Dashboard it sits directly below the Emerald Welcome Hero Banner)
                 if (currentUser?.role == UserRole.ADMIN && activeSection != AppSection.DASHBOARD) {
                     AdminSubscriptionAndBroadcastBanner(
                         schoolConfig = schoolConfig,
-                        developerBroadcasts = emptyList(),
+                        developerBroadcasts = developerBroadcasts,
                         dismissedBroadcastIds = dismissedBroadcastIds,
                         onDismissBroadcast = { bcId ->
                             viewModel.dismissDeveloperBroadcastForAdmin(bcId)

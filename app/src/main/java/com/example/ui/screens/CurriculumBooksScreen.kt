@@ -1325,7 +1325,6 @@ fun CurriculumBooksScreen(
     )
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        // 1) التمرير الكامل للشاشة نحو الأعلى (Full Vertical Scroll) داخل LazyColumn واحدة رئيسية
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -1334,7 +1333,7 @@ fun CurriculumBooksScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)
         ) {
-            // البنر الزمردي العلوي مع مشهد المنصة المعرفية العائمة
+            // 1. Royal 3D Wave Hero Header with Floating Knowledge Platform Vector Animation on the left
             item(key = "curriculum_hero_banner") {
                 CurriculumHeroBannerWithOpenBookAnimation(
                     title = "المناهج الدراسية والكتب الرسمية",
@@ -1344,8 +1343,8 @@ fun CurriculumBooksScreen(
                 )
             }
 
-            // بطاقة اختيار المرحلة والصف وحقل البحث
-            item(key = "curriculum_stage_grade_search_card") {
+            // 2. Unified Luxury Filter Card for Stages, Grade Classes & Search (Zero text clipping)
+            item(key = "curriculum_filter_card") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(22.dp),
@@ -1361,7 +1360,7 @@ fun CurriculumBooksScreen(
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // 1. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية)
+                        // Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1413,7 +1412,7 @@ fun CurriculumBooksScreen(
                             }
                         }
 
-                        // 2. Grade Classes Horizontal Filter Chips
+                        // Grade Classes Horizontal Filter Chips
                         LazyRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1475,7 +1474,7 @@ fun CurriculumBooksScreen(
                             }
                         }
 
-                        // 3. Search Bar with Custom Animated Canvas Vector Icons
+                        // Search Bar with Custom Animated Canvas Vector Icons
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
@@ -1511,9 +1510,9 @@ fun CurriculumBooksScreen(
                 }
             }
 
-            // 3) قائمة الكتب أو بطاقة المرحلة الفارغة داخل نفس الـ LazyColumn الرئيسية
+            // 3. Books List or Empty Stage Card (Directly inside the single main LazyColumn for full-screen upward scroll)
             if (displayedBooks.isEmpty()) {
-                item(key = "curriculum_empty_stage_notice_${selectedStage.name}_$selectedGradeClass") {
+                item(key = "curriculum_empty_stage_card_${selectedStage.name}_$selectedGradeClass") {
                     InteractiveSmartLibraryStageView(
                         selectedStage = selectedStage,
                         selectedGradeClass = selectedGradeClass,
@@ -1546,10 +1545,11 @@ fun CurriculumBooksScreen(
 }
 
 /**
- * 3) بطاقة واضحة للمراحل التي لم تُرفع كتبها بعد:
- * تعرض بطاقة بيضاء أنيقة بداخلها الرسم الفيكتوري للمنصة المعرفية العائمة مع العنوان:
- * "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد"
- * وتحته: "سيتم إدراج الكتب الرسمية لهذا الصف قريباً من قِبل الإدارة المركزية."
+ * Interactive Animated Empty Stage Card for Curriculum Stages:
+ * Displays the Floating Knowledge Platform vector animation in the center of an elegant white card
+ * with the official titles:
+ * - "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد"
+ * - "سيتم إدراج الكتب الرسمية لهذا الصف قريباً من قِبل الإدارة المركزية."
  */
 @Composable
 private fun InteractiveSmartLibraryStageView(
@@ -1558,102 +1558,110 @@ private fun InteractiveSmartLibraryStageView(
     hasActiveSearchQuery: Boolean,
     isDarkMode: Boolean
 ) {
-    Card(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .testTag("curriculum_stage_pending_notice_card"),
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White
-        ),
-        border = BorderStroke(
-            1.4.dp,
-            if (isDarkMode) GoldAccent.copy(alpha = 0.45f) else Color(0xFF10B981).copy(alpha = 0.45f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = if (isDarkMode) {
-                            listOf(
-                                Color(0xFF042F24).copy(alpha = 0.65f),
-                                Color(0xFF0F172A)
-                            )
-                        } else {
-                            listOf(
-                                Color.White,
-                                Color(0xFFECFDF5).copy(alpha = 0.55f),
-                                Color.White
-                            )
-                        }
-                    )
-                )
+                .testTag("curriculum_stage_pending_notice_card"),
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White
+            ),
+            border = BorderStroke(
+                1.4.dp,
+                if (isDarkMode) GoldAccent.copy(alpha = 0.45f) else Color(0xFF10B981).copy(alpha = 0.45f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 22.dp, vertical = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // مشهد المنصة المعرفية العائمة بالمدارات والرموز التعليمية المضيئة
-                OpeningAndClosing3DBookVectorAnimation(
-                    modifier = Modifier.size(132.dp),
-                    isDarkMode = isDarkMode
-                )
-
-                // شارة المرحلة والصف الدراسي
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
-                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.75f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Canvas(modifier = Modifier.size(8.dp)) {
-                            drawCircle(color = GoldAccent, radius = size.minDimension / 2f)
-                        }
-                        Text(
-                            text = "${selectedStage.arabicTitle} • $selectedGradeClass",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = if (isDarkMode) {
+                                listOf(
+                                    Color(0xFF042F24).copy(alpha = 0.65f),
+                                    Color(0xFF0F172A)
+                                )
+                            } else {
+                                listOf(
+                                    Color.White,
+                                    Color(0xFFECFDF5).copy(alpha = 0.55f),
+                                    Color.White
+                                )
+                            }
                         )
+                    )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Floating Emerald & Gold Knowledge Platform Vector Animation in the center of the card
+                    OpeningAndClosing3DBookVectorAnimation(
+                        modifier = Modifier.size(132.dp),
+                        isDarkMode = isDarkMode
+                    )
+
+                    // Stage & Grade Badge
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFD1FAE5),
+                        border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.70f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Canvas(modifier = Modifier.size(8.dp)) {
+                                drawCircle(color = GoldAccent, radius = size.minDimension / 2f)
+                            }
+                            Text(
+                                text = "${selectedStage.arabicTitle} • $selectedGradeClass",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                            )
+                        }
                     }
+
+                    Text(
+                        text = if (hasActiveSearchQuery) {
+                            "لا توجد كتب مطابقة لعبارة البحث الحالية"
+                        } else {
+                            "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDarkMode) Color.White else DeepForestGreen,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 25.sp
+                    )
+
+                    Text(
+                        text = if (hasActiveSearchQuery) {
+                            "جرب البحث بكلمات أخرى أو اختر المرحلة والصف الدراسي من الأعلى."
+                        } else {
+                            "سيتم إدراج الكتب الرسمية لهذا الصف قريباً من قِبل الإدارة المركزية."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
+                        textAlign = TextAlign.Center,
+                        lineHeight = 21.sp
+                    )
                 }
-
-                // العنوان الرئيسي المطلوب
-                Text(
-                    text = "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isDarkMode) Color.White else DeepForestGreen,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 25.sp
-                )
-
-                // النص التوضيحي الفرعي المطلوب
-                Text(
-                    text = if (hasActiveSearchQuery) {
-                        "سيتم إدراج الكتب الرسمية لهذا الصف قريباً من قِبل الإدارة المركزية. (لا توجد نتائج مطابقة لعبارة البحث الحالية)"
-                    } else {
-                        "سيتم إدراج الكتب الرسمية لهذا الصف قريباً من قِبل الإدارة المركزية."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
-                    textAlign = TextAlign.Center,
-                    lineHeight = 21.sp
-                )
             }
         }
     }
@@ -2010,12 +2018,11 @@ fun InAppGoogleDriveBookViewerModal(
 }
 
 /**
- * Exclusive Curriculum Hero Banner with `OpeningAndClosing3DBookVectorAnimation` on the left side:
- * Replaces the stacked-books illustration used in Schedule & Homework with a dedicated
- * 3D Perspective Opening & Closing Book Vector Animation.
+ * Public Curriculum Hero Banner with Floating Knowledge Platform Vector Animation on the left side.
+ * Kept `public` so external screens or references compile with zero visibility errors.
  */
 @Composable
-private fun CurriculumHeroBannerWithOpenBookAnimation(
+fun CurriculumHeroBannerWithOpenBookAnimation(
     title: String,
     subtitle: String,
     rightPillText: String,
@@ -2057,9 +2064,9 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFF059669),
+                        Color(0xFF0D8A6A),
                         Color(0xFF047857),
-                        Color(0xFF0F3D5E)
+                        Color(0xFF064E3B)
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(950f, 680f)
@@ -2217,7 +2224,7 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Left side of the Emerald Banner: 3D Opening & Closing Book Vector Animation
+                // Left side of the Emerald Banner: Floating Knowledge Platform Vector Animation
                 OpeningAndClosing3DBookVectorAnimation(
                     modifier = Modifier.size(108.dp),
                     isDarkMode = true
@@ -2228,8 +2235,10 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
 }
 
 /**
- * 2) مشهد المنصة المعرفية العائمة (بديلاً عن أنميشن الكتاب الأصفر القديم):
- * يرسم بـ Canvas منصة معرفية زمردية وذهبية عائمة تحيط بها مدارات ورموز تعليمية مضيئة تسبح بنعومة.
+ * Floating Emerald & Gold Knowledge Platform Vector Animation (`OpeningAndClosing3DBookVectorAnimation`):
+ * Replaces the old yellow book animation with a smooth animated Bezier vector `Canvas` depicting
+ * a floating emerald and gold knowledge platform surrounded by softly orbiting educational symbols
+ * and glowing knowledge rings.
  */
 @Composable
 fun OpeningAndClosing3DBookVectorAnimation(
@@ -2241,28 +2250,28 @@ fun OpeningAndClosing3DBookVectorAnimation(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4800, easing = LinearEasing),
+            animation = tween(durationMillis = 6400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "knowledge_orbit_angle"
     )
-    val floatWave by infiniteTransition.animateFloat(
+    val floatPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 2800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "platform_float_wave"
+        label = "knowledge_platform_float"
     )
-    val glowPulse by infiniteTransition.animateFloat(
-        initialValue = 0.88f,
-        targetValue = 1.14f,
+    val pulseGlow by infiniteTransition.animateFloat(
+        initialValue = 0.78f,
+        targetValue = 1.12f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "platform_glow_pulse"
+        label = "knowledge_core_pulse"
     )
 
     Canvas(
@@ -2272,203 +2281,304 @@ fun OpeningAndClosing3DBookVectorAnimation(
         val h = size.height
         val cx = w * 0.50f
         val cy = h * 0.54f
-        val floatY = sin(floatWave) * (h * 0.032f)
-        val crestFloatY = cos(floatWave) * (h * 0.040f)
+        val floatY = sin(floatPhase) * (h * 0.032f)
 
-        // 1. هالة ضوئية زمردية وذهبية محيطة بالمنصة المعرفية العائمة
+        // 1. Radiant Emerald & Gold Knowledge Aura
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF10B981).copy(alpha = if (isDarkMode) 0.34f else 0.24f),
+                    Color(0xFF34D399).copy(alpha = 0.36f * pulseGlow.coerceAtMost(1f)),
                     Color(0xFFFDE68A).copy(alpha = 0.22f),
                     Color.Transparent
                 ),
-                center = Offset(cx, cy - h * 0.04f),
-                radius = w * 0.48f * glowPulse
+                center = Offset(cx, cy + floatY),
+                radius = w * 0.46f
             ),
-            radius = w * 0.48f * glowPulse,
-            center = Offset(cx, cy - h * 0.04f)
+            radius = w * 0.46f,
+            center = Offset(cx, cy + floatY)
         )
 
-        // ظل ناعم أسفل المنصة العائمة
+        // 2. Soft Shadow Oval Below Floating Pedestal
         drawOval(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF042F24).copy(alpha = if (isDarkMode) 0.45f else 0.22f),
+                    Color(0xFF042F24).copy(alpha = if (isDarkMode) 0.44f else 0.22f),
                     Color.Transparent
                 ),
-                center = Offset(cx, h * 0.88f),
+                center = Offset(cx, h * 0.86f),
                 radius = w * 0.36f
             ),
-            topLeft = Offset(cx - w * 0.34f, h * 0.82f),
+            topLeft = Offset(cx - w * 0.34f, h * 0.81f),
             size = Size(w * 0.68f, h * 0.10f)
         )
 
-        // 2. المدارات التعليمية المضيئة المحيطة بالمنصة (Tilted Glowing Knowledge Orbits)
-        rotate(degrees = -18f, pivot = Offset(cx, cy - h * 0.04f + floatY)) {
-            drawOval(
-                color = Color(0xFFFDE68A).copy(alpha = 0.55f),
-                topLeft = Offset(cx - w * 0.44f, cy - h * 0.22f + floatY),
-                size = Size(w * 0.88f, h * 0.34f),
-                style = Stroke(width = 1.6.dp.toPx())
-            )
-        }
-        rotate(degrees = 22f, pivot = Offset(cx, cy - h * 0.04f + floatY)) {
-            drawOval(
-                color = Color(0xFF34D399).copy(alpha = 0.50f),
-                topLeft = Offset(cx - w * 0.40f, cy - h * 0.20f + floatY),
-                size = Size(w * 0.80f, h * 0.30f),
-                style = Stroke(width = 1.4.dp.toPx())
-            )
-        }
+        // 3. Multi-layered Floating Emerald & Gold Hexagonal/Diamond Knowledge Platform (Pedestal)
+        val platformCy = h * 0.68f + floatY
+        val platRx = w * 0.36f
+        val platRy = h * 0.11f
+        val platDepth = h * 0.065f
 
-        // 3. القاعدة الهندسية للمنصة المعرفية الزمردية والذهبية العائمة (Floating Emerald & Gold Pedestal)
-        val platY = cy + h * 0.14f + floatY
-        val platHalfW = w * 0.34f
-        val platDepth = h * 0.11f
-
-        // الطبقة السفلية الذهبية للمنصة
-        val lowerPedestal = Path().apply {
-            moveTo(cx, platY - platDepth * 0.45f)
-            lineTo(cx + platHalfW * 0.88f, platY + platDepth * 0.25f)
-            lineTo(cx, platY + platDepth * 1.05f)
-            lineTo(cx - platHalfW * 0.88f, platY + platDepth * 0.25f)
+        val platformBaseSide = Path().apply {
+            moveTo(cx - platRx, platformCy)
+            quadraticBezierTo(cx, platformCy + platRy * 1.35f, cx + platRx, platformCy)
+            lineTo(cx + platRx * 0.88f, platformCy + platDepth)
+            quadraticBezierTo(cx, platformCy + platRy * 1.35f + platDepth, cx - platRx * 0.88f, platformCy + platDepth)
             close()
         }
         drawPath(
-            path = lowerPedestal,
-            brush = Brush.linearGradient(
-                colors = listOf(Color(0xFFB45309), Color(0xFFF59E0B), Color(0xFFFDE68A)),
-                start = Offset(cx - platHalfW, platY),
-                end = Offset(cx + platHalfW, platY + platDepth)
+            path = platformBaseSide,
+            brush = Brush.horizontalGradient(
+                colors = listOf(Color(0xFF064E3B), Color(0xFF047857), Color(0xFF0D8A6A), Color(0xFF064E3B))
             )
         )
 
-        // السطح الزمردي الملكي للمنصة المعرفية العائمة بمنحنيات بيزيير
-        val upperPlatform = Path().apply {
-            moveTo(cx, platY - platDepth)
-            quadraticBezierTo(
-                cx + platHalfW * 0.55f, platY - platDepth * 0.65f,
-                cx + platHalfW, platY
+        val platformTopSurface = Path().apply {
+            moveTo(cx, platformCy - platRy)
+            cubicTo(
+                cx + platRx * 0.65f, platformCy - platRy * 0.85f,
+                cx + platRx, platformCy - platRy * 0.25f,
+                cx + platRx, platformCy
             )
-            quadraticBezierTo(
-                cx + platHalfW * 0.55f, platY + platDepth * 0.65f,
-                cx, platY + platDepth * 0.72f
+            cubicTo(
+                cx + platRx, platformCy + platRy * 0.25f,
+                cx + platRx * 0.65f, platformCy + platRy * 0.85f,
+                cx, platformCy + platRy
             )
-            quadraticBezierTo(
-                cx - platHalfW * 0.55f, platY + platDepth * 0.65f,
-                cx - platHalfW, platY
+            cubicTo(
+                cx - platRx * 0.65f, platformCy + platRy * 0.85f,
+                cx - platRx, platformCy + platRy * 0.25f,
+                cx - platRx, platformCy
             )
-            quadraticBezierTo(
-                cx - platHalfW * 0.55f, platY - platDepth * 0.65f,
-                cx, platY - platDepth
+            cubicTo(
+                cx - platRx, platformCy - platRy * 0.25f,
+                cx - platRx * 0.65f, platformCy - platRy * 0.85f,
+                cx, platformCy - platRy
             )
             close()
         }
         drawPath(
-            path = upperPlatform,
+            path = platformTopSurface,
             brush = Brush.linearGradient(
-                colors = listOf(
-                    Color(0xFF064E3B),
-                    Color(0xFF0D8A6A),
-                    Color(0xFF10B981)
-                ),
-                start = Offset(cx - platHalfW, platY - platDepth),
-                end = Offset(cx + platHalfW, platY + platDepth)
+                colors = listOf(Color(0xFF10B981), Color(0xFF059669), Color(0xFF047857))
             )
         )
         drawPath(
-            path = upperPlatform,
-            color = Color(0xFFFDE68A),
-            style = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round)
+            path = platformTopSurface,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFEF08A), GoldAccent, Color(0xFF34D399))
+            ),
+            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
         )
 
-        // حلقة الطاقة المعرفية وسط المنصة
+        // Inner Golden Energy Ring on Platform Top
         drawOval(
-            color = Color(0xFFA7F3D0).copy(alpha = 0.75f),
-            topLeft = Offset(cx - platHalfW * 0.52f, platY - platDepth * 0.34f),
-            size = Size(platHalfW * 1.04f, platDepth * 0.68f),
-            style = Stroke(width = 1.3.dp.toPx())
+            color = Color(0xFFFEF08A).copy(alpha = 0.72f),
+            topLeft = Offset(cx - platRx * 0.62f, platformCy - platRy * 0.56f),
+            size = Size(platRx * 1.24f, platRy * 1.12f),
+            style = Stroke(width = 1.4.dp.toPx())
         )
 
-        // 4. البلورة / المنارة المعرفية الزمردية الذهبية العائمة فوق المنصة
-        val beaconCenterY = cy - h * 0.12f + crestFloatY
-        val crystalW = w * 0.18f
-        val crystalH = h * 0.22f
+        // 4. Floating Emerald & Ivory Knowledge Prism / Crystal Book Tablet Above the Platform
+        val tabletCy = h * 0.42f + floatY * 1.35f
+        val tabletW = w * 0.38f
+        val tabletH = h * 0.28f
 
-        val crystalPath = Path().apply {
-            moveTo(cx, beaconCenterY - crystalH)
-            lineTo(cx + crystalW, beaconCenterY)
-            lineTo(cx, beaconCenterY + crystalH * 0.78f)
-            lineTo(cx - crystalW, beaconCenterY)
+        // Holographic beam connecting platform to floating knowledge tablet
+        val beamPath = Path().apply {
+            moveTo(cx - platRx * 0.45f, platformCy)
+            lineTo(cx - tabletW * 0.62f, tabletCy + tabletH * 0.35f)
+            lineTo(cx + tabletW * 0.62f, tabletCy + tabletH * 0.35f)
+            lineTo(cx + platRx * 0.45f, platformCy)
             close()
         }
         drawPath(
-            path = crystalPath,
+            path = beamPath,
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFFFDE68A),
-                    Color(0xFF10B981),
-                    Color(0xFF064E3B)
+                    Color(0xFF34D399).copy(alpha = 0.05f),
+                    Color(0xFF6EE7B7).copy(alpha = 0.26f),
+                    Color(0xFFFDE68A).copy(alpha = 0.32f)
                 ),
-                startY = beaconCenterY - crystalH,
-                endY = beaconCenterY + crystalH
+                startY = tabletCy,
+                endY = platformCy
+            )
+        )
+
+        // Left & Right Open Bezier Knowledge Wings (Emerald & Ivory-Gold)
+        val leftWing = Path().apply {
+            moveTo(cx, tabletCy + tabletH * 0.46f)
+            quadraticBezierTo(
+                cx - tabletW * 0.45f, tabletCy + tabletH * 0.32f,
+                cx - tabletW * 0.76f, tabletCy + tabletH * 0.40f
+            )
+            lineTo(cx - tabletW * 0.72f, tabletCy - tabletH * 0.38f)
+            quadraticBezierTo(
+                cx - tabletW * 0.38f, tabletCy - tabletH * 0.46f,
+                cx, tabletCy - tabletH * 0.28f
+            )
+            close()
+        }
+        val rightWing = Path().apply {
+            moveTo(cx, tabletCy + tabletH * 0.46f)
+            quadraticBezierTo(
+                cx + tabletW * 0.45f, tabletCy + tabletH * 0.32f,
+                cx + tabletW * 0.76f, tabletCy + tabletH * 0.40f
+            )
+            lineTo(cx + tabletW * 0.72f, tabletCy - tabletH * 0.38f)
+            quadraticBezierTo(
+                cx + tabletW * 0.38f, tabletCy - tabletH * 0.46f,
+                cx, tabletCy - tabletH * 0.28f
+            )
+            close()
+        }
+        drawPath(
+            path = leftWing,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFECFDF5), Color(0xFFD1FAE5), Color(0xFF10B981))
             )
         )
         drawPath(
-            path = crystalPath,
-            color = Color.White.copy(alpha = 0.85f),
-            style = Stroke(width = 1.5.dp.toPx(), join = StrokeJoin.Round)
-        )
-
-        // تاج أكاديمي مصغر مضيء أعلى المنارة المعرفية
-        val crownY = beaconCenterY - crystalH - h * 0.04f
-        drawCircle(
-            color = Color(0xFFFDE68A),
-            radius = 3.5.dp.toPx() * glowPulse,
-            center = Offset(cx, crownY)
-        )
-
-        // 5. رموز وكواكب تعليمية مضيئة تسبح بنعومة في المدارات المحيطة (Swimming Educational Symbols)
-        for (idx in 0 until 4) {
-            val symbolAngle = orbitAngle + idx * (PI.toFloat() * 0.5f)
-            val rx = w * 0.39f
-            val ry = h * 0.16f
-            val sx = cx + cos(symbolAngle) * rx
-            val sy = (cy - h * 0.04f + floatY) + sin(symbolAngle) * ry
-
-            // هالة الرمز التعليمي السابح
-            drawCircle(
-                color = if (idx % 2 == 0) Color(0xFFFDE68A).copy(alpha = 0.32f) else Color(0xFF34D399).copy(alpha = 0.32f),
-                radius = 7.dp.toPx() * glowPulse,
-                center = Offset(sx, sy)
+            path = rightWing,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF10B981), Color(0xFFD1FAE5), Color(0xFFECFDF5))
             )
+        )
+        drawPath(leftWing, color = GoldAccent, style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round))
+        drawPath(rightWing, color = GoldAccent, style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round))
 
-            // شكل الرمز التعليمي (نجمة معرفية / ماسة علمية / ذرة مضيئة)
-            if (idx % 2 == 0) {
-                val starR = 4.2.dp.toPx()
-                val diamond = Path().apply {
-                    moveTo(sx, sy - starR)
-                    lineTo(sx + starR, sy)
-                    lineTo(sx, sy + starR)
-                    lineTo(sx - starR, sy)
-                    close()
+        // Glowing Golden KnowledgeLines on Wings
+        for (row in 0..1) {
+            val ly = tabletCy - tabletH * (0.10f - row * 0.20f)
+            drawQuadraticBezierLine(
+                start = Offset(cx - tabletW * 0.14f, ly),
+                control = Offset(cx - tabletW * 0.38f, ly - tabletH * 0.08f),
+                end = Offset(cx - tabletW * 0.58f, ly - tabletH * 0.02f),
+                color = Color(0xFF047857),
+                strokeWidth = 1.5.dp.toPx()
+            )
+            drawQuadraticBezierLine(
+                start = Offset(cx + tabletW * 0.14f, ly),
+                control = Offset(cx + tabletW * 0.38f, ly - tabletH * 0.08f),
+                end = Offset(cx + tabletW * 0.58f, ly - tabletH * 0.02f),
+                color = Color(0xFF047857),
+                strokeWidth = 1.5.dp.toPx()
+            )
+        }
+
+        // Center Golden Knowledge Crest Star Above Spine
+        val starY = tabletCy - tabletH * 0.55f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFFFEF08A), GoldAccent, Color.Transparent),
+                center = Offset(cx, starY),
+                radius = w * 0.12f * pulseGlow
+            ),
+            radius = w * 0.12f * pulseGlow,
+            center = Offset(cx, starY)
+        )
+        drawCircle(
+            color = Color(0xFFFEF08A),
+            radius = w * 0.042f,
+            center = Offset(cx, starY)
+        )
+
+        // 5. Tilted Elliptical Knowledge Orbits & 4 Softly Swimming Educational Symbols
+        drawOval(
+            color = Color(0xFF6EE7B7).copy(alpha = 0.45f),
+            topLeft = Offset(cx - w * 0.44f, tabletCy - h * 0.18f),
+            size = Size(w * 0.88f, h * 0.36f),
+            style = Stroke(width = 1.2.dp.toPx())
+        )
+
+        val orbitRx = w * 0.42f
+        val orbitRy = h * 0.17f
+        for (idx in 0 until 4) {
+            val angle = orbitAngle + (idx * (PI / 2.0)).toFloat()
+            val ox = cx + cos(angle) * orbitRx
+            val oy = tabletCy + sin(angle) * orbitRy
+            val nodeColor = if (idx % 2 == 0) Color(0xFFFEF08A) else Color(0xFF6EE7B7)
+
+            drawCircle(
+                color = nodeColor.copy(alpha = 0.30f),
+                radius = w * 0.068f,
+                center = Offset(ox, oy)
+            )
+            drawCircle(
+                color = Color(0xFF064E3B),
+                radius = w * 0.046f,
+                center = Offset(ox, oy)
+            )
+            drawCircle(
+                color = nodeColor,
+                radius = w * 0.046f,
+                center = Offset(ox, oy),
+                style = Stroke(width = 1.4.dp.toPx())
+            )
+            // Mini geometric symbol inside each orbiting knowledge node
+            when (idx) {
+                0 -> {
+                    // Mini diamond (graduation cap top)
+                    val dPath = Path().apply {
+                        moveTo(ox, oy - w * 0.024f)
+                        lineTo(ox + w * 0.026f, oy)
+                        lineTo(ox, oy + w * 0.024f)
+                        lineTo(ox - w * 0.026f, oy)
+                        close()
+                    }
+                    drawPath(dPath, color = nodeColor)
                 }
-                drawPath(path = diamond, color = Color(0xFFFDE68A))
-            } else {
-                drawCircle(
-                    color = Color(0xFF6EE7B7),
-                    radius = 3.6.dp.toPx(),
-                    center = Offset(sx, sy)
-                )
-                drawCircle(
-                    color = Color.White,
-                    radius = 1.6.dp.toPx(),
-                    center = Offset(sx, sy)
-                )
+                1 -> {
+                    // Mini atom / circle core
+                    drawCircle(color = nodeColor, radius = w * 0.018f, center = Offset(ox, oy))
+                }
+                2 -> {
+                    // Mini triangle / prism
+                    val tPath = Path().apply {
+                        moveTo(ox, oy - w * 0.022f)
+                        lineTo(ox + w * 0.022f, oy + w * 0.018f)
+                        lineTo(ox - w * 0.022f, oy + w * 0.018f)
+                        close()
+                    }
+                    drawPath(tPath, color = nodeColor)
+                }
+                else -> {
+                    // Mini plus / star spark
+                    drawLine(
+                        color = nodeColor,
+                        start = Offset(ox - w * 0.020f, oy),
+                        end = Offset(ox + w * 0.020f, oy),
+                        strokeWidth = 1.6.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = nodeColor,
+                        start = Offset(ox, oy - w * 0.020f),
+                        end = Offset(ox, oy + w * 0.020f),
+                        strokeWidth = 1.6.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
             }
         }
     }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawQuadraticBezierLine(
+    start: Offset,
+    control: Offset,
+    end: Offset,
+    color: Color,
+    strokeWidth: Float
+) {
+    val p = Path().apply {
+        moveTo(start.x, start.y)
+        quadraticBezierTo(control.x, control.y, end.x, end.y)
+    }
+    drawPath(
+        path = p,
+        color = color,
+        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+    )
 }
 
 /**

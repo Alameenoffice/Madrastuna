@@ -50,10 +50,11 @@ import com.example.ui.theme.*
 import com.example.util.DocumentAndIdExporter
 import com.example.util.ExternalIntents
 import com.example.viewmodel.SchoolViewModel
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -539,39 +540,32 @@ fun HonorRollScreen(
 }
 
 /**
- * دالة مساعدة لتنسيق المبالغ المالية محاسبياً بفواصل الآلاف (مثال: 1,500,000 د.ع بدلاً من 1500000 د.ع)
+ * Formats an Iraqi Dinar amount with standard thousand separators: e.g. 1500000 -> "1,500,000 د.ع"
  */
-fun formatAccountingAmount(amount: Long): String {
-    val formatted = String.format(Locale.US, "%,d", amount)
-    return "$formatted د.ع"
+fun formatTuitionIqdAmount(amount: Long): String {
+    val symbols = DecimalFormatSymbols(Locale.US)
+    val formatter = DecimalFormat("#,###", symbols)
+    return "${formatter.format(amount)} د.ع"
 }
 
 /**
- * دالة مساعدة لتنسيق التواريخ المحاسبية وإصلاح التواريخ الملتصقة (مثال: 20261115 أو 2026-11-15 ⬅️ 2026/11/15)
+ * Formats concatenated or ISO dates cleanly: e.g. "20261115" or "2026-11-15" -> "2026/11/15"
  */
-fun formatAccountingDate(rawDate: String): String {
+fun formatTuitionDateDisplay(rawDate: String): String {
     val trimmed = rawDate.trim()
     if (trimmed.isBlank()) return "غير محدد"
     val digitsOnly = trimmed.filter { it.isDigit() }
     if (digitsOnly.length == 8) {
-        val year = digitsOnly.substring(0, 4)
-        val month = digitsOnly.substring(4, 6)
-        val day = digitsOnly.substring(6, 8)
-        return "$year/$month/$day"
-    }
-    val dateRegex = Regex("""(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})""")
-    val match = dateRegex.find(trimmed)
-    if (match != null) {
-        val year = match.groupValues[1]
-        val month = match.groupValues[2].padStart(2, '0')
-        val day = match.groupValues[3].padStart(2, '0')
-        return "$year/$month/$day"
+        val y = digitsOnly.substring(0, 4)
+        val m = digitsOnly.substring(4, 6)
+        val d = digitsOnly.substring(6, 8)
+        return "$y/$m/$d"
     }
     return trimmed.replace("-", "/")
 }
 
 /**
- * Section 6: Premium Financial & Tuition Hub (نظام الأقساط والحسابات المالية)
+ * Section 6: Luxury Royal Emerald Banking & Accounting Tuition Dashboard (نظام الأقساط والحسابات المالية)
  * Strictly isolates Parent/Student so they see ONLY their own student's tuition record.
  */
 @Composable
@@ -584,11 +578,13 @@ fun TuitionFeesScreen(
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val students by viewModel.students.collectAsState()
     val tuitions by viewModel.tuitions.collectAsState()
+    val isDarkMode by viewModel.isDarkMode.collectAsState()
 
     var selectedTuitionForPayment by remember { mutableStateOf<TuitionRecord?>(null) }
     var selectedReceiptPair by remember { mutableStateOf<Pair<TuitionRecord, TuitionInstallment>?>(null) }
 
     val canRecordPayment = currentUser?.role == UserRole.ADMIN
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
 
     val visibleTuitions = remember(tuitions, currentUser, selectedParentChildId, students) {
         when (currentUser?.role) {
@@ -609,155 +605,435 @@ fun TuitionFeesScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(top = 10.dp, bottom = 96.dp)
+        contentPadding = PaddingValues(top = 10.dp, bottom = 36.dp)
     ) {
-        // 1) البنر الترويسي الزمردي الملكي (Emerald Financial Hero Banner)
-        item(key = "emerald_financial_hero_banner") {
-            EmeraldFinancialHeroBanner()
+        // 1) Royal Emerald Banking Header Banner (#0D8A6A to #064E3B) with Dot Matrix & Animated Bezier Vault/Wallet Vector
+        item {
+            RoyalTuitionAccountingHeroBanner(
+                schoolName = schoolConfig.schoolName,
+                schoolTypeLabel = schoolConfig.schoolType.arabicLabel,
+                isParentOrStudent = isParentOrStudent,
+                totalFeesFormatted = formatTuitionIqdAmount(totalFeesAll),
+                totalPaidFormatted = formatTuitionIqdAmount(totalPaidAll),
+                totalRemainingFormatted = formatTuitionIqdAmount(totalRemainingAll),
+                canExportStatement = canRecordPayment,
+                onExportStatementPdf = {
+                    val msg = DocumentAndIdExporter.exportTuitionStatementPdf(
+                        context = context,
+                        tuitions = visibleTuitions,
+                        schoolConfig = schoolConfig
+                    )
+                    viewModel.showBannerMessage(msg)
+                }
+            )
         }
 
-        // 3 بطاقات إحصائية مصرفية فخمة + زر تصدير كشف الأقساط المالي الرسمي PDF
-        item(key = "banking_kpi_summary_section") {
+        // 2) Student Banking Tuition Cards
+        items(visibleTuitions, key = { it.studentId }) { record ->
+            val progress = if (record.totalFee > 0) {
+                (record.paidAmount.toFloat() / record.totalFee.toFloat()).coerceIn(0f, 1f)
+            } else 1f
+            val formattedDueDate = formatTuitionDateDisplay(record.nextDueDate)
+            val isFullyPaid = record.remainingAmount <= 0L
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.2.dp, Color(0xFFA7F3D0)),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                ),
+                border = BorderStroke(
+                    width = 1.2.dp,
+                    color = if (isFullyPaid) {
+                        Color(0xFF10B981).copy(alpha = 0.45f)
+                    } else if (isDarkMode) {
+                        Color(0xFF334155)
+                    } else {
+                        Color(0xFFD1FAE5)
+                    }
+                ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
+                    modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Student Header Row + Formatted Due Date Badge
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Min),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        BankingKpiStatCard(
-                            label = "إجمالي الأقساط",
-                            formattedAmount = formatAccountingAmount(totalFeesAll),
-                            accentColor = Color(0xFF0F172A),
-                            containerColor = Color(0xFFF8FAFC),
-                            borderColor = Color(0xFFCBD5E1),
-                            icon = Icons.Filled.AccountBalance,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                        )
-                        BankingKpiStatCard(
-                            label = "مجموع الواصل",
-                            formattedAmount = formatAccountingAmount(totalPaidAll),
-                            accentColor = Color(0xFF047857),
-                            containerColor = Color(0xFFECFDF5),
-                            borderColor = Color(0xFF6EE7B7),
-                            icon = Icons.Filled.Verified,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                        )
-                        BankingKpiStatCard(
-                            label = "إجمالي المتبقي",
-                            formattedAmount = formatAccountingAmount(totalRemainingAll),
-                            accentColor = Color(0xFF9F1239),
-                            containerColor = Color(0xFFFFF1F2),
-                            borderColor = Color(0xFFFECDD3),
-                            icon = Icons.Filled.AccountBalanceWallet,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f)),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.AccountBalanceWallet,
+                                        contentDescription = null,
+                                        tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = record.studentName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = "${record.gradeClass} (${record.sectionName}) • ولي الأمر: ${record.parentName}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        NoWrapBadge(
+                            text = if (isFullyPaid) "مسدد بالكامل" else "استحقاق: $formattedDueDate",
+                            icon = if (isFullyPaid) Icons.Filled.CheckCircle else Icons.Filled.EventRepeat,
+                            containerColor = if (isFullyPaid) Color(0xFFD1FAE5) else Color(0xFFFEF3C7),
+                            contentColor = if (isFullyPaid) Color(0xFF065F46) else Color(0xFF92400E)
                         )
                     }
 
-                    if (canRecordPayment) {
-                        Button(
-                            onClick = {
-                                val msg = DocumentAndIdExporter.exportTuitionStatementPdf(
-                                    context = context,
-                                    tuitions = visibleTuitions,
-                                    schoolConfig = schoolConfig
-                                )
-                                viewModel.showBannerMessage(msg)
-                            },
+                    // Smooth Progress Bar with Percentage Pill
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "نسبة تسديد القسط السنوي",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
+                            )
+                            Text(
+                                text = "${(progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF059669)
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress = { progress },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag("export_tuition_report_pdf_button"),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF064E3B),
-                                contentColor = Color.White
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(50)),
+                            color = Color(0xFF059669),
+                            trackColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                        )
+                    }
+
+                    // 3 Adjacent Mini-Boxes for Amounts (القسط الكلي • المبلغ الواصل • المبلغ المتبقي)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        StudentMiniAmountBox(
+                            label = "القسط الكلي",
+                            amountText = formatTuitionIqdAmount(record.totalFee),
+                            accentColor = Color(0xFF0F3D5E),
+                            containerColor = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                            borderColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFCBD5E1),
+                            isDarkMode = isDarkMode,
+                            modifier = Modifier.weight(1f)
+                        )
+                        StudentMiniAmountBox(
+                            label = "المبلغ الواصل",
+                            amountText = formatTuitionIqdAmount(record.paidAmount),
+                            accentColor = Color(0xFF059669),
+                            containerColor = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.45f) else Color(0xFFECFDF5),
+                            borderColor = Color(0xFF10B981).copy(alpha = 0.45f),
+                            isDarkMode = isDarkMode,
+                            modifier = Modifier.weight(1f)
+                        )
+                        StudentMiniAmountBox(
+                            label = "المبلغ المتبقي",
+                            amountText = formatTuitionIqdAmount(record.remainingAmount),
+                            accentColor = if (isFullyPaid) Color(0xFF059669) else DangerRed,
+                            containerColor = if (isFullyPaid) {
+                                if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.35f) else Color(0xFFECFDF5)
+                            } else {
+                                if (isDarkMode) Color(0xFF450A0A).copy(alpha = 0.45f) else Color(0xFFFEF2F2)
+                            },
+                            borderColor = if (isFullyPaid) {
+                                Color(0xFF10B981).copy(alpha = 0.45f)
+                            } else {
+                                DangerRed.copy(alpha = 0.35f)
+                            },
+                            isDarkMode = isDarkMode,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Clean Receipt Cards for Installments Log
+                    if (record.installments.isNotEmpty()) {
+                        Surface(
+                            color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
                             ),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.ReceiptLong,
+                                        contentDescription = null,
+                                        tint = Color(0xFF059669),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                    Text(
+                                        text = "سجل الدفعات والوصولات الرقمية الرسمية (${record.installments.size}):",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+
+                                record.installments.forEach { inst ->
+                                    val formattedInstAmount = formatTuitionIqdAmount(inst.amount)
+                                    val formattedInstDate = formatTuitionDateDisplay(inst.paymentDate)
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isDarkMode) Color(0xFF334155) else Color(0xFFD1FAE5)
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Color(0xFFECFDF5)
+                                                    ) {
+                                                        Text(
+                                                            text = inst.receiptNumber,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFF047857),
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = formattedInstAmount,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFF059669)
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "تاريخ الوصل: $formattedInstDate • ${inst.note.ifBlank { "دفعة قسط دراسي" }}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color(0xFFECFDF5),
+                                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                                    modifier = Modifier
+                                                        .clickable { selectedReceiptPair = record to inst }
+                                                        .testTag("view_digital_receipt_btn_${inst.receiptNumber}")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.ReceiptLong,
+                                                            contentDescription = null,
+                                                            tint = DeepEmerald,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                        Text(
+                                                            text = "وصل PDF",
+                                                            color = DeepEmerald,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = WhatsAppGreen.copy(alpha = 0.12f),
+                                                    border = BorderStroke(1.dp, WhatsAppGreen.copy(alpha = 0.4f)),
+                                                    modifier = Modifier.clickable {
+                                                        val msg = """
+                                                            وصل قبض قسط دراسي رقم (${inst.receiptNumber})
+                                                            الصادر من: ${schoolConfig.schoolName}
+                                                            • اسم الطالب: ${record.studentName} (${record.gradeClass})
+                                                            • المبلغ المستلم: ${formatTuitionIqdAmount(inst.amount)}
+                                                            • تاريخ الدفعة: ${formatTuitionDateDisplay(inst.paymentDate)}
+                                                            • إجمالي المدفوع: ${formatTuitionIqdAmount(record.paidAmount)}
+                                                            • المبلغ المتبقي: ${formatTuitionIqdAmount(record.remainingAmount)}
+                                                            شكراً لتعاونكم الكريم.
+                                                        """.trimIndent()
+                                                        ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
+                                                    }
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Chat,
+                                                            contentDescription = null,
+                                                            tint = WhatsAppGreen,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                        Text(
+                                                            text = "واتساب",
+                                                            color = WhatsAppGreen,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Bottom Action Buttons with Full Text and Zero Clipping:
+                    // "تسجيل دفعة جديدة" and "إرسال إشعار ووصل"
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (canRecordPayment && record.remainingAmount > 0L) {
+                            Button(
+                                onClick = { selectedTuitionForPayment = record },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 46.dp)
+                                    .testTag("add_payment_${record.studentId}"),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF047857),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AddCard,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "تسجيل دفعة جديدة",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                val latestReceipt = record.installments.firstOrNull()?.receiptNumber ?: "REC-1000"
+                                val msg = """
+                                    كشف ووصل القسط الدراسي ($latestReceipt)
+                                    من إدارة (${schoolConfig.schoolName})
+                                    • الطالب: ${record.studentName} (${record.gradeClass})
+                                    • القسط السنوي الكلي: ${formatTuitionIqdAmount(record.totalFee)}
+                                    • مجموع الدفعات الواصلة: ${formatTuitionIqdAmount(record.paidAmount)}
+                                    • المبلغ المتبقي: ${formatTuitionIqdAmount(record.remainingAmount)}
+                                    • تاريخ الاستحقاق القادم: ${formatTuitionDateDisplay(record.nextDueDate)}
+                                """.trimIndent()
+                                ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 46.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = WhatsAppGreen,
+                                contentColor = Color.White
+                            )
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PictureAsPdf,
+                                imageVector = Icons.Filled.Chat,
                                 contentDescription = null,
-                                tint = Color(0xFFFDE68A),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "تصدير كشف الأقساط المالي الرسمي PDF",
-                                style = MaterialTheme.typography.titleSmall,
+                                text = "إرسال إشعار ووصل",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
                                 maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
                     }
                 }
             }
-        }
-
-        // 3) بطاقات الأقساط المالية للطلبة (Student Tuition Cards)
-        items(visibleTuitions, key = { it.studentId }) { record ->
-            StudentTuitionBankingCard(
-                record = record,
-                schoolName = schoolConfig.schoolName,
-                canRecordPayment = canRecordPayment,
-                onRecordNewPayment = { selectedTuitionForPayment = record },
-                onOpenDigitalReceipt = { inst -> selectedReceiptPair = record to inst },
-                onSendReceiptWhatsApp = { inst ->
-                    val formattedInstAmt = formatAccountingAmount(inst.amount)
-                    val formattedInstDate = formatAccountingDate(inst.paymentDate)
-                    val formattedPaid = formatAccountingAmount(record.paidAmount)
-                    val formattedRem = formatAccountingAmount(record.remainingAmount)
-                    val msg = """
-                        وصل قبض قسط دراسي رقم (${inst.receiptNumber})
-                        الصادر من: ${schoolConfig.schoolName}
-                        • اسم الطالب: ${record.studentName} (${record.gradeClass})
-                        • المبلغ المستلم: $formattedInstAmt
-                        • تاريخ الدفعة: $formattedInstDate
-                        • إجمالي المدفوع: $formattedPaid
-                        • المبلغ المتبقي: $formattedRem
-                        شكراً لتعاونكم الكريم.
-                    """.trimIndent()
-                    ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
-                },
-                onSendStatementWhatsApp = {
-                    val latestReceipt = record.installments.firstOrNull()?.receiptNumber ?: "REC-1000"
-                    val formattedTotal = formatAccountingAmount(record.totalFee)
-                    val formattedPaid = formatAccountingAmount(record.paidAmount)
-                    val formattedRem = formatAccountingAmount(record.remainingAmount)
-                    val formattedDue = formatAccountingDate(record.nextDueDate)
-                    val msg = """
-                        كشف ووصل القسط الدراسي ($latestReceipt)
-                        من إدارة (${schoolConfig.schoolName})
-                        • الطالب: ${record.studentName} (${record.gradeClass})
-                        • القسط السنوي الكلي: $formattedTotal
-                        • مجموع الدفعات الواصلة: $formattedPaid
-                        • المبلغ المتبقي: $formattedRem
-                        • تاريخ الاستحقاق القادم: $formattedDue
-                    """.trimIndent()
-                    ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
-                }
-            )
         }
     }
 
@@ -808,16 +1084,16 @@ fun TuitionFeesScreen(
                         Text("• ولي الأمر: ${tuitionRec.parentName}", style = MaterialTheme.typography.bodySmall)
                         HorizontalDivider(color = GoldAccent.copy(alpha = 0.4f))
                         Text(
-                            text = "المبلغ المستلم في هذا الوصل: ${formatAccountingAmount(installment.amount)}",
+                            text = "المبلغ المستلم في هذا الوصل: ${formatTuitionIqdAmount(installment.amount)}",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.ExtraBold,
                             color = SuccessGreen
                         )
-                        Text("• تاريخ الدفعة: ${formatAccountingDate(installment.paymentDate)}", style = MaterialTheme.typography.bodySmall)
-                        Text("• إجمالي القسط السنوي: ${formatAccountingAmount(tuitionRec.totalFee)}", style = MaterialTheme.typography.bodySmall)
-                        Text("• مجموع الواصل الكلي: ${formatAccountingAmount(tuitionRec.paidAmount)}", style = MaterialTheme.typography.bodySmall)
+                        Text("• تاريخ الدفعة: ${formatTuitionDateDisplay(installment.paymentDate)}", style = MaterialTheme.typography.bodySmall)
+                        Text("• إجمالي القسط السنوي: ${formatTuitionIqdAmount(tuitionRec.totalFee)}", style = MaterialTheme.typography.bodySmall)
+                        Text("• مجموع الواصل الكلي: ${formatTuitionIqdAmount(tuitionRec.paidAmount)}", style = MaterialTheme.typography.bodySmall)
                         Text(
-                            text = "• الرصيد المتبقي: ${formatAccountingAmount(tuitionRec.remainingAmount)}",
+                            text = "• الرصيد المتبقي: ${formatTuitionIqdAmount(tuitionRec.remainingAmount)}",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
                             color = if (tuitionRec.remainingAmount == 0L) SuccessGreen else DangerRed
@@ -856,10 +1132,10 @@ fun TuitionFeesScreen(
 
     if (selectedTuitionForPayment != null) {
         val rec = selectedTuitionForPayment!!
-        var amountText by remember { mutableStateOf<String>("250000") }
-        var paymentDate by remember { mutableStateOf<String>(ArabicCalendarDateHelper.todayIsoDate()) }
-        var nextDue by remember { mutableStateOf<String>(rec.nextDueDate.ifBlank { ArabicCalendarDateHelper.todayIsoDate() }) }
-        var note by remember { mutableStateOf<String>("دفعة قسط دراسي") }
+        var amountText by remember { mutableStateOf("250000") }
+        var paymentDate by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
+        var nextDue by remember { mutableStateOf(rec.nextDueDate.ifBlank { ArabicCalendarDateHelper.todayIsoDate() }) }
+        var note by remember { mutableStateOf("دفعة قسط دراسي") }
 
         AlertDialog(
             onDismissRequest = { selectedTuitionForPayment = null },
@@ -867,10 +1143,9 @@ fun TuitionFeesScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "المبلغ المتبقي الحالي: ${formatAccountingAmount(rec.remainingAmount)}",
+                        text = "المبلغ المتبقي الحالي: ${formatTuitionIqdAmount(rec.remainingAmount)}",
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF9F1239)
+                        color = DangerRed
                     )
                     OutlinedTextField(
                         value = amountText,
@@ -908,9 +1183,9 @@ fun TuitionFeesScreen(
                             viewModel.addTuitionPayment(
                                 studentId = rec.studentId,
                                 amount = amt,
-                                paymentDate = formatAccountingDate(paymentDate),
+                                paymentDate = paymentDate,
                                 note = note,
-                                nextDueDate = formatAccountingDate(nextDue)
+                                nextDueDate = nextDue
                             )
                             selectedTuitionForPayment = null
                         }
@@ -927,31 +1202,42 @@ fun TuitionFeesScreen(
 }
 
 /**
- * 1) البنر الترويسي الزمردي الملكي (Emerald Financial Hero Banner):
- * - تدرج زمردي ملكي (#0D8A6A إلى #064E3B) مع الشبكة النقطية الخفيفة والمنحنى السفلي.
- * - كبسولتان زجاجيتان في الأعلى: يميناً (الإدارة المالية للمدرسة) ويساراً (حسابات الأقساط والوصولات).
- * - العنوان الأبيض الكبير يميناً: نظام الأقساط والحسابات المالية
- *   وتحته: إدارة الدفعات، الوصولات الرقمية، ومستحقات الطلبة بدقة مصرفية
- * - في يسار البنر: رسم فيكتور متحرك بتقنية بيزيير (Canvas) يمثل محفظة/خزينة رقمية زمردية وذهبية مع بطاقة ذكية ومؤشر مالي نابض.
+ * Royal Emerald Gradient Header Banner (#0D8A6A to #064E3B) for the Tuition & Accounting Screen:
+ * - Halftone dot matrix grid & flowing wave highlight
+ * - Two top frosted capsules: "الإدارة المالية للمدرسة" & "حسابات الأقساط والوصولات"
+ * - White main title: "نظام الأقساط والحسابات المالية"
+ * - Left side animated Bezier vector Canvas representing a digital emerald & gold vault/wallet with pulsing financial indicator
+ * - 3 glassmorphic summary stat boxes + official PDF statement button
  */
 @Composable
-private fun EmeraldFinancialHeroBanner(
+private fun RoyalTuitionAccountingHeroBanner(
+    schoolName: String,
+    schoolTypeLabel: String,
+    isParentOrStudent: Boolean,
+    totalFeesFormatted: String,
+    totalPaidFormatted: String,
+    totalRemainingFormatted: String,
+    canExportStatement: Boolean,
+    onExportStatementPdf: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bannerWaveShape = remember {
+    val waveHeroShape = remember {
         GenericShape { size, _ ->
             val w = size.width
             val h = size.height
-            val bottomWaveDepth = (h * 0.095f).coerceIn(16f, 30f)
+            val topWaveDepth = (h * 0.045f).coerceIn(8f, 18f)
+            val bottomWaveDepth = (h * 0.065f).coerceIn(12f, 24f)
 
-            moveTo(0f, 0f)
-            lineTo(w, 0f)
+            moveTo(0f, topWaveDepth * 0.45f)
+            cubicTo(
+                w * 0.32f, -topWaveDepth * 0.35f,
+                w * 0.68f, topWaveDepth * 1.35f,
+                w, topWaveDepth * 0.25f
+            )
             lineTo(w, h - bottomWaveDepth)
             quadraticBezierTo(
-                w * 0.50f,
-                h + bottomWaveDepth * 0.85f,
-                0f,
-                h - bottomWaveDepth * 0.85f
+                w * 0.50f, h + bottomWaveDepth * 0.85f,
+                0f, h - bottomWaveDepth * 0.85f
             )
             close()
         }
@@ -962,23 +1248,24 @@ private fun EmeraldFinancialHeroBanner(
             .fillMaxWidth()
             .shadow(
                 elevation = 12.dp,
-                shape = bannerWaveShape,
+                shape = waveHeroShape,
                 ambientColor = Color(0xFF064E3B).copy(alpha = 0.35f),
-                spotColor = Color(0xFF064E3B).copy(alpha = 0.42f)
+                spotColor = Color(0xFF0D8A6A).copy(alpha = 0.40f)
             )
-            .clip(bannerWaveShape)
+            .clip(waveHeroShape)
             .background(
                 Brush.linearGradient(
                     colors = listOf(
                         Color(0xFF0D8A6A),
+                        Color(0xFF047857),
                         Color(0xFF064E3B)
                     ),
                     start = Offset(0f, 0f),
-                    end = Offset(950f, 650f)
+                    end = Offset(980f, 720f)
                 )
             )
     ) {
-        // الشبكة النقطية الخفيفة والتموج الداخلي
+        // Halftone Dot Matrix & Ambient Glow Canvas
         Canvas(modifier = Modifier.matchParentSize()) {
             val w = size.width
             val h = size.height
@@ -987,7 +1274,7 @@ private fun EmeraldFinancialHeroBanner(
                 moveTo(0f, h * 0.70f)
                 cubicTo(
                     w * 0.35f, h * 0.58f,
-                    w * 0.70f, h * 0.88f,
+                    w * 0.70f, h * 0.86f,
                     w, h * 0.72f
                 )
                 lineTo(w, h)
@@ -996,37 +1283,36 @@ private fun EmeraldFinancialHeroBanner(
             }
             drawPath(
                 path = innerWave,
-                color = Color(0xFF042F24).copy(alpha = 0.30f)
+                color = Color(0xFF022C22).copy(alpha = 0.28f)
             )
 
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFFFDE68A).copy(alpha = 0.22f),
-                        Color(0xFF34D399).copy(alpha = 0.16f),
+                        Color(0xFF34D399).copy(alpha = 0.30f),
                         Color.Transparent
                     ),
-                    center = Offset(w * 0.18f, h * 0.54f),
+                    center = Offset(w * 0.20f, h * 0.42f),
                     radius = w * 0.42f
                 ),
                 radius = w * 0.42f,
-                center = Offset(w * 0.18f, h * 0.54f)
+                center = Offset(w * 0.20f, h * 0.42f)
             )
 
-            val step = 12.dp.toPx()
-            val dotRadius = 1.5.dp.toPx()
-            for (row in 0..7) {
-                for (col in 0..9) {
-                    val alpha = ((1f - (row + col) / 16f) * 0.20f).coerceIn(0.04f, 0.20f)
+            val step = 11.dp.toPx()
+            val dotRadius = 1.6.dp.toPx()
+            for (row in 0..6) {
+                for (col in 0..7) {
+                    val alpha = ((1f - (row + col) / 14f) * 0.22f).coerceIn(0.03f, 0.22f)
                     drawCircle(
                         color = Color.White.copy(alpha = alpha),
                         radius = dotRadius,
-                        center = Offset(w * 0.04f + col * step, h * 0.10f + row * step)
+                        center = Offset(w * 0.04f + col * step, h * 0.08f + row * step)
                     )
                     drawCircle(
                         color = Color.White.copy(alpha = alpha),
                         radius = dotRadius,
-                        center = Offset(w * 0.96f - col * step, h * 0.86f - row * step)
+                        center = Offset(w * 0.96f - col * step, h * 0.88f - row * step)
                     )
                 }
             }
@@ -1035,16 +1321,17 @@ private fun EmeraldFinancialHeroBanner(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // كبسولتان زجاجيتان في الأعلى: يميناً (الإدارة المالية للمدرسة) ويساراً (حسابات الأقساط والوصولات)
+            // Top Row: Two Frosted Glass Capsules ("الإدارة المالية للمدرسة" & "حسابات الأقساط والوصولات")
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
+                    modifier = Modifier.weight(1f, fill = false),
                     shape = RoundedCornerShape(50),
                     color = Color.White.copy(alpha = 0.18f),
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
@@ -1067,10 +1354,13 @@ private fun EmeraldFinancialHeroBanner(
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             maxLines = 1,
-                            softWrap = false
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.weight(0.01f))
 
                 Surface(
                     shape = RoundedCornerShape(50),
@@ -1101,7 +1391,7 @@ private fun EmeraldFinancialHeroBanner(
                 }
             }
 
-            // العنوان والوصف يميناً + الرسم الفيكتوري المتحرك بتقنية بيزيير يساراً
+            // Middle Row: White Title & Subtitle on Right + Animated Bezier Digital Vault/Wallet on Left
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1109,7 +1399,7 @@ private fun EmeraldFinancialHeroBanner(
             ) {
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text(
                         text = "نظام الأقساط والحسابات المالية",
@@ -1119,33 +1409,103 @@ private fun EmeraldFinancialHeroBanner(
                         color = Color.White
                     )
                     Text(
-                        text = "إدارة الدفعات، الوصولات الرقمية، ومستحقات الطلبة بدقة مصرفية",
+                        text = if (isParentOrStudent) {
+                            "كشف الأقساط الدراسية والوصولات الرقمية المعتمدة • $schoolName"
+                        } else {
+                            "لوحة المحاسبة المالية الموحدة ومتابعة الدفعات والوصولات • $schoolName ($schoolTypeLabel)"
+                        },
                         style = MaterialTheme.typography.bodyMedium,
-                        fontSize = 13.sp,
+                        fontSize = 12.8.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.92f),
-                        lineHeight = 19.sp
+                        color = Color.White.copy(alpha = 0.92f)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
-                EmeraldFinancialVaultVectorAnimation(
-                    modifier = Modifier.size(104.dp)
+                AnimatedEmeraldGoldVaultWalletCanvas(
+                    modifier = Modifier.size(102.dp)
                 )
+            }
+
+            // Summary Row: 3 Adjacent Banking Stat Boxes inside the Emerald Hero
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FinancialStatChip(
+                    label = "القسط الكلي",
+                    amount = totalFeesFormatted,
+                    color = Color.White,
+                    badgeDotColor = Color(0xFF93C5FD),
+                    modifier = Modifier.weight(1f)
+                )
+                FinancialStatChip(
+                    label = "المبلغ الواصل",
+                    amount = totalPaidFormatted,
+                    color = Color(0xFFA7F3D0),
+                    badgeDotColor = Color(0xFF34D399),
+                    modifier = Modifier.weight(1f)
+                )
+                FinancialStatChip(
+                    label = "المبلغ المتبقي",
+                    amount = totalRemainingFormatted,
+                    color = Color(0xFFFDE68A),
+                    badgeDotColor = Color(0xFFFBBF24),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            if (canExportStatement) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.16f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onExportStatementPdf() }
+                        .testTag("export_tuition_report_pdf_button")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PictureAsPdf,
+                            contentDescription = null,
+                            tint = Color(0xFFFDE68A),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "تصدير كشف الأقساط المالي الرسمي (PDF / طباعة)",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 /**
- * رسم فيكتور متحرك بتقنية بيزيير (Canvas) يمثل محفظة/خزينة رقمية زمردية وذهبية مع بطاقة ذكية ومؤشر مالي نابض.
+ * Animated Bezier Vector Canvas representing an Emerald & Gold Digital Vault / Wallet
+ * with a pulsing financial trend indicator on the left side of the Tuition Hero Banner.
  */
 @Composable
-private fun EmeraldFinancialVaultVectorAnimation(
-    modifier: Modifier = Modifier.size(104.dp)
+private fun AnimatedEmeraldGoldVaultWalletCanvas(
+    modifier: Modifier = Modifier.size(102.dp)
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "emerald_financial_vault_anim")
+    val infiniteTransition = rememberInfiniteTransition(label = "emerald_gold_vault_wallet_anim")
     val floatPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
@@ -1156,553 +1516,177 @@ private fun EmeraldFinancialVaultVectorAnimation(
         label = "vault_float_phase"
     )
     val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.86f,
-        targetValue = 1.16f,
+        initialValue = 0.88f,
+        targetValue = 1.14f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1350, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "financial_indicator_pulse"
     )
 
-    Canvas(modifier = modifier) {
+    Canvas(modifier = modifier.testTag("tuition_vault_wallet_vector_canvas")) {
         val w = size.width
         val h = size.height
         val cx = w * 0.50f
-        val cy = h * 0.54f
+        val cy = h * 0.52f
         val floatY = sin(floatPhase) * (h * 0.03f)
-        val cardFloatY = cos(floatPhase) * (h * 0.035f)
 
-        // هالة زمردية وذهبية خلف الخزينة الرقمية
+        // 1. Ambient Emerald & Gold Halo Glow
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFFDE68A).copy(alpha = 0.36f),
-                    Color(0xFF10B981).copy(alpha = 0.18f),
+                    Color(0xFFFDE68A).copy(alpha = 0.34f),
+                    Color(0xFF34D399).copy(alpha = 0.22f),
                     Color.Transparent
                 ),
-                center = Offset(cx, cy),
-                radius = w * 0.48f * pulseScale
+                center = Offset(cx, cy + floatY),
+                radius = w * 0.48f
             ),
-            radius = w * 0.48f * pulseScale,
-            center = Offset(cx, cy)
+            radius = w * 0.48f,
+            center = Offset(cx, cy + floatY)
         )
 
-        // 1. البطاقة الذكية الذهبية المنبثقة أعلى الخزينة (Smart Chip Card) بمنحنيات بيزيير
-        val cardLeft = w * 0.18f
-        val cardRight = w * 0.84f
-        val cardTop = h * 0.13f + cardFloatY
-        val cardBottom = h * 0.50f + cardFloatY
+        // 2. Floating Golden Coin / Card emerging from the top of the digital wallet
+        val coinCenterY = h * 0.24f + floatY * 1.3f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFB45309)),
+                center = Offset(cx - w * 0.06f, coinCenterY - h * 0.02f),
+                radius = w * 0.16f
+            ),
+            radius = w * 0.13f,
+            center = Offset(cx - w * 0.04f, coinCenterY)
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.75f),
+            radius = w * 0.095f,
+            center = Offset(cx - w * 0.04f, coinCenterY),
+            style = Stroke(width = 1.3.dp.toPx())
+        )
 
-        val smartCardPath = Path().apply {
-            moveTo(cardLeft + w * 0.06f, cardTop)
-            quadraticBezierTo(cardRight * 0.55f, cardTop - h * 0.03f, cardRight - w * 0.04f, cardTop + h * 0.03f)
-            quadraticBezierTo(cardRight, cardTop + h * 0.04f, cardRight, cardTop + h * 0.10f)
-            lineTo(cardRight, cardBottom)
-            lineTo(cardLeft, cardBottom)
-            lineTo(cardLeft, cardTop + h * 0.06f)
-            quadraticBezierTo(cardLeft, cardTop, cardLeft + w * 0.06f, cardTop)
+        // 3. Emerald & Gold Bezier Digital Vault / Wallet Body
+        val walletLeft = w * 0.14f
+        val walletRight = w * 0.86f
+        val walletTop = h * 0.31f + floatY
+        val walletBottom = h * 0.80f + floatY
+
+        val walletBackFlap = Path().apply {
+            moveTo(walletLeft + w * 0.04f, walletTop)
+            cubicTo(
+                w * 0.36f, walletTop - h * 0.09f,
+                w * 0.64f, walletTop - h * 0.09f,
+                walletRight - w * 0.04f, walletTop
+            )
+            lineTo(walletRight - w * 0.04f, walletTop + h * 0.12f)
+            lineTo(walletLeft + w * 0.04f, walletTop + h * 0.12f)
             close()
         }
         drawPath(
-            path = smartCardPath,
+            path = walletBackFlap,
             brush = Brush.linearGradient(
-                colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFD97706)),
-                start = Offset(cardLeft, cardTop),
-                end = Offset(cardRight, cardBottom)
+                colors = listOf(Color(0xFF065F46), Color(0xFF047857))
             )
         )
-        drawPath(
-            path = smartCardPath,
-            color = Color.White.copy(alpha = 0.70f),
-            style = Stroke(width = 1.4.dp.toPx(), join = StrokeJoin.Round)
-        )
 
-        // شريحة البطاقة الذكية (EMV Smart Chip)
-        drawRoundRect(
-            color = Color(0xFFFEF3C7),
-            topLeft = Offset(cardLeft + w * 0.08f, cardTop + h * 0.08f),
-            size = Size(w * 0.14f, h * 0.10f),
-            cornerRadius = CornerRadius(3.dp.toPx())
-        )
-        drawRoundRect(
-            color = Color(0xFF92400E),
-            topLeft = Offset(cardLeft + w * 0.08f, cardTop + h * 0.08f),
-            size = Size(w * 0.14f, h * 0.10f),
-            cornerRadius = CornerRadius(3.dp.toPx()),
-            style = Stroke(width = 1.dp.toPx())
-        )
-
-        // 2. جسم المحفظة / الخزينة الزمردية الملكية بمنحنيات بيزيير (Bezier Digital Vault Body)
-        val vaultLeft = w * 0.10f
-        val vaultRight = w * 0.90f
-        val vaultTop = h * 0.35f + floatY
-        val vaultBottom = h * 0.86f + floatY
-
+        // Main Sculpted Bezier Vault Body
         val vaultBodyPath = Path().apply {
-            moveTo(vaultLeft, vaultTop + h * 0.07f)
-            quadraticBezierTo(vaultLeft, vaultTop, vaultLeft + w * 0.08f, vaultTop)
-            cubicTo(
-                w * 0.36f, vaultTop + h * 0.02f,
-                w * 0.64f, vaultTop - h * 0.02f,
-                vaultRight - w * 0.08f, vaultTop
-            )
-            quadraticBezierTo(vaultRight, vaultTop, vaultRight, vaultTop + h * 0.07f)
-            lineTo(vaultRight, vaultBottom - h * 0.07f)
-            quadraticBezierTo(vaultRight, vaultBottom, vaultRight - w * 0.08f, vaultBottom)
-            lineTo(vaultLeft + w * 0.08f, vaultBottom)
-            quadraticBezierTo(vaultLeft, vaultBottom, vaultLeft, vaultBottom - h * 0.07f)
+            moveTo(walletLeft, walletTop + h * 0.06f)
+            quadraticBezierTo(walletLeft, walletTop, walletLeft + w * 0.08f, walletTop)
+            lineTo(walletRight - w * 0.08f, walletTop)
+            quadraticBezierTo(walletRight, walletTop, walletRight, walletTop + h * 0.06f)
+            lineTo(walletRight, walletBottom - h * 0.06f)
+            quadraticBezierTo(walletRight, walletBottom, walletRight - w * 0.08f, walletBottom)
+            lineTo(walletLeft + w * 0.08f, walletBottom)
+            quadraticBezierTo(walletLeft, walletBottom, walletLeft, walletBottom - h * 0.06f)
             close()
         }
         drawPath(
             path = vaultBodyPath,
             brush = Brush.linearGradient(
                 colors = listOf(
-                    Color(0xFF042F24),
-                    Color(0xFF065F46),
-                    Color(0xFF0D8A6A)
+                    Color(0xFF10B981),
+                    Color(0xFF059669),
+                    Color(0xFF064E3B)
                 ),
-                start = Offset(vaultLeft, vaultTop),
-                end = Offset(vaultRight, vaultBottom)
+                start = Offset(walletLeft, walletTop),
+                end = Offset(walletRight, walletBottom)
             )
         )
         drawPath(
             path = vaultBodyPath,
-            color = Color(0xFFFDE68A),
-            style = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round)
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFA7F3D0))
+            ),
+            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
         )
 
-        // قفل الخزينة الذهبي الجانبي (Golden Vault Clasp)
-        val claspTop = vaultTop + (vaultBottom - vaultTop) * 0.30f
-        val claspHeight = (vaultBottom - vaultTop) * 0.40f
+        // 4. Golden Vault Clasp & Dial on Right Side of Wallet
+        val claspTop = (walletTop + walletBottom) * 0.5f - h * 0.08f
         drawRoundRect(
-            brush = Brush.horizontalGradient(
-                colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))
             ),
-            topLeft = Offset(vaultRight - w * 0.22f, claspTop),
-            size = Size(w * 0.24f, claspHeight),
-            cornerRadius = CornerRadius(8.dp.toPx())
+            topLeft = Offset(walletRight - w * 0.22f, claspTop),
+            size = Size(w * 0.25f, h * 0.16f),
+            cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
         )
         drawCircle(
             color = Color(0xFF064E3B),
-            radius = 3.2.dp.toPx(),
-            center = Offset(vaultRight - w * 0.13f, claspTop + claspHeight * 0.5f)
+            radius = w * 0.038f,
+            center = Offset(walletRight - w * 0.12f, claspTop + h * 0.08f)
         )
 
-        // 3. المؤشر المالي النابض بمنحنى بيزيير صاعد (Pulsing Financial Bezier Indicator)
-        val chartStart = Offset(vaultLeft + w * 0.09f, vaultBottom - h * 0.11f)
-        val chartMid1 = Offset(vaultLeft + w * 0.24f, vaultBottom - h * 0.26f)
-        val chartMid2 = Offset(vaultLeft + w * 0.36f, vaultBottom - h * 0.16f)
-        val chartEnd = Offset(vaultLeft + w * 0.50f, vaultTop + h * 0.13f)
+        // 5. Pulsing Financial Bezier Indicator Curve + Glowing Node Inside Vault
+        val chartStartX = walletLeft + w * 0.09f
+        val chartEndX = walletRight - w * 0.26f
+        val chartBaseY = walletBottom - h * 0.10f
+        val chartPeakY = walletTop + h * 0.13f
 
         val indicatorPath = Path().apply {
-            moveTo(chartStart.x, chartStart.y)
+            moveTo(chartStartX, chartBaseY)
             cubicTo(
-                chartMid1.x, chartMid1.y,
-                chartMid2.x, chartMid2.y,
-                chartEnd.x, chartEnd.y
+                chartStartX + (chartEndX - chartStartX) * 0.35f,
+                chartBaseY - h * 0.16f,
+                chartStartX + (chartEndX - chartStartX) * 0.58f,
+                chartBaseY - h * 0.04f,
+                chartEndX,
+                chartPeakY
             )
         }
         drawPath(
             path = indicatorPath,
-            color = Color(0xFF6EE7B7),
-            style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            color = Color(0xFFFEF08A),
+            style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
 
-        // نقطة النبض المالي المضيئة في قمة المؤشر
+        // Pulsing financial beacon at the tip of the rising curve
         drawCircle(
-            color = Color(0xFFFDE68A).copy(alpha = 0.40f),
-            radius = 6.5.dp.toPx() * pulseScale,
-            center = chartEnd
+            color = Color(0xFFFEF08A).copy(alpha = 0.38f),
+            radius = w * 0.068f * pulseScale,
+            center = Offset(chartEndX, chartPeakY)
         )
         drawCircle(
-            color = Color(0xFFFDE68A),
-            radius = 3.5.dp.toPx(),
-            center = chartEnd
+            color = Color(0xFF34D399),
+            radius = w * 0.036f,
+            center = Offset(chartEndX, chartPeakY)
+        )
+        drawCircle(
+            color = Color.White,
+            radius = w * 0.018f,
+            center = Offset(chartEndX, chartPeakY)
         )
     }
 }
 
-/**
- * بطاقة إحصائية مصرفية فخمة (إجمالي الأقساط • مجموع الواصل • إجمالي المتبقي)
- */
 @Composable
-private fun BankingKpiStatCard(
+private fun StudentMiniAmountBox(
     label: String,
-    formattedAmount: String,
+    amountText: String,
     accentColor: Color,
     containerColor: Color,
     borderColor: Color,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = containerColor,
-        border = BorderStroke(1.2.dp, borderColor)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = accentColor.copy(alpha = 0.12f),
-                modifier = Modifier.size(28.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(15.dp)
-                    )
-                }
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF475569),
-                maxLines = 1,
-                softWrap = false
-            )
-            Text(
-                text = formattedAmount,
-                style = MaterialTheme.typography.labelLarge,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = accentColor,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                softWrap = false
-            )
-        }
-    }
-}
-
-/**
- * 3) بطاقة القسط المالي للطالب بتصميم مصرفي فخم (Student Tuition Card)
- */
-@Composable
-private fun StudentTuitionBankingCard(
-    record: TuitionRecord,
-    schoolName: String,
-    canRecordPayment: Boolean,
-    onRecordNewPayment: () -> Unit,
-    onOpenDigitalReceipt: (TuitionInstallment) -> Unit,
-    onSendReceiptWhatsApp: (TuitionInstallment) -> Unit,
-    onSendStatementWhatsApp: () -> Unit
-) {
-    val progress = if (record.totalFee > 0L) {
-        (record.paidAmount.toFloat() / record.totalFee.toFloat()).coerceIn(0f, 1f)
-    } else 1f
-    val paidPercentage = (progress * 100f).roundToInt().coerceIn(0, 100)
-    val formattedDueDate = formatAccountingDate(record.nextDueDate)
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.2.dp, Color(0xFFE2E8F0)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // رأس البطاقة: اسم الطالب بخط عريض وواضح، تحته الصف وولي الأمر، وفي اليسار شارة استحقاق ذهبية/كهرمانية
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Text(
-                        text = record.studentName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF0F172A)
-                    )
-                    Text(
-                        text = "${record.gradeClass} (${record.sectionName}) • ولي الأمر: ${record.parentName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF475569)
-                    )
-                }
-
-                // شارة استحقاق أنيقة بتصميم كبسولة ذهبية/كهرمانية (تاريخ الاستحقاق: 2026/11/15)
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (record.remainingAmount == 0L) Color(0xFFECFDF5) else Color(0xFFFFFBEB),
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = if (record.remainingAmount == 0L) Color(0xFF10B981) else Color(0xFFF59E0B)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (record.remainingAmount == 0L) Icons.Filled.CheckCircle else Icons.Filled.EventRepeat,
-                            contentDescription = null,
-                            tint = if (record.remainingAmount == 0L) Color(0xFF047857) else Color(0xFFB45309),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = if (record.remainingAmount == 0L && formattedDueDate == "مكتمل") {
-                                "مسدد بالكامل"
-                            } else {
-                                "تاريخ الاستحقاق: $formattedDueDate"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (record.remainingAmount == 0L) Color(0xFF047857) else Color(0xFFB45309),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-            }
-
-            // شريط تقدم بصري مزدوج الألوان مع نسبة التسديد المئوية (مثلاً تم تسديد 17%)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "مؤشر التسديد المالي للقسط السنوي",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF64748B)
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFFECFDF5),
-                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
-                    ) {
-                        Text(
-                            text = "تم تسديد $paidPercentage%",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF047857),
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                // Dual-color visual progress bar (Track: Warm Amber/Rose • Fill: Emerald-to-Gold Gradient)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color(0xFFFEF3C7),
-                                    Color(0xFFFEE2E2)
-                                )
-                            )
-                        )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(fraction = progress.coerceAtLeast(0.03f))
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color(0xFF064E3B),
-                                        Color(0xFF0D8A6A),
-                                        Color(0xFFF59E0B)
-                                    )
-                                )
-                            )
-                    )
-                }
-            }
-
-            // 3 صناديق مصغرة متجاورة ومتساوية الأبعاد داخل البطاقة:
-            // صندوق 1: القسط الكلي • صندوق 2: المبلغ الواصل • صندوق 3: المبلغ المتبقي
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                StudentAmountMiniBox(
-                    title = "القسط الكلي",
-                    formattedAmount = formatAccountingAmount(record.totalFee),
-                    amountColor = Color(0xFF0F172A),
-                    containerColor = Color(0xFFF8FAFC),
-                    borderColor = Color(0xFFCBD5E1),
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                )
-                StudentAmountMiniBox(
-                    title = "المبلغ الواصل",
-                    formattedAmount = formatAccountingAmount(record.paidAmount),
-                    amountColor = Color(0xFF047857),
-                    containerColor = Color(0xFFECFDF5),
-                    borderColor = Color(0xFFA7F3D0),
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                )
-                StudentAmountMiniBox(
-                    title = "المبلغ المتبقي",
-                    formattedAmount = formatAccountingAmount(record.remainingAmount),
-                    amountColor = Color(0xFF9F1239),
-                    containerColor = Color(0xFFFFF1F2),
-                    borderColor = Color(0xFFFECDD3),
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                )
-            }
-
-            // سجل الوصولات الرقمية: بطاقة إيصال رسمية مصغرة (Official Receipt Ticket) لكل وصل
-            if (record.installments.isNotEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.ReceiptLong,
-                            contentDescription = null,
-                            tint = Color(0xFF064E3B),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "سجل الدفعات والوصولات الرقمية الرسمية (${record.installments.size}):",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color(0xFF064E3B),
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-
-                    record.installments.forEach { inst ->
-                        OfficialReceiptTicketCard(
-                            installment = inst,
-                            onViewPdfReceipt = { onOpenDigitalReceipt(inst) },
-                            onShareWhatsApp = { onSendReceiptWhatsApp(inst) }
-                        )
-                    }
-                }
-            }
-
-            // الأزرار السفلية المتناسقة بدون أي قص للنصوص:
-            // "تسجيل دفعة جديدة" (زمردي ملكي) و "إرسال إشعار ووصل" (أخضر أنيق)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (canRecordPayment && record.remainingAmount > 0L) {
-                    Button(
-                        onClick = onRecordNewPayment,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp)
-                            .testTag("add_payment_${record.studentId}"),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF064E3B),
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AddCard,
-                            contentDescription = null,
-                            tint = Color(0xFFFDE68A),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "تسجيل دفعة جديدة",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = onSendStatementWhatsApp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(46.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF15803D),
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Chat,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "إرسال إشعار ووصل",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * صندوق مصغر للمبالغ داخل بطاقة الطالب (القسط الكلي • المبلغ الواصل • المبلغ المتبقي)
- */
-@Composable
-private fun StudentAmountMiniBox(
-    title: String,
-    formattedAmount: String,
-    amountColor: Color,
-    containerColor: Color,
-    borderColor: Color,
+    isDarkMode: Boolean,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -1714,173 +1698,82 @@ private fun StudentAmountMiniBox(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 9.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = title,
+                text = label,
                 style = MaterialTheme.typography.labelSmall,
-                fontSize = 11.sp,
+                fontSize = 10.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF475569),
+                color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
                 maxLines = 1,
                 softWrap = false
             )
             Text(
-                text = formattedAmount,
+                text = amountText,
                 style = MaterialTheme.typography.labelLarge,
-                fontSize = 12.sp,
+                fontSize = 11.8.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = amountColor,
+                color = if (isDarkMode && accentColor == Color(0xFF0F3D5E)) Color.White else accentColor,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
-                softWrap = false
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
 
-/**
- * بطاقة إيصال رسمية مصغرة (Official Receipt Ticket) منسقة التاريخ والرقم مع أزرار نظيفة (وصل PDF و مشاركة واتساب)
- */
 @Composable
-private fun OfficialReceiptTicketCard(
-    installment: TuitionInstallment,
-    onViewPdfReceipt: () -> Unit,
-    onShareWhatsApp: () -> Unit
+private fun FinancialStatChip(
+    label: String,
+    amount: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    badgeDotColor: Color = color
 ) {
     Surface(
+        modifier = modifier,
         shape = RoundedCornerShape(14.dp),
-        color = Color(0xFFF8FAFC),
-        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-        modifier = Modifier.fillMaxWidth()
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFECFDF5),
-                        border = BorderStroke(1.dp, Color(0xFF6EE7B7))
-                    ) {
-                        Text(
-                            text = installment.receiptNumber,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF065F46),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                    Text(
-                        text = "التاريخ: ${formatAccountingDate(installment.paymentDate)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF475569),
-                        maxLines = 1,
-                        softWrap = false
-                    )
+                Canvas(modifier = Modifier.size(6.dp)) {
+                    drawCircle(color = badgeDotColor)
                 }
-
                 Text(
-                    text = formatAccountingAmount(installment.amount),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF047857),
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 10.5.sp,
+                    color = Color.White.copy(alpha = 0.90f),
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     softWrap = false
                 )
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    onClick = onViewPdfReceipt,
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFECFDF5),
-                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(34.dp)
-                        .testTag("view_digital_receipt_btn_${installment.receiptNumber}")
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.PictureAsPdf,
-                            contentDescription = null,
-                            tint = Color(0xFF065F46),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = "وصل PDF",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF065F46),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                Surface(
-                    onClick = onShareWhatsApp,
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFF0FDF4),
-                    border = BorderStroke(1.dp, Color(0xFF22C55E).copy(alpha = 0.5f)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(34.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Chat,
-                            contentDescription = null,
-                            tint = Color(0xFF15803D),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = "مشاركة واتساب",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF15803D),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-            }
+            Text(
+                text = amount,
+                style = MaterialTheme.typography.labelLarge,
+                fontSize = 11.5.sp,
+                color = color,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
