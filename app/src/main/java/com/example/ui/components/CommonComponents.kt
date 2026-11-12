@@ -2414,328 +2414,736 @@ fun ThreeDIllustrationBox(
 
         when (type) {
             ThreeDIllustrationType.WELCOME_ACADEMIC_CHARACTER -> {
-                // 3D Isometric Emerald & Gold Crystal Shield/Cube + Academic Crown + 3-Layer Light Pedestal + 3D Floating Glass Orbs
+                // Authentic School & Education Bezier Vector Scene (Matches SchoolActivationGateScreen Character Style 100%)
+                // Strictly NO cubes, NO crown, and NO colored balls.
+                val unit = (w.coerceAtMost(h)) / 215f
                 val phaseRad = (continuousRotation * (Math.PI / 180.0) * 2.0).toFloat()
-                val crystalHoverY = sin(phaseRad) * (h * 0.032f)
-                val crownHoverY = sin(phaseRad + 0.7f) * (h * 0.038f)
+                val elbowWaveDeg = sin(phaseRad * 1.4f) * 9.5f
+                val wristWaveDeg = cos(phaseRad * 1.4f) * 11f
+                val tasselSwingDeg = sin(phaseRad * 1.2f) * 8.5f
 
-                // 1) Volumetric Radial Aura & Holographic Upward Light Beam
+                // 1) Soft Circular Royal Emerald Academic Backdrop + Delicate Gold Rim + Subtle Knowledge Orbit Ring
+                val backdropRadius = 82f * unit
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF34D399).copy(alpha = (glowPulseAlpha + 0.18f).coerceAtMost(0.78f)),
-                            Color(0xFFFDE68A).copy(alpha = glowPulseAlpha * 0.36f),
-                            Color.Transparent
+                            Color(0xFF10B981).copy(alpha = (glowPulseAlpha * 0.65f).coerceIn(0.22f, 0.45f)),
+                            Color(0xFF064E3B).copy(alpha = 0.62f),
+                            Color(0xFF042F24).copy(alpha = 0.85f)
                         ),
-                        center = Offset(cx, cy * 0.96f),
-                        radius = w * 0.52f
+                        center = Offset(cx, cy + 4f * unit),
+                        radius = backdropRadius
                     ),
-                    radius = w * 0.52f,
-                    center = Offset(cx, cy * 0.96f)
+                    radius = backdropRadius,
+                    center = Offset(cx, cy + 4f * unit)
+                )
+                // Delicate Gold Rim around the circular academic base
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A).copy(alpha = 0.90f),
+                            Color(0xFFF59E0B).copy(alpha = 0.55f),
+                            Color(0xFF34D399).copy(alpha = 0.70f),
+                            Color(0xFFFBBF24).copy(alpha = 0.85f)
+                        )
+                    ),
+                    radius = backdropRadius,
+                    center = Offset(cx, cy + 4f * unit),
+                    style = Stroke(width = 1.8f * unit)
                 )
 
-                val beamPath = Path().apply {
-                    moveTo(w * 0.24f, h * 0.80f)
-                    lineTo(w * 0.14f, h * 0.16f)
-                    lineTo(w * 0.86f, h * 0.16f)
-                    lineTo(w * 0.76f, h * 0.80f)
+                // Very delicate knowledge orbit ring around the character
+                rotate(degrees = -11f, pivot = Offset(cx, cy + 6f * unit)) {
+                    drawOval(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFFDE68A).copy(alpha = 0.55f),
+                                Color(0xFF6EE7B7).copy(alpha = 0.25f),
+                                Color.Transparent,
+                                Color(0xFFFBBF24).copy(alpha = 0.48f)
+                            )
+                        ),
+                        topLeft = Offset(cx - 98f * unit, cy - 22f * unit),
+                        size = Size(196f * unit, 56f * unit),
+                        style = Stroke(width = 1.3f * unit, cap = StrokeCap.Round)
+                    )
+                }
+
+                // 2) Small Floating Authentic Educational Elements (Small Open Book Icon + Soft 4-Point Golden Excellence Stars)
+                // Floating Miniature Open Book Icon (top-left of scene)
+                val miniBookFloatY = sin(phaseRad) * 4.5f * unit
+                val mbX = cx - 76f * unit
+                val mbY = cy - 42f * unit + miniBookFloatY
+                val miniBookLeftPage = Path().apply {
+                    moveTo(mbX, mbY - 5f * unit)
+                    cubicTo(
+                        mbX - 6f * unit, mbY - 9f * unit,
+                        mbX - 13f * unit, mbY - 8f * unit,
+                        mbX - 16f * unit, mbY - 4f * unit
+                    )
+                    lineTo(mbX - 16f * unit, mbY + 7f * unit)
+                    cubicTo(
+                        mbX - 12f * unit, mbY + 4f * unit,
+                        mbX - 5f * unit, mbY + 5f * unit,
+                        mbX, mbY + 8f * unit
+                    )
+                    close()
+                }
+                val miniBookRightPage = Path().apply {
+                    moveTo(mbX, mbY - 5f * unit)
+                    cubicTo(
+                        mbX + 6f * unit, mbY - 9f * unit,
+                        mbX + 13f * unit, mbY - 8f * unit,
+                        mbX + 16f * unit, mbY - 4f * unit
+                    )
+                    lineTo(mbX + 16f * unit, mbY + 7f * unit)
+                    cubicTo(
+                        mbX + 12f * unit, mbY + 4f * unit,
+                        mbX + 5f * unit, mbY + 5f * unit,
+                        mbX, mbY + 8f * unit
+                    )
                     close()
                 }
                 drawPath(
-                    path = beamPath,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color(0xFF6EE7B7).copy(alpha = 0.12f),
-                            Color(0xFFFDE68A).copy(alpha = 0.22f)
-                        ),
-                        startY = h * 0.14f,
-                        endY = h * 0.82f
-                    )
+                    path = miniBookLeftPage,
+                    color = Color(0xFFFFFBEB).copy(alpha = 0.92f)
+                )
+                drawPath(
+                    path = miniBookRightPage,
+                    color = Color(0xFFFDE68A).copy(alpha = 0.92f)
+                )
+                drawPath(
+                    path = miniBookLeftPage,
+                    color = Color(0xFFF59E0B),
+                    style = Stroke(width = 1.1f * unit, join = StrokeJoin.Round)
+                )
+                drawPath(
+                    path = miniBookRightPage,
+                    color = Color(0xFFF59E0B),
+                    style = Stroke(width = 1.1f * unit, join = StrokeJoin.Round)
                 )
 
-                // 2) 3-Layer Isometric Glowing Light Pedestal (Bottom Platform)
-                for (layer in 2 downTo 0) {
-                    val ly = h * (0.76f + layer * 0.048f)
-                    val rx = w * (0.31f + layer * 0.055f)
-                    val ry = h * (0.068f + layer * 0.012f)
-
-                    val isoPlatform = Path().apply {
-                        moveTo(cx, ly - ry)
-                        lineTo(cx + rx, ly)
-                        lineTo(cx, ly + ry)
-                        lineTo(cx - rx, ly)
+                // Soft 4-Point Golden Excellence Stars (Bezier curves, no circles/balls)
+                val starPositions = listOf(
+                    Triple(78f, -48f, 6.8f),
+                    Triple(-78f, 24f, 5.2f),
+                    Triple(82f, 26f, 5.6f)
+                )
+                starPositions.forEachIndexed { idx, (ox, oy, rad) ->
+                    val sy = cy + oy * unit + cos(phaseRad + idx * 1.3f) * 3.8f * unit
+                    val sx = cx + ox * unit
+                    val sSize = rad * unit
+                    val starPath = Path().apply {
+                        moveTo(sx, sy - sSize * 1.35f)
+                        cubicTo(
+                            sx + sSize * 0.25f, sy - sSize * 0.25f,
+                            sx + sSize * 0.25f, sy - sSize * 0.25f,
+                            sx + sSize * 1.35f, sy
+                        )
+                        cubicTo(
+                            sx + sSize * 0.25f, sy + sSize * 0.25f,
+                            sx + sSize * 0.25f, sy + sSize * 0.25f,
+                            sx, sy + sSize * 1.35f
+                        )
+                        cubicTo(
+                            sx - sSize * 0.25f, sy + sSize * 0.25f,
+                            sx - sSize * 0.25f, sy + sSize * 0.25f,
+                            sx - sSize * 1.35f, sy
+                        )
+                        cubicTo(
+                            sx - sSize * 0.25f, sy - sSize * 0.25f,
+                            sx - sSize * 0.25f, sy - sSize * 0.25f,
+                            sx, sy - sSize * 1.35f
+                        )
                         close()
                     }
                     drawPath(
-                        path = isoPlatform,
-                        brush = Brush.linearGradient(
-                            colors = when (layer) {
-                                0 -> listOf(Color(0xFF34D399).copy(alpha = 0.88f), Color(0xFF059669).copy(alpha = 0.92f))
-                                1 -> listOf(Color(0xFF10B981).copy(alpha = 0.68f), Color(0xFF047857).copy(alpha = 0.80f))
-                                else -> listOf(Color(0xFF065F46).copy(alpha = 0.55f), Color(0xFF022C22).copy(alpha = 0.72f))
-                            },
-                            start = Offset(cx - rx, ly - ry),
-                            end = Offset(cx + rx, ly + ry)
+                        path = starPath,
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFF59E0B).copy(alpha = 0.25f)),
+                            center = Offset(sx, sy),
+                            radius = sSize * 1.5f
                         )
                     )
-                    drawPath(
-                        path = isoPlatform,
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFFFEF08A).copy(alpha = if (layer == 0) 0.95f else 0.55f),
-                                Color(0xFF6EE7B7).copy(alpha = 0.80f),
-                                Color(0xFFF59E0B).copy(alpha = 0.70f)
-                            )
-                        ),
-                        style = Stroke(width = (1.8f - layer * 0.35f).dp.toPx(), join = StrokeJoin.Round)
-                    )
                 }
 
-                // 3) 3D Isometric Emerald & Gold Crystal Cube / Shield Core
-                val cubeCenterY = h * 0.51f + crystalHoverY
-                val cubeR = w * 0.23f
-                val dx = cubeR * 0.866f
-                val dy = cubeR * 0.50f
+                // 3) Academic Character Torso, Blazer, Shirt, Tie & Emerald-Gold Graduation Sash
+                val torsoTopY = cy + 8f * unit
+                val torsoBottomY = cy + 78f * unit
 
-                val topVertex = Offset(cx, cubeCenterY - cubeR)
-                val rightVertex = Offset(cx + dx, cubeCenterY - dy)
-                val centerVertex = Offset(cx, cubeCenterY)
-                val leftVertex = Offset(cx - dx, cubeCenterY - dy)
-                val bottomRightVertex = Offset(cx + dx, cubeCenterY + dy)
-                val bottomVertex = Offset(cx, cubeCenterY + cubeR)
-                val bottomLeftVertex = Offset(cx - dx, cubeCenterY + dy)
-
-                // Top Isometric Crystal Facet (Brightest Glass Highlight)
-                val topFace = Path().apply {
-                    moveTo(topVertex.x, topVertex.y)
-                    lineTo(rightVertex.x, rightVertex.y)
-                    lineTo(centerVertex.x, centerVertex.y)
-                    lineTo(leftVertex.x, leftVertex.y)
+                // Left Arm curved smoothly to hold the Glowing Academic Book/Folder
+                val leftArmPath = Path().apply {
+                    moveTo(cx - 38f * unit, torsoTopY + 8f * unit)
+                    cubicTo(
+                        cx - 64f * unit, torsoTopY + 20f * unit,
+                        cx - 68f * unit, torsoTopY + 46f * unit,
+                        cx - 46f * unit, torsoTopY + 54f * unit
+                    )
+                    cubicTo(
+                        cx - 36f * unit, torsoTopY + 54f * unit,
+                        cx - 34f * unit, torsoTopY + 38f * unit,
+                        cx - 32f * unit, torsoTopY + 22f * unit
+                    )
                     close()
                 }
                 drawPath(
-                    path = topFace,
+                    path = leftArmPath,
                     brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFFA7F3D0), Color(0xFF34D399), Color(0xFF10B981)),
-                        start = topVertex,
-                        end = centerVertex
+                        colors = listOf(Color(0xFF059669), Color(0xFF064E3B)),
+                        start = Offset(cx - 66f * unit, torsoTopY),
+                        end = Offset(cx - 32f * unit, torsoBottomY)
                     )
                 )
 
-                // Left Isometric Crystal Facet (Rich Emerald Midtone)
-                val leftFace = Path().apply {
-                    moveTo(leftVertex.x, leftVertex.y)
-                    lineTo(centerVertex.x, centerVertex.y)
-                    lineTo(bottomVertex.x, bottomVertex.y)
-                    lineTo(bottomLeftVertex.x, bottomLeftVertex.y)
-                    close()
-                }
-                drawPath(
-                    path = leftFace,
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFF10B981), Color(0xFF059669), Color(0xFF047857)),
-                        start = leftVertex,
-                        end = bottomVertex
+                // Anatomically Proportioned Academic Blazer & Shoulders (Smooth Cubic Bezier)
+                val blazerPath = Path().apply {
+                    moveTo(cx - 50f * unit, torsoBottomY)
+                    cubicTo(
+                        cx - 52f * unit, torsoTopY + 36f * unit,
+                        cx - 48f * unit, torsoTopY + 10f * unit,
+                        cx - 34f * unit, torsoTopY + 3f * unit
                     )
-                )
-
-                // Right Isometric Crystal Facet (Deep Volumetric Emerald-Gold Shadow)
-                val rightFace = Path().apply {
-                    moveTo(centerVertex.x, centerVertex.y)
-                    lineTo(rightVertex.x, rightVertex.y)
-                    lineTo(bottomRightVertex.x, bottomRightVertex.y)
-                    lineTo(bottomVertex.x, bottomVertex.y)
-                    close()
-                }
-                drawPath(
-                    path = rightFace,
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFF047857), Color(0xFF065F46), Color(0xFF022C22)),
-                        start = centerVertex,
-                        end = bottomRightVertex
+                    cubicTo(
+                        cx - 18f * unit, torsoTopY - 2f * unit,
+                        cx + 18f * unit, torsoTopY - 2f * unit,
+                        cx + 34f * unit, torsoTopY + 3f * unit
                     )
-                )
-
-                // Inner Golden Isometric Shield Crest on Front Facets
-                val innerShield = Path().apply {
-                    moveTo(cx, cubeCenterY - cubeR * 0.55f)
-                    lineTo(cx + dx * 0.58f, cubeCenterY - dy * 0.25f)
-                    lineTo(cx + dx * 0.46f, cubeCenterY + dy * 0.55f)
-                    lineTo(cx, cubeCenterY + cubeR * 0.68f)
-                    lineTo(cx - dx * 0.46f, cubeCenterY + dy * 0.55f)
-                    lineTo(cx - dx * 0.58f, cubeCenterY - dy * 0.25f)
+                    cubicTo(
+                        cx + 48f * unit, torsoTopY + 10f * unit,
+                        cx + 52f * unit, torsoTopY + 36f * unit,
+                        cx + 50f * unit, torsoBottomY
+                    )
+                    cubicTo(
+                        cx + 20f * unit, torsoBottomY + 8f * unit,
+                        cx - 20f * unit, torsoBottomY + 8f * unit,
+                        cx - 50f * unit, torsoBottomY
+                    )
                     close()
                 }
                 drawPath(
-                    path = innerShield,
+                    path = blazerPath,
                     brush = Brush.linearGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.32f),
-                            Color(0xFFFEF08A).copy(alpha = 0.24f),
-                            Color(0xFFF59E0B).copy(alpha = 0.30f)
+                            Color(0xFF059669),
+                            Color(0xFF047857),
+                            Color(0xFF064E3B)
+                        ),
+                        start = Offset(cx - 38f * unit, torsoTopY),
+                        end = Offset(cx + 38f * unit, torsoBottomY)
+                    )
+                )
+
+                // Crisp White Dress Shirt V-Insert & Academic Gold Tie
+                val shirtPath = Path().apply {
+                    moveTo(cx - 16f * unit, torsoTopY + 2f * unit)
+                    cubicTo(
+                        cx - 10f * unit, torsoTopY + 20f * unit,
+                        cx - 4f * unit, torsoTopY + 34f * unit,
+                        cx, torsoTopY + 42f * unit
+                    )
+                    cubicTo(
+                        cx + 4f * unit, torsoTopY + 34f * unit,
+                        cx + 10f * unit, torsoTopY + 20f * unit,
+                        cx + 16f * unit, torsoTopY + 2f * unit
+                    )
+                    close()
+                }
+                drawPath(
+                    path = shirtPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFFFFFFFF), Color(0xFFE2E8F0)),
+                        startY = torsoTopY,
+                        endY = torsoTopY + 42f * unit
+                    )
+                )
+
+                val tiePath = Path().apply {
+                    moveTo(cx - 4f * unit, torsoTopY + 7f * unit)
+                    lineTo(cx + 4f * unit, torsoTopY + 7f * unit)
+                    lineTo(cx + 5.8f * unit, torsoTopY + 30f * unit)
+                    lineTo(cx, torsoTopY + 39f * unit)
+                    lineTo(cx - 5.8f * unit, torsoTopY + 30f * unit)
+                    close()
+                }
+                drawPath(
+                    path = tiePath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFFF59E0B), Color(0xFFB45309))
+                    )
+                )
+
+                // Royal Emerald Graduation Sash with Gold Trim (وشاح تخرج زمردي بحواف ذهبية)
+                val leftSashPath = Path().apply {
+                    moveTo(cx - 22f * unit, torsoTopY + 2f * unit)
+                    cubicTo(
+                        cx - 27f * unit, torsoTopY + 26f * unit,
+                        cx - 25f * unit, torsoTopY + 50f * unit,
+                        cx - 20f * unit, torsoBottomY + 3f * unit
+                    )
+                    lineTo(cx - 10f * unit, torsoBottomY + 4f * unit)
+                    cubicTo(
+                        cx - 13f * unit, torsoTopY + 46f * unit,
+                        cx - 14f * unit, torsoTopY + 22f * unit,
+                        cx - 12f * unit, torsoTopY + 3f * unit
+                    )
+                    close()
+                }
+                val rightSashPath = Path().apply {
+                    moveTo(cx + 22f * unit, torsoTopY + 2f * unit)
+                    cubicTo(
+                        cx + 27f * unit, torsoTopY + 26f * unit,
+                        cx + 25f * unit, torsoTopY + 50f * unit,
+                        cx + 20f * unit, torsoBottomY + 3f * unit
+                    )
+                    lineTo(cx + 10f * unit, torsoBottomY + 4f * unit)
+                    cubicTo(
+                        cx + 13f * unit, torsoTopY + 46f * unit,
+                        cx + 14f * unit, torsoTopY + 22f * unit,
+                        cx + 12f * unit, torsoTopY + 3f * unit
+                    )
+                    close()
+                }
+                val sashFillBrush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF047857), Color(0xFF065F46), Color(0xFF064E3B))
+                )
+                val sashGoldBorderBrush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFFFDE68A), Color(0xFFFBBF24), Color(0xFFD97706))
+                )
+                drawPath(path = leftSashPath, brush = sashFillBrush)
+                drawPath(path = rightSashPath, brush = sashFillBrush)
+                drawPath(
+                    path = leftSashPath,
+                    brush = sashGoldBorderBrush,
+                    style = Stroke(width = 1.6f * unit, join = StrokeJoin.Round)
+                )
+                drawPath(
+                    path = rightSashPath,
+                    brush = sashGoldBorderBrush,
+                    style = Stroke(width = 1.6f * unit, join = StrokeJoin.Round)
+                )
+
+                // Glowing Academic Book / Folder held in the Left Hand (يحمل بيده كتاباً/ملفاً أكاديمياً مضيئاً)
+                val bookCenterX = cx - 42f * unit
+                val bookCenterY = torsoTopY + 44f * unit
+                val bookCoverPath = Path().apply {
+                    moveTo(bookCenterX - 15f * unit, bookCenterY - 16f * unit)
+                    cubicTo(
+                        bookCenterX - 4f * unit, bookCenterY - 20f * unit,
+                        bookCenterX + 8f * unit, bookCenterY - 18f * unit,
+                        bookCenterX + 16f * unit, bookCenterY - 12f * unit
+                    )
+                    lineTo(bookCenterX + 13f * unit, bookCenterY + 16f * unit)
+                    cubicTo(
+                        bookCenterX + 4f * unit, bookCenterY + 12f * unit,
+                        bookCenterX - 6f * unit, bookCenterY + 10f * unit,
+                        bookCenterX - 18f * unit, bookCenterY + 12f * unit
+                    )
+                    close()
+                }
+                drawPath(
+                    path = bookCoverPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF10B981), Color(0xFF047857)),
+                        start = Offset(bookCenterX - 16f * unit, bookCenterY - 16f * unit),
+                        end = Offset(bookCenterX + 16f * unit, bookCenterY + 16f * unit)
+                    )
+                )
+                drawPath(
+                    path = bookCoverPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24))
+                    ),
+                    style = Stroke(width = 1.8f * unit, join = StrokeJoin.Round)
+                )
+                // Glowing pages edge at top of book
+                val bookPagesPath = Path().apply {
+                    moveTo(bookCenterX - 13f * unit, bookCenterY - 15f * unit)
+                    quadraticBezierTo(
+                        bookCenterX, bookCenterY - 21f * unit,
+                        bookCenterX + 14f * unit, bookCenterY - 13f * unit
+                    )
+                    lineTo(bookCenterX + 12f * unit, bookCenterY - 9f * unit)
+                    quadraticBezierTo(
+                        bookCenterX, bookCenterY - 16f * unit,
+                        bookCenterX - 13f * unit, bookCenterY - 11f * unit
+                    )
+                    close()
+                }
+                drawPath(path = bookPagesPath, color = Color(0xFFFFFBEB))
+                // Left hand fingers holding the book edge
+                drawOval(
+                    color = Color(0xFFFAD7A0),
+                    topLeft = Offset(bookCenterX - 19f * unit, bookCenterY - 4f * unit),
+                    size = Size(9f * unit, 11f * unit)
+                )
+
+                // 4) Smooth Waving Right Arm & Sculpted Hand (اليد الأخرى ترحب بانسيابية)
+                val shoulderPivot = Offset(cx + 36f * unit, torsoTopY + 10f * unit)
+                val elbowPivot = Offset(cx + 60f * unit, torsoTopY + 16f * unit)
+
+                val upperArmPath = Path().apply {
+                    moveTo(shoulderPivot.x - 7f * unit, shoulderPivot.y - 5f * unit)
+                    cubicTo(
+                        shoulderPivot.x + 10f * unit, shoulderPivot.y - 7f * unit,
+                        elbowPivot.x - 4f * unit, elbowPivot.y - 7f * unit,
+                        elbowPivot.x + 5f * unit, elbowPivot.y - 2f * unit
+                    )
+                    cubicTo(
+                        elbowPivot.x + 7f * unit, elbowPivot.y + 9f * unit,
+                        shoulderPivot.x + 10f * unit, shoulderPivot.y + 12f * unit,
+                        shoulderPivot.x - 5f * unit, shoulderPivot.y + 10f * unit
+                    )
+                    close()
+                }
+                drawPath(
+                    path = upperArmPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF059669), Color(0xFF047857)),
+                        start = shoulderPivot,
+                        end = elbowPivot
+                    )
+                )
+
+                rotate(degrees = elbowWaveDeg, pivot = elbowPivot) {
+                    val wristPivot = Offset(elbowPivot.x + 14f * unit, elbowPivot.y - 36f * unit)
+                    val forearmPath = Path().apply {
+                        moveTo(elbowPivot.x - 8f * unit, elbowPivot.y + 3f * unit)
+                        cubicTo(
+                            elbowPivot.x - 5f * unit, elbowPivot.y - 16f * unit,
+                            wristPivot.x - 9.5f * unit, wristPivot.y + 7f * unit,
+                            wristPivot.x - 7f * unit, wristPivot.y
+                        )
+                        lineTo(wristPivot.x + 7f * unit, wristPivot.y + 2.5f * unit)
+                        cubicTo(
+                            wristPivot.x + 8.5f * unit, wristPivot.y + 15f * unit,
+                            elbowPivot.x + 9.5f * unit, elbowPivot.y - 10f * unit,
+                            elbowPivot.x + 7f * unit, elbowPivot.y + 5f * unit
+                        )
+                        close()
+                    }
+                    drawPath(
+                        path = forearmPath,
+                        brush = Brush.linearGradient(
+                            colors = listOf(Color(0xFF059669), Color(0xFF065F46)),
+                            start = elbowPivot,
+                            end = wristPivot
                         )
                     )
-                )
-                drawPath(
-                    path = innerShield,
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24), Color(0xFFD97706))
-                    ),
-                    style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round)
-                )
+                    drawLine(
+                        color = Color(0xFFFBBF24),
+                        start = Offset(wristPivot.x - 7f * unit, wristPivot.y + 1.5f * unit),
+                        end = Offset(wristPivot.x + 7f * unit, wristPivot.y + 4f * unit),
+                        strokeWidth = 2.6f * unit,
+                        cap = StrokeCap.Round
+                    )
 
-                // Specular Glass Facet Borders
-                val outerHex = Path().apply {
-                    moveTo(topVertex.x, topVertex.y)
-                    lineTo(rightVertex.x, rightVertex.y)
-                    lineTo(bottomRightVertex.x, bottomRightVertex.y)
-                    lineTo(bottomVertex.x, bottomVertex.y)
-                    lineTo(bottomLeftVertex.x, bottomLeftVertex.y)
-                    lineTo(leftVertex.x, leftVertex.y)
+                    rotate(degrees = wristWaveDeg, pivot = wristPivot) {
+                        val handPalmPath = Path().apply {
+                            moveTo(wristPivot.x - 6f * unit, wristPivot.y)
+                            cubicTo(
+                                wristPivot.x - 14f * unit, wristPivot.y - 5f * unit,
+                                wristPivot.x - 15.5f * unit, wristPivot.y - 14f * unit,
+                                wristPivot.x - 8.5f * unit, wristPivot.y - 15.5f * unit
+                            )
+                            cubicTo(
+                                wristPivot.x - 6f * unit, wristPivot.y - 14.5f * unit,
+                                wristPivot.x - 5f * unit, wristPivot.y - 10f * unit,
+                                wristPivot.x - 4.2f * unit, wristPivot.y - 12f * unit
+                            )
+                            cubicTo(
+                                wristPivot.x - 5f * unit, wristPivot.y - 24f * unit,
+                                wristPivot.x + 7f * unit, wristPivot.y - 26f * unit,
+                                wristPivot.x + 9.5f * unit, wristPivot.y - 14f * unit
+                            )
+                            cubicTo(
+                                wristPivot.x + 11f * unit, wristPivot.y - 7f * unit,
+                                wristPivot.x + 8.5f * unit, wristPivot.y - 1.5f * unit,
+                                wristPivot.x + 5f * unit, wristPivot.y + 1.8f * unit
+                            )
+                            close()
+                        }
+                        drawPath(
+                            path = handPalmPath,
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color(0xFFFFF3E0), Color(0xFFFAD7A0)),
+                                start = Offset(wristPivot.x - 10f * unit, wristPivot.y - 24f * unit),
+                                end = Offset(wristPivot.x + 8f * unit, wristPivot.y + 3f * unit)
+                            )
+                        )
+                    }
+                }
+
+                // 5) Neck & Sculpted Flat-Vector Face (Smooth smiling eye arcs with ZERO black dots)
+                val neckTopY = cy - 9f * unit
+                val neckPath = Path().apply {
+                    moveTo(cx - 10f * unit, neckTopY)
+                    lineTo(cx - 12f * unit, torsoTopY + 7f * unit)
+                    cubicTo(
+                        cx - 4.5f * unit, torsoTopY + 13f * unit,
+                        cx + 4.5f * unit, torsoTopY + 13f * unit,
+                        cx + 12f * unit, torsoTopY + 7f * unit
+                    )
+                    lineTo(cx + 10f * unit, neckTopY)
                     close()
                 }
                 drawPath(
-                    path = outerHex,
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFEF08A), Color(0xFF34D399), Color(0xFFF59E0B))
-                    ),
-                    style = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round)
-                )
-                drawLine(
-                    color = Color.White.copy(alpha = 0.78f),
-                    start = leftVertex,
-                    end = centerVertex,
-                    strokeWidth = 1.5.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = Color.White.copy(alpha = 0.78f),
-                    start = rightVertex,
-                    end = centerVertex,
-                    strokeWidth = 1.5.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = Color(0xFFFEF08A).copy(alpha = 0.82f),
-                    start = centerVertex,
-                    end = bottomVertex,
-                    strokeWidth = 1.5.dp.toPx(),
-                    cap = StrokeCap.Round
+                    path = neckPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFFF5CBA7), Color(0xFFE59866)),
+                        startY = neckTopY,
+                        endY = torsoTopY + 12f * unit
+                    )
                 )
 
-                // 4) 3D Isometric Royal Golden Academic Crown Floating Above the Crystal Cube
-                val crownBaseY = h * 0.25f + crownHoverY
-                val crownW = w * 0.34f
-                val crownPath = Path().apply {
-                    moveTo(cx - crownW * 0.44f, crownBaseY)
-                    lineTo(cx - crownW * 0.52f, crownBaseY - h * 0.10f)
-                    lineTo(cx - crownW * 0.22f, crownBaseY - h * 0.04f)
-                    lineTo(cx, crownBaseY - h * 0.14f)
-                    lineTo(cx + crownW * 0.22f, crownBaseY - h * 0.04f)
-                    lineTo(cx + crownW * 0.52f, crownBaseY - h * 0.10f)
-                    lineTo(cx + crownW * 0.44f, crownBaseY)
-                    quadraticBezierTo(cx, crownBaseY + h * 0.03f, cx - crownW * 0.44f, crownBaseY)
+                val headCenterY = cy - 36f * unit
+                drawOval(
+                    color = Color(0xFFF5CBA7),
+                    topLeft = Offset(cx - 30f * unit, headCenterY - 5f * unit),
+                    size = Size(9f * unit, 14f * unit)
+                )
+                drawOval(
+                    color = Color(0xFFF5CBA7),
+                    topLeft = Offset(cx + 21f * unit, headCenterY - 5f * unit),
+                    size = Size(9f * unit, 14f * unit)
+                )
+
+                val facePath = Path().apply {
+                    moveTo(cx, headCenterY - 27f * unit)
+                    cubicTo(
+                        cx + 22f * unit, headCenterY - 27f * unit,
+                        cx + 26.5f * unit, headCenterY - 11f * unit,
+                        cx + 24f * unit, headCenterY + 5.5f * unit
+                    )
+                    cubicTo(
+                        cx + 21f * unit, headCenterY + 20f * unit,
+                        cx + 10f * unit, headCenterY + 28f * unit,
+                        cx, headCenterY + 28f * unit
+                    )
+                    cubicTo(
+                        cx - 10f * unit, headCenterY + 28f * unit,
+                        cx - 21f * unit, headCenterY + 20f * unit,
+                        cx - 24f * unit, headCenterY + 5.5f * unit
+                    )
+                    cubicTo(
+                        cx - 26.5f * unit, headCenterY - 11f * unit,
+                        cx - 22f * unit, headCenterY - 27f * unit,
+                        cx, headCenterY - 27f * unit
+                    )
                     close()
                 }
                 drawPath(
-                    path = crownPath,
+                    path = facePath,
                     brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFDE047), Color(0xFFF59E0B), Color(0xFFB45309)),
-                        start = Offset(cx - crownW * 0.5f, crownBaseY - h * 0.14f),
-                        end = Offset(cx + crownW * 0.5f, crownBaseY)
+                        colors = listOf(
+                            Color(0xFFFFF3E0),
+                            Color(0xFFFAD7A0),
+                            Color(0xFFF5CBA7)
+                        ),
+                        start = Offset(cx - 18f * unit, headCenterY - 25f * unit),
+                        end = Offset(cx + 20f * unit, headCenterY + 27f * unit)
+                    )
+                )
+
+                // Modern Styled Hair Under Graduation Cap
+                val hairPath = Path().apply {
+                    moveTo(cx - 24f * unit, headCenterY - 5.5f * unit)
+                    cubicTo(
+                        cx - 26f * unit, headCenterY - 22f * unit,
+                        cx - 13f * unit, headCenterY - 29f * unit,
+                        cx, headCenterY - 27f * unit
+                    )
+                    cubicTo(
+                        cx + 13f * unit, headCenterY - 29f * unit,
+                        cx + 26f * unit, headCenterY - 22f * unit,
+                        cx + 24f * unit, headCenterY - 5.5f * unit
+                    )
+                    cubicTo(
+                        cx + 20f * unit, headCenterY - 16.5f * unit,
+                        cx + 7f * unit, headCenterY - 14.5f * unit,
+                        cx - 3.5f * unit, headCenterY - 17.5f * unit
+                    )
+                    cubicTo(
+                        cx - 13f * unit, headCenterY - 19f * unit,
+                        cx - 20f * unit, headCenterY - 14.5f * unit,
+                        cx - 24f * unit, headCenterY - 5.5f * unit
+                    )
+                    close()
+                }
+                drawPath(
+                    path = hairPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF1E293B), Color(0xFF0F172A)),
+                        start = Offset(cx - 24f * unit, headCenterY - 27f * unit),
+                        end = Offset(cx + 24f * unit, headCenterY)
+                    )
+                )
+
+                // Soft Eyebrows & Two Smooth Smiling Eye Arcs (قوسين ناعمين للعينين المبتسمتين بدون نقاط سوداء)
+                val leftBrowPath = Path().apply {
+                    moveTo(cx - 15.5f * unit, headCenterY - 6.5f * unit)
+                    quadraticBezierTo(
+                        cx - 10f * unit, headCenterY - 10f * unit,
+                        cx - 4.5f * unit, headCenterY - 7.5f * unit
+                    )
+                }
+                val rightBrowPath = Path().apply {
+                    moveTo(cx + 4.5f * unit, headCenterY - 7.5f * unit)
+                    quadraticBezierTo(
+                        cx + 10f * unit, headCenterY - 10f * unit,
+                        cx + 15.5f * unit, headCenterY - 6.5f * unit
+                    )
+                }
+                drawPath(
+                    path = leftBrowPath,
+                    color = Color(0xFF334155),
+                    style = Stroke(width = 2f * unit, cap = StrokeCap.Round)
+                )
+                drawPath(
+                    path = rightBrowPath,
+                    color = Color(0xFF334155),
+                    style = Stroke(width = 2f * unit, cap = StrokeCap.Round)
+                )
+
+                val leftEyeArch = Path().apply {
+                    moveTo(cx - 14.5f * unit, headCenterY - 1f * unit)
+                    quadraticBezierTo(
+                        cx - 10f * unit, headCenterY - 5f * unit,
+                        cx - 5.5f * unit, headCenterY - 1f * unit
+                    )
+                }
+                val rightEyeArch = Path().apply {
+                    moveTo(cx + 5.5f * unit, headCenterY - 1f * unit)
+                    quadraticBezierTo(
+                        cx + 10f * unit, headCenterY - 5f * unit,
+                        cx + 14.5f * unit, headCenterY - 1f * unit
+                    )
+                }
+                drawPath(
+                    path = leftEyeArch,
+                    color = Color(0xFF064E3B),
+                    style = Stroke(width = 2.2f * unit, cap = StrokeCap.Round)
+                )
+                drawPath(
+                    path = rightEyeArch,
+                    color = Color(0xFF064E3B),
+                    style = Stroke(width = 2.2f * unit, cap = StrokeCap.Round)
+                )
+
+                // Subtle Sculpted Nose Bridge
+                val nosePath = Path().apply {
+                    moveTo(cx, headCenterY - 1.5f * unit)
+                    cubicTo(
+                        cx - 2.2f * unit, headCenterY + 4.5f * unit,
+                        cx - 1.8f * unit, headCenterY + 7.2f * unit,
+                        cx + 1.4f * unit, headCenterY + 7.8f * unit
+                    )
+                }
+                drawPath(
+                    path = nosePath,
+                    color = Color(0xFFD98880).copy(alpha = 0.75f),
+                    style = Stroke(width = 1.6f * unit, cap = StrokeCap.Round)
+                )
+
+                // Confident Warm Vector Smile
+                val smilePath = Path().apply {
+                    moveTo(cx - 8.5f * unit, headCenterY + 12.5f * unit)
+                    cubicTo(
+                        cx - 3.5f * unit, headCenterY + 19f * unit,
+                        cx + 3.5f * unit, headCenterY + 19f * unit,
+                        cx + 8.5f * unit, headCenterY + 12.5f * unit
+                    )
+                }
+                drawPath(
+                    path = smilePath,
+                    color = Color(0xFF065F46),
+                    style = Stroke(width = 2.3f * unit, cap = StrokeCap.Round)
+                )
+
+                // 6) 3D Emerald Mortarboard Graduation Cap + Smoothly Swinging Gold Tassel
+                val capCrownY = headCenterY - 22f * unit
+                val capBandPath = Path().apply {
+                    moveTo(cx - 22f * unit, capCrownY + 3.8f * unit)
+                    cubicTo(
+                        cx - 20f * unit, capCrownY - 7.5f * unit,
+                        cx + 20f * unit, capCrownY - 7.5f * unit,
+                        cx + 22f * unit, capCrownY + 3.8f * unit
+                    )
+                    cubicTo(
+                        cx + 11f * unit, capCrownY + 1f * unit,
+                        cx - 11f * unit, capCrownY + 1f * unit,
+                        cx - 22f * unit, capCrownY + 3.8f * unit
+                    )
+                    close()
+                }
+                drawPath(
+                    path = capBandPath,
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF042F24))
+                    )
+                )
+
+                val capTopCenterY = capCrownY - 7.5f * unit
+                val capBoardPath = Path().apply {
+                    moveTo(cx, capTopCenterY - 14f * unit)
+                    lineTo(cx + 42f * unit, capTopCenterY - 1f * unit)
+                    lineTo(cx, capTopCenterY + 11f * unit)
+                    lineTo(cx - 42f * unit, capTopCenterY - 1f * unit)
+                    close()
+                }
+                drawPath(
+                    path = capBoardPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF065F46),
+                            Color(0xFF047857),
+                            Color(0xFF064E3B)
+                        ),
+                        start = Offset(cx - 42f * unit, capTopCenterY - 14f * unit),
+                        end = Offset(cx + 42f * unit, capTopCenterY + 11f * unit)
                     )
                 )
                 drawPath(
-                    path = crownPath,
-                    color = Color.White.copy(alpha = 0.85f),
-                    style = Stroke(width = 1.3.dp.toPx(), join = StrokeJoin.Round)
+                    path = capBoardPath,
+                    color = Color(0xFFFBBF24),
+                    style = Stroke(width = 1.8f * unit, join = StrokeJoin.Round)
                 )
-                // Glowing Jewel Orbs on the 3 Crown Peaks
-                val crownJewels = listOf(
-                    Offset(cx - crownW * 0.52f, crownBaseY - h * 0.11f),
-                    Offset(cx, crownBaseY - h * 0.155f),
-                    Offset(cx + crownW * 0.52f, crownBaseY - h * 0.11f)
+
+                // Gold Button on Center of Mortarboard + Smoothly Swinging Golden Tassel
+                val buttonCenter = Offset(cx, capTopCenterY - 1.5f * unit)
+                val tasselAnchor = Offset(cx - 30f * unit, capTopCenterY + 1.8f * unit)
+                drawLine(
+                    color = Color(0xFFFBBF24),
+                    start = buttonCenter,
+                    end = tasselAnchor,
+                    strokeWidth = 2f * unit,
+                    cap = StrokeCap.Round
                 )
-                crownJewels.forEachIndexed { idx, jewelPos ->
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = if (idx == 1) {
-                                listOf(Color.White, Color(0xFF6EE7B7), Color(0xFF059669))
-                            } else {
-                                listOf(Color.White, Color(0xFFFEF08A), Color(0xFFF59E0B))
-                            },
-                            center = Offset(jewelPos.x - 1.5f, jewelPos.y - 1.5f),
-                            radius = w * 0.035f
-                        ),
-                        radius = if (idx == 1) w * 0.030f else w * 0.024f,
-                        center = jewelPos
-                    )
-                }
-
-                // 5) 3D Floating Glassmorphic Orbs (Golden & Emerald Spheres Orbiting in 3D Space)
-                val orbConfigs = listOf(
-                    Triple(0.16f, 0.34f, true),
-                    Triple(0.85f, 0.30f, false),
-                    Triple(0.14f, 0.64f, false),
-                    Triple(0.86f, 0.62f, true)
+                drawCircle(
+                    color = Color(0xFFF59E0B),
+                    radius = 3.2f * unit,
+                    center = buttonCenter
                 )
-                orbConfigs.forEachIndexed { index, (relX, relY, isGoldOrb) ->
-                    val orbFloatY = sin(phaseRad + index * 1.4f) * (h * 0.036f)
-                    val orbFloatX = cos(phaseRad * 0.8f + index * 1.1f) * (w * 0.018f)
-                    val orbCenter = Offset(w * relX + orbFloatX, h * relY + orbFloatY)
-                    val orbRadius = if (index % 2 == 0) w * 0.068f else w * 0.056f
-
-                    // Outer soft orb glow
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                (if (isGoldOrb) Color(0xFFFDE68A) else Color(0xFF6EE7B7)).copy(alpha = 0.45f),
-                                Color.Transparent
-                            ),
-                            center = orbCenter,
-                            radius = orbRadius * 1.75f
-                        ),
-                        radius = orbRadius * 1.75f,
-                        center = orbCenter
+                rotate(degrees = tasselSwingDeg, pivot = tasselAnchor) {
+                    val tasselEnd = Offset(tasselAnchor.x - 1.5f * unit, tasselAnchor.y + 19f * unit)
+                    drawLine(
+                        color = Color(0xFFFBBF24),
+                        start = tasselAnchor,
+                        end = tasselEnd,
+                        strokeWidth = 2.2f * unit,
+                        cap = StrokeCap.Round
                     )
-
-                    // 3D Volumetric Sphere Body
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = if (isGoldOrb) {
-                                listOf(
-                                    Color.White,
-                                    Color(0xFFFEF08A),
-                                    Color(0xFFF59E0B),
-                                    Color(0xFF92400E)
-                                )
-                            } else {
-                                listOf(
-                                    Color.White,
-                                    Color(0xFFA7F3D0),
-                                    Color(0xFF10B981),
-                                    Color(0xFF064E3B)
-                                )
-                            },
-                            center = Offset(orbCenter.x - orbRadius * 0.32f, orbCenter.y - orbRadius * 0.32f),
-                            radius = orbRadius * 1.35f
-                        ),
-                        radius = orbRadius,
-                        center = orbCenter
-                    )
-
-                    // Glassmorphic Rim & Specular Highlight Dot
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.65f),
-                        radius = orbRadius,
-                        center = orbCenter,
-                        style = Stroke(width = 1.dp.toPx())
-                    )
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.90f),
-                        radius = orbRadius * 0.24f,
-                        center = Offset(orbCenter.x - orbRadius * 0.30f, orbCenter.y - orbRadius * 0.30f)
+                    val plumePath = Path().apply {
+                        moveTo(tasselEnd.x - 1.8f * unit, tasselEnd.y)
+                        lineTo(tasselEnd.x - 4.5f * unit, tasselEnd.y + 9.5f * unit)
+                        lineTo(tasselEnd.x + 4.5f * unit, tasselEnd.y + 9.5f * unit)
+                        lineTo(tasselEnd.x + 1.8f * unit, tasselEnd.y)
+                        close()
+                    }
+                    drawPath(
+                        path = plumePath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFFFBBF24), Color(0xFFD97706))
+                        )
                     )
                 }
             }

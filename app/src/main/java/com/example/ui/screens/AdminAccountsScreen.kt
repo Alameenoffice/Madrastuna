@@ -2552,6 +2552,12 @@ fun AdminAccountsScreen(
         var isLinkedToExistingParent by remember(currentStu) { mutableStateOf(false) }
         var studentGender by remember(currentStu) { mutableStateOf(currentStu?.gender ?: "") }
         var studentAgeYears by remember(currentStu) { mutableStateOf(currentStu?.effectiveAgeYears ?: 0) }
+        var isBusSubscribed by remember(currentStu) { mutableStateOf(currentStu?.isBusSubscribed ?: false) }
+        var busRouteName by remember(currentStu) {
+            mutableStateOf(
+                currentStu?.busRouteName?.takeIf { it.isNotBlank() && it != "الخط الصباحي والمسائي" } ?: ""
+            )
+        }
 
         val matchedParent = remember(studentName, parentName, parentPhone, students, currentStu) {
             viewModel.findExistingParentMatch(
@@ -2798,6 +2804,104 @@ fun AdminAccountsScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+                    if (featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE || isBusSubscribed) {
+                        item {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("student_bus_subscription_card"),
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isBusSubscribed) {
+                                    Color(0xFFECFDF5)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                },
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.2.dp,
+                                    if (isBusSubscribed) Color(0xFF059669) else Color(0xFFCBD5E1)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isBusSubscribed) Color(0xFF059669) else Color(0xFF64748B).copy(alpha = 0.16f),
+                                                modifier = Modifier.size(34.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.DirectionsBus,
+                                                        contentDescription = null,
+                                                        tint = if (isBusSubscribed) Color.White else Color(0xFF475569),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                            Column {
+                                                Text(
+                                                    text = "الاشتراك في النقل والخط المدرسي",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (isBusSubscribed) Color(0xFF065F46) else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "شمول الطالب بخدمة النقل المدرسي (مشترك بالخط)",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (isBusSubscribed) Color(0xFF047857) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                        Switch(
+                                            checked = isBusSubscribed,
+                                            onCheckedChange = { isBusSubscribed = it },
+                                            modifier = Modifier.testTag("student_bus_subscription_switch"),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = Color(0xFF059669),
+                                                uncheckedThumbColor = Color(0xFF64748B),
+                                                uncheckedTrackColor = Color(0xFFE2E8F0)
+                                            )
+                                        )
+                                    }
+
+                                    if (isBusSubscribed) {
+                                        OutlinedTextField(
+                                            value = busRouteName,
+                                            onValueChange = { busRouteName = it },
+                                            label = { Text("اسم الخط / السائق أو المنطقة السكنية (اختياري)") },
+                                            placeholder = { Text("مثال: خط الصالحية - باص رقم 1") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Route,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669)
+                                                )
+                                            },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("student_bus_route_name_input")
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (schoolConfig.schoolType == SchoolType.PRIVATE && currentStu == null) {
                         item {
                             OutlinedTextField(
@@ -2893,6 +2997,7 @@ fun AdminAccountsScreen(
                             return@VectorActionButton
                         }
                         if (studentName.isNotBlank() && parentName.isNotBlank()) {
+                            val resolvedRoute = busRouteName.trim().ifBlank { "الخط الصباحي والمسائي" }
                             viewModel.requireOnlineAndExecute {
                                 if (currentStu == null) {
                                     viewModel.addStudentAndParentAccounts(
@@ -2909,7 +3014,9 @@ fun AdminAccountsScreen(
                                         parentUsername = pUser,
                                         parentPassword = pPass,
                                         gender = studentGender,
-                                        ageYears = studentAgeYears
+                                        ageYears = studentAgeYears,
+                                        isBusSubscribed = isBusSubscribed,
+                                        busRouteName = resolvedRoute
                                     )
                                 } else {
                                     viewModel.updateStudentAndParentAccounts(
@@ -2926,7 +3033,9 @@ fun AdminAccountsScreen(
                                         parentPassword = pPass,
                                         photoBase64 = photoBase64,
                                         gender = studentGender,
-                                        ageYears = studentAgeYears
+                                        ageYears = studentAgeYears,
+                                        isBusSubscribed = isBusSubscribed,
+                                        busRouteName = resolvedRoute
                                     )
                                 }
                                 showStudentDialog = false

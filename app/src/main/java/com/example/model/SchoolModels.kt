@@ -264,6 +264,7 @@ enum class AppSection(private val rawArabicTitle: String) {
     DASHBOARD("الرئيسية"),
     LIVE_OPERATIONS_RADAR("موجز الدوام اليومي"),
     ATTENDANCE("الحضور والغياب"),
+    SCHOOL_TRANSPORT("النقل والخطوط المدرسية"),
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     CURRICULUM_BOOKS("المناهج الدراسية"),
     EXAMS_GRADES("الامتحانات والدرجات"),

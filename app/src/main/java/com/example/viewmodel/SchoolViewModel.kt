@@ -3722,7 +3722,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         parentUsername: String,
         parentPassword: String,
         gender: String = "ذكر",
-        ageYears: Int = 0
+        ageYears: Int = 0,
+        isBusSubscribed: Boolean = false,
+        busRouteName: String = "الخط الصباحي والمسائي"
     ): StudentRecord? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val cleanStuName = InputSanitizer.sanitize(studentName)
@@ -3742,6 +3744,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val rawPUser = InputSanitizer.sanitizeUsername(parentUsername).ifBlank { "par${(10..99).random()}" }
         val pUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawPUser)
         val pPass = InputSanitizer.sanitize(parentPassword).ifBlank { (1000..9999).random().toString() }
+        val cleanBusRoute = InputSanitizer.sanitize(busRouteName).ifBlank { "الخط الصباحي والمسائي" }
 
         val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
             gradeClass,
@@ -3766,6 +3769,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             isOnHonorRoll = false,
             honorTitle = "طالب مجتهد",
             schoolId = sid,
+            isBusSubscribed = isBusSubscribed,
+            busRouteName = cleanBusRoute,
             gender = gender.ifBlank { "ذكر" },
             ageYears = ageYears.coerceAtLeast(0)
         )
@@ -3861,7 +3866,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         parentPassword: String,
         photoBase64: String = "",
         gender: String? = null,
-        ageYears: Int? = null
+        ageYears: Int? = null,
+        isBusSubscribed: Boolean? = null,
+        busRouteName: String? = null
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
@@ -3893,6 +3900,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     parentPassword = InputSanitizer.sanitize(parentPassword).ifBlank { s.parentPassword },
                     photoBase64 = photoBase64.ifBlank { s.photoBase64 },
                     schoolId = sid,
+                    isBusSubscribed = isBusSubscribed ?: s.isBusSubscribed,
+                    busRouteName = busRouteName?.let { InputSanitizer.sanitize(it).ifBlank { "الخط الصباحي والمسائي" } } ?: s.busRouteName,
                     gender = gender?.takeIf { it.isNotBlank() } ?: s.gender,
                     ageYears = ageYears?.coerceAtLeast(0) ?: s.ageYears
                 )
@@ -5259,6 +5268,37 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Explicitly updates a student's school bus subscription status and optional route name.
+     */
+    fun updateStudentBusSubscription(
+        studentId: String,
+        isSubscribed: Boolean,
+        busRouteName: String = "الخط الصباحي والمسائي"
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val cleanRoute = InputSanitizer.sanitize(busRouteName).ifBlank { "الخط الصباحي والمسائي" }
+        var targetName = ""
+        val updated = _students.value.map { s ->
+            if (s.id == studentId) {
+                targetName = s.fullNameWithFather
+                s.copy(
+                    isBusSubscribed = isSubscribed,
+                    busRouteName = if (isSubscribed) cleanRoute else s.busRouteName
+                )
+            } else s
+        }
+        _students.value = updated
+        repo.saveStudents(updated, sid)
+        val statusMsg = if (isSubscribed) {
+            "تم شمول الطالب ($targetName) في ($cleanRoute)"
+        } else {
+            "تم إلغاء شمول الطالب ($targetName) من النقل المدرسي"
+        }
+        showToastAlert(statusMsg, isSuccess = true)
+    }
+
+    /**
      * Sends an instant School Bus & Transport notification (`bus_tracking`)
      * EXCLUSIVELY to parents of students subscribed to the school bus (`isBusSubscribed == true`).
      */
@@ -5290,7 +5330,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 body = body,
                 type = NotificationType.ATTENDANCE,
                 targetStudentId = stu.id,
-                targetRole = UserRole.PARENT.name
+                targetRole = UserRole.PARENT.name,
+                targetSection = AppSection.SCHOOL_TRANSPORT.name
             )
         }
 

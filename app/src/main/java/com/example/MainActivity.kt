@@ -939,6 +939,9 @@ fun AuthenticatedMainPlatform(
                 add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
             }
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
+            if (featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE || currentUser?.role == UserRole.ADMIN) {
+                add(AppSection.SCHOOL_TRANSPORT to Icons.Filled.DirectionsBus)
+            }
             add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
             add(AppSection.CURRICULUM_BOOKS to Icons.Filled.AutoStories)
@@ -988,7 +991,7 @@ fun AuthenticatedMainPlatform(
         gesturesEnabled = isSideDrawerEnabled,
         drawerContent = {
             if (isSideDrawerEnabled) {
-                val academicGroupSections = remember(currentUser) {
+                val academicGroupSections = remember(currentUser, schoolConfig.schoolType, featureSettings) {
                     buildList {
                         add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
                         if (currentUser?.role == UserRole.STUDENT || currentUser?.role == UserRole.PARENT) {
@@ -998,6 +1001,9 @@ fun AuthenticatedMainPlatform(
                             add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
                         }
                         add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
+                        if (featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE || currentUser?.role == UserRole.ADMIN) {
+                            add(AppSection.SCHOOL_TRANSPORT to Icons.Filled.DirectionsBus)
+                        }
                         add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
                         add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
                         add(AppSection.CURRICULUM_BOOKS to Icons.Filled.AutoStories)
@@ -2047,6 +2053,7 @@ fun AuthenticatedMainPlatform(
                             )
                             AppSection.LIVE_OPERATIONS_RADAR -> LiveOperationsRadarScreen(viewModel = viewModel)
                             AppSection.ATTENDANCE -> DailyAttendanceScreen(viewModel = viewModel)
+                            AppSection.SCHOOL_TRANSPORT -> SchoolTransportFleetScreen(viewModel = viewModel)
                             AppSection.STUDENT_PERSONAL_PROFILE -> StudentPersonalProfileScreen(viewModel = viewModel)
                             AppSection.STUDENT_COMPREHENSIVE_ARCHIVE -> StudentComprehensiveArchiveScreen(viewModel = viewModel)
                             AppSection.SCHEDULE_HOMEWORK -> ScheduleAndHomeworkScreen(viewModel = viewModel)
