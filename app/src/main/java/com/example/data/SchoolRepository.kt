@@ -243,7 +243,12 @@ class SchoolRepository(context: Context) {
                 schoolActivationCode = obj.optString("schoolActivationCode", resolvedSchoolId.ifBlank { "1001" }).ifBlank { resolvedSchoolId.ifBlank { "1001" } },
                 isSuspended = obj.optBoolean("isSuspended", !obj.optBoolean("isActive", true)),
                 activeBusEvent = obj.optString("activeBusEvent", ""),
-                activeBusEventTimestamp = obj.optString("activeBusEventTimestamp", "")
+                activeBusEventTimestamp = obj.optString("activeBusEventTimestamp", ""),
+                allowParentToViewDriverIdentity = obj.optBoolean("allowParentToViewDriverIdentity", true),
+                busDriverName = obj.optString("busDriverName", "السائق المعتمد للخط المدرسي").ifBlank { "السائق المعتمد للخط المدرسي" },
+                busDriverPhone = obj.optString("busDriverPhone", ""),
+                busVehicleNumber = obj.optString("busVehicleNumber", "مركبة النقل المدرسي الحديثة").ifBlank { "مركبة النقل المدرسي الحديثة" },
+                busDriverPhotoBase64 = obj.optString("busDriverPhotoBase64", "")
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -441,6 +446,11 @@ class SchoolRepository(context: Context) {
             put("isSuspended", config.isSuspended || !config.isActive)
             put("activeBusEvent", InputSanitizer.sanitize(config.activeBusEvent))
             put("activeBusEventTimestamp", InputSanitizer.sanitize(config.activeBusEventTimestamp))
+            put("allowParentToViewDriverIdentity", config.allowParentToViewDriverIdentity)
+            put("busDriverName", InputSanitizer.sanitize(config.busDriverName))
+            put("busDriverPhone", InputSanitizer.sanitize(config.busDriverPhone))
+            put("busVehicleNumber", InputSanitizer.sanitize(config.busVehicleNumber))
+            put("busDriverPhotoBase64", config.busDriverPhotoBase64)
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
@@ -1004,6 +1014,9 @@ class SchoolRepository(context: Context) {
                         likedByUserIds = jsonArrayToList(o.optJSONArray("likedBy") ?: o.optJSONArray("likedByUserIds")).distinct(),
                         isBusSubscribed = o.optBoolean("isBusSubscribed", false),
                         busRouteName = o.optString("busRouteName", "الخط الصباحي والمسائي"),
+                        busDriverName = o.optString("busDriverName", ""),
+                        busDriverPhone = o.optString("busDriverPhone", ""),
+                        busVehicleNumber = o.optString("busVehicleNumber", ""),
                         schoolId = itemSchoolId,
                         dailyAttendance = dailyAttMap,
                         todayStatus = effectiveTodayStatus,
@@ -1104,6 +1117,9 @@ class SchoolRepository(context: Context) {
                 put("likedByUserIds", JSONArray(cleanLikedBy))
                 put("isBusSubscribed", s.isBusSubscribed)
                 put("busRouteName", InputSanitizer.sanitize(s.busRouteName))
+                put("busDriverName", InputSanitizer.sanitize(s.busDriverName))
+                put("busDriverPhone", InputSanitizer.sanitize(s.busDriverPhone))
+                put("busVehicleNumber", InputSanitizer.sanitize(s.busVehicleNumber))
                 put("schoolId", schoolId)
                 put("dailyAttendance", dailyAttJson)
                 put("todayStatus", effectiveTodayStatus)

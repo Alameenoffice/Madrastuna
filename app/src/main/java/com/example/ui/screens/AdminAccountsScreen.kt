@@ -2884,7 +2884,7 @@ fun AdminAccountsScreen(
                                             value = busRouteName,
                                             onValueChange = { busRouteName = it },
                                             label = { Text("اسم الخط / السائق أو المنطقة السكنية (اختياري)") },
-                                            placeholder = { Text("مثال: خط الصالحية - باص رقم 1") },
+                                            placeholder = { Text("أدخل اسم الخط والمنطقة ورقم المركبة") },
                                             leadingIcon = {
                                                 Icon(
                                                     imageVector = Icons.Filled.Route,

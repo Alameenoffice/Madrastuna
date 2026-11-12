@@ -545,7 +545,12 @@ data class SchoolConfig(
     val schoolActivationCode: String = "1001",
     val isSuspended: Boolean = false,
     val activeBusEvent: String = "",
-    val activeBusEventTimestamp: String = ""
+    val activeBusEventTimestamp: String = "",
+    val allowParentToViewDriverIdentity: Boolean = true,
+    val busDriverName: String = "السائق المعتمد للخط المدرسي",
+    val busDriverPhone: String = "",
+    val busVehicleNumber: String = "مركبة النقل المدرسي الحديثة",
+    val busDriverPhotoBase64: String = ""
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
@@ -1077,6 +1082,9 @@ data class StudentRecord(
     val likedByUserIds: List<String> = emptyList(),
     val isBusSubscribed: Boolean = false,
     val busRouteName: String = "الخط الصباحي والمسائي",
+    val busDriverName: String = "",
+    val busDriverPhone: String = "",
+    val busVehicleNumber: String = "",
     val schoolId: String = "",
     val dailyAttendance: Map<String, String> = emptyMap(),
     val todayStatus: String = "",

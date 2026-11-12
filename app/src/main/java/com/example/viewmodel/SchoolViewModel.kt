@@ -5298,6 +5298,26 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert(statusMsg, isSuccess = true)
     }
 
+    fun updateSchoolBusDriverConfig(
+        driverName: String,
+        driverPhone: String,
+        vehicleNumber: String,
+        allowParentToViewDriverIdentity: Boolean,
+        driverPhotoBase64: String = _schoolConfig.value.busDriverPhotoBase64
+    ) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val updatedConfig = _schoolConfig.value.copy(
+            busDriverName = InputSanitizer.sanitize(driverName).ifBlank { "السائق المعتمد للخط المدرسي" },
+            busDriverPhone = InputSanitizer.sanitize(driverPhone),
+            busVehicleNumber = InputSanitizer.sanitize(vehicleNumber).ifBlank { "مركبة النقل المدرسي الحديثة" },
+            allowParentToViewDriverIdentity = allowParentToViewDriverIdentity,
+            busDriverPhotoBase64 = driverPhotoBase64
+        )
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+        showToastAlert("تم حفظ بيانات السائق والمركبة وصلاحية عرض الهوية لأولياء الأمور", isSuccess = true)
+    }
+
     /**
      * Sends an instant School Bus & Transport notification (`bus_tracking`)
      * EXCLUSIVELY to parents of students subscribed to the school bus (`isBusSubscribed == true`).
@@ -5305,7 +5325,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun sendBusTrackingAlert(eventType: BusEventType) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
-        val nowStamp = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale("ar")).format(Date())
+        val nowStamp = SimpleDateFormat("yyyy/MM/dd hh:mm a", Locale("ar")).format(Date())
 
         val updatedConfig = _schoolConfig.value.copy(
             activeBusEvent = eventType.name,
@@ -7260,6 +7280,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun triggerParentDismissalCall(student: StudentRecord) {
         val user = _currentUser.value ?: return
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val holidayReason = getHolidayLabelForDate(todayIso)
+        if (holidayReason != null) {
+            showToastAlert(
+                "الاستدعاء السريع يعمل فقط خلال أيام وأوقات الدوام الرسمي — اليوم عطلة رسمية ($holidayReason)",
+                isSuccess = false
+            )
+            return
+        }
         val sid = _schoolConfig.value.schoolId
         val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
         com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
