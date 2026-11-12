@@ -596,19 +596,93 @@ fun TuitionFeesScreen(
         }
     }
 
-    val totalFeesAll = remember(visibleTuitions) { visibleTuitions.sumOf { it.totalFee } }
-    val totalPaidAll = remember(visibleTuitions) { visibleTuitions.sumOf { it.paidAmount } }
-    val totalRemainingAll = remember(visibleTuitions) { visibleTuitions.sumOf { it.remainingAmount } }
+    var selectedClassFilter by remember { mutableStateOf("جميع الصفوف") }
+    var selectedSectionFilter by remember { mutableStateOf("الكل") }
+    var selectedPaymentStatusFilter by remember { mutableStateOf("الجميع") }
+    var tuitionSearchQuery by remember { mutableStateOf("") }
+
+    val availableClasses = remember(schoolConfig.registeredClasses, visibleTuitions, students) {
+        val rawClasses = (schoolConfig.registeredClasses + visibleTuitions.map { it.gradeClass } + students.map { it.gradeClass })
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        listOf("جميع الصفوف") + rawClasses
+    }
+
+    val availableSections = remember(schoolConfig.registeredSections, visibleTuitions, students, selectedClassFilter) {
+        val scopedForSections = if (selectedClassFilter == "جميع الصفوف") {
+            visibleTuitions
+        } else {
+            visibleTuitions.filter { it.gradeClass.trim() == selectedClassFilter }
+        }
+        val rawSecs = (scopedForSections.map { it.sectionName } + schoolConfig.registeredSections)
+            .map { it.trim().removePrefix("شعبة").trim().ifBlank { "أ" } }
+            .distinct()
+        listOf("الكل") + rawSecs
+    }
+
+    val paymentStatusOptions = remember {
+        listOf("الجميع", "مكتمل التسديد", "متبقي بذمته", "مستحق الدفع")
+    }
+
+    val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
+
+    val filteredTuitions = remember(
+        visibleTuitions,
+        selectedClassFilter,
+        selectedSectionFilter,
+        selectedPaymentStatusFilter,
+        tuitionSearchQuery,
+        todayIso
+    ) {
+        val q = tuitionSearchQuery.trim()
+        visibleTuitions.filter { rec ->
+            val matchesClass = selectedClassFilter == "جميع الصفوف" || rec.gradeClass.trim() == selectedClassFilter
+            val cleanSec = rec.sectionName.trim().removePrefix("شعبة").trim().ifBlank { "أ" }
+            val matchesSection = selectedSectionFilter == "الكل" || cleanSec == selectedSectionFilter
+            val matchesStatus = when (selectedPaymentStatusFilter) {
+                "مكتمل التسديد" -> rec.remainingAmount <= 0L
+                "متبقي بذمته" -> rec.remainingAmount > 0L
+                "مستحق الدفع" -> rec.remainingAmount > 0L && (
+                    rec.paidAmount == 0L ||
+                        rec.nextDueDate.isBlank() ||
+                        rec.nextDueDate <= todayIso
+                    )
+                else -> true
+            }
+            val matchesSearch = q.isEmpty() ||
+                rec.studentName.contains(q, ignoreCase = true) ||
+                rec.parentName.contains(q, ignoreCase = true) ||
+                rec.gradeClass.contains(q, ignoreCase = true) ||
+                rec.installments.any { inst ->
+                    inst.receiptNumber.contains(q, ignoreCase = true) ||
+                        inst.note.contains(q, ignoreCase = true)
+                }
+            matchesClass && matchesSection && matchesStatus && matchesSearch
+        }
+    }
+
+    val groupedTuitions = remember(filteredTuitions) {
+        filteredTuitions.groupBy { rec ->
+            val cls = rec.gradeClass.trim().ifBlank { "صف غير محدد" }
+            val sec = rec.sectionName.trim().removePrefix("شعبة").trim().ifBlank { "أ" }
+            cls to sec
+        }
+    }
+
+    val totalFeesAll = remember(filteredTuitions) { filteredTuitions.sumOf { it.totalFee } }
+    val totalPaidAll = remember(filteredTuitions) { filteredTuitions.sumOf { it.paidAmount } }
+    val totalRemainingAll = remember(filteredTuitions) { filteredTuitions.sumOf { it.remainingAmount } }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(top = 10.dp, bottom = 36.dp)
+        contentPadding = PaddingValues(top = 12.dp, bottom = 44.dp)
     ) {
         // 1) Royal Emerald Banking Header Banner (#0D8A6A to #064E3B) with Dot Matrix & Animated Bezier Vault/Wallet Vector
-        item {
+        item(key = "tuition_royal_emerald_hero_banner") {
             RoyalTuitionAccountingHeroBanner(
                 schoolName = schoolConfig.schoolName,
                 schoolTypeLabel = schoolConfig.schoolType.arabicLabel,
@@ -620,7 +694,7 @@ fun TuitionFeesScreen(
                 onExportStatementPdf = {
                     val msg = DocumentAndIdExporter.exportTuitionStatementPdf(
                         context = context,
-                        tuitions = visibleTuitions,
+                        tuitions = filteredTuitions.ifEmpty { visibleTuitions },
                         schoolConfig = schoolConfig
                     )
                     viewModel.showBannerMessage(msg)
@@ -628,324 +702,721 @@ fun TuitionFeesScreen(
             )
         }
 
-        // 2) Student Banking Tuition Cards
-        items(visibleTuitions, key = { it.studentId }) { record ->
-            val progress = if (record.totalFee > 0) {
-                (record.paidAmount.toFloat() / record.totalFee.toFloat()).coerceIn(0f, 1f)
-            } else 1f
-            val formattedDueDate = formatTuitionDateDisplay(record.nextDueDate)
-            val isFullyPaid = record.remainingAmount <= 0L
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
-                ),
-                border = BorderStroke(
-                    width = 1.2.dp,
-                    color = if (isFullyPaid) {
-                        Color(0xFF10B981).copy(alpha = 0.45f)
-                    } else if (isDarkMode) {
-                        Color(0xFF334155)
-                    } else {
-                        Color(0xFFD1FAE5)
-                    }
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+        // 2) Global Class & Section Hierarchy Filter + Payment Status + Quick Search Card (Admin & Staff)
+        if (!isParentOrStudent) {
+            item(key = "tuition_hierarchy_filter_card") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("tuition_hierarchy_filter_card"),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(
+                        1.2.dp,
+                        if (isDarkMode) Color(0xFF334155) else Color(0xFFD1FAE5)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                 ) {
-                    // Student Header Row + Formatted Due Date Badge
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
-                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f)),
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.AccountBalanceWallet,
-                                        contentDescription = null,
-                                        tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Text(
-                                    text = record.studentName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = "${record.gradeClass} (${record.sectionName}) • ولي الأمر: ${record.parentName}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        NoWrapBadge(
-                            text = if (isFullyPaid) "مسدد بالكامل" else "استحقاق: $formattedDueDate",
-                            icon = if (isFullyPaid) Icons.Filled.CheckCircle else Icons.Filled.EventRepeat,
-                            containerColor = if (isFullyPaid) Color(0xFFD1FAE5) else Color(0xFFFEF3C7),
-                            contentColor = if (isFullyPaid) Color(0xFF065F46) else Color(0xFF92400E)
-                        )
-                    }
-
-                    // Smooth Progress Bar with Percentage Pill
-                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        // Filter Header
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.FilterList,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "فلترة وفرز السجلات المالية (الصف • الشعبة • الحالة)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkMode) Color.White else Color(0xFF064E3B)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                            ) {
+                                Text(
+                                    text = "${filteredTuitions.size} طالب",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF047857),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        // A) Class Selection LazyRow (شريط اختيار الصف الدراسي)
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(
-                                text = "نسبة تسديد القسط السنوي",
+                                text = "الصف الدراسي:",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
                             )
-                            Text(
-                                text = "${(progress * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF059669)
-                            )
-                        }
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(50)),
-                            color = Color(0xFF059669),
-                            trackColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
-                        )
-                    }
-
-                    // 3 Adjacent Mini-Boxes for Amounts (القسط الكلي • المبلغ الواصل • المبلغ المتبقي)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        StudentMiniAmountBox(
-                            label = "القسط الكلي",
-                            amountText = formatTuitionIqdAmount(record.totalFee),
-                            accentColor = Color(0xFF0F3D5E),
-                            containerColor = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
-                            borderColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFCBD5E1),
-                            isDarkMode = isDarkMode,
-                            modifier = Modifier.weight(1f)
-                        )
-                        StudentMiniAmountBox(
-                            label = "المبلغ الواصل",
-                            amountText = formatTuitionIqdAmount(record.paidAmount),
-                            accentColor = Color(0xFF059669),
-                            containerColor = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.45f) else Color(0xFFECFDF5),
-                            borderColor = Color(0xFF10B981).copy(alpha = 0.45f),
-                            isDarkMode = isDarkMode,
-                            modifier = Modifier.weight(1f)
-                        )
-                        StudentMiniAmountBox(
-                            label = "المبلغ المتبقي",
-                            amountText = formatTuitionIqdAmount(record.remainingAmount),
-                            accentColor = if (isFullyPaid) Color(0xFF059669) else DangerRed,
-                            containerColor = if (isFullyPaid) {
-                                if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.35f) else Color(0xFFECFDF5)
-                            } else {
-                                if (isDarkMode) Color(0xFF450A0A).copy(alpha = 0.45f) else Color(0xFFFEF2F2)
-                            },
-                            borderColor = if (isFullyPaid) {
-                                Color(0xFF10B981).copy(alpha = 0.45f)
-                            } else {
-                                DangerRed.copy(alpha = 0.35f)
-                            },
-                            isDarkMode = isDarkMode,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    // Clean Receipt Cards for Installments Log
-                    if (record.installments.isNotEmpty()) {
-                        Surface(
-                            color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.ReceiptLong,
-                                        contentDescription = null,
-                                        tint = Color(0xFF059669),
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                    Text(
-                                        text = "سجل الدفعات والوصولات الرقمية الرسمية (${record.installments.size}):",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-
-                                record.installments.forEach { inst ->
-                                    val formattedInstAmount = formatTuitionIqdAmount(inst.amount)
-                                    val formattedInstDate = formatTuitionDateDisplay(inst.paymentDate)
-
+                                items(availableClasses) { clsOption ->
+                                    val selected = selectedClassFilter == clsOption
                                     Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                                        shape = RoundedCornerShape(50),
+                                        color = if (selected) {
+                                            Color(0xFF047857)
+                                        } else if (isDarkMode) {
+                                            Color(0xFF0F172A)
+                                        } else {
+                                            Color(0xFFF1F5F9)
+                                        },
                                         border = BorderStroke(
                                             1.dp,
-                                            if (isDarkMode) Color(0xFF334155) else Color(0xFFD1FAE5)
+                                            if (selected) Color(0xFFFDE68A) else Color(0xFFCBD5E1).copy(alpha = 0.6f)
                                         ),
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .clickable {
+                                                selectedClassFilter = clsOption
+                                                selectedSectionFilter = "الكل"
+                                            }
                                     ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                        Text(
+                                            text = clsOption,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                            color = if (selected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFE2E8F0)
+                                            } else {
+                                                Color(0xFF1E293B)
+                                            },
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // B) Section Selection Chips (شريط اختيار الشعبة)
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(
+                                text = "الشعبة الدراسية:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
+                            )
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(availableSections) { secOption ->
+                                    val selected = selectedSectionFilter == secOption
+                                    val displayLabel = if (secOption == "الكل") "الكل" else "شعبة $secOption"
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (selected) {
+                                            Color(0xFF059669)
+                                        } else if (isDarkMode) {
+                                            Color(0xFF0F172A)
+                                        } else {
+                                            Color(0xFFF8FAFC)
+                                        },
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (selected) Color(0xFFA7F3D0) else Color(0xFFCBD5E1).copy(alpha = 0.65f)
+                                        ),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { selectedSectionFilter = secOption }
+                                    ) {
+                                        Text(
+                                            text = displayLabel,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                            color = if (selected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFCBD5E1)
+                                            } else {
+                                                Color(0xFF334155)
+                                            },
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // C) Payment Status Filter Bar (فلتر حالة الدفع)
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(
+                                text = "حالة تسديد القسط:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
+                            )
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(paymentStatusOptions) { statusOpt ->
+                                    val selected = selectedPaymentStatusFilter == statusOpt
+                                    val activeBg = when (statusOpt) {
+                                        "مكتمل التسديد" -> Color(0xFF059669)
+                                        "متبقي بذمته" -> Color(0xFFD97706)
+                                        "مستحق الدفع" -> DangerRed
+                                        else -> Color(0xFF0F3D5E)
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (selected) {
+                                            activeBg
+                                        } else if (isDarkMode) {
+                                            Color(0xFF0F172A)
+                                        } else {
+                                            Color(0xFFF1F5F9)
+                                        },
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (selected) Color.White.copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.6f)
+                                        ),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .clickable { selectedPaymentStatusFilter = statusOpt }
+                                    ) {
+                                        Text(
+                                            text = statusOpt,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                            color = if (selected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFE2E8F0)
+                                            } else {
+                                                Color(0xFF1E293B)
+                                            },
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // D) Quick Search Input (حقل بحث سريع باسم الطالب أو ولي الأمر أو رقم الوصل)
+                        OutlinedTextField(
+                            value = tuitionSearchQuery,
+                            onValueChange = { tuitionSearchQuery = it },
+                            placeholder = {
+                                Text(
+                                    text = "ابحث باسم الطالب أو اسم ولي الأمر أو رقم الوصل (مثال: REC-1001)...",
+                                    fontSize = 12.sp
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669)
+                                )
+                            },
+                            trailingIcon = {
+                                if (tuitionSearchQuery.isNotBlank()) {
+                                    IconButton(onClick = { tuitionSearchQuery = "" }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = "مسح البحث"
+                                        )
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("tuition_quick_search_input")
+                        )
+                    }
+                }
+            }
+        }
+
+        // Empty state when filter matches 0 records
+        if (filteredTuitions.isEmpty()) {
+            item(key = "tuition_empty_filter_state") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(1.dp, Color(0xFFD1FAE5))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AccountBalanceWallet,
+                            contentDescription = null,
+                            tint = Color(0xFF059669),
+                            modifier = Modifier.size(38.dp)
+                        )
+                        Text(
+                            text = "لا توجد سجلات أقساط مطابقة لخيارات الفلترة أو البحث الحالية",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            textAlign = TextAlign.Center,
+                            color = if (isDarkMode) Color.White else Color(0xFF064E3B)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3) Grouped Student Banking Tuition Cards by Class & Section
+        groupedTuitions.forEach { (classSectionPair, groupRecords) ->
+            val (groupClass, groupSection) = classSectionPair
+
+            if (!isParentOrStudent) {
+                item(key = "tuition_group_header_${groupClass}_${groupSection}") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.55f) else Color(0xFFECFDF5),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 9.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Class,
+                                    contentDescription = null,
+                                    tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "$groupClass - شعبة ($groupSection) • العدد: ${groupRecords.size} طالب",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkMode) Color.White else Color(0xFF064E3B),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            val completedInGroup = groupRecords.count { it.remainingAmount <= 0L }
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (isDarkMode) Color(0xFF047857) else Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                            ) {
+                                Text(
+                                    text = "مسدد: $completedInGroup/${groupRecords.size}",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkMode) Color.White else Color(0xFF047857),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            items(groupRecords, key = { it.studentId }) { record ->
+                val progress = if (record.totalFee > 0) {
+                    (record.paidAmount.toFloat() / record.totalFee.toFloat()).coerceIn(0f, 1f)
+                } else 1f
+                val formattedDueDate = formatTuitionDateDisplay(record.nextDueDate)
+                val isFullyPaid = record.remainingAmount <= 0L
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(
+                        width = 1.2.dp,
+                        color = if (isFullyPaid) {
+                            Color(0xFF10B981).copy(alpha = 0.45f)
+                        } else if (isDarkMode) {
+                            Color(0xFF334155)
+                        } else {
+                            Color(0xFFD1FAE5)
+                        }
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Student Header Row + Formatted Due Date Badge
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
+                                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f)),
+                                    modifier = Modifier.size(44.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.AccountBalanceWallet,
+                                            contentDescription = null,
+                                            tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF047857),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = record.studentName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        text = "${record.gradeClass} (${record.sectionName}) • ولي الأمر: ${record.parentName}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            NoWrapBadge(
+                                text = if (isFullyPaid) "مسدد بالكامل" else "استحقاق: $formattedDueDate",
+                                icon = if (isFullyPaid) Icons.Filled.CheckCircle else Icons.Filled.EventRepeat,
+                                containerColor = if (isFullyPaid) Color(0xFFD1FAE5) else Color(0xFFFEF3C7),
+                                contentColor = if (isFullyPaid) Color(0xFF065F46) else Color(0xFF92400E)
+                            )
+                        }
+
+                        // Smooth Progress Bar with Percentage Pill
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "نسبة تسديد القسط السنوي",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                )
+                                Text(
+                                    text = "${(progress * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF059669)
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(50)),
+                                color = Color(0xFF059669),
+                                trackColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                            )
+                        }
+
+                        // 3 Adjacent Mini-Boxes for Amounts (القسط الكلي • المبلغ الواصل • المبلغ المتبقي)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            StudentMiniAmountBox(
+                                label = "القسط الكلي",
+                                amountText = formatTuitionIqdAmount(record.totalFee),
+                                accentColor = Color(0xFF0F3D5E),
+                                containerColor = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                                borderColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFCBD5E1),
+                                isDarkMode = isDarkMode,
+                                modifier = Modifier.weight(1f)
+                            )
+                            StudentMiniAmountBox(
+                                label = "المبلغ الواصل",
+                                amountText = formatTuitionIqdAmount(record.paidAmount),
+                                accentColor = Color(0xFF059669),
+                                containerColor = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.45f) else Color(0xFFECFDF5),
+                                borderColor = Color(0xFF10B981).copy(alpha = 0.45f),
+                                isDarkMode = isDarkMode,
+                                modifier = Modifier.weight(1f)
+                            )
+                            StudentMiniAmountBox(
+                                label = "المبلغ المتبقي",
+                                amountText = formatTuitionIqdAmount(record.remainingAmount),
+                                accentColor = if (isFullyPaid) Color(0xFF059669) else DangerRed,
+                                containerColor = if (isFullyPaid) {
+                                    if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.35f) else Color(0xFFECFDF5)
+                                } else {
+                                    if (isDarkMode) Color(0xFF450A0A).copy(alpha = 0.45f) else Color(0xFFFEF2F2)
+                                },
+                                borderColor = if (isFullyPaid) {
+                                    Color(0xFF10B981).copy(alpha = 0.45f)
+                                } else {
+                                    DangerRed.copy(alpha = 0.35f)
+                                },
+                                isDarkMode = isDarkMode,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        // Clean Receipt Cards for Installments Log (Zero Number or Date Wrapping)
+                        if (record.installments.isNotEmpty()) {
+                            Surface(
+                                color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.ReceiptLong,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Text(
+                                            text = "سجل الدفعات والوصولات الرقمية الرسمية (${record.installments.size}):",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46),
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+
+                                    record.installments.forEach { inst ->
+                                        val formattedInstAmount = formatTuitionIqdAmount(inst.amount)
+                                        val formattedInstDate = formatTuitionDateDisplay(inst.paymentDate)
+
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isDarkMode) Color(0xFF334155) else Color(0xFFD1FAE5)
+                                            ),
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Column(
-                                                modifier = Modifier.weight(1f),
-                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
+                                                // Top Full-Width Row: Receipt Number + Full Date + Unbroken Single-Line Amount
                                                 Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(6.dp),
-                                                        color = Color(0xFFECFDF5)
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                                     ) {
-                                                        Text(
-                                                            text = inst.receiptNumber,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            color = Color(0xFF047857),
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = Color(0xFFECFDF5),
+                                                            border = BorderStroke(0.8.dp, Color(0xFFA7F3D0))
+                                                        ) {
+                                                            Text(
+                                                                text = inst.receiptNumber,
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = Color(0xFF047857),
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF1F5F9)
+                                                        ) {
+                                                            Text(
+                                                                text = "التاريخ: $formattedInstDate",
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                            )
+                                                        }
                                                     }
+
                                                     Text(
                                                         text = formattedInstAmount,
-                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontSize = 13.sp,
                                                         fontWeight = FontWeight.ExtraBold,
-                                                        color = Color(0xFF059669)
+                                                        color = Color(0xFF059669),
+                                                        maxLines = 1,
+                                                        softWrap = false
                                                     )
                                                 }
-                                                Text(
-                                                    text = "تاريخ الوصل: $formattedInstDate • ${inst.note.ifBlank { "دفعة قسط دراسي" }}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
 
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = Color(0xFFECFDF5),
-                                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                                                    modifier = Modifier
-                                                        .clickable { selectedReceiptPair = record to inst }
-                                                        .testTag("view_digital_receipt_btn_${inst.receiptNumber}")
+                                                // Bottom Balanced Row: Note on Right + Action Buttons ("وصل PDF" & "واتساب") on Left
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.ReceiptLong,
-                                                            contentDescription = null,
-                                                            tint = DeepEmerald,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                        Text(
-                                                            text = "وصل PDF",
-                                                            color = DeepEmerald,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            maxLines = 1,
-                                                            softWrap = false
-                                                        )
-                                                    }
-                                                }
+                                                    Text(
+                                                        text = inst.note.ifBlank { "دفعة قسط دراسي" },
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .padding(end = 8.dp)
+                                                    )
 
-                                                Surface(
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = WhatsAppGreen.copy(alpha = 0.12f),
-                                                    border = BorderStroke(1.dp, WhatsAppGreen.copy(alpha = 0.4f)),
-                                                    modifier = Modifier.clickable {
-                                                        val msg = """
-                                                            وصل قبض قسط دراسي رقم (${inst.receiptNumber})
-                                                            الصادر من: ${schoolConfig.schoolName}
-                                                            • اسم الطالب: ${record.studentName} (${record.gradeClass})
-                                                            • المبلغ المستلم: ${formatTuitionIqdAmount(inst.amount)}
-                                                            • تاريخ الدفعة: ${formatTuitionDateDisplay(inst.paymentDate)}
-                                                            • إجمالي المدفوع: ${formatTuitionIqdAmount(record.paidAmount)}
-                                                            • المبلغ المتبقي: ${formatTuitionIqdAmount(record.remainingAmount)}
-                                                            شكراً لتعاونكم الكريم.
-                                                        """.trimIndent()
-                                                        ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
-                                                    }
-                                                ) {
                                                     Row(
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Chat,
-                                                            contentDescription = null,
-                                                            tint = WhatsAppGreen,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                        Text(
-                                                            text = "واتساب",
-                                                            color = WhatsAppGreen,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            maxLines = 1,
-                                                            softWrap = false
-                                                        )
+                                                        Surface(
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = Color(0xFFECFDF5),
+                                                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                                            modifier = Modifier
+                                                                .clickable { selectedReceiptPair = record to inst }
+                                                                .testTag("view_digital_receipt_btn_${inst.receiptNumber}")
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Filled.ReceiptLong,
+                                                                    contentDescription = null,
+                                                                    tint = DeepEmerald,
+                                                                    modifier = Modifier.size(14.dp)
+                                                                )
+                                                                Text(
+                                                                    text = "وصل PDF",
+                                                                    color = DeepEmerald,
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    maxLines = 1,
+                                                                    softWrap = false
+                                                                )
+                                                            }
+                                                        }
+
+                                                        Surface(
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = WhatsAppGreen.copy(alpha = 0.12f),
+                                                            border = BorderStroke(1.dp, WhatsAppGreen.copy(alpha = 0.4f)),
+                                                            modifier = Modifier.clickable {
+                                                                val msg = """
+                                                                    وصل قبض قسط دراسي رقم (${inst.receiptNumber})
+                                                                    الصادر من: ${schoolConfig.schoolName}
+                                                                    • اسم الطالب: ${record.studentName} (${record.gradeClass})
+                                                                    • المبلغ المستلم: ${formatTuitionIqdAmount(inst.amount)}
+                                                                    • تاريخ الدفعة: ${formatTuitionDateDisplay(inst.paymentDate)}
+                                                                    • إجمالي المدفوع: ${formatTuitionIqdAmount(record.paidAmount)}
+                                                                    • المبلغ المتبقي: ${formatTuitionIqdAmount(record.remainingAmount)}
+                                                                    شكراً لتعاونكم الكريم.
+                                                                """.trimIndent()
+                                                                ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
+                                                            }
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Filled.Chat,
+                                                                    contentDescription = null,
+                                                                    tint = WhatsAppGreen,
+                                                                    modifier = Modifier.size(14.dp)
+                                                                )
+                                                                Text(
+                                                                    text = "واتساب",
+                                                                    color = WhatsAppGreen,
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    maxLines = 1,
+                                                                    softWrap = false
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -954,82 +1425,82 @@ fun TuitionFeesScreen(
                                 }
                             }
                         }
-                    }
 
-                    // Bottom Action Buttons with Full Text and Zero Clipping:
-                    // "تسجيل دفعة جديدة" and "إرسال إشعار ووصل"
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (canRecordPayment && record.remainingAmount > 0L) {
+                        // Bottom Action Buttons with Full Text and Zero Clipping:
+                        // "تسجيل دفعة جديدة" and "إرسال إشعار ووصل"
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (canRecordPayment && record.remainingAmount > 0L) {
+                                Button(
+                                    onClick = { selectedTuitionForPayment = record },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 46.dp)
+                                        .testTag("add_payment_${record.studentId}"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF047857),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.AddCard,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = "تسجيل دفعة جديدة",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+
                             Button(
-                                onClick = { selectedTuitionForPayment = record },
+                                onClick = {
+                                    val latestReceipt = record.installments.firstOrNull()?.receiptNumber ?: "REC-1000"
+                                    val msg = """
+                                        كشف ووصل القسط الدراسي ($latestReceipt)
+                                        من إدارة (${schoolConfig.schoolName})
+                                        • الطالب: ${record.studentName} (${record.gradeClass})
+                                        • القسط السنوي الكلي: ${formatTuitionIqdAmount(record.totalFee)}
+                                        • مجموع الدفعات الواصلة: ${formatTuitionIqdAmount(record.paidAmount)}
+                                        • المبلغ المتبقي: ${formatTuitionIqdAmount(record.remainingAmount)}
+                                        • تاريخ الاستحقاق القادم: ${formatTuitionDateDisplay(record.nextDueDate)}
+                                    """.trimIndent()
+                                    ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
+                                },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .heightIn(min = 46.dp)
-                                    .testTag("add_payment_${record.studentId}"),
+                                    .heightIn(min = 46.dp),
                                 shape = RoundedCornerShape(14.dp),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF047857),
+                                    containerColor = WhatsAppGreen,
                                     contentColor = Color.White
                                 )
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.AddCard,
+                                    imageVector = Icons.Filled.Chat,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
                                 Text(
-                                    text = "تسجيل دفعة جديدة",
+                                    text = "إرسال إشعار ووصل",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     softWrap = false
                                 )
                             }
-                        }
-
-                        Button(
-                            onClick = {
-                                val latestReceipt = record.installments.firstOrNull()?.receiptNumber ?: "REC-1000"
-                                val msg = """
-                                    كشف ووصل القسط الدراسي ($latestReceipt)
-                                    من إدارة (${schoolConfig.schoolName})
-                                    • الطالب: ${record.studentName} (${record.gradeClass})
-                                    • القسط السنوي الكلي: ${formatTuitionIqdAmount(record.totalFee)}
-                                    • مجموع الدفعات الواصلة: ${formatTuitionIqdAmount(record.paidAmount)}
-                                    • المبلغ المتبقي: ${formatTuitionIqdAmount(record.remainingAmount)}
-                                    • تاريخ الاستحقاق القادم: ${formatTuitionDateDisplay(record.nextDueDate)}
-                                """.trimIndent()
-                                ExternalIntents.sendWhatsAppMessage(context, record.parentPhone, msg)
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 46.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = WhatsAppGreen,
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Chat,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "إرسال إشعار ووصل",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                softWrap = false
-                            )
                         }
                     }
                 }
@@ -1225,13 +1696,13 @@ private fun RoyalTuitionAccountingHeroBanner(
         GenericShape { size, _ ->
             val w = size.width
             val h = size.height
-            val topWaveDepth = (h * 0.045f).coerceIn(8f, 18f)
-            val bottomWaveDepth = (h * 0.065f).coerceIn(12f, 24f)
+            val topWaveDepth = (h * 0.025f).coerceIn(4f, 10f)
+            val bottomWaveDepth = (h * 0.055f).coerceIn(10f, 20f)
 
             moveTo(0f, topWaveDepth * 0.45f)
             cubicTo(
-                w * 0.32f, -topWaveDepth * 0.35f,
-                w * 0.68f, topWaveDepth * 1.35f,
+                w * 0.32f, -topWaveDepth * 0.25f,
+                w * 0.68f, topWaveDepth * 1.15f,
                 w, topWaveDepth * 0.25f
             )
             lineTo(w, h - bottomWaveDepth)
@@ -1321,7 +1792,7 @@ private fun RoyalTuitionAccountingHeroBanner(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 24.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 26.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Top Row: Two Frosted Glass Capsules ("الإدارة المالية للمدرسة" & "حسابات الأقساط والوصولات")
@@ -1482,13 +1953,13 @@ private fun RoyalTuitionAccountingHeroBanner(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "تصدير كشف الأقساط المالي الرسمي (PDF / طباعة)",
+                            text = "تصدير كشف الأقساط المالي الرسمي (PDF)",
                             style = MaterialTheme.typography.labelLarge,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis
+                            softWrap = false
                         )
                     }
                 }
