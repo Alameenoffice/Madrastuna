@@ -1884,11 +1884,11 @@ fun AuthenticatedMainPlatform(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                // Admin 14-day Subscription Expiry Warning & Developer Broadcasts Banner (STRICTLY ADMIN ONLY)
-                if (currentUser?.role == UserRole.ADMIN) {
+                // Developer Broadcasts are displayed directly below the Welcome Hero Banner in DashboardScreen
+                if (currentUser?.role == UserRole.ADMIN && activeSection != AppSection.DASHBOARD) {
                     AdminSubscriptionAndBroadcastBanner(
                         schoolConfig = schoolConfig,
-                        developerBroadcasts = developerBroadcasts,
+                        developerBroadcasts = emptyList(),
                         dismissedBroadcastIds = dismissedBroadcastIds,
                         onDismissBroadcast = { bcId ->
                             viewModel.dismissDeveloperBroadcastForAdmin(bcId)

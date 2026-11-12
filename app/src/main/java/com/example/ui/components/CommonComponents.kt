@@ -26,8 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
-import com.example.model.OccasionIconKey
-import com.example.model.TeacherEvaluationSummary
+import com.example.model.*
 import kotlinx.coroutines.delay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -4625,137 +4624,158 @@ fun DeveloperSystemBroadcastBanner(
     iconKey: OccasionIconKey = OccasionIconKey.BELL,
     illustrationType: ThreeDIllustrationType = iconKey.toThreeDIllustrationType(),
     topOverlapPadding: Dp = 0.dp,
+    occasionConfig: OccasionThemeConfig? = null,
     onDismiss: (() -> Unit)? = null
 ) {
-    Box(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(SeamlessFullWidthWaveShape)
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0xFFD1FAE5),
-                        Color(0xFFE0F7EE),
-                        Color(0xFFA7F3D0)
-                    )
-                )
-            )
+            .padding(top = topOverlapPadding),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.Transparent,
+        shadowElevation = 4.dp
     ) {
-        // Subtle inner wave ribbon drawn on Canvas (zero box border)
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val w = size.width
-            val h = size.height
-            val ribbonPath = Path().apply {
-                moveTo(0f, h * 0.65f)
-                cubicTo(
-                    w * 0.35f, h * 0.42f,
-                    w * 0.65f, h * 0.88f,
-                    w, h * 0.58f
-                )
-                lineTo(w, h)
-                lineTo(0f, h)
-                close()
-            }
-            drawPath(
-                path = ribbonPath,
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFF10B981).copy(alpha = 0.14f),
-                        Color(0xFF059669).copy(alpha = 0.08f),
-                        Color(0xFF34D399).copy(alpha = 0.16f)
-                    )
-                )
-            )
-        }
-
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    start = 18.dp,
-                    end = 18.dp,
-                    top = 18.dp + topOverlapPadding,
-                    bottom = 18.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Right side in RTL: Circular dark-emerald action/dismiss icon + vertical emerald bar + text
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF047857))
-                        .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (onDismiss != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "إشعار النظام العام",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFFD1FAE5),
+                            Color(0xFFE0F7EE),
+                            Color(0xFFA7F3D0)
+                        )
                     )
+                )
+        ) {
+            // Subtle inner wave ribbon drawn on Canvas
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val w = size.width
+                val h = size.height
+                val ribbonPath = Path().apply {
+                    moveTo(0f, h * 0.65f)
+                    cubicTo(
+                        w * 0.35f, h * 0.42f,
+                        w * 0.65f, h * 0.88f,
+                        w, h * 0.58f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(
+                    path = ribbonPath,
+                    brush = Brush.horizontalGradient(
+                        listOf(
+                            Color(0xFF10B981).copy(alpha = 0.14f),
+                            Color(0xFF059669).copy(alpha = 0.08f),
+                            Color(0xFF34D399).copy(alpha = 0.16f)
+                        )
+                    )
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 14.dp,
+                        bottom = 14.dp
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Right side in RTL: Circular dark-emerald action/dismiss icon + vertical emerald bar + text
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF047857))
+                            .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (onDismiss != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "إشعار النظام العام",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .width(2.5.dp)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFF059669).copy(alpha = 0.75f))
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF047857),
+                            maxLines = 1
+                        )
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF065F46),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 12.8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .width(2.5.dp)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF059669).copy(alpha = 0.75f))
-                )
+                Spacer(modifier = Modifier.width(8.dp))
 
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = badgeText,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF047857),
-                        maxLines = 1
+                // Left side in RTL: Seasonal Bezier Illustration (or Megaphone, never Trophy)
+                if (occasionConfig != null && occasionConfig.isActive) {
+                    WelcomeBannerBezierCharacter(
+                        occasionConfig = occasionConfig,
+                        modifier = Modifier.size(68.dp)
                     )
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF065F46),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 12.8.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                } else {
+                    val safeType = if (illustrationType == ThreeDIllustrationType.TROPHY_STARS) {
+                        ThreeDIllustrationType.SYSTEM_BROADCAST_3D
+                    } else {
+                        illustrationType
+                    }
+                    ThreeDIllustrationBox(
+                        type = safeType,
+                        modifier = Modifier.size(68.dp)
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Left side in RTL: Dynamic 3D Animated Illustration selected by Developer
-            ThreeDIllustrationBox(
-                type = illustrationType,
-                modifier = Modifier.size(72.dp)
-            )
         }
     }
 }
 
 /**
- * 2) مقطع إعلان إدارة المدرسة المدمج بأمواج انسيابية بعرض الشاشة بدون أي صندوق أو إطار
- * (Seamless Full-Width Wave Principal Announcement Section - Matches Reference Image Strictly)
+ * 2) مقطع إعلان إدارة المدرسة المدمج بعرض الشاشة وحواف دائرية ناعمة 20.dp
  */
 @Composable
 fun ThreeDMegaphoneAnnouncementBanner(
@@ -4770,188 +4790,193 @@ fun ThreeDMegaphoneAnnouncementBanner(
     onStopUrgent: (() -> Unit)? = null,
     onDismissUrgent: (() -> Unit)? = null
 ) {
-    Box(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(SeamlessFullWidthWaveShape)
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0xFFD1FAE5),
-                        Color(0xFFE0F7EE),
-                        Color(0xFFA7F3D0)
-                    )
-                )
-            )
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .padding(top = topOverlapPadding),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.Transparent,
+        shadowElevation = 4.dp
     ) {
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val w = size.width
-            val h = size.height
-            val waveOverlay = Path().apply {
-                moveTo(0f, h * 0.62f)
-                cubicTo(
-                    w * 0.30f, h * 0.38f,
-                    w * 0.70f, h * 0.85f,
-                    w, h * 0.55f
-                )
-                lineTo(w, h)
-                lineTo(0f, h)
-                close()
-            }
-            drawPath(
-                path = waveOverlay,
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFF10B981).copy(alpha = 0.14f),
-                        Color(0xFF34D399).copy(alpha = 0.08f),
-                        Color(0xFF059669).copy(alpha = 0.14f)
-                    )
-                )
-            )
-        }
-
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    start = 18.dp,
-                    end = 18.dp,
-                    top = 16.dp + topOverlapPadding,
-                    bottom = 16.dp
-                ),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    // Right circular dark-emerald button with white arrow (matching reference image)
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF047857)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFFD1FAE5),
+                            Color(0xFFE0F7EE),
+                            Color(0xFFA7F3D0)
                         )
-                    }
-
-                    // Emerald vertical divider line
-                    Box(
-                        modifier = Modifier
-                            .width(2.5.dp)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF059669).copy(alpha = 0.78f))
                     )
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontSize = 16.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF047857),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                )
+                .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+        ) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val w = size.width
+                val h = size.height
+                val waveOverlay = Path().apply {
+                    moveTo(0f, h * 0.62f)
+                    cubicTo(
+                        w * 0.30f, h * 0.38f,
+                        w * 0.70f, h * 0.85f,
+                        w, h * 0.55f
+                    )
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Left side (in RTL): 3D Animated Megaphone Illustration
-                ThreeDIllustrationBox(
-                    type = ThreeDIllustrationType.MEGAPHONE,
-                    modifier = Modifier.size(72.dp)
+                drawPath(
+                    path = waveOverlay,
+                    brush = Brush.horizontalGradient(
+                        listOf(
+                            Color(0xFF10B981).copy(alpha = 0.14f),
+                            Color(0xFF34D399).copy(alpha = 0.08f),
+                            Color(0xFF059669).copy(alpha = 0.14f)
+                        )
+                    )
                 )
             }
 
-            // Compact inline control chips when an urgent school alert is active
-            if (isUrgentActive) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 14.dp,
+                        bottom = 14.dp
+                    ),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    if (isAdmin && onEditUrgent != null) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFF047857).copy(alpha = 0.14f),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .clickable { onEditUrgent() }
-                                .testTag("urgent_alert_banner_edit_btn")
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF047857)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Filled.Edit, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(13.dp))
-                                Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
-                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .width(2.5.dp)
+                                .height(42.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(Color(0xFF059669).copy(alpha = 0.78f))
+                        )
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontSize = 16.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF047857),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
-                    if (isAdmin && onStopUrgent != null) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFFEF4444).copy(alpha = 0.16f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .clickable { onStopUrgent() }
-                                .testTag("urgent_alert_banner_delete_btn")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    ThreeDIllustrationBox(
+                        type = ThreeDIllustrationType.MEGAPHONE,
+                        modifier = Modifier.size(68.dp)
+                    )
+                }
+
+                if (isUrgentActive) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isAdmin && onEditUrgent != null) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFF047857).copy(alpha = 0.14f),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { onEditUrgent() }
+                                    .testTag("urgent_alert_banner_edit_btn")
                             ) {
-                                Icon(Icons.Filled.StopCircle, contentDescription = null, tint = Color(0xFFB91C1C), modifier = Modifier.size(13.dp))
-                                Text("إيقاف البث", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Filled.Edit, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(13.dp))
+                                    Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
+                                }
                             }
                         }
-                    }
-                    if (onDismissUrgent != null) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFF0F172A).copy(alpha = 0.08f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .clickable { onDismissUrgent() }
-                                .testTag("urgent_alert_banner_dismiss_btn")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        if (isAdmin && onStopUrgent != null) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFEF4444).copy(alpha = 0.16f),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { onStopUrgent() }
+                                    .testTag("urgent_alert_banner_delete_btn")
                             ) {
-                                Icon(Icons.Filled.DoneAll, contentDescription = null, tint = Color(0xFF0F172A), modifier = Modifier.size(13.dp))
-                                Text("تم الاطلاع", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Filled.StopCircle, contentDescription = null, tint = Color(0xFFB91C1C), modifier = Modifier.size(13.dp))
+                                    Text("إيقاف البث", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
+                                }
+                            }
+                        }
+                        if (onDismissUrgent != null) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFF0F172A).copy(alpha = 0.08f),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { onDismissUrgent() }
+                                    .testTag("urgent_alert_banner_dismiss_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Filled.DoneAll, contentDescription = null, tint = Color(0xFF0F172A), modifier = Modifier.size(13.dp))
+                                    Text("تم الاطلاع", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                }
                             }
                         }
                     }
@@ -5233,7 +5258,6 @@ fun SeamlessWaveTeacherSpotlightSection(
                         }
                     }
 
-                    // 3 Glowing Indicator Dots for the Top 3 Teachers
                     if (slides.size > 1) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -5291,10 +5315,7 @@ fun SeamlessWaveTeacherSpotlightSection(
 /**
  * القسم الترحيبي / الترويسي الملكي ثلاثي الأبعاد المدمج بأمواج انسيابية مع جسم الصفحة
  * (Seamless Wave-Curved 3D Royal Hero Section)
- * يطابق الصورة المرجعية حرفياً:
- * - حافة علوية وسفلية منحنية بموجة Bezier ناعمة بدلاً من الصندوق المستطيل ذي الإطار
- * - تدرج زمردي إلى كحلي عميق + شبكة نقاط مضيئة (Halftone Dot Matrix)
- * - كبسولات زجاجية علوية + مجسم ثلاثي الأبعاد متحرك على اليسار + شريط زر زجاجي سفلي اختياري.
+ * بدون أي صندوق علوي أو حد أبيض يقطع البنر الترحيبي من الأعلى.
  */
 @Composable
 fun ThreeDHeroHeaderCard(
@@ -5310,26 +5331,22 @@ fun ThreeDHeroHeaderCard(
     bottomActionTestTag: String = "hero_bottom_action_btn",
     onBottomActionClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    customLeftContent: (@Composable () -> Unit)? = null,
     extraBottomContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
-    // Custom Bezier Wave Shape: curved wave top & curved wave bottom matching reference image
+    // Clean top edge (no white cut from above) + smooth curved wave bottom
     val waveHeroShape = remember {
         GenericShape { size, _ ->
             val w = size.width
             val h = size.height
-            val topWaveDepth = (h * 0.065f).coerceIn(10f, 22f)
-            val bottomWaveDepth = (h * 0.095f).coerceIn(16f, 30f)
+            val bottomWaveDepth = (h * 0.085f).coerceIn(14f, 26f)
 
-            moveTo(0f, topWaveDepth * 0.45f)
-            cubicTo(
-                w * 0.32f, -topWaveDepth * 0.35f,
-                w * 0.68f, topWaveDepth * 1.35f,
-                w, topWaveDepth * 0.25f
-            )
+            moveTo(0f, 0f)
+            lineTo(w, 0f)
             lineTo(w, h - bottomWaveDepth)
             quadraticBezierTo(
                 w * 0.50f, h + bottomWaveDepth * 0.85f,
-                0f, h - bottomWaveDepth * 0.85f
+                0f, h - bottomWaveDepth * 0.75f
             )
             close()
         }
@@ -5339,18 +5356,18 @@ fun ThreeDHeroHeaderCard(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 12.dp,
+                elevation = 10.dp,
                 shape = waveHeroShape,
-                ambientColor = Color(0xFF047857).copy(alpha = 0.32f),
-                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.38f)
+                ambientColor = Color(0xFF047857).copy(alpha = 0.30f),
+                spotColor = Color(0xFF064E3B).copy(alpha = 0.35f)
             )
             .clip(waveHeroShape)
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFF059669),
+                        Color(0xFF0D8A6A),
                         Color(0xFF047857),
-                        Color(0xFF0F3D5E)
+                        Color(0xFF064E3B)
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(950f, 680f)
@@ -5362,7 +5379,6 @@ fun ThreeDHeroHeaderCard(
             val w = size.width
             val h = size.height
 
-            // Soft internal wave sheen
             val innerWave = Path().apply {
                 moveTo(0f, h * 0.72f)
                 cubicTo(
@@ -5376,10 +5392,9 @@ fun ThreeDHeroHeaderCard(
             }
             drawPath(
                 path = innerWave,
-                color = Color(0xFF0F3D5E).copy(alpha = 0.28f)
+                color = Color(0xFF042F24).copy(alpha = 0.25f)
             )
 
-            // Radial emerald highlight behind the 3D illustration (left side in RTL)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -5393,7 +5408,6 @@ fun ThreeDHeroHeaderCard(
                 center = Offset(w * 0.22f, h * 0.48f)
             )
 
-            // Halftone dot matrix in top-left and bottom-right corners
             val step = 11.dp.toPx()
             val dotRadius = 1.6.dp.toPx()
             for (row in 0..6) {
@@ -5416,10 +5430,9 @@ fun ThreeDHeroHeaderCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 24.dp),
+                .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Top Row: Two Frosted Glass Pills (Guaranteed non-clipping for academic year & role badges)
             if (rightPillText.isNotBlank() || leftPillText.isNotBlank()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -5492,7 +5505,6 @@ fun ThreeDHeroHeaderCard(
                 }
             }
 
-            // Middle Row: Welcome Title & Subtitle on Right + 3D Animated Illustration on Left
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -5520,13 +5532,16 @@ fun ThreeDHeroHeaderCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                ThreeDIllustrationBox(
-                    type = illustrationType,
-                    modifier = Modifier.size(108.dp)
-                )
+                if (customLeftContent != null) {
+                    customLeftContent()
+                } else {
+                    ThreeDIllustrationBox(
+                        type = illustrationType,
+                        modifier = Modifier.size(108.dp)
+                    )
+                }
             }
 
-            // Optional Bottom Glassmorphic Capsule Action Bar
             if (bottomActionText != null && onBottomActionClick != null) {
                 Surface(
                     modifier = Modifier
@@ -5574,6 +5589,651 @@ fun ThreeDHeroHeaderCard(
 
             if (extraBottomContent != null) {
                 extraBottomContent()
+            }
+        }
+    }
+}
+
+/**
+ * فيكتور أنميشن ترحيبي بتقنية بيزيير في "بنر الترحيب بعد تسجيل الدخول" + أنميشن المناسبات الموسمية (بدون الكأس نهائياً):
+ * - في الوضع الافتراضي بعد تسجيل الدخول: شخصية أكاديمية ترحيبية أنيقة مرسومة بـ Canvas ومنحنيات Path.cubicTo
+ *   وتدرجات زمردية وذهبية تتحرك بنعومة (infiniteRepeatable للتنفس وحركة الترحيب).
+ * - عند تفعيل مناسبة موسمية في viewModel:
+ *   1) رمضان: هلال ذهبي وفانوس متأرجح بنعومة.
+ *   2) الأعياد: زخارف وأقمار عيد مضيئة.
+ *   3) رأس السنة / العام الجديد: شارة العام الجديد وشهب ذهبية متصاعدة.
+ *   4) المولد النبوي: القبة الخضراء والمنارة بهالة نورانية هادئة.
+ *   5) العيد الوطني العراقي: العلم العراقي يرفرف بتموجات انسيابية.
+ */
+@Composable
+fun WelcomeBannerBezierCharacter(
+    occasionConfig: OccasionThemeConfig? = null,
+    modifier: Modifier = Modifier.size(110.dp)
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "welcome_banner_bezier_character")
+    val breathPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "bezier_breath_phase"
+    )
+    val waveSwing by infiniteTransition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bezier_wave_swing"
+    )
+    val meteorProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "bezier_meteor_progress"
+    )
+
+    val combinedOccasionText = remember(occasionConfig) {
+        if (occasionConfig == null || !occasionConfig.isActive) {
+            ""
+        } else {
+            "${occasionConfig.customTitle} ${occasionConfig.customBannerText} ${occasionConfig.effectiveTitle} ${occasionConfig.effectiveBannerText} ${occasionConfig.themeType.arabicLabel}"
+        }
+    }
+
+    val seasonalKind = remember(occasionConfig, combinedOccasionText) {
+        if (occasionConfig == null || !occasionConfig.isActive) {
+            "ACADEMIC_CHARACTER"
+        } else {
+            when {
+                combinedOccasionText.contains("المولد") ||
+                    combinedOccasionText.contains("النبوي") ||
+                    combinedOccasionText.contains("القبة") ||
+                    combinedOccasionText.contains("الرسول") ||
+                    combinedOccasionText.contains("النبي") -> "MAWLID_GREEN_DOME"
+
+                combinedOccasionText.contains("الوطني") ||
+                    combinedOccasionText.contains("العراق") ||
+                    combinedOccasionText.contains("علم") ||
+                    occasionConfig.themeType == OccasionThemeType.NATIONAL_DAY ||
+                    occasionConfig.resolvedIconKey == OccasionIconKey.FLAG -> "IRAQI_NATIONAL_FLAG"
+
+                combinedOccasionText.contains("رمضان") ||
+                    combinedOccasionText.contains("صيام") ||
+                    combinedOccasionText.contains("فانوس") -> "RAMADAN_CRESCENT_LANTERN"
+
+                combinedOccasionText.contains("عيد") ||
+                    combinedOccasionText.contains("الأعياد") ||
+                    combinedOccasionText.contains("الفطر") ||
+                    combinedOccasionText.contains("الأضحى") ||
+                    occasionConfig.themeType == OccasionThemeType.RAMADAN_EID ||
+                    occasionConfig.resolvedIconKey == OccasionIconKey.CRESCENT -> "EID_GLOWING_MOONS"
+
+                combinedOccasionText.contains("رأس السنة") ||
+                    combinedOccasionText.contains("العام الجديد") ||
+                    combinedOccasionText.contains("سنة جديدة") ||
+                    combinedOccasionText.contains("عام دراسي") ||
+                    occasionConfig.themeType == OccasionThemeType.NEW_YEAR -> "NEW_YEAR_METEORS"
+
+                else -> "ACADEMIC_CHARACTER"
+            }
+        }
+    }
+
+    Canvas(
+        modifier = modifier.testTag("welcome_banner_bezier_character")
+    ) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.50f
+        val cy = h * 0.52f
+        val breathOffset = kotlin.math.sin(breathPhase) * (h * 0.032f)
+        val auraScale = 0.92f + 0.08f * ((kotlin.math.sin(breathPhase) + 1f) * 0.5f)
+
+        // Ambient emerald & gold radial halo
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFFDE68A).copy(alpha = 0.34f),
+                    Color(0xFF34D399).copy(alpha = 0.18f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, cy),
+                radius = (w * 0.48f) * auraScale
+            ),
+            radius = (w * 0.48f) * auraScale,
+            center = Offset(cx, cy)
+        )
+
+        when (seasonalKind) {
+            "RAMADAN_CRESCENT_LANTERN" -> {
+                // رمضان: هلال ذهبي وفانوس متأرجح بنعومة
+                val crescentPath = Path().apply {
+                    moveTo(w * 0.62f, h * 0.16f + breathOffset)
+                    cubicTo(
+                        w * 0.24f, h * 0.18f + breathOffset,
+                        w * 0.16f, h * 0.72f + breathOffset,
+                        w * 0.60f, h * 0.84f + breathOffset
+                    )
+                    cubicTo(
+                        w * 0.34f, h * 0.72f + breathOffset,
+                        w * 0.38f, h * 0.30f + breathOffset,
+                        w * 0.62f, h * 0.16f + breathOffset
+                    )
+                    close()
+                }
+                drawPath(
+                    path = crescentPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFFD97706))
+                    )
+                )
+
+                // Swinging Ramadan Lantern suspended from top right
+                val pivotX = w * 0.68f
+                val pivotY = h * 0.14f
+                rotate(degrees = waveSwing * 9f, pivot = Offset(pivotX, pivotY)) {
+                    drawLine(
+                        color = Color(0xFFFDE68A),
+                        start = Offset(pivotX, pivotY),
+                        end = Offset(pivotX, h * 0.34f),
+                        strokeWidth = 1.8.dp.toPx()
+                    )
+                    val lanternDome = Path().apply {
+                        moveTo(pivotX - w * 0.11f, h * 0.42f)
+                        cubicTo(
+                            pivotX - w * 0.10f, h * 0.32f,
+                            pivotX + w * 0.10f, h * 0.32f,
+                            pivotX + w * 0.11f, h * 0.42f
+                        )
+                        lineTo(pivotX + w * 0.14f, h * 0.64f)
+                        cubicTo(
+                            pivotX + w * 0.08f, h * 0.74f,
+                            pivotX - w * 0.08f, h * 0.74f,
+                            pivotX - w * 0.14f, h * 0.64f
+                        )
+                        close()
+                    }
+                    drawPath(
+                        path = lanternDome,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFF065F46), Color(0xFF047857), Color(0xFF064E3B))
+                        )
+                    )
+                    drawPath(
+                        path = lanternDome,
+                        color = Color(0xFFFBBF24),
+                        style = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round)
+                    )
+                    // Inner warm lantern flame glow
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFFEF08A), Color(0xFFF59E0B).copy(alpha = 0.2f), Color.Transparent),
+                            center = Offset(pivotX, h * 0.54f),
+                            radius = w * 0.11f * auraScale
+                        ),
+                        radius = w * 0.11f * auraScale,
+                        center = Offset(pivotX, h * 0.54f)
+                    )
+                }
+            }
+
+            "EID_GLOWING_MOONS" -> {
+                // الأعياد: زخارف وأقمار عيد مضيئة
+                for (idx in 0..2) {
+                    val ox = w * (0.24f + idx * 0.26f)
+                    val swing = waveSwing * (6f - idx * 2f)
+                    val cordBottomY = h * (0.34f + (idx % 2) * 0.10f) + breathOffset * 0.5f
+                    rotate(degrees = swing, pivot = Offset(ox, h * 0.08f)) {
+                        drawLine(
+                            color = Color(0xFFFDE68A).copy(alpha = 0.75f),
+                            start = Offset(ox, h * 0.08f),
+                            end = Offset(ox, cordBottomY),
+                            strokeWidth = 1.5.dp.toPx()
+                        )
+                        val ornamentPath = Path().apply {
+                            moveTo(ox, cordBottomY)
+                            cubicTo(
+                                ox + w * 0.13f, cordBottomY + h * 0.08f,
+                                ox + w * 0.13f, cordBottomY + h * 0.24f,
+                                ox, cordBottomY + h * 0.32f
+                            )
+                            cubicTo(
+                                ox - w * 0.13f, cordBottomY + h * 0.24f,
+                                ox - w * 0.13f, cordBottomY + h * 0.08f,
+                                ox, cordBottomY
+                            )
+                            close()
+                        }
+                        drawPath(
+                            path = ornamentPath,
+                            brush = Brush.linearGradient(
+                                colors = if (idx == 1) {
+                                    listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
+                                } else {
+                                    listOf(Color(0xFF10B981), Color(0xFF047857))
+                                }
+                            )
+                        )
+                        drawPath(
+                            path = ornamentPath,
+                            color = Color(0xFFFEF08A),
+                            style = Stroke(width = 1.5.dp.toPx())
+                        )
+                    }
+                }
+                // Glowing Eid crescent moon at bottom center
+                val eidMoon = Path().apply {
+                    moveTo(w * 0.34f, h * 0.68f + breathOffset)
+                    cubicTo(
+                        w * 0.42f, h * 0.88f + breathOffset,
+                        w * 0.66f, h * 0.88f + breathOffset,
+                        w * 0.74f, h * 0.66f + breathOffset
+                    )
+                    cubicTo(
+                        w * 0.62f, h * 0.80f + breathOffset,
+                        w * 0.46f, h * 0.80f + breathOffset,
+                        w * 0.34f, h * 0.68f + breathOffset
+                    )
+                    close()
+                }
+                drawPath(
+                    path = eidMoon,
+                    color = Color(0xFFFEF08A)
+                )
+            }
+
+            "NEW_YEAR_METEORS" -> {
+                // رأس السنة / العام الجديد: شارة العام الجديد وشهب ذهبية متصاعدة
+                for (m in 0..2) {
+                    val prog = (meteorProgress + m * 0.33f) % 1f
+                    val startX = w * (0.18f + m * 0.28f)
+                    val curY = h * (0.85f - prog * 0.68f)
+                    val curX = startX + prog * (w * 0.14f)
+                    val meteorTrail = Path().apply {
+                        moveTo(curX, curY)
+                        cubicTo(
+                            curX - w * 0.05f, curY + h * 0.08f,
+                            curX - w * 0.10f, curY + h * 0.15f,
+                            curX - w * 0.14f, curY + h * 0.22f
+                        )
+                    }
+                    drawPath(
+                        path = meteorTrail,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFFFEF08A), Color.Transparent)
+                        ),
+                        style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    drawCircle(
+                        color = Color(0xFFFEF08A),
+                        radius = 3.5.dp.toPx(),
+                        center = Offset(curX, curY)
+                    )
+                }
+
+                // New Year Emblem Shield/Star Badge in Center
+                val emblemPath = Path().apply {
+                    moveTo(cx, h * 0.22f + breathOffset)
+                    cubicTo(
+                        w * 0.76f, h * 0.24f + breathOffset,
+                        w * 0.80f, h * 0.56f + breathOffset,
+                        cx, h * 0.80f + breathOffset
+                    )
+                    cubicTo(
+                        w * 0.20f, h * 0.56f + breathOffset,
+                        w * 0.24f, h * 0.24f + breathOffset,
+                        cx, h * 0.22f + breathOffset
+                    )
+                    close()
+                }
+                drawPath(
+                    path = emblemPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF065F46), Color(0xFF0D8A6A), Color(0xFF042F24))
+                    )
+                )
+                drawPath(
+                    path = emblemPath,
+                    color = Color(0xFFFBBF24),
+                    style = Stroke(width = 2.dp.toPx())
+                )
+                drawCircle(
+                    color = Color(0xFFFEF08A),
+                    radius = 6.dp.toPx() * auraScale,
+                    center = Offset(cx, h * 0.48f + breathOffset)
+                )
+            }
+
+            "MAWLID_GREEN_DOME" -> {
+                // المولد النبوي: القبة الخضراء والمنارة بهالة نورانية هادئة
+                // Calm radiant halo rings
+                for (ring in 1..2) {
+                    drawCircle(
+                        color = Color(0xFFFEF08A).copy(alpha = 0.22f / ring),
+                        radius = (w * (0.28f + ring * 0.09f)) * auraScale,
+                        center = Offset(w * 0.44f, h * 0.52f + breathOffset),
+                        style = Stroke(width = 1.6.dp.toPx())
+                    )
+                }
+
+                // Graceful Minaret on the Right
+                val minaretPath = Path().apply {
+                    moveTo(w * 0.70f, h * 0.82f)
+                    lineTo(w * 0.72f, h * 0.30f + breathOffset * 0.4f)
+                    cubicTo(
+                        w * 0.72f, h * 0.22f + breathOffset * 0.4f,
+                        w * 0.80f, h * 0.22f + breathOffset * 0.4f,
+                        w * 0.80f, h * 0.30f + breathOffset * 0.4f
+                    )
+                    lineTo(w * 0.82f, h * 0.82f)
+                    close()
+                }
+                drawPath(
+                    path = minaretPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFFFEF08A), Color(0xFFD97706))
+                    )
+                )
+
+                // Green Dome (القبة الخضراء) with Bezier Arch
+                val greenDomePath = Path().apply {
+                    moveTo(w * 0.18f, h * 0.68f)
+                    cubicTo(
+                        w * 0.18f, h * 0.42f + breathOffset,
+                        w * 0.32f, h * 0.28f + breathOffset,
+                        w * 0.44f, h * 0.22f + breathOffset
+                    )
+                    cubicTo(
+                        w * 0.56f, h * 0.28f + breathOffset,
+                        w * 0.70f, h * 0.42f + breathOffset,
+                        w * 0.70f, h * 0.68f
+                    )
+                    close()
+                }
+                drawPath(
+                    path = greenDomePath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFF10B981), Color(0xFF059669), Color(0xFF064E3B))
+                    )
+                )
+                drawPath(
+                    path = greenDomePath,
+                    color = Color(0xFFFEF08A),
+                    style = Stroke(width = 1.8.dp.toPx())
+                )
+                // Base wall under the dome
+                drawRoundRect(
+                    color = Color(0xFF042F24),
+                    topLeft = Offset(w * 0.14f, h * 0.68f),
+                    size = Size(w * 0.72f, h * 0.14f),
+                    cornerRadius = CornerRadius(4.dp.toPx())
+                )
+            }
+
+            "IRAQI_NATIONAL_FLAG" -> {
+                // العيد الوطني العراقي: العلم العراقي يرفرف بتموجات انسيابية
+                // Golden Flagpole on the right
+                val poleX = w * 0.82f
+                drawLine(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFD97706))),
+                    start = Offset(poleX, h * 0.14f),
+                    end = Offset(poleX, h * 0.88f),
+                    strokeWidth = 3.2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawCircle(
+                    color = Color(0xFFFEF08A),
+                    radius = 4.dp.toPx(),
+                    center = Offset(poleX, h * 0.13f)
+                )
+
+                val flagLeft = w * 0.16f
+                val flagRight = poleX - 2.dp.toPx()
+                val bandHeight = h * 0.15f
+                val wave1 = waveSwing * (h * 0.045f)
+                val wave2 = -waveSwing * (h * 0.045f)
+
+                val bandColors = listOf(
+                    Color(0xFFCE1126), // Red top band
+                    Color(0xFFFFFFFF), // White middle band
+                    Color(0xFF0F172A)  // Black bottom band
+                )
+                bandColors.forEachIndexed { idx, bandColor ->
+                    val topY = h * 0.22f + idx * bandHeight
+                    val botY = topY + bandHeight
+                    val bandPath = Path().apply {
+                        moveTo(flagRight, topY)
+                        cubicTo(
+                            w * 0.60f, topY + wave1,
+                            w * 0.38f, topY + wave2,
+                            flagLeft, topY + wave1 * 0.6f
+                        )
+                        lineTo(flagLeft, botY + wave1 * 0.6f)
+                        cubicTo(
+                            w * 0.38f, botY + wave2,
+                            w * 0.60f, botY + wave1,
+                            flagRight, botY
+                        )
+                        close()
+                    }
+                    drawPath(path = bandPath, color = bandColor)
+                }
+                // Emerald "الله أكبر" Kufic emblem strokes in the white middle band
+                val midY = h * 0.22f + bandHeight * 1.5f + wave1 * 0.3f
+                for (mark in -1..1) {
+                    val mx = w * 0.48f + mark * (w * 0.09f)
+                    drawLine(
+                        color = Color(0xFF047857),
+                        start = Offset(mx - w * 0.03f, midY),
+                        end = Offset(mx + w * 0.03f, midY),
+                        strokeWidth = 2.2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+
+            else -> {
+                // الشخصية الأكاديمية الترحيبية الأنيقة (WelcomeBannerBezierCharacter) بمنحنيات بيزيير وتدرجات زمردية وذهبية
+                val bodyBob = breathOffset
+
+                // 1. Academic Robe / Shoulders with Bezier Curves & Golden Stole
+                val robePath = Path().apply {
+                    moveTo(cx - w * 0.30f, h * 0.88f)
+                    cubicTo(
+                        cx - w * 0.32f, h * 0.64f + bodyBob,
+                        cx - w * 0.18f, h * 0.54f + bodyBob,
+                        cx, h * 0.54f + bodyBob
+                    )
+                    cubicTo(
+                        cx + w * 0.18f, h * 0.54f + bodyBob,
+                        cx + w * 0.32f, h * 0.64f + bodyBob,
+                        cx + w * 0.30f, h * 0.88f
+                    )
+                    close()
+                }
+                drawPath(
+                    path = robePath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF065F46),
+                            Color(0xFF042F24)
+                        )
+                    )
+                )
+                drawPath(
+                    path = robePath,
+                    color = Color(0xFFFBBF24),
+                    style = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round)
+                )
+
+                // Golden Academic V-Stole on Chest
+                val stolePath = Path().apply {
+                    moveTo(cx - w * 0.11f, h * 0.55f + bodyBob)
+                    cubicTo(
+                        cx - w * 0.06f, h * 0.66f + bodyBob,
+                        cx - w * 0.02f, h * 0.72f + bodyBob,
+                        cx, h * 0.76f + bodyBob
+                    )
+                    cubicTo(
+                        cx + w * 0.02f, h * 0.72f + bodyBob,
+                        cx + w * 0.06f, h * 0.66f + bodyBob,
+                        cx + w * 0.11f, h * 0.55f + bodyBob
+                    )
+                }
+                drawPath(
+                    path = stolePath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
+                    ),
+                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+
+                // 2. Welcoming Waving Hand/Arm on the Right (Smooth Bezier Curve)
+                val shoulderX = cx + w * 0.20f
+                val shoulderY = h * 0.62f + bodyBob
+                rotate(degrees = waveSwing * 14f, pivot = Offset(shoulderX, shoulderY)) {
+                    val wavingArmPath = Path().apply {
+                        moveTo(shoulderX, shoulderY)
+                        cubicTo(
+                            shoulderX + w * 0.12f, shoulderY - h * 0.04f,
+                            shoulderX + w * 0.18f, shoulderY - h * 0.16f,
+                            shoulderX + w * 0.14f, shoulderY - h * 0.24f
+                        )
+                    }
+                    drawPath(
+                        path = wavingArmPath,
+                        brush = Brush.linearGradient(
+                            colors = listOf(Color(0xFF10B981), Color(0xFFFDE68A))
+                        ),
+                        style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    // Welcoming hand circle at tip
+                    drawCircle(
+                        color = Color(0xFFFEF08A),
+                        radius = 4.2.dp.toPx(),
+                        center = Offset(shoulderX + w * 0.14f, shoulderY - h * 0.24f)
+                    )
+                }
+
+                // 3. Left Arm Holding a Glowing Knowledge Scroll
+                val scrollPath = Path().apply {
+                    val sx = cx - w * 0.26f
+                    val sy = h * 0.64f + bodyBob
+                    moveTo(sx - w * 0.06f, sy - h * 0.06f)
+                    cubicTo(
+                        sx, sy - h * 0.10f,
+                        sx + w * 0.08f, sy - h * 0.04f,
+                        sx + w * 0.06f, sy + h * 0.08f
+                    )
+                    cubicTo(
+                        sx, sy + h * 0.12f,
+                        sx - w * 0.08f, sy + h * 0.06f,
+                        sx - w * 0.06f, sy - h * 0.06f
+                    )
+                    close()
+                }
+                drawPath(
+                    path = scrollPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))
+                    )
+                )
+
+                // 4. Character Head & Friendly Face Silhouette
+                val headCenter = Offset(cx, h * 0.39f + bodyBob)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFFFBEB), Color(0xFFFDE68A)),
+                        center = headCenter,
+                        radius = w * 0.13f
+                    ),
+                    radius = w * 0.13f,
+                    center = headCenter
+                )
+                drawCircle(
+                    color = Color(0xFFD97706),
+                    radius = w * 0.13f,
+                    center = headCenter,
+                    style = Stroke(width = 1.4.dp.toPx())
+                )
+                // Gentle welcoming smile (Bezier arc)
+                val smilePath = Path().apply {
+                    moveTo(cx - w * 0.05f, headCenter.y + h * 0.025f)
+                    cubicTo(
+                        cx - w * 0.02f, headCenter.y + h * 0.055f,
+                        cx + w * 0.02f, headCenter.y + h * 0.055f,
+                        cx + w * 0.05f, headCenter.y + h * 0.025f
+                    )
+                }
+                drawPath(
+                    path = smilePath,
+                    color = Color(0xFF064E3B),
+                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // 5. Royal Academic Mortarboard Cap on Head + Swinging Golden Tassel
+                val capCenterY = h * 0.24f + bodyBob
+                val capDiamond = Path().apply {
+                    moveTo(cx, capCenterY - h * 0.08f)
+                    cubicTo(
+                        cx + w * 0.12f, capCenterY - h * 0.04f,
+                        cx + w * 0.24f, capCenterY - h * 0.01f,
+                        cx + w * 0.26f, capCenterY
+                    )
+                    cubicTo(
+                        cx + w * 0.12f, capCenterY + h * 0.04f,
+                        cx - w * 0.12f, capCenterY + h * 0.04f,
+                        cx - w * 0.26f, capCenterY
+                    )
+                    cubicTo(
+                        cx - w * 0.24f, capCenterY - h * 0.01f,
+                        cx - w * 0.12f, capCenterY - h * 0.04f,
+                        cx, capCenterY - h * 0.08f
+                    )
+                    close()
+                }
+                drawPath(
+                    path = capDiamond,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF0D8A6A))
+                    )
+                )
+                drawPath(
+                    path = capDiamond,
+                    color = Color(0xFFFEF08A),
+                    style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round)
+                )
+
+                // Swinging Golden Tassel
+                val tasselStartX = cx - w * 0.18f
+                val tasselStartY = capCenterY + h * 0.01f
+                val tasselEndX = tasselStartX + waveSwing * (w * 0.05f)
+                val tasselEndY = tasselStartY + h * 0.13f
+                val tasselPath = Path().apply {
+                    moveTo(tasselStartX, tasselStartY)
+                    cubicTo(
+                        tasselStartX, tasselStartY + h * 0.06f,
+                        tasselEndX, tasselStartY + h * 0.09f,
+                        tasselEndX, tasselEndY
+                    )
+                }
+                drawPath(
+                    path = tasselPath,
+                    color = Color(0xFFFEF08A),
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                )
+                drawCircle(
+                    color = Color(0xFFF59E0B),
+                    radius = 2.8.dp.toPx(),
+                    center = Offset(tasselEndX, tasselEndY)
+                )
             }
         }
     }

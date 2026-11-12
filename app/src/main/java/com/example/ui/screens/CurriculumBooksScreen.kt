@@ -1325,231 +1325,211 @@ fun CurriculumBooksScreen(
     )
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Column(
+        // 1) التمرير الكامل للشاشة نحو الأعلى (Full Vertical Scroll) داخل LazyColumn واحدة رئيسية
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
                 .testTag("curriculum_books_screen"),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            // البنر الزمردي العلوي مع مشهد المنصة المعرفية العائمة
+            item(key = "curriculum_hero_banner") {
+                CurriculumHeroBannerWithOpenBookAnimation(
+                    title = "المناهج الدراسية والكتب الرسمية",
+                    subtitle = "تصفح وقراءة كافة الكتب المنهجية المعتمدة مباشرة داخل المنصة",
+                    rightPillText = "منهج وزارة التربية المعتمد",
+                    leftPillText = "${allBooks.size.coerceAtLeast(56)} كتاب منهجي"
+                )
+            }
 
-            // Royal 3D Wave Hero Header with exclusive Opening & Closing 3D Book Vector Animation on the left
-            CurriculumHeroBannerWithOpenBookAnimation(
-                title = "المناهج الدراسية والكتب الرسمية",
-                subtitle = "تصفح وقراءة كافة الكتب المنهجية المعتمدة مباشرة داخل المنصة",
-                rightPillText = "منهج وزارة التربية المعتمد",
-                leftPillText = "${allBooks.size.coerceAtLeast(56)} كتاب منهجي"
-            )
-
-            // Unified Luxury Filter Card for Stages, Grade Classes & Search (Zero text clipping)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
-                ),
-                border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            // بطاقة اختيار المرحلة والصف وحقل البحث
+            item(key = "curriculum_stage_grade_search_card") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    // 1. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية) — Zero clipping, no cramped icons
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isDarkMode) Color(0xFF0F172A) else AdaptiveSoftSurface)
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        CurriculumAcademicStage.entries.forEach { stage ->
-                            val isSelected = selectedStage == stage && searchQuery.isBlank()
-                            Surface(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedStage = stage
-                                    selectedGradeClass = stage.gradeClasses.first()
-                                },
-                                shape = RoundedCornerShape(11.dp),
-                                color = if (isSelected) RoyalGreen else Color.Transparent,
-                                shadowElevation = if (isSelected) 3.dp else 0.dp,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .testTag("curriculum_stage_tab_${stage.name}")
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
+                        // 1. Clean 3-Stage Segmented Selector (الابتدائية • المتوسطة • الإعدادية)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isDarkMode) Color(0xFF0F172A) else AdaptiveSoftSurface)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CurriculumAcademicStage.entries.forEach { stage ->
+                                val isSelected = selectedStage == stage && searchQuery.isBlank()
+                                Surface(
+                                    onClick = {
+                                        searchQuery = ""
+                                        selectedStage = stage
+                                        selectedGradeClass = stage.gradeClasses.first()
+                                    },
+                                    shape = RoundedCornerShape(11.dp),
+                                    color = if (isSelected) RoyalGreen else Color.Transparent,
+                                    shadowElevation = if (isSelected) 3.dp else 0.dp,
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 4.dp)
+                                        .weight(1f)
+                                        .height(42.dp)
+                                        .testTag("curriculum_stage_tab_${stage.name}")
                                 ) {
-                                    Text(
-                                        text = stage.shortBadge,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                        color = if (isSelected) {
-                                            Color.White
-                                        } else if (isDarkMode) {
-                                            Color(0xFFE2E8F0)
-                                        } else {
-                                            DeepForestGreen
-                                        },
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = stage.shortBadge,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                            color = if (isSelected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFE2E8F0)
+                                            } else {
+                                                DeepForestGreen
+                                            },
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // 2. Grade Classes Horizontal Filter Chips (matching ScheduleAndHomeworkScreen)
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(horizontal = 2.dp)
-                    ) {
-                        items(selectedStage.gradeClasses) { gradeClass ->
-                            val isGradeSelected = selectedGradeClass == gradeClass && searchQuery.isBlank()
-                            val gradeBookCount = remember(allBooks, selectedStage, gradeClass) {
-                                allBooks.count { it.stage == selectedStage && it.gradeClass == gradeClass }
-                            }
-                            Surface(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedGradeClass = gradeClass
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isGradeSelected) {
-                                    DeepEmerald
-                                } else if (isDarkMode) {
-                                    Color(0xFF0F172A)
-                                } else {
-                                    AdaptiveSoftSurface
-                                },
-                                border = BorderStroke(
-                                    width = if (isGradeSelected) 1.4.dp else 1.dp,
-                                    color = if (isGradeSelected) GoldAccent else AdaptiveSoftBorder
-                                ),
-                                shadowElevation = if (isGradeSelected) 2.dp else 0.dp,
-                                modifier = Modifier
-                                    .height(38.dp)
-                                    .testTag("curriculum_grade_chip_$gradeClass")
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(horizontal = 14.dp)
+                        // 2. Grade Classes Horizontal Filter Chips
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(horizontal = 2.dp)
+                        ) {
+                            items(selectedStage.gradeClasses) { gradeClass ->
+                                val isGradeSelected = selectedGradeClass == gradeClass && searchQuery.isBlank()
+                                val gradeBookCount = remember(allBooks, selectedStage, gradeClass) {
+                                    allBooks.count { it.stage == selectedStage && it.gradeClass == gradeClass }
+                                }
+                                Surface(
+                                    onClick = {
+                                        searchQuery = ""
+                                        selectedGradeClass = gradeClass
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isGradeSelected) {
+                                        DeepEmerald
+                                    } else if (isDarkMode) {
+                                        Color(0xFF0F172A)
+                                    } else {
+                                        AdaptiveSoftSurface
+                                    },
+                                    border = BorderStroke(
+                                        width = if (isGradeSelected) 1.4.dp else 1.dp,
+                                        color = if (isGradeSelected) GoldAccent else AdaptiveSoftBorder
+                                    ),
+                                    shadowElevation = if (isGradeSelected) 2.dp else 0.dp,
+                                    modifier = Modifier
+                                        .height(38.dp)
+                                        .testTag("curriculum_grade_chip_$gradeClass")
                                 ) {
-                                    Text(
-                                        text = if (gradeBookCount > 0) {
-                                            "$gradeClass ($gradeBookCount)"
-                                        } else {
-                                            gradeClass
-                                        },
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = if (isGradeSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                        color = if (isGradeSelected) {
-                                            Color.White
-                                        } else if (isDarkMode) {
-                                            Color(0xFFA7F3D0)
-                                        } else {
-                                            DeepForestGreen
-                                        },
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(horizontal = 14.dp)
+                                    ) {
+                                        Text(
+                                            text = if (gradeBookCount > 0) {
+                                                "$gradeClass ($gradeBookCount)"
+                                            } else {
+                                                gradeClass
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = if (isGradeSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                            color = if (isGradeSelected) {
+                                                Color.White
+                                            } else if (isDarkMode) {
+                                                Color(0xFFA7F3D0)
+                                            } else {
+                                                DeepForestGreen
+                                            },
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // 3. Search Bar with Custom Animated Canvas Vector Icons
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = {
-                            Text(
-                                text = "ابحث عن اسم الكتاب أو الصف الدراسي...",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        },
-                        leadingIcon = {
-                            AnimatedSearchVectorIcon(
-                                tint = DeepEmerald,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotBlank()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    AnimatedClearVectorIcon(
-                                        tint = if (isDarkMode) Color(0xFF94A3B8) else DeepEmerald,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                        // 3. Search Bar with Custom Animated Canvas Vector Icons
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = {
+                                Text(
+                                    text = "ابحث عن اسم الكتاب أو الصف الدراسي...",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            leadingIcon = {
+                                AnimatedSearchVectorIcon(
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (searchQuery.isNotBlank()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        AnimatedClearVectorIcon(
+                                            tint = if (isDarkMode) Color(0xFF94A3B8) else DeepEmerald,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("curriculum_search_input")
-                    )
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("curriculum_search_input")
+                        )
+                    }
                 }
             }
 
-            // Smooth AnimatedContent when switching between stages or grades
-            AnimatedContent(
-                targetState = Triple(selectedStage, selectedGradeClass, displayedBooks),
-                transitionSpec = {
-                    (fadeIn(animationSpec = tween(260)) +
-                        slideInHorizontally(animationSpec = tween(260)) { fullWidth -> fullWidth / 10 })
-                        .togetherWith(
-                            fadeOut(animationSpec = tween(180)) +
-                                slideOutHorizontally(animationSpec = tween(180)) { fullWidth -> -fullWidth / 12 }
-                        )
-                        .using(SizeTransform(clip = false))
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                label = "curriculum_grade_animated_content"
-            ) { (stageState, gradeState, booksForState) ->
-                if (booksForState.isEmpty()) {
+            // 3) قائمة الكتب أو بطاقة المرحلة الفارغة داخل نفس الـ LazyColumn الرئيسية
+            if (displayedBooks.isEmpty()) {
+                item(key = "curriculum_empty_stage_notice_${selectedStage.name}_$selectedGradeClass") {
                     InteractiveSmartLibraryStageView(
-                        selectedStage = stageState,
-                        selectedGradeClass = gradeState,
+                        selectedStage = selectedStage,
+                        selectedGradeClass = selectedGradeClass,
                         hasActiveSearchQuery = searchQuery.isNotBlank(),
                         isDarkMode = isDarkMode
                     )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight()
-                            .testTag("curriculum_books_list"),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 96.dp)
-                    ) {
-                        items(booksForState, key = { it.id }) { book ->
-                            CurriculumBookOfficialCard(
-                                book = book,
-                                isDarkMode = isDarkMode,
-                                onDirectOpenBook = {
-                                    activeBookInViewer = book
-                                }
-                            )
+                }
+            } else {
+                items(displayedBooks, key = { it.id }) { book ->
+                    CurriculumBookOfficialCard(
+                        book = book,
+                        isDarkMode = isDarkMode,
+                        onDirectOpenBook = {
+                            activeBookInViewer = book
                         }
-                    }
+                    )
                 }
             }
         }
@@ -1566,9 +1546,10 @@ fun CurriculumBooksScreen(
 }
 
 /**
- * Interactive Animated Stage for Intermediate & Preparatory Curriculum Stages:
- * Displays `OpeningAndClosing3DBookVectorAnimation` in the center of the stage card
- * with clean, non-technical Arabic copy.
+ * 3) بطاقة واضحة للمراحل التي لم تُرفع كتبها بعد:
+ * تعرض بطاقة بيضاء أنيقة بداخلها الرسم الفيكتوري للمنصة المعرفية العائمة مع العنوان:
+ * "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد"
+ * وتحته: "سيتم إدراج الكتب الرسمية لهذا الصف قريباً من قِبل الإدارة المركزية."
  */
 @Composable
 private fun InteractiveSmartLibraryStageView(
@@ -1577,95 +1558,102 @@ private fun InteractiveSmartLibraryStageView(
     hasActiveSearchQuery: Boolean,
     isDarkMode: Boolean
 ) {
-    Box(
+    Card(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(vertical = 8.dp),
-        contentAlignment = Alignment.Center
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .testTag("curriculum_stage_pending_notice_card"),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White
+        ),
+        border = BorderStroke(
+            1.4.dp,
+            if (isDarkMode) GoldAccent.copy(alpha = 0.45f) else Color(0xFF10B981).copy(alpha = 0.45f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Card(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-                .testTag("curriculum_stage_pending_notice_card"),
-            shape = RoundedCornerShape(26.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White
-            ),
-            border = BorderStroke(
-                1.4.dp,
-                if (isDarkMode) GoldAccent.copy(alpha = 0.45f) else Color(0xFF10B981).copy(alpha = 0.45f)
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = if (isDarkMode) {
-                                listOf(
-                                    Color(0xFF042F24).copy(alpha = 0.65f),
-                                    Color(0xFF0F172A)
-                                )
-                            } else {
-                                listOf(
-                                    Color(0xFFECFDF5).copy(alpha = 0.85f),
-                                    Color.White
-                                )
-                            }
-                        )
-                    )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 28.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Exclusive 3D Opening & Closing Book Vector Animation in the center of the stage card
-                    OpeningAndClosing3DBookVectorAnimation(
-                        modifier = Modifier.size(124.dp),
-                        isDarkMode = isDarkMode
-                    )
-
-                    // Stage & Grade Badge
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFD1FAE5),
-                        border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.70f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Canvas(modifier = Modifier.size(8.dp)) {
-                                drawCircle(color = GoldAccent, radius = size.minDimension / 2f)
-                            }
-                            Text(
-                                text = "${selectedStage.arabicTitle} • $selectedGradeClass",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                .background(
+                    Brush.verticalGradient(
+                        colors = if (isDarkMode) {
+                            listOf(
+                                Color(0xFF042F24).copy(alpha = 0.65f),
+                                Color(0xFF0F172A)
+                            )
+                        } else {
+                            listOf(
+                                Color.White,
+                                Color(0xFFECFDF5).copy(alpha = 0.55f),
+                                Color.White
                             )
                         }
-                    }
-
-                    Text(
-                        text = if (hasActiveSearchQuery) {
-                            "لا توجد كتب مطابقة لعبارة البحث الحالية"
-                        } else {
-                            "كتب هذه المرحلة قيد التجهيز والإضافة قريباً"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color.White else DeepForestGreen,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 24.sp
                     )
+                )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // مشهد المنصة المعرفية العائمة بالمدارات والرموز التعليمية المضيئة
+                OpeningAndClosing3DBookVectorAnimation(
+                    modifier = Modifier.size(132.dp),
+                    isDarkMode = isDarkMode
+                )
+
+                // شارة المرحلة والصف الدراسي
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
+                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.75f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Canvas(modifier = Modifier.size(8.dp)) {
+                            drawCircle(color = GoldAccent, radius = size.minDimension / 2f)
+                        }
+                        Text(
+                            text = "${selectedStage.arabicTitle} • $selectedGradeClass",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                        )
+                    }
                 }
+
+                // العنوان الرئيسي المطلوب
+                Text(
+                    text = "لم يتم رفع المناهج الدراسية لهذه المرحلة بعد",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDarkMode) Color.White else DeepForestGreen,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 25.sp
+                )
+
+                // النص التوضيحي الفرعي المطلوب
+                Text(
+                    text = if (hasActiveSearchQuery) {
+                        "سيتم إدراج الكتب الرسمية لهذا الصف قريباً من قِبل الإدارة المركزية. (لا توجد نتائج مطابقة لعبارة البحث الحالية)"
+                    } else {
+                        "سيتم إدراج الكتب الرسمية لهذا الصف قريباً من قِبل الإدارة المركزية."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 21.sp
+                )
             }
         }
     }
@@ -2240,37 +2228,41 @@ private fun CurriculumHeroBannerWithOpenBookAnimation(
 }
 
 /**
- * Perspective 3D Vector Book Animation (`OpeningAndClosing3DBookVectorAnimation`):
- * Exclusively designed for the Curriculum screen:
- * 1. Emerald & Gold Book Cover (`غلاف الكتاب الزمردي والذهبي`): Left and right covers open and close
- *    at a smooth perspective angle like breathing wings (`wingAngle` oscillating via `sin(progress)`).
- * 2. Live Flipping Pages (`حركة تقليب الأوراق الحية`): 3 layers of Ivory-White pages drawn with curved
- *    Bezier paths (`quadraticBezierTo` / `cubicTo`) rising and flipping from right to left one after
- *    another in an infinite smooth loop, with realistic Book Spine Shadow and a rising golden light aura.
+ * 2) مشهد المنصة المعرفية العائمة (بديلاً عن أنميشن الكتاب الأصفر القديم):
+ * يرسم بـ Canvas منصة معرفية زمردية وذهبية عائمة تحيط بها مدارات ورموز تعليمية مضيئة تسبح بنعومة.
  */
 @Composable
 fun OpeningAndClosing3DBookVectorAnimation(
     modifier: Modifier = Modifier.size(108.dp),
     isDarkMode: Boolean = false
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "perspective_3d_open_book_anim")
-    val wingPhase by infiniteTransition.animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(label = "floating_knowledge_platform_anim")
+    val orbitAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            animation = tween(durationMillis = 4800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "book_wing_breath_phase"
+        label = "knowledge_orbit_angle"
     )
-    val pageCycle by infiniteTransition.animateFloat(
+    val floatWave by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 1f,
+        targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = LinearEasing),
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "book_3_pages_flip_cycle"
+        label = "platform_float_wave"
+    )
+    val glowPulse by infiniteTransition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.14f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "platform_glow_pulse"
     )
 
     Canvas(
@@ -2278,318 +2270,205 @@ fun OpeningAndClosing3DBookVectorAnimation(
     ) {
         val w = size.width
         val h = size.height
-        val cx = w * 0.5f
-        val cy = h * 0.56f
+        val cx = w * 0.50f
+        val cy = h * 0.54f
+        val floatY = sin(floatWave) * (h * 0.032f)
+        val crestFloatY = cos(floatWave) * (h * 0.040f)
 
-        // Smooth opening/closing wing oscillation (opens wide and gently closes partway like breathing wings)
-        val wingBreath = (sin(wingPhase) + 1f) * 0.5f // 0..1
-        val openSpread = 0.72f + wingBreath * 0.28f   // 0.72..1.0 horizontal spread
-        val wingLift = (1f - wingBreath) * (h * 0.085f) // wings rise as the book closes slightly
-        val floatOffset = sin(wingPhase) * (h * 0.025f)
-
-        val spineTopY = cy - h * 0.14f + floatOffset
-        val spineBottomY = cy + h * 0.25f + floatOffset
-        val halfSpanX = w * 0.40f * openSpread
-
-        // 1. Golden Light Aura rising from between the open pages
+        // 1. هالة ضوئية زمردية وذهبية محيطة بالمنصة المعرفية العائمة
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFFDE68A).copy(alpha = 0.48f + 0.18f * wingBreath),
-                    Color(0xFFF59E0B).copy(alpha = 0.20f),
-                    Color(0xFF10B981).copy(alpha = 0.10f),
+                    Color(0xFF10B981).copy(alpha = if (isDarkMode) 0.34f else 0.24f),
+                    Color(0xFFFDE68A).copy(alpha = 0.22f),
                     Color.Transparent
                 ),
-                center = Offset(cx, spineTopY - h * 0.04f),
-                radius = w * (0.42f + 0.06f * wingBreath)
+                center = Offset(cx, cy - h * 0.04f),
+                radius = w * 0.48f * glowPulse
             ),
-            radius = w * (0.42f + 0.06f * wingBreath),
-            center = Offset(cx, spineTopY - h * 0.04f)
+            radius = w * 0.48f * glowPulse,
+            center = Offset(cx, cy - h * 0.04f)
         )
 
-        // Rising golden light rays / sparkles above the open book
-        for (rayIdx in -1..1) {
-            val rayDrift = ((pageCycle + (rayIdx + 1) * 0.33f) % 1f)
-            val rx = cx + rayIdx * (w * 0.12f) * (0.6f + rayDrift * 0.5f)
-            val ry = spineTopY - h * (0.06f + rayDrift * 0.22f)
-            val rayAlpha = (1f - rayDrift) * 0.75f
-            drawCircle(
-                color = Color(0xFFFDE68A).copy(alpha = rayAlpha),
-                radius = (2.6f + (1f - rayDrift) * 2.2f).dp.toPx() * (w / 108.dp.toPx()).coerceIn(0.6f, 1.5f),
-                center = Offset(rx, ry)
-            )
-        }
-
-        // Soft drop shadow beneath the floating 3D book
+        // ظل ناعم أسفل المنصة العائمة
         drawOval(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF042F24).copy(alpha = if (isDarkMode) 0.42f else 0.24f),
+                    Color(0xFF042F24).copy(alpha = if (isDarkMode) 0.45f else 0.22f),
                     Color.Transparent
                 ),
-                center = Offset(cx, spineBottomY + h * 0.10f),
-                radius = halfSpanX * 0.95f
+                center = Offset(cx, h * 0.88f),
+                radius = w * 0.36f
             ),
-            topLeft = Offset(cx - halfSpanX * 0.85f, spineBottomY + h * 0.05f),
-            size = Size(halfSpanX * 1.70f, h * 0.11f)
+            topLeft = Offset(cx - w * 0.34f, h * 0.82f),
+            size = Size(w * 0.68f, h * 0.10f)
         )
 
-        // 2. Emerald & Gold Book Covers (Left & Right Perspective Wings)
-        val coverOuterTopY = spineTopY - h * 0.07f - wingLift
-        val coverOuterBottomY = spineBottomY - h * 0.04f - wingLift
-        val coverThickness = h * 0.035f
+        // 2. المدارات التعليمية المضيئة المحيطة بالمنصة (Tilted Glowing Knowledge Orbits)
+        rotate(degrees = -18f, pivot = Offset(cx, cy - h * 0.04f + floatY)) {
+            drawOval(
+                color = Color(0xFFFDE68A).copy(alpha = 0.55f),
+                topLeft = Offset(cx - w * 0.44f, cy - h * 0.22f + floatY),
+                size = Size(w * 0.88f, h * 0.34f),
+                style = Stroke(width = 1.6.dp.toPx())
+            )
+        }
+        rotate(degrees = 22f, pivot = Offset(cx, cy - h * 0.04f + floatY)) {
+            drawOval(
+                color = Color(0xFF34D399).copy(alpha = 0.50f),
+                topLeft = Offset(cx - w * 0.40f, cy - h * 0.20f + floatY),
+                size = Size(w * 0.80f, h * 0.30f),
+                style = Stroke(width = 1.4.dp.toPx())
+            )
+        }
 
-        // Left Emerald Cover Wing
-        val leftCoverPath = Path().apply {
-            moveTo(cx, spineBottomY + coverThickness)
-            cubicTo(
-                cx - halfSpanX * 0.42f, spineBottomY + coverThickness - h * 0.03f,
-                cx - halfSpanX * 0.78f, coverOuterBottomY + coverThickness + h * 0.02f,
-                cx - halfSpanX * 1.05f, coverOuterBottomY + coverThickness
-            )
-            lineTo(cx - halfSpanX * 1.02f, coverOuterTopY)
-            cubicTo(
-                cx - halfSpanX * 0.70f, coverOuterTopY - h * 0.03f,
-                cx - halfSpanX * 0.35f, spineTopY - h * 0.02f,
-                cx, spineTopY + coverThickness * 0.4f
-            )
+        // 3. القاعدة الهندسية للمنصة المعرفية الزمردية والذهبية العائمة (Floating Emerald & Gold Pedestal)
+        val platY = cy + h * 0.14f + floatY
+        val platHalfW = w * 0.34f
+        val platDepth = h * 0.11f
+
+        // الطبقة السفلية الذهبية للمنصة
+        val lowerPedestal = Path().apply {
+            moveTo(cx, platY - platDepth * 0.45f)
+            lineTo(cx + platHalfW * 0.88f, platY + platDepth * 0.25f)
+            lineTo(cx, platY + platDepth * 1.05f)
+            lineTo(cx - platHalfW * 0.88f, platY + platDepth * 0.25f)
             close()
         }
         drawPath(
-            path = leftCoverPath,
+            path = lowerPedestal,
             brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF059669)),
-                start = Offset(cx, spineBottomY),
-                end = Offset(cx - halfSpanX, coverOuterTopY)
+                colors = listOf(Color(0xFFB45309), Color(0xFFF59E0B), Color(0xFFFDE68A)),
+                start = Offset(cx - platHalfW, platY),
+                end = Offset(cx + platHalfW, platY + platDepth)
             )
-        )
-        drawPath(
-            path = leftCoverPath,
-            color = GoldAccent,
-            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
         )
 
-        // Right Emerald Cover Wing
-        val rightCoverPath = Path().apply {
-            moveTo(cx, spineBottomY + coverThickness)
-            cubicTo(
-                cx + halfSpanX * 0.42f, spineBottomY + coverThickness - h * 0.03f,
-                cx + halfSpanX * 0.78f, coverOuterBottomY + coverThickness + h * 0.02f,
-                cx + halfSpanX * 1.05f, coverOuterBottomY + coverThickness
+        // السطح الزمردي الملكي للمنصة المعرفية العائمة بمنحنيات بيزيير
+        val upperPlatform = Path().apply {
+            moveTo(cx, platY - platDepth)
+            quadraticBezierTo(
+                cx + platHalfW * 0.55f, platY - platDepth * 0.65f,
+                cx + platHalfW, platY
             )
-            lineTo(cx + halfSpanX * 1.02f, coverOuterTopY)
-            cubicTo(
-                cx + halfSpanX * 0.70f, coverOuterTopY - h * 0.03f,
-                cx + halfSpanX * 0.35f, spineTopY - h * 0.02f,
-                cx, spineTopY + coverThickness * 0.4f
+            quadraticBezierTo(
+                cx + platHalfW * 0.55f, platY + platDepth * 0.65f,
+                cx, platY + platDepth * 0.72f
+            )
+            quadraticBezierTo(
+                cx - platHalfW * 0.55f, platY + platDepth * 0.65f,
+                cx - platHalfW, platY
+            )
+            quadraticBezierTo(
+                cx - platHalfW * 0.55f, platY - platDepth * 0.65f,
+                cx, platY - platDepth
             )
             close()
         }
         drawPath(
-            path = rightCoverPath,
+            path = upperPlatform,
             brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF042F24), Color(0xFF065F46), Color(0xFF059669)),
-                start = Offset(cx, spineBottomY),
-                end = Offset(cx + halfSpanX, coverOuterTopY)
+                colors = listOf(
+                    Color(0xFF064E3B),
+                    Color(0xFF0D8A6A),
+                    Color(0xFF10B981)
+                ),
+                start = Offset(cx - platHalfW, platY - platDepth),
+                end = Offset(cx + platHalfW, platY + platDepth)
             )
         )
         drawPath(
-            path = rightCoverPath,
-            color = GoldAccent,
-            style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
+            path = upperPlatform,
+            color = Color(0xFFFDE68A),
+            style = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round)
         )
 
-        // 3. Base Ivory-White Open Page Stacks (Curved Bezier Arch on Left & Right)
-        val pageSpanX = halfSpanX * 0.94f
-        val pageOuterTopY = coverOuterTopY - h * 0.025f
-        val pageOuterBottomY = coverOuterBottomY - h * 0.015f
+        // حلقة الطاقة المعرفية وسط المنصة
+        drawOval(
+            color = Color(0xFFA7F3D0).copy(alpha = 0.75f),
+            topLeft = Offset(cx - platHalfW * 0.52f, platY - platDepth * 0.34f),
+            size = Size(platHalfW * 1.04f, platDepth * 0.68f),
+            style = Stroke(width = 1.3.dp.toPx())
+        )
 
-        val leftRestingPage = Path().apply {
-            moveTo(cx, spineBottomY)
-            cubicTo(
-                cx - pageSpanX * 0.35f, spineBottomY - h * 0.06f,
-                cx - pageSpanX * 0.72f, pageOuterBottomY - h * 0.02f,
-                cx - pageSpanX, pageOuterBottomY
-            )
-            lineTo(cx - pageSpanX * 0.97f, pageOuterTopY)
-            cubicTo(
-                cx - pageSpanX * 0.68f, pageOuterTopY - h * 0.055f,
-                cx - pageSpanX * 0.32f, spineTopY - h * 0.065f,
-                cx, spineTopY
-            )
+        // 4. البلورة / المنارة المعرفية الزمردية الذهبية العائمة فوق المنصة
+        val beaconCenterY = cy - h * 0.12f + crestFloatY
+        val crystalW = w * 0.18f
+        val crystalH = h * 0.22f
+
+        val crystalPath = Path().apply {
+            moveTo(cx, beaconCenterY - crystalH)
+            lineTo(cx + crystalW, beaconCenterY)
+            lineTo(cx, beaconCenterY + crystalH * 0.78f)
+            lineTo(cx - crystalW, beaconCenterY)
             close()
         }
         drawPath(
-            path = leftRestingPage,
-            brush = Brush.horizontalGradient(
-                colors = listOf(
-                    Color(0xFFFFFDF7),
-                    Color(0xFFFAF6EE),
-                    Color(0xFFE2DCCD)
-                ),
-                startX = cx - pageSpanX,
-                endX = cx
-            )
-        )
-        drawPath(
-            path = leftRestingPage,
-            color = Color(0xFFD6CEBF),
-            style = Stroke(width = 1.1.dp.toPx(), join = StrokeJoin.Round)
-        )
-
-        val rightRestingPage = Path().apply {
-            moveTo(cx, spineBottomY)
-            cubicTo(
-                cx + pageSpanX * 0.35f, spineBottomY - h * 0.06f,
-                cx + pageSpanX * 0.72f, pageOuterBottomY - h * 0.02f,
-                cx + pageSpanX, pageOuterBottomY
-            )
-            lineTo(cx + pageSpanX * 0.97f, pageOuterTopY)
-            cubicTo(
-                cx + pageSpanX * 0.68f, pageOuterTopY - h * 0.055f,
-                cx + pageSpanX * 0.32f, spineTopY - h * 0.065f,
-                cx, spineTopY
-            )
-            close()
-        }
-        drawPath(
-            path = rightRestingPage,
-            brush = Brush.horizontalGradient(
-                colors = listOf(
-                    Color(0xFFE2DCCD),
-                    Color(0xFFFAF6EE),
-                    Color(0xFFFFFDF7)
-                ),
-                startX = cx,
-                endX = cx + pageSpanX
-            )
-        )
-        drawPath(
-            path = rightRestingPage,
-            color = Color(0xFFD6CEBF),
-            style = Stroke(width = 1.1.dp.toPx(), join = StrokeJoin.Round)
-        )
-
-        // Subtle text lines on resting left & right pages
-        for (lineIdx in 1..3) {
-            val frac = lineIdx * 0.22f
-            val ly = spineTopY + (spineBottomY - spineTopY) * frac
-            drawQuadraticBezierLine(
-                start = Offset(cx - pageSpanX * 0.18f, ly - h * 0.01f),
-                control = Offset(cx - pageSpanX * 0.50f, ly - h * 0.045f),
-                end = Offset(cx - pageSpanX * 0.80f, ly - h * 0.02f),
-                color = Color(0xFF059669).copy(alpha = 0.25f),
-                strokeWidth = 1.3.dp.toPx()
-            )
-            drawQuadraticBezierLine(
-                start = Offset(cx + pageSpanX * 0.18f, ly - h * 0.01f),
-                control = Offset(cx + pageSpanX * 0.50f, ly - h * 0.045f),
-                end = Offset(cx + pageSpanX * 0.80f, ly - h * 0.02f),
-                color = Color(0xFF059669).copy(alpha = 0.25f),
-                strokeWidth = 1.3.dp.toPx()
-            )
-        }
-
-        // 4. 3 Layers of Live Flipping Ivory-White Pages (Right-to-Left Continuous Bezier Flip)
-        for (layer in 0 until 3) {
-            val layerProgress = (pageCycle + layer / 3f) % 1f
-            // Smooth S-curve easing for each page flip
-            val eased = (1f - cos(layerProgress * PI).toFloat()) * 0.5f
-            val angleRad = eased * PI.toFloat() // 0 (right) -> PI (left)
-            val cosA = cos(angleRad)            // +1 (right) -> -1 (left)
-            val sinA = sin(angleRad)            // 0 -> 1 (top of arch) -> 0
-
-            val tipX = cx + cosA * (pageSpanX * 0.94f)
-            val archLift = sinA * (h * 0.20f)
-            val tipTopY = pageOuterTopY - archLift
-            val tipBottomY = pageOuterBottomY - archLift * 0.88f
-
-            val ctrlX = cx + cosA * (pageSpanX * 0.46f)
-            val ctrlLift = sinA * (h * 0.25f) + h * 0.04f
-
-            val flippingPagePath = Path().apply {
-                moveTo(cx, spineBottomY)
-                quadraticBezierTo(
-                    ctrlX,
-                    spineBottomY - ctrlLift,
-                    tipX,
-                    tipBottomY
-                )
-                lineTo(tipX, tipTopY)
-                quadraticBezierTo(
-                    ctrlX,
-                    spineTopY - ctrlLift,
-                    cx,
-                    spineTopY
-                )
-                close()
-            }
-
-            val pageAlpha = (0.96f - sinA * 0.06f).coerceIn(0.85f, 0.98f)
-            drawPath(
-                path = flippingPagePath,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFFEAE3D2).copy(alpha = pageAlpha),
-                        Color(0xFFFFFDF7).copy(alpha = pageAlpha),
-                        Color(0xFFFAF6EE).copy(alpha = pageAlpha)
-                    ),
-                    start = Offset(cx, (spineTopY + spineBottomY) * 0.5f),
-                    end = Offset(tipX, (tipTopY + tipBottomY) * 0.5f)
-                )
-            )
-            drawPath(
-                path = flippingPagePath,
-                color = GoldAccent.copy(alpha = 0.55f + sinA * 0.30f),
-                style = Stroke(width = 1.2.dp.toPx(), join = StrokeJoin.Round)
-            )
-        }
-
-        // 5. Realistic Book Spine Shadow & Golden Spine Clasp in Center
-        drawRect(
-            brush = Brush.horizontalGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    Color(0xFF042F24).copy(alpha = 0.30f),
-                    Color(0xFF042F24).copy(alpha = 0.12f),
-                    Color.Transparent
-                ),
-                startX = cx - w * 0.07f,
-                endX = cx + w * 0.07f
-            ),
-            topLeft = Offset(cx - w * 0.07f, spineTopY),
-            size = Size(w * 0.14f, spineBottomY - spineTopY)
-        )
-        drawLine(
+            path = crystalPath,
             brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFFFDE68A), GoldAccent, Color(0xFFB45309)),
-                startY = spineTopY,
-                endY = spineBottomY + coverThickness
-            ),
-            start = Offset(cx, spineTopY),
-            end = Offset(cx, spineBottomY + coverThickness),
-            strokeWidth = 2.6.dp.toPx(),
-            cap = StrokeCap.Round
+                colors = listOf(
+                    Color(0xFFFDE68A),
+                    Color(0xFF10B981),
+                    Color(0xFF064E3B)
+                ),
+                startY = beaconCenterY - crystalH,
+                endY = beaconCenterY + crystalH
+            )
         )
-    }
-}
+        drawPath(
+            path = crystalPath,
+            color = Color.White.copy(alpha = 0.85f),
+            style = Stroke(width = 1.5.dp.toPx(), join = StrokeJoin.Round)
+        )
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawQuadraticBezierLine(
-    start: Offset,
-    control: Offset,
-    end: Offset,
-    color: Color,
-    strokeWidth: Float
-) {
-    val p = Path().apply {
-        moveTo(start.x, start.y)
-        quadraticBezierTo(control.x, control.y, end.x, end.y)
+        // تاج أكاديمي مصغر مضيء أعلى المنارة المعرفية
+        val crownY = beaconCenterY - crystalH - h * 0.04f
+        drawCircle(
+            color = Color(0xFFFDE68A),
+            radius = 3.5.dp.toPx() * glowPulse,
+            center = Offset(cx, crownY)
+        )
+
+        // 5. رموز وكواكب تعليمية مضيئة تسبح بنعومة في المدارات المحيطة (Swimming Educational Symbols)
+        for (idx in 0 until 4) {
+            val symbolAngle = orbitAngle + idx * (PI.toFloat() * 0.5f)
+            val rx = w * 0.39f
+            val ry = h * 0.16f
+            val sx = cx + cos(symbolAngle) * rx
+            val sy = (cy - h * 0.04f + floatY) + sin(symbolAngle) * ry
+
+            // هالة الرمز التعليمي السابح
+            drawCircle(
+                color = if (idx % 2 == 0) Color(0xFFFDE68A).copy(alpha = 0.32f) else Color(0xFF34D399).copy(alpha = 0.32f),
+                radius = 7.dp.toPx() * glowPulse,
+                center = Offset(sx, sy)
+            )
+
+            // شكل الرمز التعليمي (نجمة معرفية / ماسة علمية / ذرة مضيئة)
+            if (idx % 2 == 0) {
+                val starR = 4.2.dp.toPx()
+                val diamond = Path().apply {
+                    moveTo(sx, sy - starR)
+                    lineTo(sx + starR, sy)
+                    lineTo(sx, sy + starR)
+                    lineTo(sx - starR, sy)
+                    close()
+                }
+                drawPath(path = diamond, color = Color(0xFFFDE68A))
+            } else {
+                drawCircle(
+                    color = Color(0xFF6EE7B7),
+                    radius = 3.6.dp.toPx(),
+                    center = Offset(sx, sy)
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = 1.6.dp.toPx(),
+                    center = Offset(sx, sy)
+                )
+            }
+        }
     }
-    drawPath(
-        path = p,
-        color = color,
-        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-    )
 }
 
 /**
