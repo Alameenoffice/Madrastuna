@@ -2137,12 +2137,12 @@ fun UnifiedLoginScreen(
     onBiometricLogin: () -> Result<*> = { Result.success(null) },
     onShowErrorToast: (String) -> Unit = {},
     hasActiveTopToast: Boolean = false,
-    onSwitchSchoolCodeGate: () -> Unit = {},
-    studentsForQrLogin: List<StudentRecord> = emptyList(),
-    onStudentBarcodeLogin: (String) -> Result<*> = {
-        Result.failure<Any>(IllegalArgumentException("عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."))
-    }
+    onSwitchSchoolCodeGate: () -> Unit = {}
 ) {
+    val schoolViewModel: SchoolViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val viewModelStudents by schoolViewModel.students.collectAsState()
+    val viewModelAccounts by schoolViewModel.accounts.collectAsState()
+
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
@@ -2833,14 +2833,169 @@ fun UnifiedLoginScreen(
         if (showStudentBarcodeScannerModal) {
             StudentIdQrLoginDialog(
                 schoolConfig = schoolConfig,
-                students = studentsForQrLogin,
+                students = viewModelStudents,
+                accounts = viewModelAccounts,
                 onDismiss = { showStudentBarcodeScannerModal = false },
-                onBarcodeScannedOrSubmitted = { barcodePayload ->
-                    onStudentBarcodeLogin(barcodePayload)
+                onBarcodeVerifiedLogin = { resolvedCreds ->
+                    loginError = null
+                    username = resolvedCreds.loginUsername
+                    password = resolvedCreds.loginPassword
+                    onUsernameChanged(resolvedCreds.loginUsername)
+                    val primaryAttempt = onLoginAttempt(resolvedCreds.loginUsername, resolvedCreds.loginPassword)
+                    if (primaryAttempt.isSuccess) {
+                        primaryAttempt
+                    } else if (resolvedCreds.fallbackUsername.isNotBlank() &&
+                        resolvedCreds.fallbackUsername != resolvedCreds.loginUsername
+                    ) {
+                        username = resolvedCreds.fallbackUsername
+                        onUsernameChanged(resolvedCreds.fallbackUsername)
+                        onLoginAttempt(resolvedCreds.fallbackUsername, resolvedCreds.loginPassword)
+                    } else {
+                        primaryAttempt
+                    }
                 }
             )
         }
     }
+}
+
+data class ResolvedStudentBarcodeCredentials(
+    val studentName: String,
+    val loginUsername: String,
+    val loginPassword: String,
+    val fallbackUsername: String = ""
+)
+
+private fun resolveStudentCredentialsFromBarcode(
+    rawInput: String,
+    activeSchoolId: String,
+    students: List<StudentRecord>,
+    accounts: List<UserAccount>
+): ResolvedStudentBarcodeCredentials? {
+    val clean = rawInput.trim()
+    if (clean.isEmpty()) return null
+
+    val colonParts = clean.split(":").map { it.trim() }
+    val pipeParts = clean.split("|").map { it.trim() }
+    val extractedTokenId: String = when {
+        colonParts.size >= 3 && colonParts[0].equals("MADRASATI_ID", ignoreCase = true) -> colonParts[2]
+        pipeParts.size >= 3 && pipeParts[0].equals("MADRASATI", ignoreCase = true) -> pipeParts[2]
+        clean.startsWith("WALLET-", ignoreCase = true) -> clean.split("-").getOrNull(2)?.trim().orEmpty()
+        else -> clean
+    }
+    val extractedPipeStudentName: String = if (pipeParts.size >= 4 && pipeParts[0].equals("MADRASATI", ignoreCase = true)) {
+        pipeParts[3]
+    } else {
+        ""
+    }
+
+    val scopedStudents = students.filter {
+        activeSchoolId.isBlank() || it.schoolId.isBlank() || it.schoolId.equals(activeSchoolId, ignoreCase = true)
+    }.ifEmpty { students }
+
+    val matchedStudent = scopedStudents.firstOrNull { stu ->
+        val sCode = stu.schoolId.ifBlank { activeSchoolId.ifBlank { "100" } }
+        val expectedMadrasatiId = "MADRASATI_ID:$sCode:${stu.id}"
+        val expectedPipePrefix = "MADRASATI|$sCode|${stu.id}"
+        val expectedWallet = "WALLET-$sCode-${stu.id}"
+        val strippedStuUser = if (sCode.isNotBlank()) {
+            stu.studentUsername.removePrefix("$sCode-").removePrefix("${sCode}_")
+        } else {
+            stu.studentUsername
+        }
+        val strippedInput = if (sCode.isNotBlank()) {
+            extractedTokenId.removePrefix("$sCode-").removePrefix("${sCode}_")
+        } else {
+            extractedTokenId
+        }
+
+        stu.qrCodeValue.equals(clean, ignoreCase = true) ||
+            expectedMadrasatiId.equals(clean, ignoreCase = true) ||
+            clean.startsWith(expectedPipePrefix, ignoreCase = true) ||
+            expectedWallet.equals(clean, ignoreCase = true) ||
+            stu.id.equals(clean, ignoreCase = true) ||
+            stu.id.equals(extractedTokenId, ignoreCase = true) ||
+            stu.studentUsername.equals(clean, ignoreCase = true) ||
+            stu.studentUsername.equals(extractedTokenId, ignoreCase = true) ||
+            (strippedStuUser.isNotBlank() && strippedStuUser.equals(strippedInput, ignoreCase = true)) ||
+            stu.studentName.trim().equals(clean, ignoreCase = true) ||
+            (extractedPipeStudentName.isNotBlank() && stu.studentName.trim().equals(extractedPipeStudentName, ignoreCase = true)) ||
+            clean.endsWith(":${stu.id}", ignoreCase = true) ||
+            clean.contains("|${stu.id}|", ignoreCase = true)
+    }
+
+    val studentAccounts = accounts.filter {
+        it.role == UserRole.STUDENT &&
+            (activeSchoolId.isBlank() || it.schoolId.isBlank() || it.schoolId.equals(activeSchoolId, ignoreCase = true))
+    }.ifEmpty {
+        accounts.filter { it.role == UserRole.STUDENT }
+    }
+
+    val matchedAccount = studentAccounts.firstOrNull { acc ->
+        val sCode = acc.schoolId.ifBlank { activeSchoolId }
+        val strippedAccUser = if (sCode.isNotBlank()) {
+            acc.username.removePrefix("$sCode-").removePrefix("${sCode}_")
+        } else {
+            acc.username
+        }
+        val strippedInput = if (sCode.isNotBlank()) {
+            extractedTokenId.removePrefix("$sCode-").removePrefix("${sCode}_")
+        } else {
+            extractedTokenId
+        }
+
+        (matchedStudent != null && (
+            acc.linkedStudentId.equals(matchedStudent.id, ignoreCase = true) ||
+                acc.username.equals(matchedStudent.studentUsername, ignoreCase = true) ||
+                acc.id.equals(matchedStudent.id, ignoreCase = true) ||
+                acc.fullName.trim().equals(matchedStudent.studentName.trim(), ignoreCase = true)
+            )) ||
+            acc.id.equals(clean, ignoreCase = true) ||
+            acc.id.equals(extractedTokenId, ignoreCase = true) ||
+            acc.linkedStudentId.equals(clean, ignoreCase = true) ||
+            acc.linkedStudentId.equals(extractedTokenId, ignoreCase = true) ||
+            acc.username.equals(clean, ignoreCase = true) ||
+            acc.username.equals(extractedTokenId, ignoreCase = true) ||
+            (strippedAccUser.isNotBlank() && strippedAccUser.equals(strippedInput, ignoreCase = true)) ||
+            acc.fullName.trim().equals(clean, ignoreCase = true) ||
+            (extractedPipeStudentName.isNotBlank() && acc.fullName.trim().equals(extractedPipeStudentName, ignoreCase = true))
+    }
+
+    if (matchedStudent == null && matchedAccount == null) {
+        return null
+    }
+
+    val rawUsername = matchedAccount?.username?.takeIf { it.isNotBlank() }
+        ?: matchedStudent?.studentUsername?.takeIf { it.isNotBlank() }
+        ?: return null
+    val rawPassword = matchedAccount?.password?.takeIf { it.isNotBlank() }
+        ?: matchedStudent?.studentPassword?.takeIf { it.isNotBlank() }
+        ?: ""
+    val displayName = matchedStudent?.studentName?.takeIf { it.isNotBlank() }
+        ?: matchedAccount?.fullName?.takeIf { it.isNotBlank() }
+        ?: rawUsername
+
+    val schoolPrefix = matchedStudent?.schoolId?.takeIf { it.isNotBlank() }
+        ?: matchedAccount?.schoolId?.takeIf { it.isNotBlank() }
+        ?: activeSchoolId
+
+    val primaryUsername = if (schoolPrefix.isNotBlank() && !rawUsername.startsWith("$schoolPrefix-")) {
+        "$schoolPrefix-$rawUsername"
+    } else {
+        rawUsername
+    }
+    val secondaryUsername = if (rawUsername.contains("-")) {
+        rawUsername.substringAfter("-")
+    } else {
+        rawUsername
+    }
+
+    return ResolvedStudentBarcodeCredentials(
+        studentName = displayName,
+        loginUsername = primaryUsername,
+        loginPassword = rawPassword,
+        fallbackUsername = secondaryUsername
+    )
 }
 
 /**
@@ -3139,8 +3294,9 @@ fun StudentIdBezierLaserScannerFrame(
 fun StudentIdQrLoginDialog(
     schoolConfig: SchoolConfig,
     students: List<StudentRecord>,
+    accounts: List<UserAccount> = emptyList(),
     onDismiss: () -> Unit,
-    onBarcodeScannedOrSubmitted: (String) -> Result<*>
+    onBarcodeVerifiedLogin: (ResolvedStudentBarcodeCredentials) -> Result<*>
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -3181,35 +3337,27 @@ fun StudentIdQrLoginDialog(
             return
         }
         scannerError = null
-        isProcessingScan = true
 
-        // التحقق المسبق من اسم الطالب لعرض رسالة الترحيب الزمردية الفورية قبل الانتقال للوحة التحكم
-        val matchedPreviewStudent = com.example.util.StandardQrCodeHelper.matchStudentFromQrPayloadOrStudents(
+        val resolvedCredentials = resolveStudentCredentialsFromBarcode(
             rawInput = trimmed,
-            students = students
-        ) ?: students.firstOrNull { it.matchesBarcodePayload(trimmed) }
+            activeSchoolId = schoolConfig.schoolId,
+            students = students,
+            accounts = accounts
+        )
 
-        if (matchedPreviewStudent != null && !schoolConfig.isSuspended) {
-            verifiedWelcomeBanner = "تم التعرف على الهوية الطلابية: مرحباً بك ${matchedPreviewStudent.fullNameWithFather}"
-            coroutineScope.launch {
-                delay(650L)
-                val result = onBarcodeScannedOrSubmitted(trimmed)
-                isProcessingScan = false
-                if (result.isSuccess) {
-                    onDismiss()
-                } else {
-                    verifiedWelcomeBanner = null
-                    scannerError = result.exceptionOrNull()?.message
-                        ?: "عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."
-                }
-            }
-        } else {
-            val result = onBarcodeScannedOrSubmitted(trimmed)
+        if (resolvedCredentials == null) {
+            verifiedWelcomeBanner = null
+            scannerError = "عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."
+            return
+        }
+
+        isProcessingScan = true
+        verifiedWelcomeBanner = "تم التعرف على الهوية الطلابية: مرحباً بك ${resolvedCredentials.studentName}"
+        coroutineScope.launch {
+            delay(550L)
+            val result = onBarcodeVerifiedLogin(resolvedCredentials)
             isProcessingScan = false
             if (result.isSuccess) {
-                val loggedAccount = result.getOrNull() as? UserAccount
-                val welcomeName = loggedAccount?.fullName ?: matchedPreviewStudent?.fullNameWithFather ?: "طالبنا العزيز"
-                verifiedWelcomeBanner = "تم التعرف على الهوية الطلابية: مرحباً بك $welcomeName"
                 onDismiss()
             } else {
                 verifiedWelcomeBanner = null
@@ -3446,9 +3594,9 @@ fun StudentIdQrLoginDialog(
                                 .clip(RoundedCornerShape(20.dp))
                                 .border(1.5.dp, Color(0xFFFBBF24), RoundedCornerShape(20.dp))
                         ) {
-                            com.example.util.StandardQrCodeHelper.LiveCameraQrScannerBox(
+                            com.example.util.LiveCameraQrScannerBox(
                                 students = students,
-                                onQrCodeScanned = { detectedCode: String ->
+                                onStudentDetected = { detectedCode: String ->
                                     barcodeTokenInput = detectedCode
                                     executeBarcodeLoginFlow(detectedCode)
                                 },
@@ -3728,7 +3876,7 @@ fun StudentIdQrLoginDialog(
                                                 )
                                                 Column {
                                                     Text(
-                                                        text = stu.fullNameWithFather,
+                                                        text = stu.studentName,
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.ExtraBold,
                                                         color = Color(0xFFFEF3C7),

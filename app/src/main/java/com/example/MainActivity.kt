@@ -327,9 +327,7 @@ fun MadrasatiRootApp(
                     onBiometricLogin = { viewModel.loginWithSavedBiometrics() },
                     onShowErrorToast = { errMsg -> viewModel.showToastAlert(errMsg, isSuccess = false) },
                     hasActiveTopToast = toastAlert != null,
-                    onSwitchSchoolCodeGate = { viewModel.returnToSchoolSecurityGate() },
-                    studentsForQrLogin = studentsForQrLogin,
-                    onStudentBarcodeLogin = { barcodePayload -> viewModel.loginWithStudentBarcode(barcodePayload) }
+                    onSwitchSchoolCodeGate = { viewModel.returnToSchoolSecurityGate() }
                 )
             }
             currentUser?.isBusDriverAccount == true -> {
