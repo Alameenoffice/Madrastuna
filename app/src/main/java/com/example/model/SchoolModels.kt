@@ -546,20 +546,76 @@ data class SchoolConfig(
     val isSuspended: Boolean = false,
     val activeBusEvent: String = "",
     val activeBusEventTimestamp: String = "",
+    val activeBusEventDateIso: String = "",
     val allowParentToViewDriverIdentity: Boolean = true,
     val busDriverName: String = "السائق المعتمد للخط المدرسي",
     val busDriverPhone: String = "",
     val busVehicleNumber: String = "مركبة النقل المدرسي الحديثة",
+    val busVehicleTypeAndColor: String = "باص مدرسي حديث • أبيض وزمردي",
     val busDriverPhotoBase64: String = "",
     val busRouteAreaName: String = "",
     val busDriverIdentityDetails: String = "",
     val isDriverAccountEnabled: Boolean = false,
     val busDriverUsername: String = "",
-    val busDriverPassword: String = ""
+    val busDriverPassword: String = "",
+    val registeredBusRoutes: List<BusRouteFleetItem> = emptyList()
 ) {
     fun daysUntilExpiry(): Long = DateCountdownHelper.daysUntilDate(subscriptionExpiryDate) ?: 365L
     fun isWithinRenewalWarningWindow(): Boolean = daysUntilExpiry() <= 14L
+
+    /**
+     * Auto Daily Reset: If a new day (`todayIso`) has started since `activeBusEventDateIso`,
+     * automatically resets the trip state to `BusEventType.MORNING_DEPARTURE`.
+     */
+    fun effectiveActiveBusEventForDate(todayIso: String): BusEventType {
+        val cleanToday = ArabicTextNormalizer.normalizeDateIso(todayIso.trim())
+        val cleanEventDate = ArabicTextNormalizer.normalizeDateIso(activeBusEventDateIso.trim())
+        if (cleanToday.isNotEmpty() && cleanEventDate.isNotEmpty() && cleanToday != cleanEventDate) {
+            return BusEventType.MORNING_DEPARTURE
+        }
+        return BusEventType.entries.firstOrNull { it.name == activeBusEvent } ?: BusEventType.MORNING_DEPARTURE
+    }
+
+    /**
+     * Automatically binds the Driver's scanner mode to the School Administration's trip state:
+     * - When the Principal sets `RETURN_HOME_DEPARTURE` today -> `BusBoardingScanMode.ALIGHTING` (رحلة المغادرة والعودة للمنازل)
+     * - Otherwise (morning / start of new day) -> `BusBoardingScanMode.BOARDING` (رحلة الصعود الصباحي إلى المدرسة)
+     */
+    fun effectiveDriverScanModeForDate(todayIso: String): BusBoardingScanMode {
+        return if (effectiveActiveBusEventForDate(todayIso) == BusEventType.RETURN_HOME_DEPARTURE) {
+            BusBoardingScanMode.ALIGHTING
+        } else {
+            BusBoardingScanMode.BOARDING
+        }
+    }
+
+    val effectiveBusRoutesList: List<BusRouteFleetItem>
+        get() {
+            if (registeredBusRoutes.isNotEmpty()) return registeredBusRoutes
+            val defaultRouteName = busRouteAreaName.ifBlank { "الخط الصباحي والمسائي المعتمد" }
+            return listOf(
+                BusRouteFleetItem(
+                    id = "route_default_1",
+                    routeAreaName = defaultRouteName,
+                    vehicleTypeAndColor = busVehicleTypeAndColor.ifBlank { "باص مدرسي حديث • أبيض وزمردي" },
+                    vehiclePlateNumber = busVehicleNumber.ifBlank { "مركبة النقل المدرسي الحديثة" },
+                    driverName = busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" },
+                    driverPhone = busDriverPhone,
+                    driverIdentityDetails = busDriverIdentityDetails
+                )
+            )
+        }
 }
+
+data class BusRouteFleetItem(
+    val id: String = "",
+    val routeAreaName: String = "",
+    val vehicleTypeAndColor: String = "باص مدرسي حديث • أبيض وزمردي",
+    val vehiclePlateNumber: String = "",
+    val driverName: String = "",
+    val driverPhone: String = "",
+    val driverIdentityDetails: String = ""
+)
 
 data class UserSession(
     val userId: String,
@@ -1087,14 +1143,18 @@ data class StudentRecord(
     val heartCount: Int = 0,
     val likedByUserIds: List<String> = emptyList(),
     val isBusSubscribed: Boolean = false,
+    val busRouteId: String = "",
     val busRouteName: String = "الخط الصباحي والمسائي",
     val busDriverName: String = "",
     val busDriverPhone: String = "",
     val busVehicleNumber: String = "",
+    val busVehicleTypeAndColor: String = "",
     val busBoardingStatus: String = "",
     val busBoardingTimestamp: String = "",
     val busBoardingDateIso: String = "",
     val busBoardingDriverName: String = "",
+    val busMorningBoardedTime: String = "",
+    val busReturnDepartedTime: String = "",
     val schoolId: String = "",
     val dailyAttendance: Map<String, String> = emptyMap(),
     val todayStatus: String = "",
@@ -1315,6 +1375,42 @@ data class StudentRecord(
                 "$cleanStudent $cleanFather"
             }
         }
+
+    fun isSameBusScanDate(todayIso: String): Boolean {
+        val cleanToday = ArabicTextNormalizer.normalizeDateIso(todayIso.trim())
+        val cleanScanDate = ArabicTextNormalizer.normalizeDateIso(busBoardingDateIso.trim())
+        return cleanToday.isNotEmpty() && cleanScanDate.isNotEmpty() && cleanToday == cleanScanDate
+    }
+
+    fun getMorningBoardedTimeToday(todayIso: String): String {
+        if (!isSameBusScanDate(todayIso)) return ""
+        return busMorningBoardedTime.ifBlank {
+            if (busBoardingStatus.equals(BusBoardingScanMode.BOARDING.name, ignoreCase = true)) busBoardingTimestamp else ""
+        }
+    }
+
+    fun getReturnDepartedTimeToday(todayIso: String): String {
+        if (!isSameBusScanDate(todayIso)) return ""
+        return busReturnDepartedTime.ifBlank {
+            if (busBoardingStatus.equals(BusBoardingScanMode.ALIGHTING.name, ignoreCase = true)) busBoardingTimestamp else ""
+        }
+    }
+
+    fun isBoardedMorningToday(todayIso: String): Boolean =
+        getMorningBoardedTimeToday(todayIso).isNotBlank()
+
+    fun isDepartedReturnToday(todayIso: String): Boolean =
+        getReturnDepartedTimeToday(todayIso).isNotBlank()
+
+    fun getEffectiveBoardingStatusToday(todayIso: String): String {
+        if (!isSameBusScanDate(todayIso)) return ""
+        return busBoardingStatus
+    }
+
+    fun getEffectiveBoardingTimestampToday(todayIso: String): String {
+        if (!isSameBusScanDate(todayIso)) return ""
+        return busBoardingTimestamp
+    }
 }
 
 enum class GateScanMode(val arabicTitle: String, val shortLabel: String) {

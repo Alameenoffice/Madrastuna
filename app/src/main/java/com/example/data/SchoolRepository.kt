@@ -244,16 +244,42 @@ class SchoolRepository(context: Context) {
                 isSuspended = obj.optBoolean("isSuspended", !obj.optBoolean("isActive", true)),
                 activeBusEvent = obj.optString("activeBusEvent", ""),
                 activeBusEventTimestamp = obj.optString("activeBusEventTimestamp", ""),
+                activeBusEventDateIso = ArabicTextNormalizer.normalizeDateIso(obj.optString("activeBusEventDateIso", "")),
                 allowParentToViewDriverIdentity = obj.optBoolean("allowParentToViewDriverIdentity", true),
                 busDriverName = obj.optString("busDriverName", "السائق المعتمد للخط المدرسي").ifBlank { "السائق المعتمد للخط المدرسي" },
                 busDriverPhone = obj.optString("busDriverPhone", ""),
                 busVehicleNumber = obj.optString("busVehicleNumber", "مركبة النقل المدرسي الحديثة").ifBlank { "مركبة النقل المدرسي الحديثة" },
+                busVehicleTypeAndColor = obj.optString("busVehicleTypeAndColor", "باص مدرسي حديث • أبيض وزمردي").ifBlank { "باص مدرسي حديث • أبيض وزمردي" },
                 busDriverPhotoBase64 = obj.optString("busDriverPhotoBase64", ""),
                 busRouteAreaName = obj.optString("busRouteAreaName", ""),
                 busDriverIdentityDetails = obj.optString("busDriverIdentityDetails", ""),
                 isDriverAccountEnabled = obj.optBoolean("isDriverAccountEnabled", false),
                 busDriverUsername = obj.optString("busDriverUsername", ""),
-                busDriverPassword = obj.optString("busDriverPassword", "")
+                busDriverPassword = obj.optString("busDriverPassword", ""),
+                registeredBusRoutes = run {
+                    val routesArr = obj.optJSONArray("registeredBusRoutes")
+                    val list = mutableListOf<BusRouteFleetItem>()
+                    if (routesArr != null) {
+                        for (rIdx in 0 until routesArr.length()) {
+                            val rObj = routesArr.optJSONObject(rIdx) ?: continue
+                            val rName = rObj.optString("routeAreaName", "").trim()
+                            if (rName.isNotEmpty() || rObj.optString("driverName", "").isNotBlank()) {
+                                list.add(
+                                    BusRouteFleetItem(
+                                        id = rObj.optString("id", "route_${rIdx + 1}"),
+                                        routeAreaName = rName.ifBlank { "خط مدرسي ${rIdx + 1}" },
+                                        vehicleTypeAndColor = rObj.optString("vehicleTypeAndColor", "باص مدرسي حديث • أبيض وزمردي").ifBlank { "باص مدرسي حديث • أبيض وزمردي" },
+                                        vehiclePlateNumber = rObj.optString("vehiclePlateNumber", ""),
+                                        driverName = rObj.optString("driverName", ""),
+                                        driverPhone = rObj.optString("driverPhone", ""),
+                                        driverIdentityDetails = rObj.optString("driverIdentityDetails", "")
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    list
+                }
             )
         } catch (e: Exception) {
             SchoolConfig()
@@ -451,16 +477,31 @@ class SchoolRepository(context: Context) {
             put("isSuspended", config.isSuspended || !config.isActive)
             put("activeBusEvent", InputSanitizer.sanitize(config.activeBusEvent))
             put("activeBusEventTimestamp", InputSanitizer.sanitize(config.activeBusEventTimestamp))
+            put("activeBusEventDateIso", ArabicTextNormalizer.normalizeDateIso(config.activeBusEventDateIso))
             put("allowParentToViewDriverIdentity", config.allowParentToViewDriverIdentity)
             put("busDriverName", InputSanitizer.sanitize(config.busDriverName))
             put("busDriverPhone", InputSanitizer.sanitize(config.busDriverPhone))
             put("busVehicleNumber", InputSanitizer.sanitize(config.busVehicleNumber))
+            put("busVehicleTypeAndColor", InputSanitizer.sanitize(config.busVehicleTypeAndColor))
             put("busDriverPhotoBase64", config.busDriverPhotoBase64)
             put("busRouteAreaName", InputSanitizer.sanitize(config.busRouteAreaName))
             put("busDriverIdentityDetails", InputSanitizer.sanitize(config.busDriverIdentityDetails))
             put("isDriverAccountEnabled", config.isDriverAccountEnabled)
             put("busDriverUsername", InputSanitizer.sanitizeUsername(config.busDriverUsername))
             put("busDriverPassword", InputSanitizer.sanitize(config.busDriverPassword))
+            val routesJsonArr = JSONArray()
+            config.registeredBusRoutes.forEach { r ->
+                routesJsonArr.put(JSONObject().apply {
+                    put("id", r.id.ifBlank { "route_${UUID.randomUUID().toString().take(5)}" })
+                    put("routeAreaName", InputSanitizer.sanitize(r.routeAreaName))
+                    put("vehicleTypeAndColor", InputSanitizer.sanitize(r.vehicleTypeAndColor))
+                    put("vehiclePlateNumber", InputSanitizer.sanitize(r.vehiclePlateNumber))
+                    put("driverName", InputSanitizer.sanitize(r.driverName))
+                    put("driverPhone", InputSanitizer.sanitize(r.driverPhone))
+                    put("driverIdentityDetails", InputSanitizer.sanitize(r.driverIdentityDetails))
+                })
+            }
+            put("registeredBusRoutes", routesJsonArr)
         }
         val jsonStr = obj.toString()
         val featStr = featJson.toString()
@@ -1025,14 +1066,18 @@ class SchoolRepository(context: Context) {
                         },
                         likedByUserIds = jsonArrayToList(o.optJSONArray("likedBy") ?: o.optJSONArray("likedByUserIds")).distinct(),
                         isBusSubscribed = o.optBoolean("isBusSubscribed", false),
+                        busRouteId = o.optString("busRouteId", ""),
                         busRouteName = o.optString("busRouteName", "الخط الصباحي والمسائي"),
                         busDriverName = o.optString("busDriverName", ""),
                         busDriverPhone = o.optString("busDriverPhone", ""),
                         busVehicleNumber = o.optString("busVehicleNumber", ""),
+                        busVehicleTypeAndColor = o.optString("busVehicleTypeAndColor", ""),
                         busBoardingStatus = o.optString("busBoardingStatus", ""),
                         busBoardingTimestamp = o.optString("busBoardingTimestamp", ""),
                         busBoardingDateIso = ArabicTextNormalizer.normalizeDateIso(o.optString("busBoardingDateIso", "")),
                         busBoardingDriverName = o.optString("busBoardingDriverName", ""),
+                        busMorningBoardedTime = o.optString("busMorningBoardedTime", ""),
+                        busReturnDepartedTime = o.optString("busReturnDepartedTime", ""),
                         schoolId = itemSchoolId,
                         dailyAttendance = dailyAttMap,
                         todayStatus = effectiveTodayStatus,
@@ -1132,14 +1177,18 @@ class SchoolRepository(context: Context) {
                 put("likedBy", JSONArray(cleanLikedBy))
                 put("likedByUserIds", JSONArray(cleanLikedBy))
                 put("isBusSubscribed", s.isBusSubscribed)
+                put("busRouteId", InputSanitizer.sanitize(s.busRouteId))
                 put("busRouteName", InputSanitizer.sanitize(s.busRouteName))
                 put("busDriverName", InputSanitizer.sanitize(s.busDriverName))
                 put("busDriverPhone", InputSanitizer.sanitize(s.busDriverPhone))
                 put("busVehicleNumber", InputSanitizer.sanitize(s.busVehicleNumber))
+                put("busVehicleTypeAndColor", InputSanitizer.sanitize(s.busVehicleTypeAndColor))
                 put("busBoardingStatus", InputSanitizer.sanitize(s.busBoardingStatus))
                 put("busBoardingTimestamp", InputSanitizer.sanitize(s.busBoardingTimestamp))
                 put("busBoardingDateIso", ArabicTextNormalizer.normalizeDateIso(s.busBoardingDateIso))
                 put("busBoardingDriverName", InputSanitizer.sanitize(s.busBoardingDriverName))
+                put("busMorningBoardedTime", InputSanitizer.sanitize(s.busMorningBoardedTime))
+                put("busReturnDepartedTime", InputSanitizer.sanitize(s.busReturnDepartedTime))
                 put("schoolId", schoolId)
                 put("dailyAttendance", dailyAttJson)
                 put("todayStatus", effectiveTodayStatus)

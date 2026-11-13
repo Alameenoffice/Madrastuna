@@ -3778,7 +3778,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         busRouteName: String = "الخط الصباحي والمسائي",
         busDriverName: String = "",
         busDriverPhone: String = "",
-        busVehicleNumber: String = ""
+        busVehicleNumber: String = "",
+        busRouteId: String = "",
+        busVehicleTypeAndColor: String = ""
     ): StudentRecord? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
         val cleanStuName = InputSanitizer.sanitize(studentName)
@@ -3802,6 +3804,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanDriverName = InputSanitizer.sanitize(busDriverName)
         val cleanDriverPhone = InputSanitizer.sanitize(busDriverPhone)
         val cleanVehicleNumber = InputSanitizer.sanitize(busVehicleNumber)
+        val cleanRouteId = InputSanitizer.sanitize(busRouteId)
+        val cleanVehicleTypeAndColor = InputSanitizer.sanitize(busVehicleTypeAndColor)
 
         val (pureGradeClass, pureSectionName) = ArabicTextNormalizer.normalizeAndExtractClass(
             gradeClass,
@@ -3827,10 +3831,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             honorTitle = "طالب مجتهد",
             schoolId = sid,
             isBusSubscribed = isBusSubscribed,
+            busRouteId = cleanRouteId,
             busRouteName = cleanBusRoute,
             busDriverName = cleanDriverName,
             busDriverPhone = cleanDriverPhone,
             busVehicleNumber = cleanVehicleNumber,
+            busVehicleTypeAndColor = cleanVehicleTypeAndColor,
             gender = gender.ifBlank { "ذكر" },
             ageYears = ageYears.coerceAtLeast(0)
         )
@@ -3931,7 +3937,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         busRouteName: String? = null,
         busDriverName: String? = null,
         busDriverPhone: String? = null,
-        busVehicleNumber: String? = null
+        busVehicleNumber: String? = null,
+        busRouteId: String? = null,
+        busVehicleTypeAndColor: String? = null
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
@@ -3964,10 +3972,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     photoBase64 = photoBase64.ifBlank { s.photoBase64 },
                     schoolId = sid,
                     isBusSubscribed = isBusSubscribed ?: s.isBusSubscribed,
+                    busRouteId = busRouteId?.let { InputSanitizer.sanitize(it) } ?: s.busRouteId,
                     busRouteName = busRouteName?.let { InputSanitizer.sanitize(it).ifBlank { "الخط الصباحي والمسائي" } } ?: s.busRouteName,
                     busDriverName = busDriverName?.let { InputSanitizer.sanitize(it) } ?: s.busDriverName,
                     busDriverPhone = busDriverPhone?.let { InputSanitizer.sanitize(it) } ?: s.busDriverPhone,
                     busVehicleNumber = busVehicleNumber?.let { InputSanitizer.sanitize(it) } ?: s.busVehicleNumber,
+                    busVehicleTypeAndColor = busVehicleTypeAndColor?.let { InputSanitizer.sanitize(it) } ?: s.busVehicleTypeAndColor,
                     gender = gender?.takeIf { it.isNotBlank() } ?: s.gender,
                     ageYears = ageYears?.coerceAtLeast(0) ?: s.ageYears
                 )
@@ -5342,7 +5352,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         busRouteName: String = "الخط الصباحي والمسائي",
         busDriverName: String = "",
         busDriverPhone: String = "",
-        busVehicleNumber: String = ""
+        busVehicleNumber: String = "",
+        busRouteId: String = "",
+        busVehicleTypeAndColor: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
@@ -5352,16 +5364,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanDriver = InputSanitizer.sanitize(busDriverName)
         val cleanPhone = InputSanitizer.sanitize(busDriverPhone)
         val cleanVehicle = InputSanitizer.sanitize(busVehicleNumber)
+        val cleanRouteId = InputSanitizer.sanitize(busRouteId)
+        val cleanVehicleType = InputSanitizer.sanitize(busVehicleTypeAndColor)
         var targetName = ""
         val updated = _students.value.map { s ->
             if (s.id == studentId) {
                 targetName = s.fullNameWithFather
                 s.copy(
                     isBusSubscribed = isSubscribed,
+                    busRouteId = if (isSubscribed && cleanRouteId.isNotBlank()) cleanRouteId else s.busRouteId,
                     busRouteName = if (isSubscribed) cleanRoute else s.busRouteName,
                     busDriverName = if (isSubscribed && cleanDriver.isNotBlank()) cleanDriver else s.busDriverName,
                     busDriverPhone = if (isSubscribed && cleanPhone.isNotBlank()) cleanPhone else s.busDriverPhone,
-                    busVehicleNumber = if (isSubscribed && cleanVehicle.isNotBlank()) cleanVehicle else s.busVehicleNumber
+                    busVehicleNumber = if (isSubscribed && cleanVehicle.isNotBlank()) cleanVehicle else s.busVehicleNumber,
+                    busVehicleTypeAndColor = if (isSubscribed && cleanVehicleType.isNotBlank()) cleanVehicleType else s.busVehicleTypeAndColor
                 )
             } else s
         }
@@ -5382,7 +5398,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         allowParentToViewDriverIdentity: Boolean,
         driverPhotoBase64: String = _schoolConfig.value.busDriverPhotoBase64,
         routeAreaName: String = _schoolConfig.value.busRouteAreaName,
-        driverIdentityDetails: String = _schoolConfig.value.busDriverIdentityDetails
+        driverIdentityDetails: String = _schoolConfig.value.busDriverIdentityDetails,
+        vehicleTypeAndColor: String = _schoolConfig.value.busVehicleTypeAndColor
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
@@ -5391,15 +5408,40 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanVehicleNumber = InputSanitizer.sanitize(vehicleNumber).ifBlank { "مركبة النقل المدرسي الحديثة" }
         val cleanRouteArea = InputSanitizer.sanitize(routeAreaName)
         val cleanIdentityDetails = InputSanitizer.sanitize(driverIdentityDetails)
+        val cleanVehicleType = InputSanitizer.sanitize(vehicleTypeAndColor).ifBlank { "باص مدرسي حديث • أبيض وزمردي" }
+
+        val currentRoutes = _schoolConfig.value.registeredBusRoutes.toMutableList()
+        if (cleanRouteArea.isNotBlank()) {
+            val primaryItem = BusRouteFleetItem(
+                id = currentRoutes.firstOrNull { it.routeAreaName.equals(cleanRouteArea, ignoreCase = true) }?.id
+                    ?: "route_primary_1",
+                routeAreaName = cleanRouteArea,
+                vehicleTypeAndColor = cleanVehicleType,
+                vehiclePlateNumber = cleanVehicleNumber,
+                driverName = cleanDriverName,
+                driverPhone = cleanDriverPhone,
+                driverIdentityDetails = cleanIdentityDetails
+            )
+            val existingIdx = currentRoutes.indexOfFirst {
+                it.id == primaryItem.id || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true)
+            }
+            if (existingIdx >= 0) {
+                currentRoutes[existingIdx] = primaryItem
+            } else {
+                currentRoutes.add(0, primaryItem)
+            }
+        }
 
         val updatedConfig = _schoolConfig.value.copy(
             busDriverName = cleanDriverName,
             busDriverPhone = cleanDriverPhone,
             busVehicleNumber = cleanVehicleNumber,
+            busVehicleTypeAndColor = cleanVehicleType,
             allowParentToViewDriverIdentity = allowParentToViewDriverIdentity,
             busDriverPhotoBase64 = driverPhotoBase64,
             busRouteAreaName = cleanRouteArea,
-            busDriverIdentityDetails = cleanIdentityDetails
+            busDriverIdentityDetails = cleanIdentityDetails,
+            registeredBusRoutes = currentRoutes
         )
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
@@ -5421,6 +5463,69 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         showToastAlert("تم حفظ إعدادات الخطوط وبيانات السائق وصلاحية كشف الهوية بنجاح", isSuccess = true)
+    }
+
+    fun addOrUpdateBusRouteFleetItem(
+        routeId: String = "",
+        routeAreaName: String,
+        vehicleTypeAndColor: String,
+        vehiclePlateNumber: String,
+        driverName: String,
+        driverPhone: String,
+        driverIdentityDetails: String = ""
+    ): BusRouteFleetItem? {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
+        val cleanRouteArea = InputSanitizer.sanitize(routeAreaName).trim()
+        if (cleanRouteArea.isEmpty()) {
+            showToastAlert("يرجى إدخال اسم أو منطقة الخط المدرسي أولاً", isSuccess = false)
+            return null
+        }
+        val cleanVehicleType = InputSanitizer.sanitize(vehicleTypeAndColor).ifBlank { "باص مدرسي حديث • أبيض وزمردي" }
+        val cleanPlate = InputSanitizer.sanitize(vehiclePlateNumber).ifBlank { "مركبة النقل المدرسي الحديثة" }
+        val cleanDriver = InputSanitizer.sanitize(driverName).ifBlank { "السائق المعتمد للخط المدرسي" }
+        val cleanPhone = InputSanitizer.sanitize(driverPhone)
+        val cleanIdentity = InputSanitizer.sanitize(driverIdentityDetails)
+
+        val resolvedId = routeId.ifBlank { "route_${UUID.randomUUID().toString().take(6)}" }
+        val newItem = BusRouteFleetItem(
+            id = resolvedId,
+            routeAreaName = cleanRouteArea,
+            vehicleTypeAndColor = cleanVehicleType,
+            vehiclePlateNumber = cleanPlate,
+            driverName = cleanDriver,
+            driverPhone = cleanPhone,
+            driverIdentityDetails = cleanIdentity
+        )
+
+        val currentList = _schoolConfig.value.registeredBusRoutes.toMutableList()
+        val idx = currentList.indexOfFirst { it.id == resolvedId || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true) }
+        if (idx >= 0) {
+            currentList[idx] = newItem
+        } else {
+            currentList.add(newItem)
+        }
+
+        val updatedConfig = _schoolConfig.value.copy(
+            registeredBusRoutes = currentList,
+            busRouteAreaName = _schoolConfig.value.busRouteAreaName.ifBlank { cleanRouteArea },
+            busDriverName = if (_schoolConfig.value.busDriverName == "السائق المعتمد للخط المدرسي") cleanDriver else _schoolConfig.value.busDriverName,
+            busDriverPhone = _schoolConfig.value.busDriverPhone.ifBlank { cleanPhone },
+            busVehicleNumber = if (_schoolConfig.value.busVehicleNumber == "مركبة النقل المدرسي الحديثة") cleanPlate else _schoolConfig.value.busVehicleNumber,
+            busVehicleTypeAndColor = _schoolConfig.value.busVehicleTypeAndColor.ifBlank { cleanVehicleType }
+        )
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+        showToastAlert("تم اعتماد وحفظ الخط المدرسي ($cleanRouteArea) ومركبته في قائمة الخطوط المعتمدة", isSuccess = true)
+        return newItem
+    }
+
+    fun deleteBusRouteFleetItem(routeId: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val updatedRoutes = _schoolConfig.value.registeredBusRoutes.filterNot { it.id == routeId }
+        val updatedConfig = _schoolConfig.value.copy(registeredBusRoutes = updatedRoutes)
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+        showToastAlert("تم حذف الخط من قائمة الخطوط المسجلة", isSuccess = true)
     }
 
     fun updateBusDriverAccountSettings(
@@ -5473,8 +5578,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * Records a student's boarding or alighting from the school bus via QR code scan or quick selection,
-     * updates the student's live boarding status (`busBoardingStatus`, `busBoardingTimestamp`, `busBoardingDateIso`, `busBoardingDriverName`),
-     * and dispatches an instant notification to the parent and student.
+     * strictly enforces:
+     * 1) Automatic phase binding to the School Administration's trip state (`effectiveDriverScanModeForDate`),
+     * 2) Auto Daily Reset when a new day (`todayIso`) begins,
+     * 3) One-Time Scan Lock per phase (rejects duplicate scans in the same phase on the same day).
      */
     fun recordStudentBusBoardingByQrOrId(
         qrOrStudentId: String,
@@ -5516,9 +5623,29 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return null
         }
 
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        // Driver's scan mode is strictly locked to the Administration's trip state for today
+        val effectiveScanMode = if (user.isBusDriverAccount) {
+            _schoolConfig.value.effectiveDriverScanModeForDate(todayIso)
+        } else {
+            scanMode
+        }
+
+        // One-Time Scan Lock per Phase (منع تكرار مسح الباركود لنفس الطالب في نفس المرحلة)
+        if (effectiveScanMode == BusBoardingScanMode.BOARDING) {
+            if (matchedStudent.isBoardedMorningToday(todayIso)) {
+                showToastAlert("تم تسجيل صعود هذا الطالب مسبقاً اليوم! لا يمكن تكرار المسح.", isSuccess = false)
+                return null
+            }
+        } else {
+            if (matchedStudent.isDepartedReturnToday(todayIso)) {
+                showToastAlert("تم تسجيل مغادرة هذا الطالب مسبقاً اليوم!", isSuccess = false)
+                return null
+            }
+        }
+
         com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
 
-        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
         val resolvedDriverName = matchedStudent.busDriverName
             .ifBlank { _schoolConfig.value.busDriverName }
@@ -5528,12 +5655,25 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         var updatedTarget: StudentRecord? = null
         val updatedList = _students.value.map { s ->
             if (s.id == matchedStudent.id) {
+                val isSameDay = s.isSameBusScanDate(todayIso)
+                val nextMorningTime = when {
+                    effectiveScanMode == BusBoardingScanMode.BOARDING -> timeNow
+                    isSameDay -> s.getMorningBoardedTimeToday(todayIso)
+                    else -> ""
+                }
+                val nextReturnTime = when {
+                    effectiveScanMode == BusBoardingScanMode.ALIGHTING -> timeNow
+                    isSameDay -> s.getReturnDepartedTimeToday(todayIso)
+                    else -> ""
+                }
                 val copyStu = s.copy(
                     isBusSubscribed = true,
-                    busBoardingStatus = scanMode.name,
+                    busBoardingStatus = effectiveScanMode.name,
                     busBoardingTimestamp = timeNow,
                     busBoardingDateIso = todayIso,
-                    busBoardingDriverName = resolvedDriverName
+                    busBoardingDriverName = resolvedDriverName,
+                    busMorningBoardedTime = nextMorningTime,
+                    busReturnDepartedTime = nextReturnTime
                 )
                 updatedTarget = copyStu
                 copyStu
@@ -5544,7 +5684,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val notifTitle: String
         val notifBody: String
-        if (scanMode == BusBoardingScanMode.BOARDING) {
+        if (effectiveScanMode == BusBoardingScanMode.BOARDING) {
             notifTitle = "صعود الطالب إلى الباص المدرسي بسلام"
             notifBody = "صعد الطالب (${matchedStudent.fullNameWithFather}) إلى الباص الآن بسلام • الساعة $timeNow مع السائق ($resolvedDriverName)"
         } else {
@@ -5571,11 +5711,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun sendBusTrackingAlert(eventType: BusEventType) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val nowStamp = SimpleDateFormat("yyyy/MM/dd hh:mm a", Locale("ar")).format(Date())
 
         val updatedConfig = _schoolConfig.value.copy(
             activeBusEvent = eventType.name,
-            activeBusEventTimestamp = nowStamp
+            activeBusEventTimestamp = nowStamp,
+            activeBusEventDateIso = todayIso
         )
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)

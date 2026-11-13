@@ -2554,30 +2554,61 @@ fun AdminAccountsScreen(
         var studentGender by remember(currentStu) { mutableStateOf(currentStu?.gender ?: "") }
         var studentAgeYears by remember(currentStu) { mutableStateOf(currentStu?.effectiveAgeYears ?: 0) }
         var isBusSubscribed by remember(currentStu) { mutableStateOf(currentStu?.isBusSubscribed ?: false) }
+        val registeredFleetRoutes = remember(
+            schoolConfig.registeredBusRoutes,
+            schoolConfig.busRouteAreaName,
+            schoolConfig.busVehicleTypeAndColor,
+            schoolConfig.busVehicleNumber,
+            schoolConfig.busDriverName,
+            schoolConfig.busDriverPhone
+        ) {
+            schoolConfig.effectiveBusRoutesList
+        }
+        var selectedBusRouteId by remember(currentStu, registeredFleetRoutes) {
+            mutableStateOf(
+                currentStu?.busRouteId?.takeIf { it.isNotBlank() }
+                    ?: registeredFleetRoutes.firstOrNull {
+                        it.routeAreaName == currentStu?.busRouteName && it.routeAreaName.isNotBlank()
+                    }?.id
+                    ?: registeredFleetRoutes.firstOrNull()?.id.orEmpty()
+            )
+        }
         var busRouteName by remember(currentStu) {
             mutableStateOf(
                 currentStu?.busRouteName?.takeIf { it.isNotBlank() && it != "الخط الصباحي والمسائي" }
+                    ?: registeredFleetRoutes.firstOrNull()?.routeAreaName
                     ?: schoolConfig.busRouteAreaName
+            )
+        }
+        var busVehicleTypeAndColorInput by remember(currentStu) {
+            mutableStateOf(
+                currentStu?.busVehicleTypeAndColor?.takeIf { it.isNotBlank() }
+                    ?: registeredFleetRoutes.firstOrNull()?.vehicleTypeAndColor
+                    ?: schoolConfig.busVehicleTypeAndColor
             )
         }
         var busDriverNameInput by remember(currentStu) {
             mutableStateOf(
                 currentStu?.busDriverName?.takeIf { it.isNotBlank() }
+                    ?: registeredFleetRoutes.firstOrNull()?.driverName
                     ?: schoolConfig.busDriverName.takeIf { it != "السائق المعتمد للخط المدرسي" }.orEmpty()
             )
         }
         var busDriverPhoneInput by remember(currentStu) {
             mutableStateOf(
                 currentStu?.busDriverPhone?.takeIf { it.isNotBlank() }
+                    ?: registeredFleetRoutes.firstOrNull()?.driverPhone
                     ?: schoolConfig.busDriverPhone
             )
         }
         var busVehicleNumberInput by remember(currentStu) {
             mutableStateOf(
                 currentStu?.busVehicleNumber?.takeIf { it.isNotBlank() }
+                    ?: registeredFleetRoutes.firstOrNull()?.vehiclePlateNumber
                     ?: schoolConfig.busVehicleNumber.takeIf { it != "مركبة النقل المدرسي الحديثة" }.orEmpty()
             )
         }
+        var showQuickAddNewRouteBox by remember { mutableStateOf(false) }
 
         val matchedParent = remember(studentName, parentName, parentPhone, students, currentStu) {
             viewModel.findExistingParentMatch(
@@ -2900,6 +2931,106 @@ fun AdminAccountsScreen(
                                     }
 
                                     if (isBusSubscribed) {
+                                        // قائمة اختيار الخط والمركبة من الخطوط المسجلة في المدرسة (Selectable Route & Vehicle Chips)
+                                        Text(
+                                            text = "اختر الخط والمركبة من خطوط المدرسة المعتمدة (ربط تلقائي):",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF065F46)
+                                        )
+
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            registeredFleetRoutes.forEach { fleetRoute ->
+                                                val isRouteSelected = selectedBusRouteId == fleetRoute.id ||
+                                                    (selectedBusRouteId.isBlank() && busRouteName == fleetRoute.routeAreaName)
+                                                Surface(
+                                                    onClick = {
+                                                        selectedBusRouteId = fleetRoute.id
+                                                        busRouteName = fleetRoute.routeAreaName
+                                                        busVehicleTypeAndColorInput = fleetRoute.vehicleTypeAndColor
+                                                        busVehicleNumberInput = fleetRoute.vehiclePlateNumber
+                                                        busDriverNameInput = fleetRoute.driverName
+                                                        busDriverPhoneInput = fleetRoute.driverPhone
+                                                        showQuickAddNewRouteBox = false
+                                                    },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .testTag("select_bus_route_chip_${fleetRoute.id}"),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = if (isRouteSelected) Color(0xFF065F46) else Color.White,
+                                                    border = androidx.compose.foundation.BorderStroke(
+                                                        1.2.dp,
+                                                        if (isRouteSelected) Color(0xFFFBBF24) else Color(0xFF6EE7B7)
+                                                    )
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                text = fleetRoute.routeAreaName.ifBlank { "الخط المدرسي المعتمد" },
+                                                                fontSize = 12.5.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = if (isRouteSelected) Color.White else Color(0xFF064E3B)
+                                                            )
+                                                            Text(
+                                                                text = "${fleetRoute.vehicleTypeAndColor.ifBlank { "مركبة مدرسية" }} • لوحة: ${fleetRoute.vehiclePlateNumber.ifBlank { "معتمدة" }} • السائق: ${fleetRoute.driverName.ifBlank { "السائق المعتمد" }}",
+                                                                fontSize = 10.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (isRouteSelected) Color(0xFFFDE68A) else Color(0xFF047857)
+                                                            )
+                                                        }
+                                                        Icon(
+                                                            imageVector = if (isRouteSelected) Icons.Filled.CheckCircle else Icons.Filled.DirectionsBus,
+                                                            contentDescription = null,
+                                                            tint = if (isRouteSelected) Color(0xFFFDE68A) else Color(0xFF059669),
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    showQuickAddNewRouteBox = !showQuickAddNewRouteBox
+                                                    if (showQuickAddNewRouteBox) {
+                                                        selectedBusRouteId = "route_${System.currentTimeMillis()}"
+                                                        busRouteName = ""
+                                                        busVehicleTypeAndColorInput = ""
+                                                        busVehicleNumberInput = ""
+                                                        busDriverNameInput = ""
+                                                        busDriverPhoneInput = ""
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF059669)),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .testTag("toggle_add_new_bus_route_inline_btn")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.AddCircle,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (showQuickAddNewRouteBox) "إخفاء نموذج الخط الجديد" else "+ إضافة خط ومركبة جديدة مباشرة",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF065F46)
+                                                )
+                                            }
+                                        }
+
                                         OutlinedTextField(
                                             value = busRouteName,
                                             onValueChange = { busRouteName = it },
@@ -2918,9 +3049,26 @@ fun AdminAccountsScreen(
                                                 .testTag("student_bus_route_name_input")
                                         )
                                         OutlinedTextField(
+                                            value = busVehicleTypeAndColorInput,
+                                            onValueChange = { busVehicleTypeAndColorInput = it },
+                                            label = { Text("نوع وموديل المركبة ولونها") },
+                                            placeholder = { Text("مثال: باص تويوتا حديث • أبيض وزمردي") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Filled.DirectionsBus,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669)
+                                                )
+                                            },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("student_bus_vehicle_type_color_input")
+                                        )
+                                        OutlinedTextField(
                                             value = busDriverNameInput,
                                             onValueChange = { busDriverNameInput = it },
-                                            label = { Text("اسم السائق الكامل (اختياري)") },
+                                            label = { Text("اسم السائق الكامل") },
                                             placeholder = { Text("أدخل اسم السائق الكامل") },
                                             leadingIcon = {
                                                 Icon(
@@ -2949,11 +3097,43 @@ fun AdminAccountsScreen(
                                             OutlinedTextField(
                                                 value = busVehicleNumberInput,
                                                 onValueChange = { busVehicleNumberInput = it },
-                                                label = { Text("نوع ورقم المركبة") },
-                                                placeholder = { Text("أدخل رقم المركبة") },
+                                                label = { Text("رقم لوحة المركبة") },
+                                                placeholder = { Text("أدخل رقم اللوحة") },
                                                 singleLine = true,
                                                 modifier = Modifier.weight(1f)
                                             )
+                                        }
+
+                                        if (showQuickAddNewRouteBox && busRouteName.isNotBlank()) {
+                                            Button(
+                                                onClick = {
+                                                    val newRouteId = selectedBusRouteId.ifBlank { "route_${System.currentTimeMillis()}" }
+                                                    selectedBusRouteId = newRouteId
+                                                    viewModel.addOrUpdateBusRouteFleetItem(
+                                                        routeId = newRouteId,
+                                                        routeAreaName = busRouteName.trim(),
+                                                        vehicleTypeAndColor = busVehicleTypeAndColorInput.trim(),
+                                                        vehiclePlateNumber = busVehicleNumberInput.trim(),
+                                                        driverName = busDriverNameInput.trim(),
+                                                        driverPhone = busDriverPhoneInput.trim()
+                                                    )
+                                                    showQuickAddNewRouteBox = false
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = Color(0xFF059669),
+                                                    contentColor = Color.White
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "اعتماد وحفظ هذا الخط في قائمة خطوط المدرسة",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -3059,6 +3239,16 @@ fun AdminAccountsScreen(
                                 schoolConfig.busRouteAreaName.ifBlank { "الخط الصباحي والمسائي" }
                             }
                             viewModel.requireOnlineAndExecute {
+                                if (isBusSubscribed && busRouteName.isNotBlank()) {
+                                    viewModel.addOrUpdateBusRouteFleetItem(
+                                        routeId = selectedBusRouteId.ifBlank { "route_${System.currentTimeMillis()}" },
+                                        routeAreaName = resolvedRoute,
+                                        vehicleTypeAndColor = busVehicleTypeAndColorInput.trim(),
+                                        vehiclePlateNumber = busVehicleNumberInput.trim(),
+                                        driverName = busDriverNameInput.trim(),
+                                        driverPhone = busDriverPhoneInput.trim()
+                                    )
+                                }
                                 if (currentStu == null) {
                                     viewModel.addStudentAndParentAccounts(
                                         studentName = studentName,
@@ -3079,7 +3269,9 @@ fun AdminAccountsScreen(
                                         busRouteName = resolvedRoute,
                                         busDriverName = busDriverNameInput.trim(),
                                         busDriverPhone = busDriverPhoneInput.trim(),
-                                        busVehicleNumber = busVehicleNumberInput.trim()
+                                        busVehicleNumber = busVehicleNumberInput.trim(),
+                                        busRouteId = selectedBusRouteId.trim(),
+                                        busVehicleTypeAndColor = busVehicleTypeAndColorInput.trim()
                                     )
                                 } else {
                                     viewModel.updateStudentAndParentAccounts(
@@ -3101,7 +3293,9 @@ fun AdminAccountsScreen(
                                         busRouteName = resolvedRoute,
                                         busDriverName = busDriverNameInput.trim(),
                                         busDriverPhone = busDriverPhoneInput.trim(),
-                                        busVehicleNumber = busVehicleNumberInput.trim()
+                                        busVehicleNumber = busVehicleNumberInput.trim(),
+                                        busRouteId = selectedBusRouteId.trim(),
+                                        busVehicleTypeAndColor = busVehicleTypeAndColorInput.trim()
                                     )
                                 }
                                 showStudentDialog = false
