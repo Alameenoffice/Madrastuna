@@ -497,7 +497,7 @@ object StandardQrCodeHelper {
     }
 
     /**
-     * Matches a student from an explicit QR payload string (`MADRASATI|{schoolId}|{studentId}|...`).
+     * Matches a student from an explicit QR payload string (`MADRASATI_ID:...` or `MADRASATI|{schoolId}|{studentId}|...`).
      */
     fun matchStudentFromQrPayloadOrStudents(
         rawInput: String,
@@ -506,10 +506,7 @@ object StandardQrCodeHelper {
         val clean = rawInput.trim()
         if (clean.isEmpty()) return null
         return students.firstOrNull { stu ->
-            stu.qrCodeValue.equals(clean, ignoreCase = true) ||
-                clean.contains("|${stu.id}|", ignoreCase = true) ||
-                clean.endsWith("-${stu.id}", ignoreCase = true) ||
-                stu.id.equals(clean, ignoreCase = true) ||
+            stu.matchesBarcodePayload(clean) ||
                 stu.studentName.equals(clean, ignoreCase = true) ||
                 stu.fullNameWithFather.contains(clean, ignoreCase = true)
         }
@@ -533,29 +530,36 @@ object StandardQrCodeHelper {
         if (key == cachedMatricesKey && cachedStudentMatrices.isNotEmpty()) {
             return cachedStudentMatrices
         }
-        val built = students.mapNotNull { stu ->
-            try {
-                val payload = stu.qrCodeValue.ifBlank { "MADRASATI|100|${stu.id}|${stu.studentUsername}|${stu.gradeClass}" }
-                val bytes = payload.toByteArray(Charsets.UTF_8)
-                var v = pickVersionForBytes(bytes.size)
-                val actualBytes = if (v > 10) {
-                    v = 10
-                    bytes.copyOf(VERSION_DATA_CODEWORDS_L[10] - 3)
-                } else {
-                    bytes
+        val built = ArrayList<CachedStudentQrMatrix>(students.size * 2)
+        for (stu in students) {
+            val candidatePayloads = listOf(
+                stu.qrCodeValue.ifBlank { "MADRASATI_ID:100:${stu.id}" },
+                stu.legacyQrCodeValue
+            ).distinct()
+            for (payload in candidatePayloads) {
+                try {
+                    val bytes = payload.toByteArray(Charsets.UTF_8)
+                    var v = pickVersionForBytes(bytes.size)
+                    val actualBytes = if (v > 10) {
+                        v = 10
+                        bytes.copyOf(VERSION_DATA_CODEWORDS_L[10] - 3)
+                    } else {
+                        bytes
+                    }
+                    val modules = encodeIsoQrMatrix(actualBytes, v)
+                    val (_, isFunc) = buildFunctionMask(v)
+                    built.add(
+                        CachedStudentQrMatrix(
+                            student = stu,
+                            payload = stu.qrCodeValue.ifBlank { payload },
+                            version = v,
+                            size = modules.size,
+                            modules = modules,
+                            isFunction = isFunc
+                        )
+                    )
+                } catch (_: Exception) {
                 }
-                val modules = encodeIsoQrMatrix(actualBytes, v)
-                val (_, isFunc) = buildFunctionMask(v)
-                CachedStudentQrMatrix(
-                    student = stu,
-                    payload = payload,
-                    version = v,
-                    size = modules.size,
-                    modules = modules,
-                    isFunction = isFunc
-                )
-            } catch (_: Exception) {
-                null
             }
         }
         cachedMatricesKey = key
@@ -567,14 +571,13 @@ object StandardQrCodeHelper {
      * 100% REAL Optical QR Code Detector & ISO/IEC 18004 Decoder.
      * - NEVER guesses, NEVER uses timers, and NEVER falls back to picking a random/first student.
      * - Requires locating the 3 real ISO QR Finder Patterns (1:1:3:1:1 dark-light-dark-light-dark concentric squares)
-     *   arranged in a valid QR right-angle triad, then decodes the actual QR bit matrix to extract `MADRASATI|...`.
+     *   arranged in a valid QR right-angle triad, then decodes the actual QR bit matrix to extract `MADRASATI_ID:...` or `MADRASATI|...`.
      */
     fun detectQrCodeFromBitmap(
         bitmap: Bitmap,
         students: List<StudentRecord>,
         @Suppress("UNUSED_PARAMETER") preferUnscannedIds: Set<String> = emptySet()
     ): String? {
-        if (students.isEmpty()) return null
         return try {
             val srcW = bitmap.width
             val srcH = bitmap.height
@@ -1006,7 +1009,10 @@ object StandardQrCodeHelper {
                 if (matched != null) {
                     return matched.qrCodeValue.ifBlank { decodedString }
                 }
-                if (decodedString.startsWith("MADRASATI|", ignoreCase = true)) {
+                if (decodedString.startsWith("MADRASATI_ID:", ignoreCase = true) ||
+                    decodedString.startsWith("MADRASATI|", ignoreCase = true) ||
+                    decodedString.startsWith("WALLET-", ignoreCase = true)
+                ) {
                     return decodedString
                 }
             }
@@ -1159,7 +1165,9 @@ object StandardQrCodeHelper {
                 outBytes[bIdx] = v.toByte()
             }
             val text = String(outBytes, Charsets.UTF_8).trim()
-            if (text.startsWith("MADRASATI|", ignoreCase = true) ||
+            if (text.startsWith("MADRASATI_ID:", ignoreCase = true) ||
+                text.startsWith("MADRASATI|", ignoreCase = true) ||
+                text.startsWith("WALLET-", ignoreCase = true) ||
                 (text.length >= 4 && text.all { it.code in 32..126 || it.code >= 0x0600 })
             ) {
                 return text
@@ -1343,7 +1351,7 @@ fun LiveCameraQrScannerBox(
                                                 livePreviewFrame = previewBmp.asImageBitmap()
 
                                                 // 2. Run REAL optical QR code detection every 400ms (strictly real QR finder + matrix decode)
-                                                if (now - lastQrCheckMs >= 400L && students.isNotEmpty()) {
+                                                if (now - lastQrCheckMs >= 400L) {
                                                     lastQrCheckMs = now
                                                     val payload = StandardQrCodeHelper.detectQrCodeFromBitmap(
                                                         bitmap = previewBmp,
@@ -1380,7 +1388,7 @@ fun LiveCameraQrScannerBox(
                     )
                 }
 
-                // Transparent Scanner Reticle & Laser Overlay (Zero opaque background)
+                // Transparent Scanner Reticle & Bezier Laser Overlay (Zero opaque background)
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
@@ -1393,35 +1401,48 @@ fun LiveCameraQrScannerBox(
                     val corner = 28f
                     val stroke = 6f
                     val emeraldCorner = androidx.compose.ui.graphics.Color(0xFFA7F3D0)
+                    val goldCorner = androidx.compose.ui.graphics.Color(0xFFFDE68A)
 
                     // Top-left corner
                     drawLine(emeraldCorner, Offset(left, top), Offset(left + corner, top), stroke)
                     drawLine(emeraldCorner, Offset(left, top), Offset(left, top + corner), stroke)
                     // Top-right corner
-                    drawLine(emeraldCorner, Offset(right, top), Offset(right - corner, top), stroke)
-                    drawLine(emeraldCorner, Offset(right, top), Offset(right, top + corner), stroke)
+                    drawLine(goldCorner, Offset(right, top), Offset(right - corner, top), stroke)
+                    drawLine(goldCorner, Offset(right, top), Offset(right, top + corner), stroke)
                     // Bottom-left corner
-                    drawLine(emeraldCorner, Offset(left, bottom), Offset(left + corner, bottom), stroke)
-                    drawLine(emeraldCorner, Offset(left, bottom), Offset(left, bottom - corner), stroke)
+                    drawLine(goldCorner, Offset(left, bottom), Offset(left + corner, bottom), stroke)
+                    drawLine(goldCorner, Offset(left, bottom), Offset(left, bottom - corner), stroke)
                     // Bottom-right corner
                     drawLine(emeraldCorner, Offset(right, bottom), Offset(right - corner, bottom), stroke)
                     drawLine(emeraldCorner, Offset(right, bottom), Offset(right, bottom - corner), stroke)
 
-                    // Laser scan line
+                    // Bezier Laser Scan Curve & Volumetric Glow
                     val laserY = top + (boxH * laserProgress)
-                    drawLine(
+                    val waveAmp = 7f
+                    val bezierLaserPath = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(left + 8f, laserY)
+                        cubicTo(
+                            left + boxW * 0.33f, laserY - waveAmp,
+                            left + boxW * 0.66f, laserY + waveAmp,
+                            right - 8f, laserY
+                        )
+                    }
+                    drawPath(
+                        path = bezierLaserPath,
                         brush = Brush.horizontalGradient(
                             listOf(
                                 androidx.compose.ui.graphics.Color.Transparent,
                                 SuccessGreen,
+                                goldCorner,
                                 emeraldCorner,
                                 SuccessGreen,
                                 androidx.compose.ui.graphics.Color.Transparent
                             )
                         ),
-                        start = Offset(left + 8f, laserY),
-                        end = Offset(right - 8f, laserY),
-                        strokeWidth = 4f
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 4.5f,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
                     )
                 }
 

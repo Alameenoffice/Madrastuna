@@ -2137,12 +2137,17 @@ fun UnifiedLoginScreen(
     onBiometricLogin: () -> Result<*> = { Result.success(null) },
     onShowErrorToast: (String) -> Unit = {},
     hasActiveTopToast: Boolean = false,
-    onSwitchSchoolCodeGate: () -> Unit = {}
+    onSwitchSchoolCodeGate: () -> Unit = {},
+    studentsForQrLogin: List<StudentRecord> = emptyList(),
+    onStudentBarcodeLogin: (String) -> Result<*> = {
+        Result.failure<Any>(IllegalArgumentException("عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."))
+    }
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var loginError by remember { mutableStateOf<String?>(null) }
+    var showStudentBarcodeScannerModal by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (username.isBlank()) {
@@ -2692,6 +2697,112 @@ fun UnifiedLoginScreen(
                                 testTag = "login_submit_button"
                             )
 
+                            // فاصل أنيق للدخول السريع بدون كلمة مرور عبر باركود الهوية الطلابية
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    thickness = 1.dp,
+                                    color = if (isDarkMode) Color(0xFF1E3A2F) else Color(0xFFD1FAE5)
+                                )
+                                Text(
+                                    text = "أو الدخول السريع بدون كلمة مرور",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    thickness = 1.dp,
+                                    color = if (isDarkMode) Color(0xFF1E3A2F) else Color(0xFFD1FAE5)
+                                )
+                            }
+
+                            // بطاقة/زر زمردية ملكية بحواف ذهبية لتسجيل الدخول بباركود الهوية الطلابية
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(enabled = remainingLockoutSec == 0L) {
+                                        loginError = null
+                                        showStudentBarcodeScannerModal = true
+                                    }
+                                    .testTag("student_qr_barcode_quick_login_button"),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.Transparent,
+                                border = BorderStroke(1.5.dp, Color(0xFFFBBF24)),
+                                shadowElevation = 4.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            Brush.linearGradient(
+                                                colors = listOf(
+                                                    Color(0xFF042F24),
+                                                    Color(0xFF065F46),
+                                                    Color(0xFF047857)
+                                                )
+                                            )
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.size(46.dp),
+                                        shape = RoundedCornerShape(13.dp),
+                                        color = Color(0xFF022C22).copy(alpha = 0.78f),
+                                        border = BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.85f))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            StudentIdBarcodeVectorIcon(
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            text = "تسجيل الدخول بباركود الهوية الطلابية",
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFFFEF3C7)
+                                        )
+                                        Text(
+                                            text = "امسح باركود بطاقة الطالب للوصول الفوري للحساب",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFFD1FAE5)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFFBBF24).copy(alpha = 0.2f),
+                                        border = BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.65f)),
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.QrCodeScanner,
+                                                contentDescription = "مسح باركود الهوية الطلابية",
+                                                tint = Color(0xFFFBBF24),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
                             if (biometricCredentials != null && biometricCredentials.isValid && remainingLockoutSec == 0L) {
                                 BiometricQuickLoginButton(
                                     savedCredentials = biometricCredentials,
@@ -2716,6 +2827,992 @@ fun UnifiedLoginScreen(
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+
+        if (showStudentBarcodeScannerModal) {
+            StudentIdQrLoginDialog(
+                schoolConfig = schoolConfig,
+                students = studentsForQrLogin,
+                onDismiss = { showStudentBarcodeScannerModal = false },
+                onBarcodeScannedOrSubmitted = { barcodePayload ->
+                    onStudentBarcodeLogin(barcodePayload)
+                }
+            )
+        }
+    }
+}
+
+/**
+ * أيقونة فيكتور مخصصة لباركود الهوية الطلابية مرسومة بـ Canvas ومنحنيات بيزيير
+ */
+@Composable
+fun StudentIdBarcodeVectorIcon(
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "student_id_barcode_icon")
+    val laserProgress by infiniteTransition.animateFloat(
+        initialValue = 0.18f,
+        targetValue = 0.82f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "barcode_icon_laser"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cornerLen = w * 0.22f
+        val strokeW = (w * 0.075f).coerceAtLeast(1.8f)
+        val goldColor = Color(0xFFFBBF24)
+        val emeraldLight = Color(0xFF6EE7B7)
+
+        // زوايا إطار الماسح الضوئي الأربع
+        val cornersPath = Path().apply {
+            // Top-left
+            moveTo(w * 0.08f, h * 0.28f)
+            lineTo(w * 0.08f, h * 0.14f)
+            quadraticTo(w * 0.08f, h * 0.08f, w * 0.14f, h * 0.08f)
+            lineTo(w * 0.08f + cornerLen, h * 0.08f)
+
+            // Top-right
+            moveTo(w * 0.92f - cornerLen, h * 0.08f)
+            lineTo(w * 0.86f, h * 0.08f)
+            quadraticTo(w * 0.92f, h * 0.08f, w * 0.92f, h * 0.14f)
+            lineTo(w * 0.92f, h * 0.28f)
+
+            // Bottom-left
+            moveTo(w * 0.08f, h * 0.72f)
+            lineTo(w * 0.08f, h * 0.86f)
+            quadraticTo(w * 0.08f, h * 0.92f, w * 0.14f, h * 0.92f)
+            lineTo(w * 0.08f + cornerLen, h * 0.92f)
+
+            // Bottom-right
+            moveTo(w * 0.92f - cornerLen, h * 0.92f)
+            lineTo(w * 0.86f, h * 0.92f)
+            quadraticTo(w * 0.92f, h * 0.92f, w * 0.92f, h * 0.86f)
+            lineTo(w * 0.92f, h * 0.72f)
+        }
+        drawPath(
+            path = cornersPath,
+            color = goldColor,
+            style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+
+        // خطوط الباركود العمودية داخل الإطار
+        val barPositions = listOf(0.24f, 0.35f, 0.44f, 0.55f, 0.65f, 0.76f)
+        val barWidths = listOf(0.055f, 0.035f, 0.065f, 0.04f, 0.06f, 0.045f)
+        barPositions.forEachIndexed { idx, xRatio ->
+            val barW = w * barWidths[idx]
+            drawRoundRect(
+                color = if (idx % 2 == 0) Color.White else emeraldLight,
+                topLeft = Offset(w * xRatio - barW / 2f, h * 0.25f),
+                size = Size(barW, h * 0.50f),
+                cornerRadius = CornerRadius(barW / 2f, barW / 2f)
+            )
+        }
+
+        // شعاع ليزر بيزيير متحرك
+        val laserY = h * laserProgress
+        val laserPath = Path().apply {
+            moveTo(w * 0.12f, laserY)
+            cubicTo(
+                w * 0.36f, laserY - h * 0.05f,
+                w * 0.64f, laserY + h * 0.05f,
+                w * 0.88f, laserY
+            )
+        }
+        drawPath(
+            path = laserPath,
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    goldColor,
+                    Color(0xFF34D399),
+                    goldColor,
+                    Color.Transparent
+                )
+            ),
+            style = Stroke(width = strokeW * 1.15f, cap = StrokeCap.Round)
+        )
+    }
+}
+
+/**
+ * إطار الماسح الضوئي التفاعلي بأنميشن ليزر بيزيير (Bezier Laser Scanner Animation)
+ */
+@Composable
+fun StudentIdBezierLaserScannerFrame(
+    modifier: Modifier = Modifier,
+    statusLabel: String = "وجّه باركود بطاقة الهوية داخل الإطار الزمردي"
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "bezier_laser_scanner_frame")
+    val scanYRatio by infiniteTransition.animateFloat(
+        initialValue = 0.12f,
+        targetValue = 0.88f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bezier_laser_y"
+    )
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.90f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 950, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bezier_laser_glow"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(175.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF021F18),
+                        Color(0xFF042F24),
+                        Color(0xFF021F18)
+                    )
+                )
+            )
+            .border(1.5.dp, Color(0xFFFBBF24).copy(alpha = 0.65f), RoundedCornerShape(20.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val padX = w * 0.12f
+            val padY = h * 0.14f
+            val boxW = w - padX * 2f
+            val boxH = h - padY * 2f
+            val corner = 26.dp.toPx()
+
+            // شبكة خلفية خفيفة للهوية الرقمية
+            val step = 24.dp.toPx()
+            var gx = padX
+            while (gx <= w - padX) {
+                drawLine(
+                    color = Color(0xFF10B981).copy(alpha = 0.08f),
+                    start = Offset(gx, padY),
+                    end = Offset(gx, h - padY),
+                    strokeWidth = 1.dp.toPx()
+                )
+                gx += step
+            }
+            var gy = padY
+            while (gy <= h - padY) {
+                drawLine(
+                    color = Color(0xFF10B981).copy(alpha = 0.08f),
+                    start = Offset(padX, gy),
+                    end = Offset(w - padX, gy),
+                    strokeWidth = 1.dp.toPx()
+                )
+                gy += step
+            }
+
+            // رسم أركان الماسح الذهبية والزمردية
+            val cornerStroke = 3.5.dp.toPx()
+            val corners = Path().apply {
+                moveTo(padX, padY + corner)
+                lineTo(padX, padY)
+                lineTo(padX + corner, padY)
+
+                moveTo(w - padX - corner, padY)
+                lineTo(w - padX, padY)
+                lineTo(w - padX, padY + corner)
+
+                moveTo(padX, h - padY - corner)
+                lineTo(padX, h - padY)
+                lineTo(padX + corner, h - padY)
+
+                moveTo(w - padX - corner, h - padY)
+                lineTo(w - padX, h - padY)
+                lineTo(w - padX, h - padY - corner)
+            }
+            drawPath(
+                path = corners,
+                color = Color(0xFFFBBF24),
+                style = Stroke(width = cornerStroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            )
+
+            // محاكاة بطاقة الطالب والباركود في وسط الماسح
+            val cardW = boxW * 0.56f
+            val cardH = boxH * 0.62f
+            val cardLeft = (w - cardW) / 2f
+            val cardTop = (h - cardH) / 2f
+            drawRoundRect(
+                color = Color(0xFF064E3B).copy(alpha = 0.55f),
+                topLeft = Offset(cardLeft, cardTop),
+                size = Size(cardW, cardH),
+                cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx()),
+                style = Stroke(width = 1.4.dp.toPx())
+            )
+            // خطوط الباركود داخل البطاقة
+            val barsCount = 13
+            val barsStartX = cardLeft + cardW * 0.14f
+            val barsSpanW = cardW * 0.72f
+            for (i in 0 until barsCount) {
+                val bx = barsStartX + (barsSpanW / barsCount) * i
+                val bw = if (i % 3 == 0) 3.5.dp.toPx() else 2.dp.toPx()
+                drawRoundRect(
+                    color = if (i % 2 == 0) Color(0xFFD1FAE5).copy(alpha = 0.7f) else Color(0xFFFDE68A).copy(alpha = 0.7f),
+                    topLeft = Offset(bx, cardTop + cardH * 0.24f),
+                    size = Size(bw, cardH * 0.52f),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+            }
+
+            // شعاع الليزر الزمردي-الذهبي المرسوم بمنحنيات بيزيير (Bezier Laser Beam)
+            val laserY = padY + boxH * scanYRatio
+            val waveAmp = 7.dp.toPx() * (0.5f - kotlin.math.abs(scanYRatio - 0.5f))
+            val laserCurve = Path().apply {
+                moveTo(padX + 6.dp.toPx(), laserY)
+                cubicTo(
+                    padX + boxW * 0.33f, laserY - waveAmp,
+                    padX + boxW * 0.66f, laserY + waveAmp,
+                    w - padX - 6.dp.toPx(), laserY
+                )
+            }
+            // هالة الليزر
+            drawPath(
+                path = laserCurve,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color(0xFF10B981).copy(alpha = glowAlpha * 0.45f),
+                        Color(0xFFFBBF24).copy(alpha = glowAlpha * 0.65f),
+                        Color(0xFF10B981).copy(alpha = glowAlpha * 0.45f),
+                        Color.Transparent
+                    )
+                ),
+                style = Stroke(width = 9.dp.toPx(), cap = StrokeCap.Round)
+            )
+            // خيط الليزر الحاد
+            drawPath(
+                path = laserCurve,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color(0xFF34D399),
+                        Color(0xFFFEF08A),
+                        Color(0xFF34D399),
+                        Color.Transparent
+                    )
+                ),
+                style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
+            )
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 10.dp),
+            shape = RoundedCornerShape(50),
+            color = Color(0xFF022C22).copy(alpha = 0.88f),
+            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.55f))
+        ) {
+            Text(
+                text = statusLabel,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFD1FAE5)
+            )
+        }
+    }
+}
+
+/**
+ * نافذة الماسح الذكي لباركود الهوية الطلابية (QR / Barcode Scanner Modal)
+ * تدعم:
+ * 1) مسح الكاميرا المباشر / الماسح الضوئي الذكي بأنميشن ليزر بيزيير (Bezier Laser Scanner Animation)
+ * 2) رفع وقراءة صورة الهوية الطلابية من المعرض + إدخال رمز الباركود السريع (ID Barcode Token / Student ID)
+ */
+@Composable
+fun StudentIdQrLoginDialog(
+    schoolConfig: SchoolConfig,
+    students: List<StudentRecord>,
+    onDismiss: () -> Unit,
+    onBarcodeScannedOrSubmitted: (String) -> Result<*>
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var selectedMethodTab by remember { mutableIntStateOf(0) } // 0 = الماسح الضوئي والكاميرا، 1 = صورة المعرض أو رمز الباركود
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.CAMERA
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var useLiveCameraPreview by remember { mutableStateOf(hasCameraPermission) }
+    var barcodeTokenInput by remember { mutableStateOf("") }
+    var scannerError by remember { mutableStateOf<String?>(null) }
+    var verifiedWelcomeBanner by remember { mutableStateOf<String?>(null) }
+    var isProcessingScan by remember { mutableStateOf(false) }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasCameraPermission = granted
+        useLiveCameraPreview = granted
+        if (!granted) {
+            scannerError = "لم يتم منح إذن الكاميرا؛ يمكنك قراءة صورة الهوية من المعرض أو إدخال رمز الباركود مباشرة."
+        } else {
+            scannerError = null
+        }
+    }
+
+    fun executeBarcodeLoginFlow(rawPayload: String) {
+        val trimmed = rawPayload.trim()
+        if (trimmed.isBlank() || isProcessingScan) {
+            if (trimmed.isBlank()) {
+                scannerError = "يرجى مسح باركود الهوية أو إدخال رمز الباركود المطبوع على بطاقة الطالب."
+            }
+            return
+        }
+        scannerError = null
+        isProcessingScan = true
+
+        // التحقق المسبق من اسم الطالب لعرض رسالة الترحيب الزمردية الفورية قبل الانتقال للوحة التحكم
+        val matchedPreviewStudent = com.example.util.StandardQrCodeHelper.matchStudentFromQrPayloadOrStudents(
+            rawInput = trimmed,
+            students = students
+        ) ?: students.firstOrNull { it.matchesBarcodePayload(trimmed) }
+
+        if (matchedPreviewStudent != null && !schoolConfig.isSuspended) {
+            verifiedWelcomeBanner = "تم التعرف على الهوية الطلابية: مرحباً بك ${matchedPreviewStudent.fullNameWithFather}"
+            coroutineScope.launch {
+                delay(650L)
+                val result = onBarcodeScannedOrSubmitted(trimmed)
+                isProcessingScan = false
+                if (result.isSuccess) {
+                    onDismiss()
+                } else {
+                    verifiedWelcomeBanner = null
+                    scannerError = result.exceptionOrNull()?.message
+                        ?: "عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."
+                }
+            }
+        } else {
+            val result = onBarcodeScannedOrSubmitted(trimmed)
+            isProcessingScan = false
+            if (result.isSuccess) {
+                val loggedAccount = result.getOrNull() as? UserAccount
+                val welcomeName = loggedAccount?.fullName ?: matchedPreviewStudent?.fullNameWithFather ?: "طالبنا العزيز"
+                verifiedWelcomeBanner = "تم التعرف على الهوية الطلابية: مرحباً بك $welcomeName"
+                onDismiss()
+            } else {
+                verifiedWelcomeBanner = null
+                scannerError = result.exceptionOrNull()?.message
+                    ?: "عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."
+            }
+        }
+    }
+
+    // قارئ صورة بطاقة الهوية الطلابية من المعرض (Zero-permission Android Photo Picker)
+    val galleryPhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            scannerError = null
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    android.graphics.BitmapFactory.decodeStream(stream)
+                }
+            }.onSuccess { bitmap ->
+                if (bitmap != null) {
+                    val detectedPayload = com.example.util.StandardQrCodeHelper.detectQrCodeFromBitmap(
+                        bitmap = bitmap,
+                        students = students
+                    )
+                    if (!detectedPayload.isNullOrBlank()) {
+                        barcodeTokenInput = detectedPayload
+                        executeBarcodeLoginFlow(detectedPayload)
+                    } else {
+                        // إذا كان هناك طالب واحد مطابق أو تعذر استخراج مصفوفة البكسل من لقطة شاشة مقصوصة، نوجه المستخدم لإدخال الكود المطبوع أسفل الباركود
+                        selectedMethodTab = 1
+                        scannerError = "تعذر قراءة مربعات QR تلقائياً من هذه الصورة؛ يرجى كتابة أو لصق كود الباركود المطبوع أسفل بطاقة الهوية."
+                    }
+                } else {
+                    scannerError = "تعذر فتح صورة الهوية المختارة."
+                }
+            }.onFailure {
+                scannerError = "حدث خطأ أثناء قراءة صورة الهوية من المعرض."
+            }
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = { if (!isProcessingScan) onDismiss() },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .widthIn(max = 520.dp)
+                .clip(RoundedCornerShape(26.dp)),
+            shape = RoundedCornerShape(26.dp),
+            color = Color(0xFF042F24),
+            border = BorderStroke(1.8.dp, Color(0xFFFBBF24)),
+            shadowElevation = 18.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // ترويسة نافذة الماسح الذكي لباركود الهوية الطلابية
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.size(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF022C22),
+                        border = BorderStroke(1.2.dp, Color(0xFFFBBF24))
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            StudentIdBarcodeVectorIcon(modifier = Modifier.size(28.dp))
+                        }
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "تسجيل الدخول بباركود الهوية الطلابية",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFFFEF3C7)
+                        )
+                        Text(
+                            text = if (schoolConfig.schoolName.isNotBlank()) {
+                                "${schoolConfig.schoolName} • بوابة الهوية الرقمية الذكية"
+                            } else {
+                                "امسح باركود بطاقة الطالب للوصول الفوري للحساب"
+                            },
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFA7F3D0)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { if (!isProcessingScan) onDismiss() },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color.White.copy(alpha = 0.08f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "إغلاق الماسح",
+                            tint = Color(0xFFFEF3C7),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // رسالة الترحيب الزمردية الفورية عند نجاح التعرف على الهوية الطلابية
+                AnimatedVisibility(visible = !verifiedWelcomeBanner.isNullOrBlank()) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("student_barcode_verified_welcome_banner"),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF065F46),
+                        border = BorderStroke(1.5.dp, Color(0xFFFBBF24))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VerifiedUser,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Text(
+                                text = verifiedWelcomeBanner.orEmpty(),
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFFEF3C7)
+                            )
+                        }
+                    }
+                }
+
+                // أزرار التبديل بين الطريقتين العمليتين
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF022C22), RoundedCornerShape(14.dp))
+                        .border(1.dp, Color(0xFF047857), RoundedCornerShape(14.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val tab1Selected = selectedMethodTab == 0
+                    val tab2Selected = selectedMethodTab == 1
+
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                selectedMethodTab = 0
+                                scannerError = null
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (tab1Selected) Color(0xFF065F46) else Color.Transparent,
+                        border = if (tab1Selected) BorderStroke(1.dp, Color(0xFFFBBF24)) else null
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 9.dp, horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.QrCodeScanner,
+                                contentDescription = null,
+                                tint = if (tab1Selected) Color(0xFFFBBF24) else Color(0xFFA7F3D0),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "مسح الكاميرا الذكي",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (tab1Selected) Color(0xFFFEF3C7) else Color(0xFFA7F3D0)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                selectedMethodTab = 1
+                                scannerError = null
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (tab2Selected) Color(0xFF065F46) else Color.Transparent,
+                        border = if (tab2Selected) BorderStroke(1.dp, Color(0xFFFBBF24)) else null
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 9.dp, horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PhotoLibrary,
+                                contentDescription = null,
+                                tint = if (tab2Selected) Color(0xFFFBBF24) else Color(0xFFA7F3D0),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "صورة الهوية / الكود",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (tab2Selected) Color(0xFFFEF3C7) else Color(0xFFA7F3D0)
+                            )
+                        }
+                    }
+                }
+
+                // الطريقة الأولى: مسح الكاميرا / الماسح الضوئي الذكي (Bezier Laser Scanner Animation)
+                if (selectedMethodTab == 0) {
+                    if (hasCameraPermission && useLiveCameraPreview) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(215.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .border(1.5.dp, Color(0xFFFBBF24), RoundedCornerShape(20.dp))
+                        ) {
+                            com.example.util.StandardQrCodeHelper.LiveCameraQrScannerBox(
+                                students = students,
+                                onQrCodeScanned = { detectedCode: String ->
+                                    barcodeTokenInput = detectedCode
+                                    executeBarcodeLoginFlow(detectedCode)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        StudentIdBezierLaserScannerFrame(
+                            statusLabel = "شعاع الليزر الذكي جاهز لمسح باركود بطاقة الطالب"
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                if (hasCameraPermission) {
+                                    useLiveCameraPreview = !useLiveCameraPreview
+                                } else {
+                                    cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.8f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFFEF3C7)
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CameraAlt,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (hasCameraPermission && useLiveCameraPreview) "إطار الليزر الرقمي" else "تشغيل الكاميرا المباشرة",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                galleryPhotoPickerLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("pick_student_id_gallery_button"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF065F46),
+                                contentColor = Color(0xFFFEF3C7)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFF34D399))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ImageSearch,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "رفع صورة الهوية",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    // الطريقة الثانية: رفع صورة الهوية من المعرض مباشرة
+                    StudentIdBezierLaserScannerFrame(
+                        statusLabel = "اختر صورة بطاقة الهوية من هاتفك أو أدخل رمز الباركود"
+                    )
+
+                    Button(
+                        onClick = {
+                            galleryPhotoPickerLauncher.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF065F46),
+                            contentColor = Color(0xFFFEF3C7)
+                        ),
+                        border = BorderStroke(1.2.dp, Color(0xFFFBBF24))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PhotoLibrary,
+                            contentDescription = null,
+                            tint = Color(0xFFFBBF24),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "اختيار صورة بطاقة الهوية الطلابية من المعرض",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+
+                // قسم إدخال/لصق رمز الباركود السريع (يعمل في كلتا الحالتين لتمكين الدخول الفوري 100% على الهواتف والمحاكيات)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF022C22).copy(alpha = 0.85f),
+                    border = BorderStroke(1.dp, Color(0xFF047857))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Badge,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFBBF24),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Text(
+                                    text = "رمز باركود الهوية السريع (ID Barcode Token)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFFEF3C7)
+                                )
+                            }
+
+                            val clipboardManager = remember(context) {
+                                context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            }
+                            TextButton(
+                                onClick = {
+                                    val pasted = clipboardManager?.primaryClip
+                                        ?.takeIf { it.itemCount > 0 }
+                                        ?.getItemAt(0)
+                                        ?.coerceToText(context)
+                                        ?.toString()
+                                        ?.trim()
+                                        .orEmpty()
+                                    if (pasted.isNotBlank()) {
+                                        barcodeTokenInput = pasted
+                                        scannerError = null
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.ContentPaste,
+                                    contentDescription = null,
+                                    tint = Color(0xFF6EE7B7),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "لصق الكود",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF6EE7B7)
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = barcodeTokenInput,
+                            onValueChange = {
+                                barcodeTokenInput = it
+                                scannerError = null
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("student_barcode_token_input"),
+                            singleLine = true,
+                            label = {
+                                Text(
+                                    text = "MADRASATI_ID:${schoolConfig.schoolId.ifBlank { "100" }}:ST... أو معرف الطالب",
+                                    fontSize = 11.5.sp
+                                )
+                            },
+                            placeholder = {
+                                Text(
+                                    text = "امسح البطاقة أو الصق كود الباركود المطبوع أسفل QR",
+                                    fontSize = 11.sp
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.QrCode2,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFBBF24)
+                                )
+                            },
+                            trailingIcon = {
+                                if (barcodeTokenInput.isNotBlank()) {
+                                    IconButton(onClick = { barcodeTokenInput = "" }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Clear,
+                                            contentDescription = "مسح",
+                                            tint = Color(0xFFA7F3D0)
+                                        )
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(13.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color(0xFFECFDF5),
+                                focusedBorderColor = Color(0xFFFBBF24),
+                                unfocusedBorderColor = Color(0xFF10B981).copy(alpha = 0.55f),
+                                focusedLabelColor = Color(0xFFFBBF24),
+                                unfocusedLabelColor = Color(0xFFA7F3D0),
+                                cursorColor = Color(0xFFFBBF24)
+                            )
+                        )
+
+                        // شرائح اختيار سريع لبطاقات الهوية المسجلة في المدرسة لتسهيل الاختبار الفوري على المحاكيات
+                        if (students.isNotEmpty()) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "بطاقات الهوية الطلابية المتاحة للمسح السريع (${students.size}):",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFA7F3D0)
+                                )
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(students.take(12), key = { it.id }) { stu ->
+                                        Surface(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    barcodeTokenInput = stu.qrCodeValue
+                                                    executeBarcodeLoginFlow(stu.qrCodeValue)
+                                                },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFF064E3B),
+                                            border = BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.65f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.QrCode,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFFBBF24),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Column {
+                                                    Text(
+                                                        text = stu.fullNameWithFather,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFFFEF3C7),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = stu.qrCodeValue,
+                                                        fontSize = 9.5.sp,
+                                                        color = Color(0xFFA7F3D0),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // رسالة التنبيه الأمنية عند وجود باركود غير صالح أو غير مسجل
+                AnimatedVisibility(visible = !scannerError.isNullOrBlank()) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("student_barcode_error_banner"),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF7F1D1D).copy(alpha = 0.92f),
+                        border = BorderStroke(1.2.dp, Color(0xFFF87171))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.GppBad,
+                                contentDescription = null,
+                                tint = Color(0xFFFCA5A5),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = scannerError.orEmpty(),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFEE2E2)
+                            )
+                        }
+                    }
+                }
+
+                // زر التحقق والدخول الفوري بالباركود
+                Button(
+                    onClick = { executeBarcodeLoginFlow(barcodeTokenInput) },
+                    enabled = !isProcessingScan,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("verify_student_barcode_login_button"),
+                    shape = RoundedCornerShape(15.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFBBF24),
+                        contentColor = Color(0xFF022C22)
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.QrCodeScanner,
+                        contentDescription = null,
+                        tint = Color(0xFF022C22),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isProcessingScan) "جاري التحقق من الهوية الطلابية..." else "تحقق ودخول فوري بالباركود",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF022C22)
+                    )
+                }
             }
         }
     }

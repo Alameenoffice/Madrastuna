@@ -3438,6 +3438,189 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         return Result.success(matched)
     }
 
+    /**
+     * تسجيل الدخول الفوري عبر باركود الهوية الطلابية الرسمية (`loginWithStudentBarcode`):
+     * يدعم الصيغة المعيارية `MADRASATI_ID:<schoolCode>:<studentId>` وكذلك `MADRASATI|<schoolCode>|<studentId>|...`
+     * أو معرّف الطالب `id` أو اسم المستخدم `username` مباشرة.
+     */
+    fun loginWithStudentBarcode(barcodePayload: String): Result<UserAccount> {
+        val nowMs = System.currentTimeMillis()
+        val lockUntil = _loginLockoutUntilMs.value
+        if (lockUntil > nowMs) {
+            val remainingFormatted = com.example.util.SecurityShieldHelper.formatRemainingLockout(lockUntil - nowMs)
+            val lockMsg = "الدرع الأمني: تم قفل المحاولات مؤقتاً لمدة 5 دقائق بسبب 5 محاولات خاطئة. المتبقي: ($remainingFormatted)"
+            showToastAlert(lockMsg, isSuccess = false)
+            return Result.failure(IllegalStateException(lockMsg))
+        }
+
+        val cleanPayload = barcodePayload.trim()
+        if (cleanPayload.isEmpty()) {
+            val emptyErr = "عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."
+            showToastAlert(emptyErr, isSuccess = false)
+            return Result.failure(IllegalArgumentException(emptyErr))
+        }
+
+        val embeddedSchoolCode: String? = run {
+            val colonParts = cleanPayload.split(":").map { it.trim() }
+            if (colonParts.size >= 3 && colonParts[0].equals("MADRASATI_ID", ignoreCase = true)) {
+                colonParts[1].takeIf { it.isNotBlank() }
+            } else {
+                val pipeParts = cleanPayload.split("|").map { it.trim() }
+                if (pipeParts.size >= 3 && pipeParts[0].equals("MADRASATI", ignoreCase = true)) {
+                    pipeParts[1].takeIf { it.isNotBlank() }
+                } else if (cleanPayload.startsWith("WALLET-", ignoreCase = true)) {
+                    val dashParts = cleanPayload.split("-").map { it.trim() }
+                    dashParts.getOrNull(1)?.takeIf { it.isNotBlank() }
+                } else {
+                    FirebaseConfigConstants.extractSchoolPrefix(cleanPayload)
+                }
+            }
+        }
+
+        val currentSchoolId = _schoolConfig.value.schoolId
+        val targetSchoolId = embeddedSchoolCode?.takeIf { it.isNotBlank() } ?: currentSchoolId
+
+        if (targetSchoolId.isNotBlank() && targetSchoolId != currentSchoolId) {
+            val localStudents = repo.loadStudents(targetSchoolId)
+            val localAccounts = repo.loadAccounts(targetSchoolId)
+            if (localStudents.isNotEmpty() || localAccounts.isNotEmpty()) {
+                reloadSchoolDataIntoMemory(targetSchoolId)
+                _isSchoolGatePassed.value = true
+                repo.setSchoolSecurityGatePassed(true, targetSchoolId)
+            } else {
+                val knownSchoolName = repo.resolveSchoolNameLocally(targetSchoolId)
+                    ?: _registeredSchools.value.firstOrNull { it.schoolId == targetSchoolId }?.schoolName
+                val initialConnectingText = if (!knownSchoolName.isNullOrBlank()) {
+                    "جاري التحقق من باركود الهوية في $knownSchoolName..."
+                } else {
+                    "جاري التحقق من باركود الهوية الطلابية..."
+                }
+                _loginConnectingMessage.value = initialConnectingText
+
+                viewModelScope.launch {
+                    val essentialPulled = repo.syncEssentialAuthFromCloud(targetSchoolId)
+                    try {
+                        repo.syncRemainingSchoolCollectionsInBackground(targetSchoolId)
+                    } catch (_: Exception) {}
+                    _loginConnectingMessage.value = null
+                    if (essentialPulled) {
+                        reloadSchoolDataIntoMemory(targetSchoolId)
+                        _isSchoolGatePassed.value = true
+                        repo.setSchoolSecurityGatePassed(true, targetSchoolId)
+                        completeStudentBarcodeLoginInternal(cleanPayload, targetSchoolId)
+                    } else {
+                        showToastAlert("عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح.", isSuccess = false)
+                    }
+                }
+                return Result.failure(IllegalStateException(initialConnectingText))
+            }
+        }
+
+        return completeStudentBarcodeLoginInternal(cleanPayload, targetSchoolId.ifBlank { currentSchoolId })
+    }
+
+    private fun completeStudentBarcodeLoginInternal(
+        cleanPayload: String,
+        targetSchoolId: String
+    ): Result<UserAccount> {
+        val resolvedSchoolId = targetSchoolId.ifBlank { _schoolConfig.value.schoolId }
+
+        if (resolvedSchoolId.isNotBlank() && (!isSchoolSubscriptionActive(resolvedSchoolId) || _schoolConfig.value.isSuspended)) {
+            val suspMsg = "تم إيقاف/تجميد تفعيل المدرسة حالياً"
+            showToastAlert(suspMsg, isSuccess = false)
+            return Result.failure(IllegalStateException(suspMsg))
+        }
+
+        val schoolStudents = _students.value.filter {
+            it.schoolId.isEmpty() || resolvedSchoolId.isEmpty() || it.schoolId.equals(resolvedSchoolId, ignoreCase = true)
+        }
+        val matchedStudent = schoolStudents.firstOrNull { stu ->
+            stu.matchesBarcodePayload(cleanPayload)
+        }
+
+        val colonParts = cleanPayload.split(":").map { it.trim() }
+        val extractedTokenOrId = when {
+            colonParts.size >= 3 && colonParts[0].equals("MADRASATI_ID", ignoreCase = true) -> colonParts[2]
+            cleanPayload.contains("|") -> cleanPayload.split("|").map { it.trim() }.getOrNull(2).orEmpty()
+            else -> cleanPayload
+        }
+
+        val schoolAccounts = _accounts.value.filter {
+            it.role == UserRole.STUDENT &&
+                (it.schoolId.isEmpty() || resolvedSchoolId.isEmpty() || it.schoolId.equals(resolvedSchoolId, ignoreCase = true))
+        }
+        val matchedAccount = schoolAccounts.firstOrNull { acc ->
+            (matchedStudent != null && (
+                acc.linkedStudentId.equals(matchedStudent.id, ignoreCase = true) ||
+                    acc.username.equals(matchedStudent.studentUsername, ignoreCase = true) ||
+                    acc.id.equals(matchedStudent.id, ignoreCase = true)
+                )) ||
+                acc.id.equals(extractedTokenOrId, ignoreCase = true) ||
+                acc.linkedStudentId.equals(extractedTokenOrId, ignoreCase = true) ||
+                acc.username.equals(extractedTokenOrId, ignoreCase = true) ||
+                acc.username.equals(cleanPayload, ignoreCase = true) ||
+                (resolvedSchoolId.isNotBlank() &&
+                    acc.username.equals(FirebaseConfigConstants.applySchoolPrefix(resolvedSchoolId, extractedTokenOrId), ignoreCase = true))
+        }
+
+        if (matchedStudent == null && matchedAccount == null) {
+            val invalidMsg = "عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."
+            showToastAlert(invalidMsg, isSuccess = false)
+            return Result.failure(IllegalArgumentException(invalidMsg))
+        }
+
+        if ((matchedStudent != null && !matchedStudent.isActive) || (matchedAccount != null && !matchedAccount.isActive)) {
+            val inactiveMsg = "هذا الحساب الطلابي موقوف حالياً من قبل إدارة المدرسة"
+            showToastAlert(inactiveMsg, isSuccess = false)
+            return Result.failure(IllegalStateException(inactiveMsg))
+        }
+
+        val finalStudentAccount = matchedAccount ?: UserAccount(
+            id = "acc_stu_${matchedStudent!!.id}",
+            username = matchedStudent.studentUsername.ifBlank {
+                if (resolvedSchoolId.isNotBlank()) "${resolvedSchoolId}-${matchedStudent.id}" else matchedStudent.id
+            },
+            password = "",
+            fullName = matchedStudent.fullNameWithFather,
+            role = UserRole.STUDENT,
+            isActive = true,
+            phone = matchedStudent.parentPhone,
+            linkedStudentId = matchedStudent.id,
+            gradeClass = matchedStudent.gradeClass,
+            sectionName = matchedStudent.sectionName,
+            photoBase64 = matchedStudent.photoBase64,
+            schoolId = resolvedSchoolId
+        )
+
+        _failedLoginAttempts.value = 0
+        _loginLockoutUntilMs.value = 0L
+
+        if (resolvedSchoolId.isNotBlank()) {
+            _isSchoolGatePassed.value = true
+            repo.setSchoolSecurityGatePassed(true, resolvedSchoolId)
+        }
+
+        com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
+
+        val session = UserSession(
+            userId = finalStudentAccount.id,
+            username = finalStudentAccount.username,
+            role = UserRole.STUDENT,
+            schoolId = resolvedSchoolId,
+            sessionToken = UUID.randomUUID().toString()
+        )
+        repo.saveSession(session)
+        _activeSession.value = session
+        _currentUser.value = finalStudentAccount
+        _selectedParentChildId.value = finalStudentAccount.linkedStudentId.ifBlank { matchedStudent?.id.orEmpty() }
+        _isDeveloperAuthenticated.value = false
+        _isSchoolSetupUnlocked.value = false
+        _activeSection.value = AppSection.DASHBOARD
+
+        showToastAlert("تم التعرف على الهوية الطلابية: مرحباً بك ${finalStudentAccount.fullName}", isSuccess = true)
+        return Result.success(finalStudentAccount)
+    }
+
     fun logout() {
         repo.clearSession()
         _activeSession.value = null
@@ -4618,7 +4801,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         } else ""
 
         val matchedStudent = schoolStudents.firstOrNull { stu ->
-            stu.qrCodeValue.equals(cleanInput, ignoreCase = true) ||
+            stu.matchesBarcodePayload(cleanInput) ||
+                stu.qrCodeValue.equals(cleanInput, ignoreCase = true) ||
                 stu.walletBarcode.equals(cleanInput, ignoreCase = true) ||
                 (extractedStuIdFromPipe.isNotEmpty() && stu.id.equals(extractedStuIdFromPipe, ignoreCase = true)) ||
                 cleanInput.contains("|${stu.id}|", ignoreCase = true) ||
@@ -5723,7 +5907,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         } else ""
 
         val matchedStudent = schoolStudents.firstOrNull { stu ->
-            stu.qrCodeValue.equals(cleanInput, ignoreCase = true) ||
+            stu.matchesBarcodePayload(cleanInput) ||
+                stu.qrCodeValue.equals(cleanInput, ignoreCase = true) ||
                 stu.walletBarcode.equals(cleanInput, ignoreCase = true) ||
                 (extractedStuIdFromPipe.isNotEmpty() && stu.id.equals(extractedStuIdFromPipe, ignoreCase = true)) ||
                 cleanInput.contains("|${stu.id}|", ignoreCase = true) ||

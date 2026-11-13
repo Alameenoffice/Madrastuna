@@ -1293,10 +1293,60 @@ data class StudentRecord(
     val attendanceRate: Int get() = (100 - (absenceDays * 3)).coerceIn(75, 100)
 
     val qrCodeValue: String
+        get() = "MADRASATI_ID:${schoolId.ifBlank { "100" }}:$id"
+
+    val legacyQrCodeValue: String
         get() = "MADRASATI|${schoolId.ifBlank { "100" }}|$id|$studentName|$gradeClass"
 
     val walletBarcode: String
         get() = "WALLET-${schoolId.ifBlank { "100" }}-$id"
+
+    fun matchesBarcodePayload(rawInput: String): Boolean {
+        val clean = rawInput.trim()
+        if (clean.isEmpty()) return false
+        if (qrCodeValue.equals(clean, ignoreCase = true) ||
+            legacyQrCodeValue.equals(clean, ignoreCase = true) ||
+            walletBarcode.equals(clean, ignoreCase = true) ||
+            id.equals(clean, ignoreCase = true) ||
+            studentUsername.equals(clean, ignoreCase = true)
+        ) {
+            return true
+        }
+        val colonParts = clean.split(":").map { it.trim() }
+        if (colonParts.size >= 3 && colonParts[0].equals("MADRASATI_ID", ignoreCase = true)) {
+            val tokenStuId = colonParts[2]
+            val tokenUser = colonParts.getOrNull(3).orEmpty()
+            if (id.equals(tokenStuId, ignoreCase = true) ||
+                studentUsername.equals(tokenStuId, ignoreCase = true) ||
+                (tokenUser.isNotBlank() && studentUsername.equals(tokenUser, ignoreCase = true))
+            ) {
+                return true
+            }
+        }
+        val pipeParts = clean.split("|").map { it.trim() }
+        if (pipeParts.size >= 3 && pipeParts[0].equals("MADRASATI", ignoreCase = true)) {
+            val pipeStuId = pipeParts[2]
+            if (id.equals(pipeStuId, ignoreCase = true) || studentUsername.equals(pipeStuId, ignoreCase = true)) {
+                return true
+            }
+        }
+        val strippedUser = if (schoolId.isNotBlank()) {
+            studentUsername.removePrefix("${schoolId}-").removePrefix("${schoolId}_")
+        } else studentUsername
+        val cleanStripped = if (schoolId.isNotBlank()) {
+            clean.removePrefix("${schoolId}-").removePrefix("${schoolId}_")
+        } else clean
+        if (strippedUser.isNotBlank() && strippedUser.equals(cleanStripped, ignoreCase = true)) {
+            return true
+        }
+        if (clean.contains(":$id", ignoreCase = true) ||
+            clean.contains("|$id|", ignoreCase = true) ||
+            clean.endsWith("-$id", ignoreCase = true)
+        ) {
+            return true
+        }
+        return false
+    }
 
     fun getSpentToday(todayIso: String): Int {
         val cleanDate = ArabicTextNormalizer.normalizeDateIso(todayIso.trim())
