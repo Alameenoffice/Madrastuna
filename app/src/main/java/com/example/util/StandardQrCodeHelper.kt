@@ -583,10 +583,62 @@ object StandardQrCodeHelper {
             val srcH = bitmap.height
             if (srcW < 48 || srcH < 48) return null
 
-            // Scale to a crisp working resolution (up to 420px) for fast, accurate finder pattern detection
+            // 1. Direct pass at 420px (fast path for close-up camera frames and cropped QR images)
+            detectSingleRegionPass(bitmap, students, targetMaxDim = 420)?.let { return it }
+
+            // 2. High-resolution pass (920px) for full Student ID Card images (1280x800) or screenshots
+            if (max(srcW, srcH) > 480) {
+                detectSingleRegionPass(bitmap, students, targetMaxDim = 920)?.let { return it }
+            }
+
+            // 3. Targeted sub-region crops for Official Student ID Cards (Zone 3 Left QR) and vertical screenshots
+            if (srcW >= 240 && srcH >= 200) {
+                val cropSpecs = listOf(
+                    // Exported Horizontal Student ID Card exact Left QR Zone (x: 2%..38%, y: 20%..78%)
+                    floatArrayOf(0.02f, 0.20f, 0.38f, 0.78f),
+                    // Wider Left Half crop
+                    floatArrayOf(0.0f, 0.12f, 0.48f, 0.88f),
+                    // Center QR crop (vertical phone screenshot of ID card)
+                    floatArrayOf(0.08f, 0.18f, 0.92f, 0.82f),
+                    // Lower-half QR crop
+                    floatArrayOf(0.05f, 0.35f, 0.95f, 0.95f),
+                    // Right half crop
+                    floatArrayOf(0.50f, 0.12f, 1.0f, 0.88f)
+                )
+                for (spec in cropSpecs) {
+                    val cx = (srcW * spec[0]).roundToInt().coerceIn(0, srcW - 48)
+                    val cy = (srcH * spec[1]).roundToInt().coerceIn(0, srcH - 48)
+                    val cw = ((srcW * (spec[2] - spec[0])).roundToInt()).coerceIn(48, srcW - cx)
+                    val ch = ((srcH * (spec[3] - spec[1])).roundToInt()).coerceIn(48, srcH - cy)
+                    if (cw >= 48 && ch >= 48) {
+                        val subBmp = Bitmap.createBitmap(bitmap, cx, cy, cw, ch)
+                        val res = detectSingleRegionPass(subBmp, students, targetMaxDim = 520)
+                        if (subBmp !== bitmap) {
+                            subBmp.recycle()
+                        }
+                        if (!res.isNullOrBlank()) return res
+                    }
+                }
+            }
+            null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun detectSingleRegionPass(
+        bitmap: Bitmap,
+        students: List<StudentRecord>,
+        targetMaxDim: Int
+    ): String? {
+        return try {
+            val srcW = bitmap.width
+            val srcH = bitmap.height
+            if (srcW < 48 || srcH < 48) return null
+
             val maxDim = max(srcW, srcH)
-            val workBmp = if (maxDim > 420) {
-                val scale = 420f / maxDim.toFloat()
+            val workBmp = if (maxDim > targetMaxDim) {
+                val scale = targetMaxDim.toFloat() / maxDim.toFloat()
                 val nw = (srcW * scale).roundToInt().coerceAtLeast(64)
                 val nh = (srcH * scale).roundToInt().coerceAtLeast(64)
                 Bitmap.createScaledBitmap(bitmap, nw, nh, true)
@@ -602,13 +654,8 @@ object StandardQrCodeHelper {
                 workBmp.recycle()
             }
 
-            // 1. Binarize image using local 8x8 block adaptive thresholding
             val isDark = binarizeAdaptive(pixels, w, h)
-
-            // 2. Locate real 1:1:3:1:1 QR Finder Patterns (horizontally + vertically verified)
             val triad = findQrFinderTriad(isDark, w, h) ?: return null
-
-            // 3. Decode the QR Matrix from the verified Finder Triad (tl, tr, bl)
             decodeQrPayloadFromTriad(isDark, w, h, triad, students)
         } catch (_: Exception) {
             null

@@ -3238,6 +3238,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val rawUser = usernameInput.trim()
         val rawPass = passwordInput.trim()
+        if (rawUser.startsWith("MADRASATI_ID:", ignoreCase = true) ||
+            rawUser.startsWith("MADRASATI|", ignoreCase = true) ||
+            rawUser.startsWith("stu_", ignoreCase = true) ||
+            rawPass == "QR_BARCODE_DIRECT_AUTH"
+        ) {
+            return loginWithStudentBarcode(rawUser)
+        }
         if (rawUser.isEmpty() || rawPass.isEmpty()) {
             showToastAlert("يرجى إدخال اسم المستخدم وكلمة المرور", isSuccess = false)
             return Result.failure(IllegalArgumentException("يرجى إدخال اسم المستخدم وكلمة المرور"))
@@ -3325,6 +3332,39 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 (currentSchoolId.isEmpty() || acc.schoolId.isEmpty() || acc.schoolId == currentSchoolId)
         }
 
+        val matchedFromStudents: UserAccount? = if (matchedFromAccounts == null) {
+            val prefixedCandidate = if (currentSchoolId.isNotBlank()) {
+                FirebaseConfigConstants.applySchoolPrefix(currentSchoolId, cleanUser)
+            } else cleanUser
+            val stu = _students.value.firstOrNull { s ->
+                val userMatches = s.studentUsername.equals(cleanUser, ignoreCase = true) ||
+                    s.studentUsername.equals(prefixedCandidate, ignoreCase = true) ||
+                    s.id.equals(cleanUser, ignoreCase = true)
+                val passMatches = s.studentPassword.isBlank() ||
+                    com.example.util.SecurityShieldHelper.verifyPassword(cleanPass, s.studentPassword)
+                userMatches && passMatches
+            }
+            if (stu != null) {
+                val resolvedSid = stu.schoolId.ifBlank { currentSchoolId }
+                UserAccount(
+                    id = "acc_stu_${stu.id}",
+                    username = stu.studentUsername.ifBlank {
+                        if (resolvedSid.isNotBlank()) "$resolvedSid-${stu.id}" else stu.id
+                    },
+                    password = stu.studentPassword,
+                    fullName = stu.studentName,
+                    role = UserRole.STUDENT,
+                    isActive = stu.isActive,
+                    phone = stu.parentPhone,
+                    linkedStudentId = stu.id,
+                    gradeClass = stu.gradeClass,
+                    sectionName = stu.sectionName,
+                    photoBase64 = stu.photoBase64,
+                    schoolId = resolvedSid
+                )
+            } else null
+        } else null
+
         val matchedFromDriverConfig: UserAccount? = run {
             val cfg = _schoolConfig.value
             val prefixedCandidate = if (currentSchoolId.isNotBlank()) {
@@ -3384,7 +3424,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        val matched = matchedFromDriverConfig ?: matchedFromAccounts ?: run {
+        val matched = matchedFromDriverConfig ?: matchedFromAccounts ?: matchedFromStudents ?: run {
             registerFailedLoginAttempt()
             val lockUntil = _loginLockoutUntilMs.value
             val errMsg = if (lockUntil > System.currentTimeMillis()) {
