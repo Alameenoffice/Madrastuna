@@ -491,7 +491,27 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 it.id == savedSession.userId && it.isActive && (it.schoolId.isEmpty() || it.schoolId == currentSchoolId)
             } ?: run {
                 val cfg = _schoolConfig.value
-                if (cfg.isDriverAccountEnabled && savedSession.userId == "acc_bus_driver_$currentSchoolId") {
+                val matchedRoute = cfg.effectiveBusRoutesList.firstOrNull { route ->
+                    route.isDriverAccountEnabled &&
+                        route.driverUsername.isNotBlank() &&
+                        (savedSession.userId == "acc_bus_driver_${currentSchoolId}_${route.id}" ||
+                            savedSession.username.equals(route.driverUsername, ignoreCase = true))
+                }
+                if (matchedRoute != null) {
+                    UserAccount(
+                        id = "acc_bus_driver_${currentSchoolId}_${matchedRoute.id}",
+                        username = matchedRoute.driverUsername,
+                        password = matchedRoute.driverPassword,
+                        fullName = matchedRoute.driverName.ifBlank { cfg.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" } },
+                        role = UserRole.TEACHER,
+                        isActive = true,
+                        phone = matchedRoute.driverPhone.ifBlank { cfg.busDriverPhone },
+                        specialty = matchedRoute.routeAreaName.ifBlank { "سائق الخط المدرسي" },
+                        assignedClasses = matchedRoute.id,
+                        schoolId = currentSchoolId,
+                        isBusDriverAccount = true
+                    )
+                } else if (cfg.isDriverAccountEnabled && savedSession.userId == "acc_bus_driver_$currentSchoolId") {
                     UserAccount(
                         id = "acc_bus_driver_$currentSchoolId",
                         username = cfg.busDriverUsername,
@@ -500,7 +520,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                         role = UserRole.TEACHER,
                         isActive = true,
                         phone = cfg.busDriverPhone,
-                        specialty = "سائق الخط المدرسي",
+                        specialty = cfg.busRouteAreaName.ifBlank { "سائق الخط المدرسي" },
+                        assignedClasses = cfg.effectiveBusRoutesList.firstOrNull()?.id.orEmpty(),
                         schoolId = currentSchoolId,
                         isBusDriverAccount = true
                     )
@@ -3306,29 +3327,61 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val matchedFromDriverConfig: UserAccount? = run {
             val cfg = _schoolConfig.value
-            val cfgDriverUser = cfg.busDriverUsername.trim()
-            val cfgDriverPass = cfg.busDriverPassword.trim()
-            if (cfgDriverUser.isNotEmpty() && cfgDriverPass.isNotEmpty()) {
-                val exactMatch = cfgDriverUser.equals(cleanUser, ignoreCase = true)
-                val prefixedCandidate = if (currentSchoolId.isNotBlank()) {
-                    FirebaseConfigConstants.applySchoolPrefix(currentSchoolId, cleanUser)
-                } else cleanUser
-                val prefixedMatch = cfgDriverUser.equals(prefixedCandidate, ignoreCase = true)
-                if ((exactMatch || prefixedMatch) && com.example.util.SecurityShieldHelper.verifyPassword(cleanPass, cfgDriverPass)) {
-                    UserAccount(
-                        id = "acc_bus_driver_$currentSchoolId",
-                        username = cfgDriverUser,
-                        password = cfgDriverPass,
-                        fullName = cfg.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" },
-                        role = UserRole.TEACHER,
-                        isActive = cfg.isDriverAccountEnabled,
-                        phone = cfg.busDriverPhone,
-                        specialty = "سائق الخط المدرسي",
-                        schoolId = currentSchoolId,
-                        isBusDriverAccount = true
-                    )
+            val prefixedCandidate = if (currentSchoolId.isNotBlank()) {
+                FirebaseConfigConstants.applySchoolPrefix(currentSchoolId, cleanUser)
+            } else cleanUser
+
+            val matchedRouteItem = cfg.effectiveBusRoutesList.firstOrNull { route ->
+                val rUser = route.driverUsername.trim()
+                val rPass = route.driverPassword.trim()
+                if (rUser.isEmpty() || rPass.isEmpty()) return@firstOrNull false
+                val exactMatch = rUser.equals(cleanUser, ignoreCase = true)
+                val prefixedMatch = rUser.equals(prefixedCandidate, ignoreCase = true)
+                val strippedRouteUser = if (currentSchoolId.isNotBlank()) {
+                    rUser.removePrefix("${currentSchoolId}_")
+                } else rUser
+                val strippedMatch = strippedRouteUser.equals(cleanUser, ignoreCase = true)
+                (exactMatch || prefixedMatch || strippedMatch) &&
+                    com.example.util.SecurityShieldHelper.verifyPassword(cleanPass, rPass)
+            }
+
+            if (matchedRouteItem != null) {
+                UserAccount(
+                    id = "acc_bus_driver_${currentSchoolId}_${matchedRouteItem.id}",
+                    username = matchedRouteItem.driverUsername,
+                    password = matchedRouteItem.driverPassword,
+                    fullName = matchedRouteItem.driverName.ifBlank { cfg.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" } },
+                    role = UserRole.TEACHER,
+                    isActive = matchedRouteItem.isDriverAccountEnabled,
+                    phone = matchedRouteItem.driverPhone.ifBlank { cfg.busDriverPhone },
+                    specialty = matchedRouteItem.routeAreaName.ifBlank { "سائق الخط المدرسي" },
+                    assignedClasses = matchedRouteItem.id,
+                    schoolId = currentSchoolId,
+                    isBusDriverAccount = true
+                )
+            } else {
+                val cfgDriverUser = cfg.busDriverUsername.trim()
+                val cfgDriverPass = cfg.busDriverPassword.trim()
+                if (cfgDriverUser.isNotEmpty() && cfgDriverPass.isNotEmpty()) {
+                    val exactMatch = cfgDriverUser.equals(cleanUser, ignoreCase = true)
+                    val prefixedMatch = cfgDriverUser.equals(prefixedCandidate, ignoreCase = true)
+                    if ((exactMatch || prefixedMatch) && com.example.util.SecurityShieldHelper.verifyPassword(cleanPass, cfgDriverPass)) {
+                        UserAccount(
+                            id = "acc_bus_driver_$currentSchoolId",
+                            username = cfgDriverUser,
+                            password = cfgDriverPass,
+                            fullName = cfg.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" },
+                            role = UserRole.TEACHER,
+                            isActive = cfg.isDriverAccountEnabled,
+                            phone = cfg.busDriverPhone,
+                            specialty = cfg.busRouteAreaName.ifBlank { "سائق الخط المدرسي" },
+                            assignedClasses = cfg.effectiveBusRoutesList.firstOrNull()?.id.orEmpty(),
+                            schoolId = currentSchoolId,
+                            isBusDriverAccount = true
+                        )
+                    } else null
                 } else null
-            } else null
+            }
         }
 
         val matched = matchedFromDriverConfig ?: matchedFromAccounts ?: run {
@@ -5399,7 +5452,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         driverPhotoBase64: String = _schoolConfig.value.busDriverPhotoBase64,
         routeAreaName: String = _schoolConfig.value.busRouteAreaName,
         driverIdentityDetails: String = _schoolConfig.value.busDriverIdentityDetails,
-        vehicleTypeAndColor: String = _schoolConfig.value.busVehicleTypeAndColor
+        vehicleTypeAndColor: String = _schoolConfig.value.busVehicleTypeAndColor,
+        driverUsername: String = _schoolConfig.value.busDriverUsername,
+        driverPassword: String = _schoolConfig.value.busDriverPassword,
+        isDriverAccountEnabled: Boolean = _schoolConfig.value.isDriverAccountEnabled
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
@@ -5409,18 +5465,30 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanRouteArea = InputSanitizer.sanitize(routeAreaName)
         val cleanIdentityDetails = InputSanitizer.sanitize(driverIdentityDetails)
         val cleanVehicleType = InputSanitizer.sanitize(vehicleTypeAndColor).ifBlank { "باص مدرسي حديث • أبيض وزمردي" }
+        val rawUser = InputSanitizer.sanitizeUsername(driverUsername)
+        val prefixedDriverUser = if (rawUser.isNotBlank()) {
+            FirebaseConfigConstants.applySchoolPrefix(sid, rawUser)
+        } else {
+            _schoolConfig.value.busDriverUsername
+        }
+        val cleanDriverPass = InputSanitizer.sanitize(driverPassword).ifBlank {
+            _schoolConfig.value.busDriverPassword.ifBlank { "2026" }
+        }
 
         val currentRoutes = _schoolConfig.value.registeredBusRoutes.toMutableList()
         if (cleanRouteArea.isNotBlank()) {
+            val existingMatch = currentRoutes.firstOrNull { it.routeAreaName.equals(cleanRouteArea, ignoreCase = true) }
             val primaryItem = BusRouteFleetItem(
-                id = currentRoutes.firstOrNull { it.routeAreaName.equals(cleanRouteArea, ignoreCase = true) }?.id
-                    ?: "route_primary_1",
+                id = existingMatch?.id ?: "route_primary_1",
                 routeAreaName = cleanRouteArea,
                 vehicleTypeAndColor = cleanVehicleType,
                 vehiclePlateNumber = cleanVehicleNumber,
                 driverName = cleanDriverName,
                 driverPhone = cleanDriverPhone,
-                driverIdentityDetails = cleanIdentityDetails
+                driverIdentityDetails = cleanIdentityDetails,
+                driverUsername = prefixedDriverUser.ifBlank { existingMatch?.driverUsername.orEmpty() },
+                driverPassword = cleanDriverPass.ifBlank { existingMatch?.driverPassword.orEmpty() },
+                isDriverAccountEnabled = isDriverAccountEnabled
             )
             val existingIdx = currentRoutes.indexOfFirst {
                 it.id == primaryItem.id || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true)
@@ -5441,28 +5509,17 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             busDriverPhotoBase64 = driverPhotoBase64,
             busRouteAreaName = cleanRouteArea,
             busDriverIdentityDetails = cleanIdentityDetails,
+            isDriverAccountEnabled = isDriverAccountEnabled,
+            busDriverUsername = prefixedDriverUser,
+            busDriverPassword = cleanDriverPass,
             registeredBusRoutes = currentRoutes
         )
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
 
-        // Keep driver account fullName & phone synced if driver account exists
-        val driverAccId = "acc_bus_driver_$sid"
-        if (_accounts.value.any { it.id == driverAccId || it.isBusDriverAccount }) {
-            val updatedAccs = _accounts.value.map { acc ->
-                if (acc.id == driverAccId || acc.isBusDriverAccount) {
-                    acc.copy(
-                        fullName = cleanDriverName,
-                        phone = cleanDriverPhone,
-                        photoBase64 = driverPhotoBase64.ifBlank { acc.photoBase64 }
-                    )
-                } else acc
-            }
-            _accounts.value = updatedAccs
-            repo.saveAccounts(updatedAccs, sid)
-        }
+        syncAllFleetDriverAccounts(updatedConfig)
 
-        showToastAlert("تم حفظ إعدادات الخطوط وبيانات السائق وصلاحية كشف الهوية بنجاح", isSuccess = true)
+        showToastAlert("تم حفظ واعتماد بيانات الخط والمركبة وحساب السائق الموحد بنجاح", isSuccess = true)
     }
 
     fun addOrUpdateBusRouteFleetItem(
@@ -5472,9 +5529,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         vehiclePlateNumber: String,
         driverName: String,
         driverPhone: String,
-        driverIdentityDetails: String = ""
+        driverIdentityDetails: String = "",
+        driverUsername: String = "",
+        driverPassword: String = "",
+        isDriverAccountEnabled: Boolean = true
     ): BusRouteFleetItem? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return null
+        val sid = _schoolConfig.value.schoolId
         val cleanRouteArea = InputSanitizer.sanitize(routeAreaName).trim()
         if (cleanRouteArea.isEmpty()) {
             showToastAlert("يرجى إدخال اسم أو منطقة الخط المدرسي أولاً", isSuccess = false)
@@ -5486,7 +5547,25 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val cleanPhone = InputSanitizer.sanitize(driverPhone)
         val cleanIdentity = InputSanitizer.sanitize(driverIdentityDetails)
 
-        val resolvedId = routeId.ifBlank { "route_${UUID.randomUUID().toString().take(6)}" }
+        val currentList = _schoolConfig.value.registeredBusRoutes.toMutableList()
+        val resolvedId = routeId.ifBlank {
+            currentList.firstOrNull { it.routeAreaName.equals(cleanRouteArea, ignoreCase = true) }?.id
+                ?: "route_${UUID.randomUUID().toString().take(6)}"
+        }
+        val existingRoute = currentList.firstOrNull {
+            it.id == resolvedId || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true)
+        }
+
+        val rawUser = InputSanitizer.sanitizeUsername(driverUsername).ifBlank {
+            existingRoute?.driverUsername?.ifBlank { null }
+                ?: "driver${currentList.size + 1}"
+        }
+        val prefixedDriverUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawUser)
+        val cleanDriverPass = InputSanitizer.sanitize(driverPassword).ifBlank {
+            existingRoute?.driverPassword?.ifBlank { null }
+                ?: _schoolConfig.value.busDriverPassword.ifBlank { "2026" }
+        }
+
         val newItem = BusRouteFleetItem(
             id = resolvedId,
             routeAreaName = cleanRouteArea,
@@ -5494,10 +5573,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             vehiclePlateNumber = cleanPlate,
             driverName = cleanDriver,
             driverPhone = cleanPhone,
-            driverIdentityDetails = cleanIdentity
+            driverIdentityDetails = cleanIdentity,
+            driverUsername = prefixedDriverUser,
+            driverPassword = cleanDriverPass,
+            isDriverAccountEnabled = isDriverAccountEnabled
         )
 
-        val currentList = _schoolConfig.value.registeredBusRoutes.toMutableList()
         val idx = currentList.indexOfFirst { it.id == resolvedId || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true) }
         if (idx >= 0) {
             currentList[idx] = newItem
@@ -5507,15 +5588,24 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
         val updatedConfig = _schoolConfig.value.copy(
             registeredBusRoutes = currentList,
-            busRouteAreaName = _schoolConfig.value.busRouteAreaName.ifBlank { cleanRouteArea },
-            busDriverName = if (_schoolConfig.value.busDriverName == "السائق المعتمد للخط المدرسي") cleanDriver else _schoolConfig.value.busDriverName,
-            busDriverPhone = _schoolConfig.value.busDriverPhone.ifBlank { cleanPhone },
-            busVehicleNumber = if (_schoolConfig.value.busVehicleNumber == "مركبة النقل المدرسي الحديثة") cleanPlate else _schoolConfig.value.busVehicleNumber,
-            busVehicleTypeAndColor = _schoolConfig.value.busVehicleTypeAndColor.ifBlank { cleanVehicleType }
+            busRouteAreaName = cleanRouteArea,
+            busDriverName = cleanDriver,
+            busDriverPhone = cleanPhone,
+            busVehicleNumber = cleanPlate,
+            busVehicleTypeAndColor = cleanVehicleType,
+            busDriverIdentityDetails = cleanIdentity,
+            isDriverAccountEnabled = isDriverAccountEnabled,
+            busDriverUsername = prefixedDriverUser,
+            busDriverPassword = cleanDriverPass
         )
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
-        showToastAlert("تم اعتماد وحفظ الخط المدرسي ($cleanRouteArea) ومركبته في قائمة الخطوط المعتمدة", isSuccess = true)
+        syncAllFleetDriverAccounts(updatedConfig)
+
+        showToastAlert(
+            "تم اعتماد الخط ($cleanRouteArea) وحساب السائق ($prefixedDriverUser) بنجاح",
+            isSuccess = true
+        )
         return newItem
     }
 
@@ -5525,55 +5615,81 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val updatedConfig = _schoolConfig.value.copy(registeredBusRoutes = updatedRoutes)
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
+        syncAllFleetDriverAccounts(updatedConfig)
         showToastAlert("تم حذف الخط من قائمة الخطوط المسجلة", isSuccess = true)
     }
 
     fun updateBusDriverAccountSettings(
         isEnabled: Boolean,
         driverUsernameInput: String,
-        driverPasswordInput: String
+        driverPasswordInput: String,
+        targetRouteId: String = ""
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
         val sid = _schoolConfig.value.schoolId
         val rawUser = InputSanitizer.sanitizeUsername(driverUsernameInput).ifBlank { "driver1" }
         val prefixedDriverUser = FirebaseConfigConstants.applySchoolPrefix(sid, rawUser)
-        val cleanPass = InputSanitizer.sanitize(driverPasswordInput).ifBlank { "1234" }
+        val cleanPass = InputSanitizer.sanitize(driverPasswordInput).ifBlank { "2026" }
+
+        val currentRoutes = _schoolConfig.value.effectiveBusRoutesList.toMutableList()
+        val routeIdx = if (targetRouteId.isNotBlank()) {
+            currentRoutes.indexOfFirst { it.id == targetRouteId }.takeIf { it >= 0 } ?: 0
+        } else 0
+        if (currentRoutes.isNotEmpty() && routeIdx in currentRoutes.indices) {
+            currentRoutes[routeIdx] = currentRoutes[routeIdx].copy(
+                driverUsername = prefixedDriverUser,
+                driverPassword = cleanPass,
+                isDriverAccountEnabled = isEnabled
+            )
+        }
 
         val updatedConfig = _schoolConfig.value.copy(
             isDriverAccountEnabled = isEnabled,
             busDriverUsername = prefixedDriverUser,
-            busDriverPassword = cleanPass
+            busDriverPassword = cleanPass,
+            registeredBusRoutes = currentRoutes
         )
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
-
-        val driverAccId = "acc_bus_driver_$sid"
-        val driverAcc = UserAccount(
-            id = driverAccId,
-            username = prefixedDriverUser,
-            password = cleanPass,
-            fullName = updatedConfig.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" },
-            role = UserRole.TEACHER,
-            isActive = isEnabled,
-            phone = updatedConfig.busDriverPhone,
-            specialty = "سائق الخط المدرسي",
-            photoBase64 = updatedConfig.busDriverPhotoBase64,
-            schoolId = sid,
-            isBusDriverAccount = true
-        )
-        val filteredAccs = _accounts.value.filterNot { it.id == driverAccId || it.isBusDriverAccount }
-        val updatedAccs = filteredAccs + driverAcc
-        _accounts.value = updatedAccs
-        repo.saveAccounts(updatedAccs, sid)
+        syncAllFleetDriverAccounts(updatedConfig)
 
         if (isEnabled) {
             showToastAlert(
-                "تم تفعيل حساب السائق المستقل بنجاح • المستخدم: ($prefixedDriverUser) • الرمز: ($cleanPass)",
+                "تم تفعيل وحفظ حساب السائق بنجاح • المستخدم: ($prefixedDriverUser) • الرمز: ($cleanPass)",
                 isSuccess = true
             )
         } else {
             showToastAlert("تم إيقاف حساب السائق المستقل", isSuccess = true)
         }
+    }
+
+    private fun syncAllFleetDriverAccounts(config: SchoolConfig) {
+        val sid = config.schoolId
+        val driverAccounts = config.effectiveBusRoutesList.mapNotNull { route ->
+            val uName = route.driverUsername.trim()
+            val uPass = route.driverPassword.trim()
+            if (uName.isEmpty() || uPass.isEmpty()) return@mapNotNull null
+            UserAccount(
+                id = "acc_bus_driver_${sid}_${route.id}",
+                username = FirebaseConfigConstants.applySchoolPrefix(sid, uName),
+                password = uPass,
+                fullName = route.driverName.ifBlank { config.busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" } },
+                role = UserRole.TEACHER,
+                isActive = route.isDriverAccountEnabled,
+                phone = route.driverPhone.ifBlank { config.busDriverPhone },
+                specialty = route.routeAreaName.ifBlank { "سائق الخط المدرسي" },
+                assignedClasses = route.id,
+                photoBase64 = config.busDriverPhotoBase64,
+                schoolId = sid,
+                isBusDriverAccount = true
+            )
+        }
+        val nonDriverAccs = _accounts.value.filterNot {
+            it.isBusDriverAccount || it.id.startsWith("acc_bus_driver_")
+        }
+        val mergedAccs = nonDriverAccs + driverAccounts
+        _accounts.value = mergedAccs
+        repo.saveAccounts(mergedAccs, sid)
     }
 
     /**

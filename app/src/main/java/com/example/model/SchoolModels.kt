@@ -591,7 +591,19 @@ data class SchoolConfig(
 
     val effectiveBusRoutesList: List<BusRouteFleetItem>
         get() {
-            if (registeredBusRoutes.isNotEmpty()) return registeredBusRoutes
+            if (registeredBusRoutes.isNotEmpty()) {
+                return registeredBusRoutes.mapIndexed { idx, item ->
+                    if (idx == 0 && item.driverUsername.isBlank() && busDriverUsername.isNotBlank()) {
+                        item.copy(
+                            driverUsername = busDriverUsername,
+                            driverPassword = item.driverPassword.ifBlank { busDriverPassword },
+                            isDriverAccountEnabled = isDriverAccountEnabled
+                        )
+                    } else {
+                        item
+                    }
+                }
+            }
             val defaultRouteName = busRouteAreaName.ifBlank { "الخط الصباحي والمسائي المعتمد" }
             return listOf(
                 BusRouteFleetItem(
@@ -601,7 +613,13 @@ data class SchoolConfig(
                     vehiclePlateNumber = busVehicleNumber.ifBlank { "مركبة النقل المدرسي الحديثة" },
                     driverName = busDriverName.ifBlank { "السائق المعتمد للخط المدرسي" },
                     driverPhone = busDriverPhone,
-                    driverIdentityDetails = busDriverIdentityDetails
+                    driverIdentityDetails = busDriverIdentityDetails,
+                    driverUsername = busDriverUsername,
+                    driverPassword = busDriverPassword,
+                    isDriverAccountEnabled = isDriverAccountEnabled,
+                    activeBusEvent = activeBusEvent,
+                    activeBusEventTimestamp = activeBusEventTimestamp,
+                    activeBusEventDateIso = activeBusEventDateIso
                 )
             )
         }
@@ -614,8 +632,44 @@ data class BusRouteFleetItem(
     val vehiclePlateNumber: String = "",
     val driverName: String = "",
     val driverPhone: String = "",
-    val driverIdentityDetails: String = ""
-)
+    val driverIdentityDetails: String = "",
+    val driverUsername: String = "",
+    val driverPassword: String = "",
+    val isDriverAccountEnabled: Boolean = true,
+    val activeBusEvent: String = "",
+    val activeBusEventTimestamp: String = "",
+    val activeBusEventDateIso: String = ""
+) {
+    fun matchesStudent(student: StudentRecord, isOnlyRouteInSchool: Boolean = false): Boolean {
+        if (!student.isBusSubscribed) return false
+        if (id.isNotBlank() && student.busRouteId.isNotBlank() && student.busRouteId.equals(id, ignoreCase = true)) {
+            return true
+        }
+        val cleanRoute = ArabicTextNormalizer.normalizeText(routeAreaName)
+        val cleanStuRoute = ArabicTextNormalizer.normalizeText(student.busRouteName)
+        if (cleanRoute.isNotBlank() && cleanStuRoute.isNotBlank() &&
+            (cleanRoute == cleanStuRoute || cleanStuRoute.contains(cleanRoute) || cleanRoute.contains(cleanStuRoute))
+        ) {
+            return true
+        }
+        val cleanPlate = vehiclePlateNumber.trim()
+        val cleanStuPlate = student.busVehicleNumber.trim()
+        if (cleanPlate.isNotBlank() && cleanPlate != "مركبة النقل المدرسي الحديثة" &&
+            cleanStuPlate.isNotBlank() && cleanStuPlate.equals(cleanPlate, ignoreCase = true)
+        ) {
+            return true
+        }
+        val cleanDriver = ArabicTextNormalizer.normalizeText(driverName)
+        val cleanStuDriver = ArabicTextNormalizer.normalizeText(student.busDriverName)
+        if (cleanDriver.isNotBlank() && cleanDriver != ArabicTextNormalizer.normalizeText("السائق المعتمد للخط المدرسي") &&
+            cleanStuDriver.isNotBlank() && cleanDriver == cleanStuDriver
+        ) {
+            return true
+        }
+        if (isOnlyRouteInSchool) return true
+        return false
+    }
+}
 
 data class UserSession(
     val userId: String,

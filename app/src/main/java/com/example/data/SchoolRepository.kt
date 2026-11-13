@@ -272,7 +272,13 @@ class SchoolRepository(context: Context) {
                                         vehiclePlateNumber = rObj.optString("vehiclePlateNumber", ""),
                                         driverName = rObj.optString("driverName", ""),
                                         driverPhone = rObj.optString("driverPhone", ""),
-                                        driverIdentityDetails = rObj.optString("driverIdentityDetails", "")
+                                        driverIdentityDetails = rObj.optString("driverIdentityDetails", ""),
+                                        driverUsername = rObj.optString("driverUsername", ""),
+                                        driverPassword = rObj.optString("driverPassword", ""),
+                                        isDriverAccountEnabled = rObj.optBoolean("isDriverAccountEnabled", true),
+                                        activeBusEvent = rObj.optString("activeBusEvent", ""),
+                                        activeBusEventTimestamp = rObj.optString("activeBusEventTimestamp", ""),
+                                        activeBusEventDateIso = rObj.optString("activeBusEventDateIso", "")
                                     )
                                 )
                             }
@@ -499,6 +505,12 @@ class SchoolRepository(context: Context) {
                     put("driverName", InputSanitizer.sanitize(r.driverName))
                     put("driverPhone", InputSanitizer.sanitize(r.driverPhone))
                     put("driverIdentityDetails", InputSanitizer.sanitize(r.driverIdentityDetails))
+                    put("driverUsername", InputSanitizer.sanitizeUsername(r.driverUsername))
+                    put("driverPassword", InputSanitizer.sanitize(r.driverPassword))
+                    put("isDriverAccountEnabled", r.isDriverAccountEnabled)
+                    put("activeBusEvent", InputSanitizer.sanitize(r.activeBusEvent))
+                    put("activeBusEventTimestamp", InputSanitizer.sanitize(r.activeBusEventTimestamp))
+                    put("activeBusEventDateIso", InputSanitizer.sanitize(r.activeBusEventDateIso))
                 })
             }
             put("registeredBusRoutes", routesJsonArr)
