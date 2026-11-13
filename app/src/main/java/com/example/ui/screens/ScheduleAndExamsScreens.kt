@@ -2751,7 +2751,7 @@ fun ScheduleAndHomeworkScreen(
 
     if (showAddPeriodDialog) {
         val registeredTeachers = remember(accounts) {
-            accounts.filter { it.role == UserRole.TEACHER }
+            accounts.filter { it.role == UserRole.TEACHER && !it.isEffectiveBusDriver }
         }
         var periodNo by remember { mutableStateOf("1") }
         var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }

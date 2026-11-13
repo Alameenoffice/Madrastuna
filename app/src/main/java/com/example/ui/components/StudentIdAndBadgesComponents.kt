@@ -199,6 +199,16 @@ fun DigitalStudentIdCardView(
         }
     }
     val activeQrString = if (isWalletPassMode) student.walletBarcode else student.qrCodeValue
+    val localCardContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(student.id, activeQrString) {
+        runCatching {
+            localCardContext.getSharedPreferences("madrasati_multitenant_v2", android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putString("last_viewed_or_saved_student_qr", student.qrCodeValue)
+                .putString("last_viewed_or_saved_student_id", student.id)
+                .apply()
+        }
+    }
     val qrBitmap = remember(activeQrString) {
         DocumentAndIdExporter.generateQrCodeBitmap(activeQrString, 360).asImageBitmap()
     }

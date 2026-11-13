@@ -817,7 +817,11 @@ class SchoolRepository(context: Context) {
                         canManageCanteen = o.optBoolean("canManageCanteen", false),
                         gender = o.optString("gender", "").trim().let { if (it == "غير محدد") "" else it },
                         ageYears = o.optInt("ageYears", o.optInt("age", 0)).coerceAtLeast(0),
-                        isBusDriverAccount = o.optBoolean("isBusDriverAccount", false)
+                        isBusDriverAccount = o.optBoolean("isBusDriverAccount", false) ||
+                            o.optString("id").startsWith("acc_bus_driver_", ignoreCase = true) ||
+                            unifiedAssignedClasses.startsWith("route_", ignoreCase = true) ||
+                            unifiedAssignedClasses.contains("route_", ignoreCase = true) ||
+                            o.optString("specialty").contains("سائق", ignoreCase = true)
                     )
                 )
             }

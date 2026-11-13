@@ -584,10 +584,17 @@ object DocumentAndIdExporter {
         isWalletMode: Boolean = activeWalletPassExportMode
     ): Result<String> {
         return try {
+            runCatching {
+                context.getSharedPreferences("madrasati_multitenant_v2", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("last_viewed_or_saved_student_qr", student.qrCodeValue)
+                    .putString("last_viewed_or_saved_student_id", student.id)
+                    .apply()
+            }
             val bitmap = renderStudentIdCardBitmap(student, schoolConfig, badges, isWalletMode, context)
             val safeName = student.fullNameWithFather.replace(Regex("[^\\p{L}\\p{N}_-]+"), "_")
             val modePrefix = if (isWalletMode) "Wallet" else "ID"
-            val fileName = "Madrasati_${modePrefix}_${safeName}_${System.currentTimeMillis()}.png"
+            val fileName = "Madrasati_${modePrefix}_${safeName}_${student.id}_${System.currentTimeMillis()}.png"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {

@@ -106,10 +106,10 @@ fun AdminAccountsScreen(
         }
     }
 
-    val teachers = remember(accounts, searchQuery, selectedClassFilter, selectedSubjectFilter) {
+    val teachers = remember(accounts, schoolConfig, searchQuery, selectedClassFilter, selectedSubjectFilter) {
         accounts.filter { acc ->
             acc.role == UserRole.TEACHER &&
-                !acc.isBusDriverAccount &&
+                !acc.isDriverInSchoolConfig(schoolConfig) &&
                 (searchQuery.isBlank() ||
                     acc.fullName.contains(searchQuery, ignoreCase = true) ||
                     acc.username.contains(searchQuery, ignoreCase = true) ||
@@ -161,7 +161,7 @@ fun AdminAccountsScreen(
                     subtitle = heroSubtitle,
                     rightPillText = schoolConfig.schoolStage.arabicLabel,
                     rightPillIcon = Icons.Filled.School,
-                    leftPillText = "${students.size} طالب • ${accounts.count { it.role == UserRole.TEACHER && !it.isBusDriverAccount }} $staffSingular",
+                    leftPillText = "${students.size} طالب • ${accounts.count { it.role == UserRole.TEACHER && !it.isDriverInSchoolConfig(schoolConfig) }} $staffSingular",
                     leftPillIcon = Icons.Filled.Groups,
                     illustrationType = ThreeDIllustrationType.USER_MANAGEMENT_AVATARS_3D
                 )

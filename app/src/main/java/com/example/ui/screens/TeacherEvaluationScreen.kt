@@ -93,8 +93,17 @@ fun TeacherEvaluationScreen(
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val isParent = currentUser?.role == UserRole.PARENT
 
-    val summaries = remember(accounts, teacherRatings, currentUser) {
-        viewModel.getTeacherEvaluationSummaries(accounts, teacherRatings, currentUser)
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val pureTeacherAccounts = remember(accounts, schoolConfig) {
+        accounts.filterNot { acc ->
+            acc.isDriverInSchoolConfig(schoolConfig) ||
+                acc.assignedClasses.contains("route_", ignoreCase = true) ||
+                acc.specialty.contains("سائق", ignoreCase = true) ||
+                acc.username.contains("driver", ignoreCase = true)
+        }
+    }
+    val summaries = remember(pureTeacherAccounts, teacherRatings, currentUser) {
+        viewModel.getTeacherEvaluationSummaries(pureTeacherAccounts, teacherRatings, currentUser)
     }
     val topSummary = remember(summaries) {
         summaries.firstOrNull { it.totalRatingsCount > 0 }

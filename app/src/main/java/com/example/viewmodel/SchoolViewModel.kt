@@ -2224,7 +2224,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         )
 
         val teacherContacts = schoolAccounts
-            .filter { it.role == UserRole.TEACHER && it.id != user.id }
+            .filter { it.role == UserRole.TEACHER && !it.isDriverInSchoolConfig(_schoolConfig.value) && it.id != user.id }
             .map { t ->
                 val spec = t.specialty.ifBlank { "كادر تدريسي" }
                 val assigned = t.assignedClasses.ifBlank { "الصفوف المسندة" }
@@ -3574,30 +3574,61 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val schoolStudents = _students.value.filter {
             it.schoolId.isEmpty() || resolvedSchoolId.isEmpty() || it.schoolId.equals(resolvedSchoolId, ignoreCase = true)
         }
-        val matchedStudent = schoolStudents.firstOrNull { stu ->
-            stu.matchesBarcodePayload(cleanPayload)
-        }
-
+        val afterLastColon = cleanPayload.substringAfterLast(":").trim()
+        val numericPart = cleanPayload.filter { it.isDigit() }
         val colonParts = cleanPayload.split(":").map { it.trim() }
         val extractedTokenOrId = when {
             colonParts.size >= 3 && colonParts[0].equals("MADRASATI_ID", ignoreCase = true) -> colonParts[2]
+            cleanPayload.contains(":") -> afterLastColon
             cleanPayload.contains("|") -> cleanPayload.split("|").map { it.trim() }.getOrNull(2).orEmpty()
             else -> cleanPayload
         }
 
+        val matchedStudent = schoolStudents.firstOrNull { stu ->
+            stu.matchesBarcodePayload(cleanPayload) ||
+                stu.id.equals(afterLastColon, ignoreCase = true) ||
+                (afterLastColon.length >= 3 && stu.id.contains(afterLastColon, ignoreCase = true)) ||
+                (stu.id.length >= 3 && afterLastColon.contains(stu.id, ignoreCase = true)) ||
+                stu.qrCodeValue.trim().equals(cleanPayload, ignoreCase = true) ||
+                stu.qrCodeValue.substringAfterLast(":").trim().equals(afterLastColon, ignoreCase = true) ||
+                (stu.studentUsername.isNotBlank() && (
+                    stu.studentUsername.equals(cleanPayload, ignoreCase = true) ||
+                        stu.studentUsername.equals(afterLastColon, ignoreCase = true) ||
+                        stu.studentUsername.removePrefix("$resolvedSchoolId-").equals(afterLastColon.removePrefix("$resolvedSchoolId-"), ignoreCase = true)
+                    )) ||
+                (stu.parentUsername.isNotBlank() && (
+                    stu.parentUsername.equals(cleanPayload, ignoreCase = true) ||
+                        stu.parentUsername.equals(afterLastColon, ignoreCase = true)
+                    )) ||
+                (stu.studentName.isNotBlank() && (
+                    stu.studentName.trim().equals(cleanPayload, ignoreCase = true) ||
+                        stu.fullNameWithFather.trim().equals(cleanPayload, ignoreCase = true) ||
+                        (afterLastColon.length >= 3 && stu.fullNameWithFather.contains(afterLastColon, ignoreCase = true))
+                    )) ||
+                (numericPart.isNotBlank() && (
+                    stu.id.equals(numericPart, ignoreCase = true) ||
+                        stu.studentUsername.equals("$resolvedSchoolId-$numericPart", ignoreCase = true)
+                    ))
+        }
+
         val schoolAccounts = _accounts.value.filter {
-            it.role == UserRole.STUDENT &&
+            (it.role == UserRole.STUDENT || it.role == UserRole.PARENT) &&
                 (it.schoolId.isEmpty() || resolvedSchoolId.isEmpty() || it.schoolId.equals(resolvedSchoolId, ignoreCase = true))
         }
         val matchedAccount = schoolAccounts.firstOrNull { acc ->
             (matchedStudent != null && (
                 acc.linkedStudentId.equals(matchedStudent.id, ignoreCase = true) ||
-                    acc.username.equals(matchedStudent.studentUsername, ignoreCase = true) ||
-                    acc.id.equals(matchedStudent.id, ignoreCase = true)
+                    acc.id.equals(matchedStudent.id, ignoreCase = true) ||
+                    (matchedStudent.studentUsername.isNotBlank() && acc.username.equals(matchedStudent.studentUsername, ignoreCase = true)) ||
+                    (matchedStudent.parentUsername.isNotBlank() && acc.username.equals(matchedStudent.parentUsername, ignoreCase = true)) ||
+                    (matchedStudent.studentName.isNotBlank() && acc.fullName.contains(matchedStudent.studentName, ignoreCase = true))
                 )) ||
                 acc.id.equals(extractedTokenOrId, ignoreCase = true) ||
+                acc.id.equals(afterLastColon, ignoreCase = true) ||
                 acc.linkedStudentId.equals(extractedTokenOrId, ignoreCase = true) ||
+                acc.linkedStudentId.equals(afterLastColon, ignoreCase = true) ||
                 acc.username.equals(extractedTokenOrId, ignoreCase = true) ||
+                acc.username.equals(afterLastColon, ignoreCase = true) ||
                 acc.username.equals(cleanPayload, ignoreCase = true) ||
                 (resolvedSchoolId.isNotBlank() &&
                     acc.username.equals(FirebaseConfigConstants.applySchoolPrefix(resolvedSchoolId, extractedTokenOrId), ignoreCase = true))
@@ -3618,9 +3649,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val finalStudentAccount = matchedAccount ?: UserAccount(
             id = "acc_stu_${matchedStudent!!.id}",
             username = matchedStudent.studentUsername.ifBlank {
-                if (resolvedSchoolId.isNotBlank()) "${resolvedSchoolId}-${matchedStudent.id}" else matchedStudent.id
+                matchedStudent.parentUsername.ifBlank {
+                    if (resolvedSchoolId.isNotBlank()) "${resolvedSchoolId}-${matchedStudent.id}" else matchedStudent.id
+                }
             },
-            password = "",
+            password = matchedStudent.studentPassword.ifBlank { matchedStudent.parentPassword },
             fullName = matchedStudent.fullNameWithFather,
             role = UserRole.STUDENT,
             isActive = true,
@@ -5930,6 +5963,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val user = _currentUser.value ?: return null
         if (!user.isBusDriverAccount && user.role != UserRole.ADMIN && user.role != UserRole.TEACHER) {
             showToastAlert("هذه الصلاحية مخصصة للسائق المعتمد أو إدارة المدرسة فقط", isSuccess = false)
+            return null
+        }
+
+        val todayCheckIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        if (isDateHoliday(todayCheckIso)) {
+            showToastAlert(
+                "عفواً، حساب السائق والرحلات المدرسية معطلة اليوم نظراً لكونه (عطلة رسمية / إجازة). استمتع بإجازتك، ونراكم في يوم الدوام الرسمي القادم.",
+                isSuccess = false
+            )
             return null
         }
 
@@ -10101,7 +10143,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return false
         }
         val cleanTeacherId = teacherId.trim()
-        val teacherAcc = _accounts.value.firstOrNull { it.id == cleanTeacherId && it.role == UserRole.TEACHER }
+        val teacherAcc = _accounts.value.firstOrNull {
+            it.id == cleanTeacherId &&
+                it.role == UserRole.TEACHER &&
+                !it.isDriverInSchoolConfig(_schoolConfig.value)
+        }
         if (teacherAcc == null) {
             showToastAlert("لم يتم العثور على بيانات الأستاذ", isSuccess = false)
             return false
@@ -10142,7 +10188,15 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         ratingsList: List<TeacherRatingRecord> = _teacherRatings.value,
         currentUserAccount: UserAccount? = _currentUser.value
     ): List<TeacherEvaluationSummary> {
-        val teachers = accountsList.filter { it.role == UserRole.TEACHER && it.isActive }
+        val activeConfig = _schoolConfig.value
+        val teachers = accountsList.filter { acc ->
+            acc.role == UserRole.TEACHER &&
+                acc.isActive &&
+                !acc.isDriverInSchoolConfig(activeConfig) &&
+                !acc.assignedClasses.contains("route_", ignoreCase = true) &&
+                !acc.specialty.contains("سائق", ignoreCase = true) &&
+                !acc.username.contains("driver", ignoreCase = true)
+        }
         val parentKey = currentUserAccount?.id?.ifBlank { currentUserAccount.username }.orEmpty()
         return teachers.map { teacher ->
             val tRatings = ratingsList.filter {
@@ -10536,7 +10590,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             repo.loadStudentActivityPosts(cleanId)
         }
 
-        val teachers = accList.filter { it.role == UserRole.TEACHER }
+        val teachers = accList.filter { it.role == UserRole.TEACHER && !it.isDriverInSchoolConfig(_schoolConfig.value) }
         val principalAcc = accList.firstOrNull { it.role == UserRole.ADMIN }
         val passDisplay = principalAcc?.password?.ifBlank { summary.adminPasswordPlain } ?: summary.adminPasswordPlain.ifBlank { "123456" }
 

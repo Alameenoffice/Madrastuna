@@ -709,6 +709,56 @@ data class UserAccount(
     val ageYears: Int = 0,
     val isBusDriverAccount: Boolean = false
 ) {
+    val isEffectiveBusDriver: Boolean
+        get() {
+            if (isBusDriverAccount) return true
+            if (id.startsWith("acc_bus_driver_", ignoreCase = true) ||
+                id.contains("bus_driver", ignoreCase = true) ||
+                id.contains("route_", ignoreCase = true)
+            ) return true
+            if (assignedClasses.contains("route_", ignoreCase = true)) return true
+            if (specialty.contains("سائق", ignoreCase = true) ||
+                specialty.contains("الخط المدرسي", ignoreCase = true) ||
+                specialty.equals("DRIVER", ignoreCase = true)
+            ) return true
+            if (fullName.contains("سائق", ignoreCase = true)) return true
+            val bareUser = username.substringAfter("-").trim()
+            if (bareUser.startsWith("driver", ignoreCase = true)) return true
+            return false
+        }
+
+    fun isDriverInSchoolConfig(config: SchoolConfig? = null): Boolean {
+        if (isEffectiveBusDriver) return true
+        if (config == null) return false
+        val cleanName = fullName.trim()
+        val cleanUser = username.trim()
+        val bareUser = cleanUser.substringAfter("-").trim()
+        val cfgDriverName = config.busDriverName.trim()
+        if (cfgDriverName.isNotBlank() &&
+            cfgDriverName != "السائق المعتمد للخط المدرسي" &&
+            cfgDriverName.equals(cleanName, ignoreCase = true)
+        ) {
+            return true
+        }
+        val cfgDriverUser = config.busDriverUsername.trim()
+        if (cfgDriverUser.isNotBlank()) {
+            val cfgBare = cfgDriverUser.substringAfter("-").trim()
+            if (cfgDriverUser.equals(cleanUser, ignoreCase = true) ||
+                (cfgBare.isNotBlank() && cfgBare.equals(bareUser, ignoreCase = true))
+            ) {
+                return true
+            }
+        }
+        return config.effectiveBusRoutesList.any { route ->
+            val rName = route.driverName.trim()
+            val rUser = route.driverUsername.trim()
+            val rBare = rUser.substringAfter("-").trim()
+            (rName.isNotBlank() && rName != "السائق المعتمد للخط المدرسي" && rName.equals(cleanName, ignoreCase = true)) ||
+                (rUser.isNotBlank() && (rUser.equals(cleanUser, ignoreCase = true) || (rBare.isNotBlank() && rBare.equals(bareUser, ignoreCase = true)))) ||
+                (route.id.isNotBlank() && assignedClasses.contains(route.id, ignoreCase = true))
+        }
+    }
+
     val isGenderSpecified: Boolean
         get() {
             val g = gender.trim()
