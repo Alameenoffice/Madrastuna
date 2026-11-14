@@ -2216,6 +2216,7 @@ data class SchoolFeatureSettings(
     val canteenWalletEnabled: Boolean = true,
     val teacherEvaluationEnabled: Boolean = true,
     val showTopTeacherOnHome: Boolean = true,
+    val isAiAdvisorVisibleOnHome: Boolean = true,
     val autoAbsenceEnabled: Boolean = true,
     val autoAbsenceDelayMinutes: Int = 120
 ) {
@@ -2238,6 +2239,7 @@ data class SchoolFeatureSettings(
             canteenWalletEnabled = canteenWalletEnabled,
             teacherEvaluationEnabled = teacherEvaluationEnabled,
             showTopTeacherOnHome = showTopTeacherOnHome,
+            isAiAdvisorVisibleOnHome = isAiAdvisorVisibleOnHome,
             autoAbsenceEnabled = autoAbsenceEnabled,
             autoAbsenceDelayMinutes = autoAbsenceDelayMinutes.coerceIn(15, 480)
         )

@@ -605,6 +605,7 @@ class SchoolRepository(context: Context) {
             put("canteenWalletEnabled", f.canteenWalletEnabled)
             put("teacherEvaluationEnabled", f.teacherEvaluationEnabled)
             put("showTopTeacherOnHome", f.showTopTeacherOnHome)
+            put("isAiAdvisorVisibleOnHome", f.isAiAdvisorVisibleOnHome)
             put("autoAbsenceEnabled", f.autoAbsenceEnabled)
             put("autoAbsenceDelayMinutes", f.autoAbsenceDelayMinutes)
         }
@@ -642,6 +643,7 @@ class SchoolRepository(context: Context) {
         val canteenWallet = boolKey("canteenWalletEnabled", "isCanteenWalletEnabled")
         val teacherEvaluation = boolKey("teacherEvaluationEnabled", default = true)
         val showTopTeacherHome = boolKey("showTopTeacherOnHome", default = true)
+        val aiAdvisorVisibleHome = boolKey("isAiAdvisorVisibleOnHome", default = true)
         val autoAbsence = boolKey("autoAbsenceEnabled", default = true)
         val autoAbsenceDelay = when {
             o.has("autoAbsenceDelayMinutes") -> o.optInt("autoAbsenceDelayMinutes", 120)
@@ -673,6 +675,7 @@ class SchoolRepository(context: Context) {
             canteenWalletEnabled = canteenWallet,
             teacherEvaluationEnabled = teacherEvaluation,
             showTopTeacherOnHome = showTopTeacherHome,
+            isAiAdvisorVisibleOnHome = aiAdvisorVisibleHome,
             autoAbsenceEnabled = autoAbsence,
             autoAbsenceDelayMinutes = autoAbsenceDelay
         )

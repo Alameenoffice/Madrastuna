@@ -10818,6 +10818,19 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun closeAiSchoolAdvisor() {
         _isAiAdvisorOpen.value = false
     }
+
+    fun toggleAiAdvisorVisibleOnHome(visible: Boolean) {
+        val updatedFeatures = _featureSettings.value.copy(isAiAdvisorVisibleOnHome = visible).normalized()
+        _featureSettings.value = updatedFeatures
+        val updatedConfig = _schoolConfig.value.copy(featureSettings = updatedFeatures)
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+        showToastAlert(
+            if (visible) "تم إظهار المستشار الإداري الذكي في الشاشة الرئيسية"
+            else "تم إخفاء بطاقة المستشار الإداري الذكي من الشاشة الرئيسية (يمكنك فتحه من القائمة الجانبية)",
+            isSuccess = true
+        )
+    }
 }
 
 

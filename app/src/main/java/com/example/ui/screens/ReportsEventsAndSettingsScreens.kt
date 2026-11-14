@@ -2604,6 +2604,46 @@ fun SettingsScreen(
                         )
                     }
 
+                    if (isAdmin) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Insights,
+                                    contentDescription = null,
+                                    tint = DeepEmerald
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "إظهار المستشار الإداري الذكي في الشاشة الرئيسية",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = if (featureSettings.isAiAdvisorVisibleOnHome) {
+                                            "ظاهر في الشاشة الرئيسية للمدير (ويمكن فتحه أيضاً من القائمة الجانبية)"
+                                        } else {
+                                            "مخفي من الشاشة الرئيسية (متاح دائماً عبر القائمة الجانبية)"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = featureSettings.isAiAdvisorVisibleOnHome,
+                                onCheckedChange = { viewModel.toggleAiAdvisorVisibleOnHome(it) },
+                                modifier = Modifier.testTag("toggle_ai_advisor_home_switch")
+                            )
+                        }
+                    }
+
                     OutlinedButton(
                         onClick = { viewModel.reopenOnboarding() },
                         modifier = Modifier.fillMaxWidth(),
@@ -2865,6 +2905,12 @@ fun SettingsScreen(
                     }
 
                     val featureRows = listOf(
+                        Triple(
+                            "إظهار المستشار الإداري الذكي في الشاشة الرئيسية" to Icons.Filled.Insights,
+                            featureSettings.isAiAdvisorVisibleOnHome
+                        ) { v: Boolean ->
+                            viewModel.toggleAiAdvisorVisibleOnHome(v)
+                        },
                         Triple(
                             "ميزة الخطوط والنقل المدرسي" to Icons.Filled.DirectionsBus,
                             featureSettings.busTrackingEnabled

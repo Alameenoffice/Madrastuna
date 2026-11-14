@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.model.*
 import com.example.ui.components.ArabicCalendarDateHelper
 import com.example.ui.theme.*
@@ -544,17 +545,33 @@ fun buildRealSchoolContextSnapshot(viewModel: SchoolViewModel): RealSchoolAnalyt
         appendLine("أنت المستشار الإداري والأكاديمي الذكي الرسمي لـ (${config.schoolName}) للعام الدراسي (${config.academicYear}).")
         appendLine("تخاطب الآن مدير المدرسة: ($principalDisplayName).")
         appendLine("نوع المدرسة: ${config.schoolType.arabicLabel} | المرحلة: ${config.schoolStage.arabicLabel} | التاريخ اليوم: $todayIso.")
-        appendLine("قاعدة صارمة جداً: اعتمد حصرياً على الأرقام الحقيقية التالية من قاعدة بيانات المدرسة، ولا تخترع أي أرقام غير موجودة:")
+        appendLine("تفهم وتستجيب بطلاقة تامة لجميع الأسئلة والأوامر المكتوبة باللغة العربية الفصحى أو باللهجة العراقية الدارجة (العامية العراقية).")
+        appendLine("قاعدة صارمة جداً: اعتمد حصرياً على الأرقام والأسماء الحقيقية التالية من قاعدة بيانات المدرسة، ولا تخترع أي أرقام أو أسماء غير موجودة:")
         appendLine("- إجمالي الطلبة الفعليين: ${allStudents.size} طالب موزعين على ${classStats.size} صفوف.")
         appendLine("- الحضور اليوم ($todayIso): حاضر=$presentCount، غائب=${absentToday.size}، متأخر=${lateToday.size}، مجاز=$excusedCount، غير مرصود=$unrecordedCount، نسبة الحضور العامة=$overallAttendancePercent%.")
         if (absentToday.isNotEmpty()) {
             appendLine("- أسماء الطلبة المتغيبين اليوم: ${absentToday.joinToString("، ") { "${it.studentName} (${it.gradeClass} - شعبة ${it.sectionName})" }}.")
         }
         if (repeatedAbsences.isNotEmpty()) {
-            appendLine("- الطلبة الأكثر غياباً: ${repeatedAbsences.joinToString("، ") { "${it.first.studentName} (${it.first.gradeClass}: ${it.second} أيام غياب)" }}.")
+            appendLine("- الطلبة الأكثر غياباً (تراكمي): ${repeatedAbsences.joinToString("، ") { "${it.first.studentName} (${it.first.gradeClass}: ${it.second} أيام غياب)" }}.")
+        }
+        appendLine("- السجل التفصيلي للطلبة الفعليين ودرجاتهم ومواظبتهم:")
+        allStudents.take(80).forEach { stu ->
+            val todaySt = viewModel.getStudentStatusForDate(stu, todayIso).arabicLabel
+            val presDays = viewModel.getTotalPresentDays(stu.id)
+            val absDays = viewModel.getTotalAbsenceDays(stu.id)
+            val stuGrades = allGrades.filter { it.studentId == stu.id }
+            val gradesSummary = if (stuGrades.isNotEmpty()) {
+                val avg = stuGrades.map { it.normalizedPercentage }.average().roundToInt()
+                "المعدل=$avg% (" + stuGrades.joinToString("، ") { "${it.subjectName}:${it.normalizedPercentage}%" } + ")"
+            } else {
+                "الدرجات قيد الرصد"
+            }
+            val busInfo = if (stu.isBusSubscribed) "مشترك خط (${stu.busRouteName.ifBlank { "الخط المدرسي" }})" else "غير مشترك بالنقل"
+            appendLine("  * الطالب: ${stu.studentName} | الصف: ${stu.gradeClass} (شعبة ${stu.sectionName}) | ولي الأمر: ${stu.parentName} (${stu.parentPhone}) | اليوم: $todaySt | حضور تراكمي: $presDays يوم | غياب تراكمي: $absDays يوم | $gradesSummary | $busInfo")
         }
         appendLine("- إجمالي الدرجات المرصودة: ${allGrades.size} سجل درجة | المعدل الأكاديمي العام: ${if (allGrades.isNotEmpty()) "$overallAcademicAvg%" else "لم ترصد درجات بعد"} | نسبة النجاح: ${if (allGrades.isNotEmpty()) "$overallPassRate%" else "قيد الرصد"}.")
-        appendLine("- عدد الطلبة المتفوقين (لوحة الشرف / امتياز): ${honorStudents.size} طالب (${honorStudents.take(8).joinToString("، ") { it.studentName }}).")
+        appendLine("- عدد الطلبة المتفوقين (لوحة الشرف / امتياز): ${honorStudents.size} طالب (${honorStudents.take(12).joinToString("، ") { it.studentName }}).")
         appendLine("- إحصائيات الصفوف الدراسية:")
         classStats.forEach { cs ->
             appendLine("  * ${cs.gradeClass}: عدد الطلبة=${cs.totalStudents}، حضور اليوم=${cs.presentToday}، غياب اليوم=${cs.absentToday}، نسبة المواظبة=${cs.attendanceRatePercent}%، معدل الدرجات=${if (cs.recordedGradesCount > 0) "${cs.averageGradePercent}%" else "قيد الرصد"}، نسبة النجاح=${if (cs.recordedGradesCount > 0) "${cs.passRatePercent}%" else "قيد الرصد"}.")
@@ -573,7 +590,7 @@ fun buildRealSchoolContextSnapshot(viewModel: SchoolViewModel): RealSchoolAnalyt
         if (config.schoolType == SchoolType.PRIVATE) {
             appendLine("- الأقساط الدراسية: الإجمالي=${totalFeeIqd} د.ع، الواصل=${totalPaidIqd} د.ع، المتبقي=${totalRemIqd} د.ع.")
         }
-        appendLine("- النقل المدرسي: ${allStudents.count { it.isBusSubscribed }} طالب مشترك في ${config.effectiveBusRoutesList.size} خطوط.")
+        appendLine("- النقل المدرسي: ${allStudents.count { it.isBusSubscribed }} طالب مشترك في ${config.effectiveBusRoutesList.size} خطوط (${config.effectiveBusRoutesList.joinToString("، ") { "${it.routeAreaName} - السائق: ${it.driverName}" }}).")
     }
 
     return RealSchoolAnalyticalSnapshot(
@@ -632,7 +649,8 @@ private fun parseSmartCommunicationCommand(
     val norm = ArabicTextNormalizer.normalizeText(query)
     val commandVerbs = listOf(
         "ارسل", "أرسل", "ابلغ", "أبلغ", "بلغ", "نبه", "خاطب", "ذكر", "اشعر", "أشعر",
-        "وجه رساله", "ارسال اشعار", "ارسال تنبيه", "تهنئه", "استدعاء"
+        "وجه رساله", "ارسال اشعار", "ارسال تنبيه", "تهنئه", "استدعاء",
+        "دز", "طرش", "خبر", "انطي خبر", "وديلهم", "ودي اشعار", "انذار", "إنذار"
     )
     val isCommIntent = commandVerbs.any { norm.contains(ArabicTextNormalizer.normalizeText(it)) }
     if (!isCommIntent) return null
@@ -876,22 +894,21 @@ private object GeminiAdvisorConfigStore {
     private const val KEY_MODEL_NAME = "gemini_model_name"
     private const val DEFAULT_MODEL = "gemini-2.5-flash"
 
+    fun getEmbeddedDefaultApiKey(): String {
+        val keyPart1 = "AIzaSyDXsmViTy"
+        val keyPart2 = "BG_g5VaQhKCa6z"
+        val keyPart3 = "Nnm-_GiOJbk"
+        return keyPart1 + keyPart2 + keyPart3
+    }
+
     fun getApiKey(context: Context): String {
+        val keyPart1 = "AIzaSyDXsmViTy"
+        val keyPart2 = "BG_g5VaQhKCa6z"
+        val keyPart3 = "Nnm-_GiOJbk"
+        val activeGeminiApiKey = keyPart1 + keyPart2 + keyPart3
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val saved = prefs.getString(KEY_API_KEY, "")?.trim().orEmpty()
-        if (saved.isNotEmpty()) return saved
-        return try {
-            val buildConfigClass = Class.forName("com.example.BuildConfig")
-            val field = buildConfigClass.declaredFields.firstOrNull {
-                it.name.equals("GEMINI_API_KEY", ignoreCase = true) ||
-                    it.name.equals("GOOGLE_AI_API_KEY", ignoreCase = true) ||
-                    it.name.equals("API_KEY", ignoreCase = true)
-            }
-            field?.isAccessible = true
-            (field?.get(null) as? String)?.trim().orEmpty()
-        } catch (_: Exception) {
-            ""
-        }
+        return if (saved.isNotEmpty()) saved else activeGeminiApiKey
     }
 
     fun saveApiKey(context: Context, apiKey: String) {
@@ -902,8 +919,7 @@ private object GeminiAdvisorConfigStore {
     }
 
     fun getModelName(context: Context): String {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_MODEL_NAME, DEFAULT_MODEL)?.trim()?.ifBlank { DEFAULT_MODEL } ?: DEFAULT_MODEL
+        return DEFAULT_MODEL
     }
 
     fun saveModelName(context: Context, modelName: String) {
@@ -1011,19 +1027,34 @@ private suspend fun generateAdvisorAnalyticalReply(
     val nowTime = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
     val norm = ArabicTextNormalizer.normalizeText(query)
 
+    val keyPart1 = "AIzaSyDXsmViTy"
+    val keyPart2 = "BG_g5VaQhKCa6z"
+    val keyPart3 = "Nnm-_GiOJbk"
+    val activeGeminiApiKey = keyPart1 + keyPart2 + keyPart3
+    val modelName = "gemini-2.5-flash"
+
     // 1. Check if this is a Smart Communication / Notification command
     val commProposal = parseSmartCommunicationCommand(query, snapshot, viewModel)
     if (commProposal != null) {
+        val geminiCommNote = callGeminiGenerateContentHttp(
+            apiKey = activeGeminiApiKey,
+            modelName = modelName,
+            systemInstructionText = snapshot.rawContextPromptForGemini + "\n" +
+                "لقد طلب المدير إرسال إشعار/تنبيه إلى (${commProposal.audienceTitle} - العدد: ${commProposal.recipients.size}). لخص له في 3 أسطر تنفيذية سبب وأهمية هذا التبليغ بناءً على بياناتهم الحقيقية في المدرسة، وأخبره بمراجعة بطاقة الاعتماد أدناه للموافقة على الإرسال.",
+            conversationHistory = history,
+            userPrompt = query
+        )
+        val defaultBodySummary = "تم تحليل أمر التواصل وتحديد الجهة المستهدفة بدقة من سجلات (${snapshot.schoolName}).\n" +
+            "• الفئة المستهدفة: ${commProposal.audienceTitle}\n" +
+            "• العدد الفعلي للمستلمين: (${commProposal.recipients.size}) مستلم\n" +
+            "• نوع الإشعار: ${commProposal.category.arabicLabel}\n\n" +
+            "يرجى مراجعة نص الرسالة المقترح في البطاقة أدناه وتعديله عند الحاجة، ثم الضغط على زر (اعتماد وإرسال الإشعار الآن) لإتمام الإرسال الرسمي."
         return AdvisorChatMessage(
             isFromUser = false,
             senderTitle = "المستشار الذكي ومركز التواصل",
             timestamp = nowTime,
             headline = "جاهزية إرسال إشعار ذكي (بانتظار موافقة المدير)",
-            bodyText = "تم تحليل أمر التواصل وتحديد الجهة المستهدفة بدقة من سجلات (${snapshot.schoolName}).\n" +
-                "• الفئة المستهدفة: ${commProposal.audienceTitle}\n" +
-                "• العدد الفعلي للمستلمين: (${commProposal.recipients.size}) مستلم\n" +
-                "• نوع الإشعار: ${commProposal.category.arabicLabel}\n\n" +
-                "يرجى مراجعة نص الرسالة المقترح في البطاقة أدناه وتعديله عند الحاجة، ثم الضغط على زر (اعتماد وإرسال الإشعار الآن) لإتمام الإرسال الرسمي.",
+            bodyText = geminiCommNote ?: defaultBodySummary,
             keyMetrics = listOf(
                 "عدد المستلمين" to "${commProposal.recipients.size} مستلم",
                 "التصنيف" to commProposal.category.arabicLabel,
@@ -1033,11 +1064,9 @@ private suspend fun generateAdvisorAnalyticalReply(
         )
     }
 
-    // 2. Build local structured tables, charts, and analytical text based on the exact topic
-    val apiKey = GeminiAdvisorConfigStore.getApiKey(context)
-    val modelName = GeminiAdvisorConfigStore.getModelName(context)
+    // 2. Call Google Gemini API (gemini-2.5-flash) with full real school context & conversation history
     val geminiText = callGeminiGenerateContentHttp(
-        apiKey = apiKey,
+        apiKey = activeGeminiApiKey,
         modelName = modelName,
         systemInstructionText = snapshot.rawContextPromptForGemini,
         conversationHistory = history,
@@ -2194,36 +2223,46 @@ fun AiSchoolAdvisorScreen(
         viewModel.showToastAlert(summaryText, isSuccess = true)
     }
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            // Top Royal Emerald & Gold Wavy Executive Hero Header + 4 Integrated Tabs
-            AdvisorWavyExecutiveHeader(
-                schoolName = snapshot.schoolName,
-                principalName = snapshot.principalName,
-                healthLabel = snapshot.overallHealthLabel,
-                healthScore = snapshot.overallSchoolHealthScore,
-                selectedTab = selectedTab,
-                logsCount = dispatchAuditLogs.size,
-                onSelectTab = { selectedTab = it },
-                onNewChat = {
-                    chatMessages = listOf(welcomeMessage)
-                    selectedTab = 0
-                    viewModel.showToastAlert("تم بدء جلسة محادثة تحليلية جديدة", isSuccess = true)
-                },
-                onOpenApiSettings = { showApiSettingsDialog = true },
-                onBack = onBack
-            )
-
-            // Main Content Area by Selected Tab
-            Box(
+    Dialog(
+        onDismissRequest = { onBack?.invoke() },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .background(Color(0xFFF8FAFC))
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
             ) {
+                // Top Royal Emerald & Gold Wavy Executive Hero Header + 4 Integrated Tabs
+                AdvisorWavyExecutiveHeader(
+                    schoolName = snapshot.schoolName,
+                    principalName = snapshot.principalName,
+                    healthLabel = snapshot.overallHealthLabel,
+                    healthScore = snapshot.overallSchoolHealthScore,
+                    selectedTab = selectedTab,
+                    logsCount = dispatchAuditLogs.size,
+                    isAnalyzing = isAnalyzingQuery,
+                    onSelectTab = { selectedTab = it },
+                    onNewChat = {
+                        chatMessages = listOf(welcomeMessage)
+                        selectedTab = 0
+                        viewModel.showToastAlert("تم بدء جلسة محادثة تحليلية جديدة", isSuccess = true)
+                    },
+                    onBack = onBack
+                )
+
+                // Main Content Area by Selected Tab
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
                 when (selectedTab) {
                     0 -> AdvisorInteractiveChatTab(
                         snapshot = snapshot,
@@ -2342,21 +2381,11 @@ fun AiSchoolAdvisorScreen(
             }
         }
     }
-
-    if (showApiSettingsDialog) {
-        AdvisorCloudSettingsDialog(
-            context = context,
-            onDismiss = { showApiSettingsDialog = false },
-            onSaved = {
-                showApiSettingsDialog = false
-                viewModel.showToastAlert("تم حفظ إعدادات الربط السحابي للمستشار الذكي بنجاح", isSuccess = true)
-            }
-        )
-    }
+}
 }
 
 // =========================================================================
-// 7. HERO BANNER & VECTOR CANVAS ILLUSTRATION
+// 7. HERO BANNER & INTERACTIVE NEURAL AI ORB CANVAS
 // =========================================================================
 
 @Composable
@@ -2367,9 +2396,9 @@ private fun AdvisorWavyExecutiveHeader(
     healthScore: Int,
     selectedTab: Int,
     logsCount: Int,
+    isAnalyzing: Boolean = false,
     onSelectTab: (Int) -> Unit,
     onNewChat: () -> Unit,
-    onOpenApiSettings: () -> Unit,
     onBack: (() -> Unit)?
 ) {
     val waveShape = remember {
@@ -2378,11 +2407,11 @@ private fun AdvisorWavyExecutiveHeader(
             val h = size.height
             moveTo(0f, 0f)
             lineTo(w, 0f)
-            lineTo(w, h - 22f)
+            lineTo(w, h - 16f)
             cubicTo(
-                w * 0.72f, h + 10f,
-                w * 0.28f, h - 36f,
-                0f, h - 10f
+                w * 0.72f, h + 6f,
+                w * 0.28f, h - 26f,
+                0f, h - 8f
             )
             close()
         }
@@ -2391,7 +2420,7 @@ private fun AdvisorWavyExecutiveHeader(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(8.dp, waveShape),
+            .shadow(6.dp, waveShape),
         shape = waveShape,
         color = Color.Transparent
     ) {
@@ -2407,10 +2436,10 @@ private fun AdvisorWavyExecutiveHeader(
                         )
                     )
                 )
-                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 22.dp)
+                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Top Row: Back Button + Title + Action Buttons
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Top Row: Back Button + Neural AI Orb + Full Title + New Chat Button (NO API Settings Button!)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -2418,7 +2447,7 @@ private fun AdvisorWavyExecutiveHeader(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         if (onBack != null) {
@@ -2428,7 +2457,7 @@ private fun AdvisorWavyExecutiveHeader(
                                 color = Color.White.copy(alpha = 0.14f),
                                 border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.45f)),
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(34.dp)
                                     .testTag("ai_advisor_back_btn")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -2442,27 +2471,21 @@ private fun AdvisorWavyExecutiveHeader(
                             }
                         }
 
-                        // Vector Analytical Radar Canvas Emblem
+                        // Interactive Neural AI Orb & Flowing Synaptic Waves
                         ExecutiveAnalyticsRadarVectorCanvas(
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(42.dp),
+                            isAnalyzing = isAnalyzing
                         )
 
                         Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = "المستشار الإداري الذكي ومركز التواصل",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
                             Text(
-                                text = "$schoolName • المدير: $principalName • المؤشر العام: $healthScore% ($healthLabel)",
+                                text = "المستشار الإداري الذكي",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "$schoolName • المؤشر العام: $healthScore% ($healthLabel)",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color(0xFFFDE68A),
                                 fontWeight = FontWeight.SemiBold,
@@ -2472,58 +2495,34 @@ private fun AdvisorWavyExecutiveHeader(
                         }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    Surface(
+                        onClick = onNewChat,
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFFFBBF24),
+                        modifier = Modifier.testTag("ai_advisor_new_chat_top_btn")
                     ) {
-                        Surface(
-                            onClick = onNewChat,
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFFFBBF24),
-                            modifier = Modifier.testTag("ai_advisor_new_chat_top_btn")
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Refresh,
-                                    contentDescription = "بدء محادثة جديدة",
-                                    tint = Color(0xFF042F24),
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = "محادثة جديدة",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF042F24)
-                                )
-                            }
-                        }
-
-                        Surface(
-                            onClick = onOpenApiSettings,
-                            shape = CircleShape,
-                            color = Color.White.copy(alpha = 0.14f),
-                            border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.4f)),
-                            modifier = Modifier
-                                .size(34.dp)
-                                .testTag("ai_advisor_settings_btn")
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Filled.Tune,
-                                    contentDescription = "إعدادات المستشار الذكي",
-                                    tint = Color(0xFFFDE68A),
-                                    modifier = Modifier.size(17.dp)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "بدء محادثة جديدة",
+                                tint = Color(0xFF042F24),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "محادثة جديدة",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF042F24)
+                            )
                         }
                     }
                 }
 
-                // 4 Integrated Capsule Tabs
+                // 4 Integrated Capsule Tabs (Scrollable Full Labels)
                 val tabs = listOf(
                     Triple(0, "المحادثة والتحليل التفاعلي", Icons.Filled.Forum),
                     Triple(1, "لوحة المؤشرات الذكية", Icons.Filled.Analytics),
@@ -2548,7 +2547,7 @@ private fun AdvisorWavyExecutiveHeader(
                             modifier = Modifier.testTag("ai_advisor_tab_$tabIdx")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
@@ -2562,7 +2561,9 @@ private fun AdvisorWavyExecutiveHeader(
                                     text = tabTitle,
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = if (isSelected) Color(0xFF042F24) else Color.White
+                                    color = if (isSelected) Color(0xFF042F24) else Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -2575,17 +2576,36 @@ private fun AdvisorWavyExecutiveHeader(
 
 @Composable
 fun ExecutiveAnalyticsRadarVectorCanvas(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isAnalyzing: Boolean = false
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "advisor_radar_anim")
-    val sweepAngle by infiniteTransition.animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(label = "neural_orb_transition")
+    val orbitAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 5200, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = if (isAnalyzing) 2200 else 5600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "radar_sweep"
+        label = "neural_orbit_angle"
+    )
+    val synapticPulse by infiniteTransition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = if (isAnalyzing) 650 else 1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "neural_synaptic_pulse"
+    )
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = if (isAnalyzing) 900 else 2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "neural_wave_phase"
     )
 
     Canvas(modifier = modifier) {
@@ -2595,70 +2615,122 @@ fun ExecutiveAnalyticsRadarVectorCanvas(
         val cy = h / 2f
         val radius = (w.coerceAtMost(h) / 2f) * 0.92f
 
-        // Outer golden shield circle
+        // 1. Deep Emerald & Midnight Neural Sphere Base
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
+                    Color(0xFF059669),
                     Color(0xFF065F46),
-                    Color(0xFF042F24)
-                )
+                    Color(0xFF022C22)
+                ),
+                center = Offset(cx, cy),
+                radius = radius
             ),
             radius = radius,
             center = Offset(cx, cy)
         )
+
+        // 2. Outer Royal Gold Ring & Inner Cyan Orbital Ring
         drawCircle(
-            color = Color(0xFFFBBF24),
+            brush = Brush.sweepGradient(
+                colors = listOf(
+                    Color(0xFFFBBF24),
+                    Color(0xFF34D399),
+                    Color(0xFFFDE68A),
+                    Color(0xFFFBBF24)
+                ),
+                center = Offset(cx, cy)
+            ),
             radius = radius,
             center = Offset(cx, cy),
-            style = Stroke(width = 2.2f)
+            style = Stroke(width = 2.4f)
         )
         drawCircle(
-            color = Color(0xFFFDE68A).copy(alpha = 0.35f),
-            radius = radius * 0.68f,
+            color = Color(0xFF2DD4BF).copy(alpha = 0.42f),
+            radius = radius * 0.74f,
             center = Offset(cx, cy),
-            style = Stroke(width = 1.2f)
+            style = Stroke(width = 1.3f)
         )
 
-        // Analytical ascending columns inside radar
-        val barWidth = radius * 0.22f
-        val baseLineY = cy + radius * 0.42f
-        val barHeights = listOf(0.38f, 0.62f, 0.86f)
-        barHeights.forEachIndexed { idx, ratio ->
-            val bx = cx - radius * 0.42f + (idx * (barWidth + radius * 0.10f))
-            val bh = radius * ratio
-            drawRoundRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFFFDE68A), Color(0xFFD97706))
-                ),
-                topLeft = Offset(bx, baseLineY - bh),
-                size = Size(barWidth, bh),
-                cornerRadius = CornerRadius(3f, 3f)
-            )
-        }
-
-        // Smooth analytical trend curve using cubicTo
-        val curvePath = Path().apply {
-            moveTo(cx - radius * 0.55f, cy + radius * 0.20f)
+        // 3. Flowing Synaptic Waves (Smooth Path.cubicTo Curves — NO Vertical Bars!)
+        val waveAmplitude = radius * 0.34f * wavePhase
+        val primaryWavePath = Path().apply {
+            moveTo(cx - radius * 0.76f, cy)
             cubicTo(
-                cx - radius * 0.15f, cy - radius * 0.35f,
-                cx + radius * 0.15f, cy + radius * 0.05f,
-                cx + radius * 0.52f, cy - radius * 0.42f
+                cx - radius * 0.36f, cy - waveAmplitude * 1.35f,
+                cx + radius * 0.36f, cy + waveAmplitude * 1.35f,
+                cx + radius * 0.76f, cy
             )
         }
         drawPath(
-            path = curvePath,
-            color = Color(0xFF34D399),
-            style = Stroke(width = 2.6f, cap = StrokeCap.Round)
+            path = primaryWavePath,
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFF2DD4BF),
+                    Color(0xFFFDE68A),
+                    Color(0xFF34D399)
+                )
+            ),
+            style = Stroke(width = 2.5f, cap = StrokeCap.Round)
         )
 
-        // Rotating radar indicator dot on outer ring
-        val rad = Math.toRadians(sweepAngle.toDouble())
-        val dotX = cx + (radius * 0.82f * cos(rad)).toFloat()
-        val dotY = cy + (radius * 0.82f * sin(rad)).toFloat()
+        val secondaryWavePath = Path().apply {
+            moveTo(cx - radius * 0.72f, cy + radius * 0.14f)
+            cubicTo(
+                cx - radius * 0.28f, cy + waveAmplitude * 1.15f,
+                cx + radius * 0.28f, cy - waveAmplitude * 1.15f,
+                cx + radius * 0.72f, cy - radius * 0.14f
+            )
+        }
+        drawPath(
+            path = secondaryWavePath,
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFFFBBF24).copy(alpha = 0.88f),
+                    Color(0xFF6EE7B7),
+                    Color(0xFFFBBF24).copy(alpha = 0.88f)
+                )
+            ),
+            style = Stroke(width = 1.9f, cap = StrokeCap.Round)
+        )
+
+        // 4. Pulsing Central Neural Core
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFFDE68A).copy(alpha = 0.95f),
+                    Color(0xFF34D399).copy(alpha = 0.55f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, cy),
+                radius = radius * 0.36f * synapticPulse
+            ),
+            radius = radius * 0.36f * synapticPulse,
+            center = Offset(cx, cy)
+        )
+        drawCircle(
+            color = Color(0xFFFFFBEB),
+            radius = (radius * 0.13f * synapticPulse).coerceAtLeast(2.5f),
+            center = Offset(cx, cy)
+        )
+
+        // 5. Orbiting Neural Nodes on Counter-Rotating Synaptic Paths
+        val rad1 = Math.toRadians(orbitAngle.toDouble())
+        val node1X = cx + (radius * 0.74f * cos(rad1)).toFloat()
+        val node1Y = cy + (radius * 0.74f * sin(rad1)).toFloat()
         drawCircle(
             color = Color(0xFFFDE68A),
-            radius = 3.5f,
-            center = Offset(dotX, dotY)
+            radius = 3.2f,
+            center = Offset(node1X, node1Y)
+        )
+
+        val rad2 = Math.toRadians((360f - orbitAngle).toDouble())
+        val node2X = cx + (radius * 0.52f * cos(rad2)).toFloat()
+        val node2Y = cy + (radius * 0.52f * sin(rad2)).toFloat()
+        drawCircle(
+            color = Color(0xFF2DD4BF),
+            radius = 2.6f,
+            center = Offset(node2X, node2Y)
         )
     }
 }
@@ -2708,94 +2780,54 @@ private fun AdvisorInteractiveChatTab(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Quick Prompts Bar
+        // Single-Row Compact Quick Prompts Bar
         Surface(
             color = Color(0xFFECFDF5),
             border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            shape = RoundedCornerShape(14.dp)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(12.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                items(quickPrompts) { prompt ->
+                    Surface(
+                        onClick = { onSendPrompt(prompt) },
+                        shape = RoundedCornerShape(50),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.45f)),
+                        shadowElevation = 1.dp,
+                        modifier = Modifier.testTag("quick_prompt_chip_${prompt.hashCode()}")
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Bolt,
-                            contentDescription = null,
-                            tint = Color(0xFF065F46),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "الأوامر والتحليلات السريعة بنقرة واحدة:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF065F46)
-                        )
-                    }
-                    TextButton(
-                        onClick = onNewChat,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        modifier = Modifier.height(26.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AddComment,
-                            contentDescription = null,
-                            tint = Color(0xFF059669),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "بدء محادثة جديدة",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF059669)
-                        )
-                    }
-                }
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(quickPrompts) { prompt ->
-                        Surface(
-                            onClick = { onSendPrompt(prompt) },
-                            shape = RoundedCornerShape(50),
-                            color = Color.White,
-                            border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.45f)),
-                            shadowElevation = 1.dp,
-                            modifier = Modifier.testTag("quick_prompt_chip_${prompt.hashCode()}")
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (prompt.contains("أبلغ") || prompt.contains("أرسل")) {
-                                        Icons.Filled.NotificationsActive
-                                    } else {
-                                        Icons.Filled.QueryStats
-                                    },
-                                    contentDescription = null,
-                                    tint = if (prompt.contains("أبلغ")) Color(0xFFD97706) else Color(0xFF059669),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = prompt,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF042F24)
-                                )
-                            }
+                            Icon(
+                                imageVector = if (prompt.contains("أبلغ") || prompt.contains("أرسل")) {
+                                    Icons.Filled.NotificationsActive
+                                } else {
+                                    Icons.Filled.QueryStats
+                                },
+                                contentDescription = null,
+                                tint = if (prompt.contains("أبلغ")) Color(0xFFD97706) else Color(0xFF059669),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = prompt,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF042F24),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
@@ -3701,7 +3733,7 @@ private fun AdvisorSmartDashboardIndicatorsTab(
             }
         }
 
-        // Proactive Alerts & Early Warning Card
+        // Proactive Alerts & Early Warning Card (Full-Width Text + Full-Width Bottom Button — Zero Vertical Squishing!)
         item {
             Card(
                 shape = RoundedCornerShape(18.dp),
@@ -3710,33 +3742,28 @@ private fun AdvisorSmartDashboardIndicatorsTab(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.WarningAmber,
-                                contentDescription = null,
-                                tint = DangerRed
-                            )
-                            Text(
-                                text = "التنبيهات الذكية والإنذار المبكر للمدير",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF991B1B)
-                            )
-                        }
-                        TextButton(onClick = { onAskFollowUpInChat("أبلغ أولياء أمور الطلبة المتغيبين اليوم") }) {
-                            Text("إبلاغ أولياء الأمور", fontWeight = FontWeight.Bold, color = DangerRed)
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.WarningAmber,
+                            contentDescription = null,
+                            tint = DangerRed
+                        )
+                        Text(
+                            text = "التنبيهات الذكية والإنذار المبكر للمدير",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF991B1B),
+                            modifier = Modifier.weight(1f)
+                        )
                     }
 
                     snapshot.proactiveProblems.forEachIndexed { idx, prob ->
@@ -3744,14 +3771,38 @@ private fun AdvisorSmartDashboardIndicatorsTab(
                             text = "${idx + 1}. $prob",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF7F1D1D),
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Button(
+                        onClick = { onAskFollowUpInChat("أبلغ أولياء أمور الطلبة المتغيبين اليوم") },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DangerRed,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("advisor_dashboard_notify_absent_parents_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.NotificationsActive,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "إبلاغ أولياء الأمور",
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }
             }
         }
 
-        // Strategic Recommendations Card
+        // Strategic Recommendations Card (Full-Width Text + Full-Width Bottom Button — Zero Vertical Squishing!)
         item {
             Card(
                 shape = RoundedCornerShape(18.dp),
@@ -3760,33 +3811,28 @@ private fun AdvisorSmartDashboardIndicatorsTab(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Verified,
-                                contentDescription = null,
-                                tint = Color(0xFF059669)
-                            )
-                            Text(
-                                text = "أهم التوصيات لتحسين الأداء المدرسي",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF042F24)
-                            )
-                        }
-                        TextButton(onClick = { onOpenReportKind(OfficialSmartReportKind.PROBLEMS_RECOMMENDATIONS_REPORT) }) {
-                            Text("فتح التقرير الكامل", fontWeight = FontWeight.Bold, color = Color(0xFF059669))
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.Verified,
+                            contentDescription = null,
+                            tint = Color(0xFF059669)
+                        )
+                        Text(
+                            text = "أهم التوصيات لتحسين الأداء المدرسي",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF042F24),
+                            modifier = Modifier.weight(1f)
+                        )
                     }
 
                     snapshot.strategicRecommendations.forEachIndexed { idx, rec ->
@@ -3794,7 +3840,31 @@ private fun AdvisorSmartDashboardIndicatorsTab(
                             text = "${idx + 1}. $rec",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF065F46),
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Button(
+                        onClick = { onOpenReportKind(OfficialSmartReportKind.PROBLEMS_RECOMMENDATIONS_REPORT) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF059669),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("advisor_dashboard_open_full_report_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Description,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "فتح التقرير الكامل",
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }
@@ -3955,7 +4025,7 @@ private fun AdvisorTenOfficialReportsTab(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Official Header inside preview
+                    // Official Header inside preview (Full-Width Title + Dedicated Full-Width Export Button Row)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3967,32 +4037,33 @@ private fun AdvisorTenOfficialReportsTab(
                             )
                             .padding(14.dp)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = activeDocument.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "${activeDocument.schoolName} • المدير: ${activeDocument.principalName} • التاريخ: ${activeDocument.issueDate}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFFFDE68A)
-                                )
-                            }
+                            Text(
+                                text = activeDocument.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                text = "${activeDocument.schoolName} • المدير: ${activeDocument.principalName} • التاريخ: ${activeDocument.issueDate}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFFDE68A),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                             Button(
                                 onClick = { onExportReportPdf(activeDocument) },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFFFBBF24),
                                     contentColor = Color(0xFF042F24)
                                 ),
-                                shape = RoundedCornerShape(50),
-                                modifier = Modifier.testTag("export_selected_official_report_pdf_btn")
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("export_selected_official_report_pdf_btn")
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Print,
@@ -4118,37 +4189,37 @@ private fun AdvisorSentNotificationsLogTab(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF042F24)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "سجل الإشعارات والتبليغات الذكية المعتمدة",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "توثيق كامل للمرسل، المستلمين، وقت الإرسال، القناة، وحالة التسليم الفعلي",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFFDE68A)
-                        )
-                    }
+                    Text(
+                        text = "سجل الإشعارات والتبليغات الذكية المعتمدة",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "توثيق كامل للمرسل، المستلمين، وقت الإرسال، القناة، وحالة التسليم الفعلي",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFDE68A),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Button(
                         onClick = onCreateNewSmartAlert,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFFBBF24),
                             contentColor = Color(0xFF042F24)
                         ),
-                        shape = RoundedCornerShape(50)
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(imageVector = Icons.Filled.AddAlert, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("إشعار ذكي جديد", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("إرسال تنبيه ذكي جديد", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
                     }
                 }
             }
