@@ -106,6 +106,8 @@ fun DashboardScreen(
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val isAiAdvisorOpen by viewModel.isAiAdvisorOpen.collectAsState()
     val aiAdvisorInitialTab by viewModel.aiAdvisorInitialTab.collectAsState()
+    val isMinistrySuiteOpen by viewModel.isMinistrySuiteOpen.collectAsState()
+    val ministrySuiteInitialTab by viewModel.ministrySuiteInitialTab.collectAsState()
 
     if (isAdmin && isAiAdvisorOpen) {
         androidx.activity.compose.BackHandler {
@@ -115,6 +117,18 @@ fun DashboardScreen(
             viewModel = viewModel,
             initialTab = aiAdvisorInitialTab,
             onBack = { viewModel.closeAiSchoolAdvisor() }
+        )
+        return
+    }
+
+    if (isAdmin && isMinistrySuiteOpen) {
+        androidx.activity.compose.BackHandler {
+            viewModel.closeMinistryExecutiveSuite()
+        }
+        MinistryExecutiveSuiteScreen(
+            viewModel = viewModel,
+            initialTab = ministrySuiteInitialTab,
+            onBack = { viewModel.closeMinistryExecutiveSuite() }
         )
         return
     }
@@ -847,6 +861,95 @@ fun DashboardScreen(
                         }
                     }
 
+                    // Ministry Executive & Exam Control Suite Banner for Principal
+                    if (isAdmin) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.openMinistryExecutiveSuite(0) }
+                                .testTag("dashboard_open_ministry_executive_suite_card"),
+                            shape = RoundedCornerShape(18.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFFFBBF24)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(
+                                                Color(0xFF042F24),
+                                                Color(0xFF064E3B),
+                                                Color(0xFF0F766E)
+                                            )
+                                        )
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        MinistryExecutiveCrestVectorCanvas(
+                                            modifier = Modifier.size(44.dp)
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "المنظومة الوزارية واللجنة الامتحانية",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "الكنترول والإعفاء • السجلات والإنذارات • الملاك • الرعاية • الترحيل والجرد",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFFFDE68A),
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFFFBBF24),
+                                        shadowElevation = 2.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Gavel,
+                                                contentDescription = null,
+                                                tint = Color(0xFF042F24),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = "فتح المنظومة",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF042F24),
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // 3D Daily Attendance & Gate Summary Banner Card (موجز الدوام وحركة البوابة اليومية)
                     ThreeDDailyAttendanceGateSummaryCard(
                         title = "موجز الدوام وحركة البوابة اليومية",
@@ -1091,6 +1194,17 @@ fun DashboardScreen(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (isAdmin) {
+                    SectionWaveQuickCard3D(
+                        title = "المنظومة الوزارية واللجنة الامتحانية",
+                        subtitle = "اللجنة الامتحانية والكنترول، السجلات والإنذارات، إضبارة الملاك، الرعاية، الترحيل والجرد",
+                        icon = Icons.Filled.Gavel,
+                        isBlueAccent = true,
+                        onClick = { viewModel.openMinistryExecutiveSuite(0) },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "section_card_MINISTRY_EXECUTIVE_SUITE"
+                    )
+                }
                 if (isAdmin && featureSettings.isAiAdvisorVisibleOnHome) {
                     SectionWaveQuickCard3D(
                         title = "المستشار الإداري الذكي",

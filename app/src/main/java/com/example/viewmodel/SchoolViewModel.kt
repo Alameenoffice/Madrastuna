@@ -2408,6 +2408,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun navigateToSection(section: AppSection) {
         _isAiAdvisorOpen.value = false
+        _isMinistrySuiteOpen.value = false
         val feat = _schoolConfig.value.featureSettings
         if (section == AppSection.TUITION_FEES && (_schoolConfig.value.schoolType == SchoolType.PUBLIC || !feat.tuitionEnabled)) {
             _activeSection.value = AppSection.DASHBOARD
@@ -10830,6 +10831,69 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             else "تم إخفاء بطاقة المستشار الإداري الذكي من الشاشة الرئيسية (يمكنك فتحه من القائمة الجانبية)",
             isSuccess = true
         )
+    }
+
+    // =========================================================================
+    // MINISTRY EXECUTIVE & EXAM CONTROL SUITE (PRINCIPAL EXCLUSIVE)
+    // =========================================================================
+
+    private val _isMinistrySuiteOpen = MutableStateFlow(false)
+    val isMinistrySuiteOpen: StateFlow<Boolean> = _isMinistrySuiteOpen.asStateFlow()
+
+    private val _ministrySuiteInitialTab = MutableStateFlow(0)
+    val ministrySuiteInitialTab: StateFlow<Int> = _ministrySuiteInitialTab.asStateFlow()
+
+    fun openMinistryExecutiveSuite(initialTab: Int = 0) {
+        if (_currentUser.value?.role != UserRole.ADMIN) {
+            showToastAlert("المنظومة الوزارية واللجنة الامتحانية متاحة حصرياً لمدير المدرسة", isSuccess = false)
+            return
+        }
+        _isAiAdvisorOpen.value = false
+        _ministrySuiteInitialTab.value = initialTab.coerceIn(0, 5)
+        _isMinistrySuiteOpen.value = true
+        _activeSection.value = AppSection.DASHBOARD
+    }
+
+    fun closeMinistryExecutiveSuite() {
+        _isMinistrySuiteOpen.value = false
+    }
+
+    fun applyMinistryDecisionGradeBoost(
+        studentId: String,
+        subjectName: String,
+        decisionPointsUsed: Int
+    ): Boolean {
+        if (_currentUser.value?.role != UserRole.ADMIN) return false
+        val sid = _schoolConfig.value.schoolId
+        var found = false
+        val updated = _grades.value.map { g ->
+            if (g.studentId == studentId && ArabicTextNormalizer.normalizeText(g.subjectName) == ArabicTextNormalizer.normalizeText(subjectName)) {
+                found = true
+                val scale = g.maxScoreScale.coerceAtLeast(1)
+                val targetPassScore = (scale * 0.50).toInt().coerceAtLeast(50.coerceAtMost(scale))
+                g.copy(
+                    dailyScore = g.dailyScore.coerceAtLeast(targetPassScore),
+                    month1Score = g.month1Score.coerceAtLeast(targetPassScore),
+                    month2Score = g.month2Score.coerceAtLeast(targetPassScore),
+                    midYearScore = g.midYearScore.coerceAtLeast(targetPassScore),
+                    finalExamScore = g.finalExamScore.coerceAtLeast(targetPassScore),
+                    isApprovedByPrincipal = true
+                )
+            } else g
+        }
+        if (found) {
+            _grades.value = updated
+            repo.saveGrades(updated, sid)
+            pushNotification(
+                title = "قرار اللجنة الامتحانية — تطبيق درجة القرار",
+                body = "تم تطبيق ($decisionPointsUsed) درجات قرار في مادة ($subjectName) ورفع النتيجة إلى درجة النجاح الصغرى (50%) بمصادقة مدير المدرسة.",
+                type = NotificationType.GRADES,
+                targetStudentId = studentId,
+                isUrgent = true,
+                priority = "high"
+            )
+        }
+        return found
     }
 }
 

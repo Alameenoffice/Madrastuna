@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.ExecutiveAnalyticsRadarVectorCanvas
+import com.example.ui.screens.MinistryExecutiveCrestVectorCanvas
 import com.example.viewmodel.SchoolViewModel
 import kotlinx.coroutines.launch
 
@@ -114,7 +115,88 @@ fun Text(
     )
 
     if (text == "أدوات الإدارة السريعة") {
+        DrawerPrincipalMinistrySuiteMenuItem()
         DrawerPrincipalAiAdvisorMenuItem()
+    }
+}
+
+@Composable
+private fun DrawerPrincipalMinistrySuiteMenuItem() {
+    val vm: SchoolViewModel = viewModel()
+    val isDarkMode by vm.isDarkMode.collectAsState()
+    val isMinistrySuiteOpen by vm.isMinistrySuiteOpen.collectAsState()
+    val drawerState = LocalActiveNavigationDrawerState.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val activeBg = if (isDarkMode) Color(0xFF065F46).copy(alpha = 0.35f) else Color(0xFFECFDF5)
+    val activeTextColor = if (isDarkMode) Color(0xFFA7F3D0) else Color(0xFF065F46)
+    val inactiveTextColor = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+    val subtitleColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable {
+                coroutineScope.launch { drawerState?.close() }
+                vm.openMinistryExecutiveSuite(0)
+            }
+            .testTag("drawer_ministry_executive_suite_button"),
+        shape = RoundedCornerShape(12.dp),
+        color = if (isMinistrySuiteOpen) activeBg else Color.Transparent
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier.size(34.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                MinistryExecutiveCrestVectorCanvas(
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                androidx.compose.material3.Text(
+                    text = "المنظومة الوزارية واللجنة الامتحانية",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (isMinistrySuiteOpen) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    color = if (isMinistrySuiteOpen) activeTextColor else inactiveTextColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                androidx.compose.material3.Text(
+                    text = "الكنترول والإعفاء والسجلات والملاك والرعاية والجرد",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = subtitleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            if (isMinistrySuiteOpen) {
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(18.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFF059669))
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFF59E0B))
+                )
+            }
+        }
     }
 }
 
