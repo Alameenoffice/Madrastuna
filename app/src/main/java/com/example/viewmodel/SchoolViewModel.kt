@@ -3574,64 +3574,54 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val schoolStudents = _students.value.filter {
             it.schoolId.isEmpty() || resolvedSchoolId.isEmpty() || it.schoolId.equals(resolvedSchoolId, ignoreCase = true)
         }
-        val afterLastColon = cleanPayload.substringAfterLast(":").trim()
-        val numericPart = cleanPayload.filter { it.isDigit() }
         val colonParts = cleanPayload.split(":").map { it.trim() }
-        val extractedTokenOrId = when {
-            colonParts.size >= 3 && colonParts[0].equals("MADRASATI_ID", ignoreCase = true) -> colonParts[2]
-            cleanPayload.contains(":") -> afterLastColon
-            cleanPayload.contains("|") -> cleanPayload.split("|").map { it.trim() }.getOrNull(2).orEmpty()
+        val pipeParts = cleanPayload.split("|").map { it.trim() }
+        val isCanonicalMadrasatiQr = colonParts.size >= 3 && colonParts[0].equals("MADRASATI_ID", ignoreCase = true)
+        val isLegacyPipeQr = pipeParts.size >= 3 && pipeParts[0].equals("MADRASATI", ignoreCase = true)
+        val isWalletQr = cleanPayload.startsWith("WALLET-", ignoreCase = true)
+        val isDirectEncryptedStuToken = cleanPayload.startsWith("stu_", ignoreCase = true) && cleanPayload.length >= 6
+
+        if (!isCanonicalMadrasatiQr && !isLegacyPipeQr && !isWalletQr && !isDirectEncryptedStuToken) {
+            val invalidFormatMsg = "رفض أمني: يُقبل فقط باركود الهوية الرسمية المعتمد (MADRASATI_ID) ولا يُسمح بالدخول بالأسماء."
+            showToastAlert(invalidFormatMsg, isSuccess = false)
+            return Result.failure(IllegalArgumentException(invalidFormatMsg))
+        }
+
+        val extractedStudentId = when {
+            isCanonicalMadrasatiQr -> colonParts[2]
+            isLegacyPipeQr -> pipeParts[2]
+            isWalletQr -> cleanPayload.substringAfterLast("-").trim()
             else -> cleanPayload
         }
 
+        if (extractedStudentId.isBlank()) {
+            val invalidMsg = "عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."
+            showToastAlert(invalidMsg, isSuccess = false)
+            return Result.failure(IllegalArgumentException(invalidMsg))
+        }
+
         val matchedStudent = schoolStudents.firstOrNull { stu ->
-            stu.matchesBarcodePayload(cleanPayload) ||
-                stu.id.equals(afterLastColon, ignoreCase = true) ||
-                (afterLastColon.length >= 3 && stu.id.contains(afterLastColon, ignoreCase = true)) ||
-                (stu.id.length >= 3 && afterLastColon.contains(stu.id, ignoreCase = true)) ||
+            stu.id.equals(extractedStudentId, ignoreCase = true) ||
                 stu.qrCodeValue.trim().equals(cleanPayload, ignoreCase = true) ||
-                stu.qrCodeValue.substringAfterLast(":").trim().equals(afterLastColon, ignoreCase = true) ||
-                (stu.studentUsername.isNotBlank() && (
-                    stu.studentUsername.equals(cleanPayload, ignoreCase = true) ||
-                        stu.studentUsername.equals(afterLastColon, ignoreCase = true) ||
-                        stu.studentUsername.removePrefix("$resolvedSchoolId-").equals(afterLastColon.removePrefix("$resolvedSchoolId-"), ignoreCase = true)
-                    )) ||
-                (stu.parentUsername.isNotBlank() && (
-                    stu.parentUsername.equals(cleanPayload, ignoreCase = true) ||
-                        stu.parentUsername.equals(afterLastColon, ignoreCase = true)
-                    )) ||
-                (stu.studentName.isNotBlank() && (
-                    stu.studentName.trim().equals(cleanPayload, ignoreCase = true) ||
-                        stu.fullNameWithFather.trim().equals(cleanPayload, ignoreCase = true) ||
-                        (afterLastColon.length >= 3 && stu.fullNameWithFather.contains(afterLastColon, ignoreCase = true))
-                    )) ||
-                (numericPart.isNotBlank() && (
-                    stu.id.equals(numericPart, ignoreCase = true) ||
-                        stu.studentUsername.equals("$resolvedSchoolId-$numericPart", ignoreCase = true)
-                    ))
+                stu.walletBarcode.trim().equals(cleanPayload, ignoreCase = true)
         }
 
         val schoolAccounts = _accounts.value.filter {
             (it.role == UserRole.STUDENT || it.role == UserRole.PARENT) &&
                 (it.schoolId.isEmpty() || resolvedSchoolId.isEmpty() || it.schoolId.equals(resolvedSchoolId, ignoreCase = true))
         }
-        val matchedAccount = schoolAccounts.firstOrNull { acc ->
-            (matchedStudent != null && (
+        val matchedAccount = if (matchedStudent != null) {
+            schoolAccounts.firstOrNull { acc ->
                 acc.linkedStudentId.equals(matchedStudent.id, ignoreCase = true) ||
                     acc.id.equals(matchedStudent.id, ignoreCase = true) ||
                     (matchedStudent.studentUsername.isNotBlank() && acc.username.equals(matchedStudent.studentUsername, ignoreCase = true)) ||
-                    (matchedStudent.parentUsername.isNotBlank() && acc.username.equals(matchedStudent.parentUsername, ignoreCase = true)) ||
-                    (matchedStudent.studentName.isNotBlank() && acc.fullName.contains(matchedStudent.studentName, ignoreCase = true))
-                )) ||
-                acc.id.equals(extractedTokenOrId, ignoreCase = true) ||
-                acc.id.equals(afterLastColon, ignoreCase = true) ||
-                acc.linkedStudentId.equals(extractedTokenOrId, ignoreCase = true) ||
-                acc.linkedStudentId.equals(afterLastColon, ignoreCase = true) ||
-                acc.username.equals(extractedTokenOrId, ignoreCase = true) ||
-                acc.username.equals(afterLastColon, ignoreCase = true) ||
-                acc.username.equals(cleanPayload, ignoreCase = true) ||
-                (resolvedSchoolId.isNotBlank() &&
-                    acc.username.equals(FirebaseConfigConstants.applySchoolPrefix(resolvedSchoolId, extractedTokenOrId), ignoreCase = true))
+                    (matchedStudent.parentUsername.isNotBlank() && acc.username.equals(matchedStudent.parentUsername, ignoreCase = true))
+            }
+        } else {
+            schoolAccounts.firstOrNull { acc ->
+                acc.linkedStudentId.equals(extractedStudentId, ignoreCase = true) ||
+                    acc.id.equals(extractedStudentId, ignoreCase = true)
+            }
         }
 
         if (matchedStudent == null && matchedAccount == null) {
@@ -5775,6 +5765,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveSchoolConfig(updatedConfig)
 
         syncAllFleetDriverAccounts(updatedConfig)
+        syncSubscribedStudentsWithFleetRoutes(updatedConfig)
 
         showToastAlert("تم حفظ واعتماد بيانات الخط والمركبة وحساب السائق الموحد بنجاح", isSuccess = true)
     }
@@ -5858,12 +5849,56 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
         syncAllFleetDriverAccounts(updatedConfig)
+        syncSubscribedStudentsWithFleetRoutes(updatedConfig)
 
         showToastAlert(
             "تم اعتماد الخط ($cleanRouteArea) وحساب السائق ($prefixedDriverUser) بنجاح",
             isSuccess = true
         )
         return newItem
+    }
+
+    private fun syncSubscribedStudentsWithFleetRoutes(config: SchoolConfig) {
+        val sid = config.schoolId
+        val routes = config.effectiveBusRoutesList
+        if (routes.isEmpty()) return
+        val isSingleRoute = routes.size == 1
+        var anyChanged = false
+        val updatedStudents = _students.value.map { stu ->
+            if (!stu.isBusSubscribed || (stu.schoolId.isNotBlank() && stu.schoolId != sid)) {
+                stu
+            } else {
+                val matchedRoute = routes.firstOrNull { r ->
+                    (stu.busRouteId.isNotBlank() && r.id == stu.busRouteId) ||
+                        (stu.busRouteName.isNotBlank() && r.routeAreaName.equals(stu.busRouteName, ignoreCase = true)) ||
+                        r.matchesStudent(stu, isOnlyRouteInSchool = isSingleRoute)
+                } ?: routes.firstOrNull()
+                if (matchedRoute != null) {
+                    val unifiedDriver = matchedRoute.driverName.ifBlank { config.busDriverName }
+                    val unifiedPhone = matchedRoute.driverPhone.ifBlank { config.busDriverPhone }
+                    val unifiedPlate = matchedRoute.vehiclePlateNumber.ifBlank { config.busVehicleNumber }
+                    val unifiedType = matchedRoute.vehicleTypeAndColor.ifBlank { config.busVehicleTypeAndColor }
+                    val unifiedArea = matchedRoute.routeAreaName.ifBlank { stu.busRouteName }
+                    val updatedStu = stu.copy(
+                        busRouteId = matchedRoute.id,
+                        busRouteName = unifiedArea,
+                        busDriverName = unifiedDriver,
+                        busDriverPhone = unifiedPhone,
+                        busVehicleNumber = unifiedPlate,
+                        busVehicleTypeAndColor = unifiedType,
+                        busBoardingDriverName = if (stu.busBoardingDriverName.isNotBlank()) unifiedDriver else stu.busBoardingDriverName
+                    )
+                    if (updatedStu != stu) anyChanged = true
+                    updatedStu
+                } else {
+                    stu
+                }
+            }
+        }
+        if (anyChanged) {
+            _students.value = updatedStudents
+            repo.saveStudents(updatedStudents, sid)
+        }
     }
 
     fun deleteBusRouteFleetItem(routeId: String) {
@@ -6030,10 +6065,16 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         com.example.util.StandardQrCodeHelper.playScanBeepAndVibrate(appContext)
 
         val timeNow = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
-        val resolvedDriverName = matchedStudent.busDriverName
-            .ifBlank { _schoolConfig.value.busDriverName }
-            .ifBlank { user.fullName }
-            .ifBlank { "السائق المعتمد" }
+        val activeRoutes = _schoolConfig.value.effectiveBusRoutesList
+        val matchedRouteForStu = activeRoutes.firstOrNull { r ->
+            (matchedStudent.busRouteId.isNotBlank() && r.id == matchedStudent.busRouteId) ||
+                (matchedStudent.busRouteName.isNotBlank() && r.routeAreaName.equals(matchedStudent.busRouteName, ignoreCase = true)) ||
+                r.matchesStudent(matchedStudent, isOnlyRouteInSchool = activeRoutes.size <= 1)
+        } ?: activeRoutes.firstOrNull()
+        val resolvedDriverName = matchedRouteForStu?.driverName?.takeIf { it.isNotBlank() }
+            ?: _schoolConfig.value.busDriverName.takeIf { it.isNotBlank() && it != "السائق المعتمد للخط المدرسي" }
+            ?: user.fullName.takeIf { it.isNotBlank() }
+            ?: matchedStudent.busDriverName.ifBlank { "السائق المعتمد" }
 
         var updatedTarget: StudentRecord? = null
         val updatedList = _students.value.map { s ->

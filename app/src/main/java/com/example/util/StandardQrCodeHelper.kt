@@ -506,9 +506,7 @@ object StandardQrCodeHelper {
         val clean = rawInput.trim()
         if (clean.isEmpty()) return null
         return students.firstOrNull { stu ->
-            stu.matchesBarcodePayload(clean) ||
-                stu.studentName.equals(clean, ignoreCase = true) ||
-                stu.fullNameWithFather.contains(clean, ignoreCase = true)
+            stu.matchesBarcodePayload(clean)
         }
     }
 
@@ -583,25 +581,29 @@ object StandardQrCodeHelper {
             val srcH = bitmap.height
             if (srcW < 48 || srcH < 48) return null
 
-            // 1. Direct pass at 420px (fast path for close-up camera frames and cropped QR images)
-            detectSingleRegionPass(bitmap, students, targetMaxDim = 420)?.let { return it }
+            // 1. Direct pass at 520px (fast path for close-up camera frames and cropped QR images)
+            detectSingleRegionPass(bitmap, students, targetMaxDim = 520)?.let { return it }
 
-            // 2. High-resolution pass (920px) for full Student ID Card images (1280x800) or screenshots
-            if (max(srcW, srcH) > 480) {
-                detectSingleRegionPass(bitmap, students, targetMaxDim = 920)?.let { return it }
+            // 2. High-resolution pass (960px) for full Student ID Card images (1280x800) or screenshots
+            if (max(srcW, srcH) > 520) {
+                detectSingleRegionPass(bitmap, students, targetMaxDim = 960)?.let { return it }
             }
 
-            // 3. Targeted sub-region crops for Official Student ID Cards (Zone 3 Left QR) and vertical screenshots
-            if (srcW >= 240 && srcH >= 200) {
+            // 3. Targeted sub-region crops for Official Student ID Cards (Zone 3 Left QR) and vertical phone screenshots
+            if (srcW >= 180 && srcH >= 180) {
                 val cropSpecs = listOf(
-                    // Exported Horizontal Student ID Card exact Left QR Zone (x: 2%..38%, y: 20%..78%)
-                    floatArrayOf(0.02f, 0.20f, 0.38f, 0.78f),
-                    // Wider Left Half crop
-                    floatArrayOf(0.0f, 0.12f, 0.48f, 0.88f),
-                    // Center QR crop (vertical phone screenshot of ID card)
-                    floatArrayOf(0.08f, 0.18f, 0.92f, 0.82f),
-                    // Lower-half QR crop
-                    floatArrayOf(0.05f, 0.35f, 0.95f, 0.95f),
+                    // Exported Horizontal Student ID Card exact Left QR Zone (x: 2%..38%, y: 18%..82%)
+                    floatArrayOf(0.02f, 0.18f, 0.38f, 0.82f),
+                    // Wider Left Half crop for horizontal ID cards
+                    floatArrayOf(0.0f, 0.10f, 0.48f, 0.90f),
+                    // Vertical Phone Screenshot tight center-square crops (where the 138.dp QR box sits)
+                    floatArrayOf(0.16f, 0.25f, 0.84f, 0.72f),
+                    floatArrayOf(0.16f, 0.36f, 0.84f, 0.82f),
+                    floatArrayOf(0.16f, 0.46f, 0.84f, 0.92f),
+                    floatArrayOf(0.16f, 0.14f, 0.84f, 0.60f),
+                    // Wider vertical screenshot bands
+                    floatArrayOf(0.06f, 0.18f, 0.94f, 0.82f),
+                    floatArrayOf(0.05f, 0.32f, 0.95f, 0.95f),
                     // Right half crop
                     floatArrayOf(0.50f, 0.12f, 1.0f, 0.88f)
                 )
@@ -612,7 +614,7 @@ object StandardQrCodeHelper {
                     val ch = ((srcH * (spec[3] - spec[1])).roundToInt()).coerceIn(48, srcH - cy)
                     if (cw >= 48 && ch >= 48) {
                         val subBmp = Bitmap.createBitmap(bitmap, cx, cy, cw, ch)
-                        val res = detectSingleRegionPass(subBmp, students, targetMaxDim = 520)
+                        val res = detectSingleRegionPass(subBmp, students, targetMaxDim = 640)
                         if (subBmp !== bitmap) {
                             subBmp.recycle()
                         }
@@ -655,8 +657,14 @@ object StandardQrCodeHelper {
             }
 
             val isDark = binarizeAdaptive(pixels, w, h)
-            val triad = findQrFinderTriad(isDark, w, h) ?: return null
-            decodeQrPayloadFromTriad(isDark, w, h, triad, students)
+            val candidateTriads = findQrFinderTriads(isDark, w, h)
+            for (triad in candidateTriads) {
+                val decoded = decodeQrPayloadFromTriad(isDark, w, h, triad, students)
+                if (!decoded.isNullOrBlank()) {
+                    return decoded
+                }
+            }
+            null
         } catch (_: Exception) {
             null
         }
@@ -729,7 +737,7 @@ object StandardQrCodeHelper {
         }
         if (total < 7) return false
         val moduleSize = total / 7.0f
-        val maxVariance = moduleSize * 0.65f
+        val maxVariance = moduleSize * 0.72f
         return abs(moduleSize - counts[0]) < maxVariance &&
             abs(moduleSize - counts[1]) < maxVariance &&
             abs(3.0f * moduleSize - counts[2]) < 3.0f * maxVariance &&
@@ -848,9 +856,9 @@ object StandardQrCodeHelper {
         return x.toFloat() - stateCount[4] - stateCount[3] - stateCount[2] / 2.0f
     }
 
-    private fun findQrFinderTriad(isDark: BooleanArray, w: Int, h: Int): FinderTriad? {
+    private fun findQrFinderTriads(isDark: BooleanArray, w: Int, h: Int): List<FinderTriad> {
         val centers = ArrayList<FinderCenter>()
-        val rowStep = (h / 180).coerceAtLeast(1)
+        val rowStep = (h / 240).coerceAtLeast(1)
         val stateCount = IntArray(5)
 
         var y = rowStep
@@ -870,10 +878,10 @@ object StandardQrCodeHelper {
                             if (isFinderRatio(stateCount)) {
                                 val total = stateCount[0] + stateCount[1] + stateCount[2] + stateCount[3] + stateCount[4]
                                 val centerX = (x.toFloat() - stateCount[4] - stateCount[3] - stateCount[2] / 2.0f).roundToInt()
-                                val vert = crossCheckVertical(isDark, w, h, y, centerX, stateCount[2], total)
+                                val vert = crossCheckVertical(isDark, w, h, y, centerX, stateCount[2] * 2, total)
                                 if (vert != null) {
                                     val (cy, vMod) = vert
-                                    val cx = crossCheckHorizontal(isDark, w, h, centerX, cy.roundToInt(), stateCount[2], total)
+                                    val cx = crossCheckHorizontal(isDark, w, h, centerX, cy.roundToInt(), stateCount[2] * 2, total)
                                     if (cx != null) {
                                         val modSize = (total / 7.0f + vMod) / 2.0f
                                         mergeFinderCenter(centers, cx, cy, modSize)
@@ -898,13 +906,10 @@ object StandardQrCodeHelper {
             y += rowStep
         }
 
-        // Require at least 3 verified finder pattern clusters
-        val validCenters = centers.filter { it.count >= 2 }.ifEmpty { centers }
-        if (validCenters.size < 3) return null
+        if (centers.size < 3) return emptyList()
 
-        val topCandidates = validCenters.sortedByDescending { it.count }.take(8)
-        var bestTriad: FinderTriad? = null
-        var bestScore = Float.MAX_VALUE
+        val topCandidates = centers.sortedByDescending { it.count }.take(16)
+        val scoredTriads = ArrayList<Pair<Float, FinderTriad>>()
 
         val n = topCandidates.size
         for (i in 0 until n) {
@@ -913,13 +918,13 @@ object StandardQrCodeHelper {
                     val trio = arrayOf(topCandidates[i], topCandidates[j], topCandidates[k])
                     // Check module size consistency among the 3 finder patterns
                     val avgMod = (trio[0].estimatedModuleSize + trio[1].estimatedModuleSize + trio[2].estimatedModuleSize) / 3f
-                    if (avgMod < 1.0f) continue
+                    if (avgMod < 0.85f) continue
                     val modSpread = maxOf(
                         abs(trio[0].estimatedModuleSize - avgMod),
                         abs(trio[1].estimatedModuleSize - avgMod),
                         abs(trio[2].estimatedModuleSize - avgMod)
                     )
-                    if (modSpread > avgMod * 0.55f) continue
+                    if (modSpread > avgMod * 0.62f) continue
 
                     // Order into TopLeft, TopRight, BottomLeft: longest distance is TR<->BL hypotenuse
                     val d01 = hypot(trio[0].x - trio[1].x, trio[0].y - trio[1].y)
@@ -927,8 +932,8 @@ object StandardQrCodeHelper {
                     val d02 = hypot(trio[0].x - trio[2].x, trio[0].y - trio[2].y)
 
                     val tl: FinderCenter
-                    var pA: FinderCenter
-                    var pB: FinderCenter
+                    val pA: FinderCenter
+                    val pB: FinderCenter
                     val leg1: Float
                     val leg2: Float
 
@@ -945,8 +950,8 @@ object StandardQrCodeHelper {
 
                     val minLeg = min(leg1, leg2)
                     val maxLeg = max(leg1, leg2)
-                    if (minLeg < avgMod * 10f) continue
-                    if (abs(leg1 - leg2) > maxLeg * 0.35f) continue
+                    if (minLeg < avgMod * 9f) continue
+                    if (abs(leg1 - leg2) > maxLeg * 0.38f) continue
 
                     // Verify near 90-degree angle at TL
                     val ux = pA.x - tl.x
@@ -954,7 +959,7 @@ object StandardQrCodeHelper {
                     val vx = pB.x - tl.x
                     val vy = pB.y - tl.y
                     val cosAngle = abs(ux * vx + uy * vy) / (leg1 * leg2)
-                    if (cosAngle > 0.32f) continue
+                    if (cosAngle > 0.36f) continue
 
                     // Cross product determines which is TopRight and which is BottomLeft
                     val cross = ux * vy - uy * vx
@@ -969,14 +974,11 @@ object StandardQrCodeHelper {
                     }
 
                     val score = abs(leg1 - leg2) / maxLeg + cosAngle + (modSpread / avgMod)
-                    if (score < bestScore) {
-                        bestScore = score
-                        bestTriad = FinderTriad(topLeft = tl, topRight = tr, bottomLeft = bl)
-                    }
+                    scoredTriads.add(score to FinderTriad(topLeft = tl, topRight = tr, bottomLeft = bl))
                 }
             }
         }
-        return bestTriad
+        return scoredTriads.sortedBy { it.first }.take(8).map { it.second }
     }
 
     private fun mergeFinderCenter(
@@ -1097,8 +1099,8 @@ object StandardQrCodeHelper {
             }
         }
 
-        // Only accept matrix correlation if non-function data module accuracy is >= 78%
-        if (bestMatchRatio >= 0.78f && !bestMatchedStudentPayload.isNullOrBlank()) {
+        // Only accept matrix correlation if non-function data module accuracy is >= 72%
+        if (bestMatchRatio >= 0.72f && !bestMatchedStudentPayload.isNullOrBlank()) {
             return bestMatchedStudentPayload
         }
 
@@ -1512,11 +1514,7 @@ fun LiveCameraQrScannerBox(
                             modifier = Modifier.size(15.dp)
                         )
                         Text(
-                            text = if (lensFacing == CameraCharacteristics.LENS_FACING_BACK) {
-                                "الكاميرا الخلفية نشطة • ضع رمز QR داخل المربع الأخضر"
-                            } else {
-                                "الكاميرا الأمامية نشطة • ضع رمز QR داخل المربع الأخضر"
-                            },
+                            text = "الكاميرا نشطة • وجّه نحو الرمز",
                             style = MaterialTheme.typography.labelSmall,
                             color = androidx.compose.ui.graphics.Color.White,
                             fontWeight = FontWeight.Bold,

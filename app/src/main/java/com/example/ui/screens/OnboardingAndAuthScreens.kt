@@ -2762,9 +2762,9 @@ fun UnifiedLoginScreen(
                                     }
 
                                     Text(
-                                        text = "الدخول السريع بباركود الهوية الطلابية",
+                                        text = "الدخول بباركود الهوية الطلابية",
                                         modifier = Modifier.weight(1f),
-                                        fontSize = 13.5.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = if (isDarkMode) Color(0xFFECFDF5) else Color(0xFF065F46),
                                         maxLines = 1,
@@ -2920,6 +2920,17 @@ private fun resolveStudentCredentialsFromBarcode(
     val rawQrText = rawInput.trim()
     if (rawQrText.isEmpty()) return null
 
+    // التحقق الأمني الصارم (Strict Barcode Token Verification):
+    // يُرفض أي اسم نصي عادي (مثل "رسلان" أو "احمد") ويُشترط حصراً صيغة باركود الهوية المشفر أو معرف الطالب المشفر (stu_...)
+    val isStrictQrFormat = rawQrText.startsWith("MADRASATI_ID:", ignoreCase = true) ||
+        rawQrText.startsWith("MADRASATI|", ignoreCase = true) ||
+        rawQrText.startsWith("WALLET-", ignoreCase = true) ||
+        rawQrText.startsWith("stu_", ignoreCase = true) ||
+        rawQrText.contains(":stu_", ignoreCase = true)
+    if (!isStrictQrFormat) {
+        return null
+    }
+
     val colonParts = rawQrText.split(":").map { it.trim() }
     val pipeParts = rawQrText.split("|").map { it.trim() }
 
@@ -2944,11 +2955,7 @@ private fun resolveStudentCredentialsFromBarcode(
         else -> rawQrText
     }
 
-    val extractedPipeStudentName: String = if (pipeParts.size >= 4 && pipeParts[0].equals("MADRASATI", ignoreCase = true)) {
-        pipeParts[3].trim()
-    } else {
-        ""
-    }
+    if (extractedId.isBlank()) return null
 
     // تجميع كافة الطلاب والحسابات من الـ ViewModel ومن التخزين المحلي لضمان العثور على الطالب 100%
     val combinedStudents = LinkedHashMap<String, StudentRecord>()
@@ -3014,10 +3021,6 @@ private fun resolveStudentCredentialsFromBarcode(
         val expectedMadrasatiId = "MADRASATI_ID:$sCode:${stu.id}"
         val expectedPipePrefix = "MADRASATI|$sCode|${stu.id}"
         val expectedWallet = "WALLET-$sCode-${stu.id}"
-        val strippedStuUser = stu.studentUsername
-            .removePrefix("$sCode-")
-            .removePrefix("${sCode}_")
-            .trim()
         val strippedExtracted = extractedId
             .removePrefix("$sCode-")
             .removePrefix("${sCode}_")
@@ -3031,12 +3034,6 @@ private fun resolveStudentCredentialsFromBarcode(
             expectedMadrasatiId.equals(rawQrText, ignoreCase = true) ||
             rawQrText.startsWith(expectedPipePrefix, ignoreCase = true) ||
             expectedWallet.equals(rawQrText, ignoreCase = true) ||
-            (stu.studentUsername.isNotBlank() && stu.studentUsername.equals(extractedId, ignoreCase = true)) ||
-            (stu.studentUsername.isNotBlank() && stu.studentUsername.equals(rawQrText, ignoreCase = true)) ||
-            (strippedStuUser.isNotBlank() && strippedStuUser.equals(strippedExtracted, ignoreCase = true)) ||
-            (stu.studentName.isNotBlank() && stu.studentName.trim().equals(rawQrText, ignoreCase = true)) ||
-            (extractedId.length >= 3 && stu.studentName.isNotBlank() && stu.studentName.contains(extractedId, ignoreCase = true)) ||
-            (extractedPipeStudentName.isNotBlank() && stu.studentName.trim().equals(extractedPipeStudentName, ignoreCase = true)) ||
             rawQrText.endsWith(":${stu.id}", ignoreCase = true) ||
             rawQrText.contains("|${stu.id}|", ignoreCase = true)
     }
@@ -3049,10 +3046,6 @@ private fun resolveStudentCredentialsFromBarcode(
 
     val matchedAccount = studentAndParentAccounts.firstOrNull { acc ->
         val sCode = acc.schoolId.ifBlank { extractedSchoolCode.ifBlank { activeSchoolId } }
-        val strippedAccUser = acc.username
-            .removePrefix("$sCode-")
-            .removePrefix("${sCode}_")
-            .trim()
         val strippedExtracted = extractedId
             .removePrefix("$sCode-")
             .removePrefix("${sCode}_")
@@ -3061,18 +3054,14 @@ private fun resolveStudentCredentialsFromBarcode(
         (matchedStudent != null && (
             acc.linkedStudentId.equals(matchedStudent.id, ignoreCase = true) ||
                 acc.id.equals(matchedStudent.id, ignoreCase = true) ||
-                (matchedStudent.studentUsername.isNotBlank() && acc.username.equals(matchedStudent.studentUsername, ignoreCase = true)) ||
-                (matchedStudent.studentName.isNotBlank() && acc.fullName.trim().equals(matchedStudent.studentName.trim(), ignoreCase = true))
+                (matchedStudent.studentUsername.isNotBlank() && acc.username.equals(matchedStudent.studentUsername, ignoreCase = true))
             )) ||
             acc.id.equals(extractedId, ignoreCase = true) ||
             acc.id.equals(rawQrText, ignoreCase = true) ||
+            acc.id.equals(strippedExtracted, ignoreCase = true) ||
             acc.linkedStudentId.equals(extractedId, ignoreCase = true) ||
             acc.linkedStudentId.equals(rawQrText, ignoreCase = true) ||
-            acc.username.equals(extractedId, ignoreCase = true) ||
-            acc.username.equals(rawQrText, ignoreCase = true) ||
-            (strippedAccUser.isNotBlank() && strippedAccUser.equals(strippedExtracted, ignoreCase = true)) ||
-            (acc.fullName.isNotBlank() && acc.fullName.trim().equals(rawQrText, ignoreCase = true)) ||
-            (extractedPipeStudentName.isNotBlank() && acc.fullName.trim().equals(extractedPipeStudentName, ignoreCase = true))
+            acc.linkedStudentId.equals(strippedExtracted, ignoreCase = true)
     }
 
     // إذا تم العثور على الحساب أولاً، نحاول جلب سجل الطالب المرتبط به أيضاً
@@ -3224,7 +3213,7 @@ fun StudentIdBarcodeVectorIcon(
 @Composable
 fun StudentIdBezierLaserScannerFrame(
     modifier: Modifier = Modifier,
-    statusLabel: String = "وجّه الكاميرا نحو باركود الهوية"
+    statusLabel: String = "الكاميرا نشطة • وجّه نحو الرمز"
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "emerald_square_scanner_frame")
     val scanYRatio by infiniteTransition.animateFloat(
@@ -3430,6 +3419,17 @@ fun StudentIdQrLoginDialog(
         }
         scannerError = null
 
+        val isStrictQrFormat = trimmed.startsWith("MADRASATI_ID:", ignoreCase = true) ||
+            trimmed.startsWith("MADRASATI|", ignoreCase = true) ||
+            trimmed.startsWith("WALLET-", ignoreCase = true) ||
+            trimmed.startsWith("stu_", ignoreCase = true) ||
+            trimmed.contains(":stu_", ignoreCase = true)
+        if (!isStrictQrFormat) {
+            verifiedWelcomeBanner = null
+            scannerError = "عفواً، يُسمح بالدخول حصراً عبر رمز باركود الهوية المشفر (MADRASATI_ID:...) ولا يُقبل إدخال الأسماء النصية."
+            return
+        }
+
         val resolvedCredentials = resolveStudentCredentialsFromBarcode(
             rawInput = trimmed,
             activeSchoolId = schoolConfig.schoolId,
@@ -3460,15 +3460,25 @@ fun StudentIdQrLoginDialog(
         }
     }
 
-    // قارئ صورة بطاقة الهوية الطلابية من المعرض — يقرأ الباركود ويسجل الدخول فوراً وتلقائياً
+    // قارئ صورة بطاقة الهوية الطلابية من المعرض — يقرأ الباركود الحقيقي (ARGB_8888) ويسجل الدخول فوراً وتلقائياً
     val galleryPhotoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
             scannerError = null
             runCatching {
+                val opts = android.graphics.BitmapFactory.Options().apply {
+                    inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+                    inScaled = false
+                }
                 context.contentResolver.openInputStream(uri)?.use { stream ->
-                    android.graphics.BitmapFactory.decodeStream(stream)
+                    android.graphics.BitmapFactory.decodeStream(stream, null, opts)
+                }?.let { bmp ->
+                    if (bmp.config != android.graphics.Bitmap.Config.ARGB_8888) {
+                        bmp.copy(android.graphics.Bitmap.Config.ARGB_8888, false) ?: bmp
+                    } else {
+                        bmp
+                    }
                 }
             }.onSuccess { bitmap ->
                 if (bitmap != null) {
@@ -3479,14 +3489,9 @@ fun StudentIdQrLoginDialog(
                     if (!detectedPayload.isNullOrBlank()) {
                         barcodeTokenInput = detectedPayload
                         executeBarcodeLoginFlow(detectedPayload)
-                    } else if (allKnownStudents.size == 1) {
-                        // في حال كانت الصورة لبطاقة الطالب الوحيد المسجل في المدرسة وكانت مضغوطة بشدة
-                        val singleStudentQr = allKnownStudents.first().qrCodeValue
-                        barcodeTokenInput = singleStudentQr
-                        executeBarcodeLoginFlow(singleStudentQr)
                     } else {
                         showManualInputSection = true
-                        scannerError = "تعذر قراءة الباركود من الصورة؛ يمكنك كتابة أو لصق الرمز المطبوع أسفل البطاقة."
+                        scannerError = "تعذر العثور على باركود هوية صالح داخل الصورة المختارة؛ تأكد من اختيار صورة بطاقة الهوية الرسمية أو أدخل الرمز يدوياً."
                     }
                 } else {
                     scannerError = "تعذر فتح صورة الهوية المختارة."
@@ -3564,16 +3569,16 @@ fun StudentIdQrLoginDialog(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "الدخول السريع بباركود الهوية الطلابية",
-                                fontSize = 15.sp,
+                                text = "الدخول بباركود الهوية",
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "وجّه الكاميرا نحو باركود البطاقة أو اختر صورتها من المعرض",
-                                fontSize = 11.sp,
+                                text = "امسح البطاقة بالكاميرا أو ارفع صورتها",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = Color(0xFFD1FAE5),
                                 maxLines = 1,
@@ -3674,7 +3679,7 @@ fun StudentIdQrLoginDialog(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // الزر الأول: اختيار صورة الهوية من المعرض
+                        // الزر الأول: رفع صورة الهوية
                         Button(
                             onClick = {
                                 galleryPhotoPickerLauncher.launch(
@@ -3702,15 +3707,15 @@ fun StudentIdQrLoginDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "اختيار صورة الهوية من المعرض",
-                                fontSize = 11.sp,
+                                text = "رفع صورة الهوية",
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
 
-                        // الزر الثاني: إدخال رمز الباركود يدوياً
+                        // الزر الثاني: كتابة الرمز يدوياً
                         OutlinedButton(
                             onClick = {
                                 showManualInputSection = !showManualInputSection
@@ -3736,8 +3741,8 @@ fun StudentIdQrLoginDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "إدخال رمز الباركود يدوياً",
-                                fontSize = 11.sp,
+                                text = "كتابة الرمز يدوياً",
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
