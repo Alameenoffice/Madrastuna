@@ -930,91 +930,93 @@ private object GeminiAdvisorConfigStore {
     }
 }
 
-private suspend fun callGeminiGenerateContentHttp(
-    apiKey: String,
-    modelName: String,
-    systemInstructionText: String,
-    conversationHistory: List<AdvisorChatMessage>,
-    userPrompt: String
-): String? = withContext(Dispatchers.IO) {
-    if (apiKey.isBlank()) return@withContext null
-    var connection: HttpURLConnection? = null
-    try {
-        val cleanModel = modelName.trim().ifBlank { "gemini-2.5-flash" }
-        val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$cleanModel:generateContent?key=${Uri.encode(apiKey.trim())}"
-        val url = URL(endpoint)
-        connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15_000
-            readTimeout = 25_000
-            doInput = true
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-        }
+suspend fun fetchRealGeminiResponse(
+    userMsg: String,
+    schoolContext: String,
+    history: List<Pair<String, String>>
+): String = withContext(Dispatchers.IO) {
+    val k1 = "AIzaSyDXsmViTy"
+    val k2 = "BG_g5VaQhKCa6z"
+    val k3 = "Nnm-_GiOJbk"
+    val geminiKey = (k1 + k2 + k3).trim()
 
-        val rootJson = JSONObject()
-        val sysParts = JSONArray().put(
-            JSONObject().put(
-                "text",
-                "$systemInstructionText\n" +
-                    "أجب دائماً باللغة العربية الفصحى بأسلوب مستشار تنفيذي خبير لمدير المدرسة، مرتباً في فقرات ونقاط واضحة ومعتمدة حصرياً على بيانات المدرسة الحقيقية المرفقة."
-            )
-        )
-        rootJson.put("system_instruction", JSONObject().put("parts", sysParts))
+    val models = listOf("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash")
 
-        val contentsArray = JSONArray()
-        conversationHistory.takeLast(8).forEach { msg ->
-            val role = if (msg.isFromUser) "user" else "model"
-            val partObj = JSONObject().put("text", msg.bodyText)
-            val contentObj = JSONObject()
-                .put("role", role)
-                .put("parts", JSONArray().put(partObj))
-            contentsArray.put(contentObj)
-        }
-        contentsArray.put(
-            JSONObject()
-                .put("role", "user")
-                .put("parts", JSONArray().put(JSONObject().put("text", userPrompt)))
-        )
-        rootJson.put("contents", contentsArray)
-        rootJson.put(
-            "generationConfig",
-            JSONObject()
-                .put("temperature", 0.25)
-                .put("maxOutputTokens", 1400)
-        )
+    val fullPrompt = """
+أنت المستشار الإداري الذكي لمدير المدرسة في منصة مدرستي الذكية.
+تحدث بأسلوب طبيعي وذكي ومباشر باللغة العربية (الفصحى أو اللهجة العراقية حسب سؤال المدير).
+إذا ألقى المدير التحية (مثل السلام عليكم) أو سأل سؤالاً عاماً، رد عليه التحية أو أجب على سؤاله مباشرة باختصار ولباقة دون سرد إحصائيات المدرسة الكاملة إلا إذا طلبها!
 
-        OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
-            writer.write(rootJson.toString())
-            writer.flush()
-        }
+بيانات المدرسة الحقيقية الحالية (استخدمها فقط عند السؤال عنها):
+$schoolContext
 
-        val code = connection.responseCode
-        if (code in 200..299) {
-            val responseText = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
-            val jsonResp = JSONObject(responseText)
-            val candidates = jsonResp.optJSONArray("candidates")
-            val firstCandidate = candidates?.optJSONObject(0)
-            val contentObj = firstCandidate?.optJSONObject("content")
-            val parts = contentObj?.optJSONArray("parts")
-            val textOut = StringBuilder()
-            if (parts != null) {
-                for (i in 0 until parts.length()) {
-                    val p = parts.optJSONObject(i)
-                    if (p != null && p.has("text")) {
-                        textOut.append(p.optString("text"))
-                    }
-                }
-            }
-            textOut.toString().trim().takeIf { it.isNotEmpty() }
-        } else {
-            null
-        }
-    } catch (_: Exception) {
-        null
-    } finally {
-        connection?.disconnect()
+سجل المحادثة السابق:
+${history.takeLast(6).joinToString("\n") { "${it.first}:${it.second}" }}
+
+رسالة المدير الآن:
+$userMsg
+
+ملاحظة تنفيذية: إذا طلب المدير إرسال إشعار أو تنبيه لطالب أو صف أو أولياء أمور، أضف في نهاية ردك السطر التالي فقط:
+[ACTION_NOTIFY|target=المستلم|title=العنوان|body=نص الرسالة]
+""".trimIndent()
+
+    val payload = org.json.JSONObject().apply {
+        put("contents", org.json.JSONArray().apply {
+            put(org.json.JSONObject().apply {
+                put("parts", org.json.JSONArray().apply {
+                    put(org.json.JSONObject().put("text", fullPrompt))
+                })
+            })
+        })
     }
+    val payloadBytes = payload.toString().toByteArray(Charsets.UTF_8)
+
+    var lastErrorDetails = ""
+
+    for (modelName in models) {
+        var conn: HttpURLConnection? = null
+        try {
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$geminiKey"
+            conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 20_000
+                readTimeout = 30_000
+                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            }
+
+            conn.outputStream.use { os ->
+                os.write(payloadBytes)
+                os.flush()
+            }
+
+            val responseCode = conn.responseCode
+            if (responseCode == 200) {
+                val responseBody = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                val json = org.json.JSONObject(responseBody)
+                val candidates = json.getJSONArray("candidates")
+                val text = candidates
+                    .getJSONObject(0)
+                    .getJSONObject("content")
+                    .getJSONArray("parts")
+                    .getJSONObject(0)
+                    .getString("text")
+                    .trim()
+                if (text.isNotEmpty()) {
+                    return@withContext text
+                }
+            } else {
+                val errRaw = conn.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                lastErrorDetails = "HTTP $responseCode ($modelName): $errRaw"
+            }
+        } catch (e: Exception) {
+            lastErrorDetails = "${e.javaClass.simpleName} ($modelName): ${e.localizedMessage ?: e.message ?: "خطأ اتصال"}"
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    "تعذر الاتصال بخدمة Gemini API. تفاصيل الخطأ الفعلي:\n$lastErrorDetails"
 }
 
 private suspend fun generateAdvisorAnalyticalReply(
@@ -1027,327 +1029,117 @@ private suspend fun generateAdvisorAnalyticalReply(
     val nowTime = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
     val norm = ArabicTextNormalizer.normalizeText(query)
 
-    val keyPart1 = "AIzaSyDXsmViTy"
-    val keyPart2 = "BG_g5VaQhKCa6z"
-    val keyPart3 = "Nnm-_GiOJbk"
-    val activeGeminiApiKey = keyPart1 + keyPart2 + keyPart3
-    val modelName = "gemini-2.5-flash"
+    val historyPairs = history
+        .filter { it.id != "welcome_exec_msg" }
+        .takeLast(6)
+        .map { msg ->
+            (if (msg.isFromUser) "المدير" else "المستشار") to msg.bodyText
+        }
 
-    // 1. Check if this is a Smart Communication / Notification command
-    val commProposal = parseSmartCommunicationCommand(query, snapshot, viewModel)
-    if (commProposal != null) {
-        val geminiCommNote = callGeminiGenerateContentHttp(
-            apiKey = activeGeminiApiKey,
-            modelName = modelName,
-            systemInstructionText = snapshot.rawContextPromptForGemini + "\n" +
-                "لقد طلب المدير إرسال إشعار/تنبيه إلى (${commProposal.audienceTitle} - العدد: ${commProposal.recipients.size}). لخص له في 3 أسطر تنفيذية سبب وأهمية هذا التبليغ بناءً على بياناتهم الحقيقية في المدرسة، وأخبره بمراجعة بطاقة الاعتماد أدناه للموافقة على الإرسال.",
-            conversationHistory = history,
-            userPrompt = query
-        )
-        val defaultBodySummary = "تم تحليل أمر التواصل وتحديد الجهة المستهدفة بدقة من سجلات (${snapshot.schoolName}).\n" +
-            "• الفئة المستهدفة: ${commProposal.audienceTitle}\n" +
-            "• العدد الفعلي للمستلمين: (${commProposal.recipients.size}) مستلم\n" +
-            "• نوع الإشعار: ${commProposal.category.arabicLabel}\n\n" +
-            "يرجى مراجعة نص الرسالة المقترح في البطاقة أدناه وتعديله عند الحاجة، ثم الضغط على زر (اعتماد وإرسال الإشعار الآن) لإتمام الإرسال الرسمي."
-        return AdvisorChatMessage(
-            isFromUser = false,
-            senderTitle = "المستشار الذكي ومركز التواصل",
-            timestamp = nowTime,
-            headline = "جاهزية إرسال إشعار ذكي (بانتظار موافقة المدير)",
-            bodyText = geminiCommNote ?: defaultBodySummary,
-            keyMetrics = listOf(
-                "عدد المستلمين" to "${commProposal.recipients.size} مستلم",
-                "التصنيف" to commProposal.category.arabicLabel,
-                "حالة الإرسال" to "بانتظار الاعتماد"
-            ),
-            pendingNotificationProposal = commProposal
-        )
-    }
-
-    // 2. Call Google Gemini API (gemini-2.5-flash) with full real school context & conversation history
-    val geminiText = callGeminiGenerateContentHttp(
-        apiKey = activeGeminiApiKey,
-        modelName = modelName,
-        systemInstructionText = snapshot.rawContextPromptForGemini,
-        conversationHistory = history,
-        userPrompt = query
+    val rawGeminiReply = fetchRealGeminiResponse(
+        userMsg = query,
+        schoolContext = snapshot.rawContextPromptForGemini,
+        history = historyPairs
     )
 
-    // Check specific analytical intents for rich tables & charts
-    return when {
-        norm.contains("حضور") || norm.contains("غياب") || norm.contains("متغيب") || norm.contains("مواظب") || norm.contains("تاخر") -> {
-            val tableRows = snapshot.classStats.map { cs ->
-                listOf(
-                    cs.gradeClass,
-                    "${cs.totalStudents}",
-                    "${cs.presentToday}",
-                    "${cs.absentToday}",
-                    "${cs.attendanceRatePercent}%"
-                )
-            }
-            val bars = snapshot.classStats.map { cs ->
-                AdvisorChartBarItem(
-                    label = cs.gradeClass,
-                    valuePercent = cs.attendanceRatePercent,
-                    valueDisplay = "${cs.attendanceRatePercent}% (حاضر ${cs.presentToday}/${cs.totalStudents})",
-                    isWarning = cs.attendanceRatePercent < 85
-                )
-            }
-            val localSummary = buildString {
-                appendLine("تحليل الحضور والغياب الفعلي في (${snapshot.schoolName}) ليوم (${snapshot.todayIso}):")
-                appendLine("• إجمالي الطلبة المسجلين: ${snapshot.totalStudents} طالب.")
-                appendLine("• الحضور الفعلي اليوم: ${snapshot.presentTodayCount} طالب | الغياب اليوم: ${snapshot.absentTodayCount} طالب | المجازون: ${snapshot.excusedTodayCount} | قيد الرصد: ${snapshot.unrecordedTodayCount}.")
-                appendLine("• نسبة المواظبة العامة: ${snapshot.overallAttendanceRatePercent}%.")
-                if (snapshot.absentTodayStudents.isNotEmpty()) {
-                    appendLine("\nأسماء الطلبة المتغيبين اليوم:")
-                    snapshot.absentTodayStudents.forEachIndexed { idx, stu ->
-                        appendLine("${idx + 1}. ${stu.studentName} — ${stu.gradeClass} (شعبة ${stu.sectionName})")
-                    }
-                } else {
-                    appendLine("\nلا يوجد طلبة مسجلون بحالة (غائب) اليوم حتى هذه اللحظة.")
-                }
-                if (snapshot.repeatedAbsenceStudents.isNotEmpty()) {
-                    appendLine("\nالطلبة ذوو الغياب المتكرر في السجل التراكمي:")
-                    snapshot.repeatedAbsenceStudents.take(6).forEach { (stu, days) ->
-                        appendLine("• ${stu.studentName} (${stu.gradeClass}): $days أيام غياب.")
-                    }
-                }
-            }
-            AdvisorChatMessage(
-                isFromUser = false,
-                senderTitle = "المستشار الإداري الذكي",
-                timestamp = nowTime,
-                headline = "التقرير التحليلي للحضور والغياب والمواظبة",
-                bodyText = geminiText ?: localSummary.trim(),
-                keyMetrics = listOf(
-                    "نسبة الحضور" to "${snapshot.overallAttendanceRatePercent}%",
-                    "الحاضرون اليوم" to "${snapshot.presentTodayCount}",
-                    "الغائبون اليوم" to "${snapshot.absentTodayCount}",
-                    "غياب متكرر" to "${snapshot.repeatedAbsenceStudents.size}"
-                ),
-                tableSection = AdvisorTableSection(
-                    title = "جدول الحضور والغياب حسب الصفوف الدراسية",
-                    headers = listOf("الصف", "العدد", "حاضر", "غائب", "النسبة"),
-                    rows = tableRows
-                ),
-                chartTitle = "مؤشر نسبة المواظبة والحضور لكل صف دراسي",
-                chartBars = bars,
-                recommendations = snapshot.strategicRecommendations.take(3)
-            )
-        }
+    // Extract optional [ACTION_NOTIFY|target=...|title=...|body=...] line if present
+    val actionRegex = Regex("""\[ACTION_NOTIFY\|target=([^|\]]*)\|title=([^|\]]*)\|body=([^\]]*)]""")
+    val actionMatch = actionRegex.find(rawGeminiReply)
+    val cleanedGeminiReply = rawGeminiReply
+        .replace(actionRegex, "")
+        .trim()
+        .ifBlank { rawGeminiReply.trim() }
 
-        norm.contains("قارن") || norm.contains("نتائج") || norm.contains("درجات") || norm.contains("اكاديمي") || norm.contains("أكاديمي") || norm.contains("صفوف") || norm.contains("امتحان") -> {
-            val hasGrades = snapshot.totalGradesRecorded > 0
-            val tableRows = snapshot.classStats.map { cs ->
-                listOf(
-                    cs.gradeClass,
-                    "${cs.totalStudents}",
-                    if (cs.recordedGradesCount > 0) "${cs.averageGradePercent}%" else "قيد الرصد",
-                    if (cs.recordedGradesCount > 0) "${cs.passRatePercent}%" else "قيد الرصد",
-                    "${cs.attendanceRatePercent}%"
-                )
-            }
-            val bars = if (hasGrades) {
-                snapshot.classStats.map { cs ->
-                    AdvisorChartBarItem(
-                        label = cs.gradeClass,
-                        valuePercent = cs.averageGradePercent,
-                        valueDisplay = if (cs.recordedGradesCount > 0) "المعدل ${cs.averageGradePercent}% • النجاح ${cs.passRatePercent}%" else "بانتظار رصد الدرجات",
-                        isWarning = cs.recordedGradesCount > 0 && cs.averageGradePercent < 65
-                    )
-                }
-            } else {
-                snapshot.classStats.map { cs ->
-                    AdvisorChartBarItem(
-                        label = cs.gradeClass,
-                        valuePercent = cs.attendanceRatePercent,
-                        valueDisplay = "${cs.totalStudents} طالب (الدرجات قيد الرصد • المواظبة ${cs.attendanceRatePercent}%)",
-                        isWarning = false
-                    )
-                }
-            }
-            val localSummary = buildString {
-                appendLine("المقارنة التحليلية لنتائج الصفوف والمستوى الأكاديمي في (${snapshot.schoolName}):")
-                if (!hasGrades) {
-                    appendLine("• ملاحظة دقيقة: لم يتم رصد درجات امتحانات في السجل الأكاديمي حتى الآن (عدد السجلات المرصودة = 0).")
-                    appendLine("• يلتزم المستشار الذكي بعدم اختلاق أي نسب نجاح وهمية قبل إدخال الدرجات من قِبل المعلمين.")
-                    appendLine("• تم إدراج مقارنة الصفوف أدناه بناءً على أعداد الطلبة الفعليين (${snapshot.totalStudents} طالب) ونسب المواظبة الحالية.")
-                } else {
-                    appendLine("• إجمالي سجلات الدرجات المرصودة: ${snapshot.totalGradesRecorded} سجل درجة.")
-                    appendLine("• المعدل الأكاديمي العام للمدرسة: ${snapshot.overallAcademicAveragePercent}% | نسبة النجاح العامة: ${snapshot.overallPassRatePercent}%.")
-                    val bestClass = snapshot.classStats.filter { it.recordedGradesCount > 0 }.maxByOrNull { it.averageGradePercent }
-                    val weakestClass = snapshot.classStats.filter { it.recordedGradesCount > 0 }.minByOrNull { it.averageGradePercent }
-                    if (bestClass != null) {
-                        appendLine("• الصف الأعلى أداءً: ${bestClass.gradeClass} بمعدل (${bestClass.averageGradePercent}%) ونسبة نجاح (${bestClass.passRatePercent}%).")
-                    }
-                    if (weakestClass != null && weakestClass.gradeClass != bestClass?.gradeClass) {
-                        appendLine("• الصف الذي يحتاج دعماً إضافياً: ${weakestClass.gradeClass} بمعدل (${weakestClass.averageGradePercent}%).")
-                    }
-                    if (snapshot.subjectStats.isNotEmpty()) {
-                        appendLine("\nترتيب المواد الدراسية حسب متوسط التحصيل:")
-                        snapshot.subjectStats.forEach { ss ->
-                            appendLine("• ${ss.subjectName}: المعدل ${ss.averagePercent}% — نسبة النجاح ${ss.passRatePercent}% (${ss.recordsCount} طالب)")
-                        }
-                    }
-                }
-            }
-            AdvisorChatMessage(
-                isFromUser = false,
-                senderTitle = "المستشار الأكاديمي الذكي",
-                timestamp = nowTime,
-                headline = "مقارنة نتائج الصفوف الدراسية والتحصيل الأكاديمي",
-                bodyText = geminiText ?: localSummary.trim(),
-                keyMetrics = listOf(
-                    "الدرجات المرصودة" to "${snapshot.totalGradesRecorded}",
-                    "المعدل العام" to if (hasGrades) "${snapshot.overallAcademicAveragePercent}%" else "قيد الرصد",
-                    "نسبة النجاح" to if (hasGrades) "${snapshot.overallPassRatePercent}%" else "قيد الرصد",
-                    "لوحة الشرف" to "${snapshot.honorStudents.size} طالب"
-                ),
-                tableSection = AdvisorTableSection(
-                    title = "جدول مقارنة الصفوف الدراسية",
-                    headers = listOf("الصف", "الطلبة", "المعدل", "النجاح", "المواظبة"),
-                    rows = tableRows
-                ),
-                chartTitle = if (hasGrades) "مقارنة متوسط التحصيل الأكاديمي بين الصفوف" else "توزيع الطلبة والمواظبة حسب الصفوف (الدرجات قيد الرصد)",
-                chartBars = bars,
-                recommendations = snapshot.strategicRecommendations
+    val commProposal = parseSmartCommunicationCommand(query, snapshot, viewModel) ?: run {
+        if (actionMatch != null) {
+            val targetStr = actionMatch.groupValues.getOrNull(1)?.trim().orEmpty()
+            val titleStr = actionMatch.groupValues.getOrNull(2)?.trim().orEmpty()
+            val bodyStr = actionMatch.groupValues.getOrNull(3)?.trim().orEmpty()
+            parseSmartCommunicationCommand("أرسل إشعار $targetStr $titleStr $bodyStr", snapshot, viewModel)?.copy(
+                suggestedTitle = titleStr.ifBlank { "تبليغ إداري رسمي — ${snapshot.schoolName}" },
+                suggestedBody = bodyStr.ifBlank { cleanedGeminiReply }
             )
-        }
-
-        norm.contains("كادر") || norm.contains("معلم") || norm.contains("مدرس") || norm.contains("تقييم الكادر") -> {
-            val rows = snapshot.teacherStats.map { ts ->
-                listOf(
-                    ts.teacherName,
-                    ts.specialty,
-                    "${ts.commitmentPercent}%",
-                    "${ts.activityPercent}%",
-                    if (ts.ratingsCount > 0) String.format(Locale.US, "%.1f/5", ts.averageStars) else "جديد"
-                )
-            }
-            val bars = snapshot.teacherStats.map { ts ->
-                AdvisorChartBarItem(
-                    label = ts.teacherName,
-                    valuePercent = ts.commitmentPercent,
-                    valueDisplay = "التزام ${ts.commitmentPercent}% • نشاط ${ts.activityPercent}%",
-                    isWarning = ts.commitmentPercent < 70
-                )
-            }
-            val localSummary = buildString {
-                appendLine("تحليل أداء الكادر التدريسي الفعلي في (${snapshot.schoolName}):")
-                appendLine("• إجمالي أعضاء الهيئة التدريسية (باستثناء السائقين): ${snapshot.totalTeachersCount} معلم/مدرس.")
-                if (snapshot.teacherStats.isEmpty()) {
-                    appendLine("• لم يتم تسجيل حسابات معلمين بعد في سجل الكادر التدريسي.")
-                } else {
-                    snapshot.teacherStats.forEachIndexed { idx, t ->
-                        appendLine("${idx + 1}. ${t.teacherName} (${t.specialty}) — الصفوف: ${t.assignedClasses} — التزام: ${t.commitmentPercent}%، تفاعل: ${t.activityPercent}%.")
-                    }
-                }
-            }
-            AdvisorChatMessage(
-                isFromUser = false,
-                senderTitle = "المستشار الإداري الذكي",
-                timestamp = nowTime,
-                headline = "تقرير كفاءة وتقييم الكادر التدريسي",
-                bodyText = geminiText ?: localSummary.trim(),
-                keyMetrics = listOf(
-                    "عدد المعلمين" to "${snapshot.totalTeachersCount}",
-                    "الواجبات المنشورة" to "${snapshot.homeworksCount}",
-                    "الامتحانات المجدولة" to "${snapshot.upcomingExamsCount}"
-                ),
-                tableSection = if (rows.isNotEmpty()) {
-                    AdvisorTableSection(
-                        title = "جدول مؤشرات أداء الكادر التدريسي",
-                        headers = listOf("المعلم", "الاختصاص", "الالتزام", "النشاط", "التقييم"),
-                        rows = rows
-                    )
-                } else null,
-                chartTitle = "مؤشر الالتزام والنشاط التفاعلي للكادر التدريسي",
-                chartBars = bars,
-                recommendations = snapshot.strategicRecommendations.take(3)
-            )
-        }
-
-        norm.contains("مشكل") || norm.contains("ضعف") || norm.contains("توصي") || norm.contains("تحسين") || norm.contains("مقترح") -> {
-            val localSummary = buildString {
-                appendLine("التشخيص الاستباقي لأبرز المشكلات الحالية وخطة التوصيات في (${snapshot.schoolName}):")
-                appendLine("\nأولاً — أبرز المشكلات ونقاط المتابعة المرصودة فعلياً:")
-                snapshot.proactiveProblems.forEachIndexed { i, p ->
-                    appendLine("${i + 1}. $p")
-                }
-                appendLine("\nثانياً — التوصيات العملية لتحسين الأداء المدرسي:")
-                snapshot.strategicRecommendations.forEachIndexed { i, r ->
-                    appendLine("${i + 1}. $r")
-                }
-            }
-            AdvisorChatMessage(
-                isFromUser = false,
-                senderTitle = "المستشار الاستراتيجي الذكي",
-                timestamp = nowTime,
-                headline = "تشخيص المشكلات الحالية وخطة التوصيات الاستباقية",
-                bodyText = geminiText ?: localSummary.trim(),
-                keyMetrics = listOf(
-                    "الحالة العامة" to snapshot.overallHealthLabel,
-                    "مؤشر الاستقرار" to "${snapshot.overallSchoolHealthScore}%",
-                    "تنبيهات نشطة" to "${snapshot.proactiveProblems.size}"
-                ),
-                recommendations = snapshot.strategicRecommendations
-            )
-        }
-
-        else -> {
-            // Comprehensive Monthly / General School Analysis
-            val tableRows = snapshot.classStats.map { cs ->
-                listOf(
-                    cs.gradeClass,
-                    "${cs.totalStudents}",
-                    "${cs.attendanceRatePercent}%",
-                    if (cs.recordedGradesCount > 0) "${cs.averageGradePercent}%" else "قيد الرصد",
-                    if (cs.recordedGradesCount > 0) "${cs.passRatePercent}%" else "قيد الرصد"
-                )
-            }
-            val bars = snapshot.classStats.map { cs ->
-                val metric = if (cs.recordedGradesCount > 0) cs.averageGradePercent else cs.attendanceRatePercent
-                AdvisorChartBarItem(
-                    label = cs.gradeClass,
-                    valuePercent = metric,
-                    valueDisplay = "مواظبة ${cs.attendanceRatePercent}% • ${if (cs.recordedGradesCount > 0) "معدل ${cs.averageGradePercent}%" else "${cs.totalStudents} طالب"}",
-                    isWarning = metric < 75
-                )
-            }
-            val localSummary = buildString {
-                appendLine("التحليل التنفيذي الشامل لأداء (${snapshot.schoolName}) — العام الدراسي (${snapshot.academicYear}):")
-                appendLine("• الحالة العامة للمدرسة: ${snapshot.overallHealthLabel} (مؤشر الكفاءة الكلي: ${snapshot.overallSchoolHealthScore}%).")
-                appendLine("• الملاك الطلابي والتدريسي: ${snapshot.totalStudents} طالب فعلي | ${snapshot.totalTeachersCount} معلم/مدرس.")
-                appendLine("• الموقف اليومي للحضور (${snapshot.todayIso}): نسبة المواظبة ${snapshot.overallAttendanceRatePercent}% (حاضر: ${snapshot.presentTodayCount}، غائب: ${snapshot.absentTodayCount}، متأخر: ${snapshot.lateTodayCount}).")
-                appendLine("• الموقف الأكاديمي: ${if (snapshot.totalGradesRecorded > 0) "المعدل العام ${snapshot.overallAcademicAveragePercent}% ونسبة النجاح ${snapshot.overallPassRatePercent}% (${snapshot.totalGradesRecorded} درجة مرصودة)" else "لم ترصد درجات الامتحانات بعد — بانتظار إدخال الدرجات من المعلمين"}.")
-                appendLine("• الفعاليات التعليمية: ${snapshot.homeworksCount} واجب بيتي منشور | ${snapshot.upcomingExamsCount} امتحان مجدول | ${snapshot.honorStudents.size} طالب في لوحة الشرف.")
-                if (snapshot.totalTuitionFeeIqd > 0L) {
-                    appendLine("• الموقف المالي للأقساط: الواصل ${String.format(Locale.US, "%,d", snapshot.totalTuitionPaidIqd)} د.ع | المتبقي ${String.format(Locale.US, "%,d", snapshot.totalTuitionRemainingIqd)} د.ع.")
-                }
-            }
-            AdvisorChatMessage(
-                isFromUser = false,
-                senderTitle = "المستشار الإداري الذكي",
-                timestamp = nowTime,
-                headline = "التحليل التنفيذي الشامل لأداء المدرسة",
-                bodyText = geminiText ?: localSummary.trim(),
-                keyMetrics = listOf(
-                    "مؤشر المدرسة" to "${snapshot.overallSchoolHealthScore}% (${snapshot.overallHealthLabel})",
-                    "إجمالي الطلبة" to "${snapshot.totalStudents} طالب",
-                    "نسبة الحضور" to "${snapshot.overallAttendanceRatePercent}%",
-                    "نسبة النجاح" to if (snapshot.totalGradesRecorded > 0) "${snapshot.overallPassRatePercent}%" else "قيد الرصد"
-                ),
-                tableSection = AdvisorTableSection(
-                    title = "ملخص مؤشرات الصفوف الدراسية",
-                    headers = listOf("الصف", "الطلبة", "الحضور", "المعدل", "النجاح"),
-                    rows = tableRows
-                ),
-                chartTitle = "مؤشر الأداء والمواظبة حسب الصفوف الدراسية",
-                chartBars = bars,
-                recommendations = snapshot.strategicRecommendations
-            )
-        }
+        } else null
     }
+
+    val finalProposal = if (commProposal != null && actionMatch != null) {
+        val aiTitle = actionMatch.groupValues.getOrNull(2)?.trim().orEmpty()
+        val aiBody = actionMatch.groupValues.getOrNull(3)?.trim().orEmpty()
+        commProposal.copy(
+            suggestedTitle = aiTitle.ifBlank { commProposal.suggestedTitle },
+            suggestedBody = aiBody.ifBlank { commProposal.suggestedBody }
+        )
+    } else {
+        commProposal
+    }
+
+    // Only show statistical boxes/tables/charts when the Principal explicitly asks for a statistical report
+    val isExplicitReportRequest =
+        norm.contains("تقرير") ||
+            norm.contains("احصائيات") ||
+            norm.contains("إحصائيات") ||
+            norm.contains("حلل اداء المدرسه") ||
+            norm.contains("قارن نتائج") ||
+            norm.contains("جدول مقارن")
+
+    if (!isExplicitReportRequest) {
+        return AdvisorChatMessage(
+            isFromUser = false,
+            senderTitle = "المستشار الإداري الذكي",
+            timestamp = nowTime,
+            headline = "",
+            bodyText = cleanedGeminiReply,
+            keyMetrics = emptyList(),
+            tableSection = null,
+            chartBars = emptyList(),
+            recommendations = emptyList(),
+            pendingNotificationProposal = finalProposal
+        )
+    }
+
+    val explicitMetrics = listOf(
+        "مؤشر المدرسة" to "${snapshot.overallSchoolHealthScore}% (${snapshot.overallHealthLabel})",
+        "إجمالي الطلبة" to "${snapshot.totalStudents} طالب",
+        "نسبة الحضور" to "${snapshot.overallAttendanceRatePercent}%"
+    )
+
+    val tableRows = snapshot.classStats.map { cs ->
+        listOf(
+            cs.gradeClass,
+            "${cs.totalStudents}",
+            "${cs.presentToday}",
+            "${cs.absentToday}",
+            "${cs.attendanceRatePercent}%"
+        )
+    }
+    val bars = snapshot.classStats.map { cs ->
+        AdvisorChartBarItem(
+            label = cs.gradeClass,
+            valuePercent = cs.attendanceRatePercent,
+            valueDisplay = "${cs.attendanceRatePercent}% (حاضر ${cs.presentToday}/${cs.totalStudents})",
+            isWarning = cs.attendanceRatePercent < 85
+        )
+    }
+
+    return AdvisorChatMessage(
+        isFromUser = false,
+        senderTitle = "المستشار الإداري الذكي",
+        timestamp = nowTime,
+        headline = "تقرير إحصائي تحليلي بناءً على طلب المدير",
+        bodyText = cleanedGeminiReply,
+        keyMetrics = explicitMetrics,
+        tableSection = if (tableRows.isNotEmpty()) {
+            AdvisorTableSection(
+                title = "جدول المؤشرات حسب الصفوف الدراسية",
+                headers = listOf("الصف", "العدد", "حاضر", "غائب", "النسبة"),
+                rows = tableRows
+            )
+        } else null,
+        chartTitle = "مؤشر نسبة المواظبة والحضور لكل صف دراسي",
+        chartBars = bars,
+        recommendations = emptyList(),
+        pendingNotificationProposal = finalProposal
+    )
 }
 
 // =========================================================================
@@ -2060,25 +1852,16 @@ fun AiSchoolAdvisorScreen(
     var showApiSettingsDialog by remember { mutableStateOf(false) }
 
     // Chat State
-    val welcomeMessage = remember(snapshot.schoolName, snapshot.principalName, snapshot.totalStudents, snapshot.overallAttendanceRatePercent) {
+    val welcomeMessage = remember(snapshot.schoolName, snapshot.principalName) {
         AdvisorChatMessage(
             id = "welcome_exec_msg",
             isFromUser = false,
-            senderTitle = "المستشار الإداري والأكاديمي الذكي",
+            senderTitle = "المستشار الإداري الذكي",
             timestamp = "الآن",
-            headline = "مرحباً بك سيادة المدير (${snapshot.principalName}) في المستشار الذكي لـ (${snapshot.schoolName})",
-            bodyText = "أنا مستشارك الإداري والأكاديمي الذكي المرتبط مباشرة بقاعدة بيانات المدرسة الحقيقية للعام الدراسي (${snapshot.academicYear}).\n" +
-                "• إجمالي الطلبة الفعليين: (${snapshot.totalStudents}) طالب | الكادر التدريسي: (${snapshot.totalTeachersCount}) معلم/مدرس.\n" +
-                "• نسبة المواظبة اليوم (${snapshot.todayIso}): (${snapshot.overallAttendanceRatePercent}%) | الحالة العامة: (${snapshot.overallHealthLabel}).\n\n" +
-                "يمكنك سؤالي عن أي إحصائية أو مقارنة بين الصفوف، أو إصدار أوامر تواصل طبيعية مثل:\n" +
-                "«أبلغ أولياء أمور الطلبة المتغيبين اليوم» أو «أرسل تنبيهاً إلى الطالب ... بسبب تكرار غيابه»، وسأقوم بتجهيز بطاقة المراجعة والاعتماد فوراً دون إرسال أي إشعار إلا بعد موافقتك الصريحة.",
-            keyMetrics = listOf(
-                "الحالة العامة" to snapshot.overallHealthLabel,
-                "الطلبة" to "${snapshot.totalStudents} طالب",
-                "نسبة الحضور" to "${snapshot.overallAttendanceRatePercent}%",
-                "الكادر التدريسي" to "${snapshot.totalTeachersCount} معلم"
-            ),
-            recommendations = snapshot.strategicRecommendations.take(3)
+            headline = "",
+            bodyText = "أهلاً بك سيادة المدير (${snapshot.principalName}). أنا مستشارك الإداري الذكي في (${snapshot.schoolName})، متصل مباشرة بـ Google Gemini وبقاعدة بيانات المدرسة الحقيقية. تفضل بطرح أي سؤال أو توجيه أي أمر إداري أو إشعار.",
+            keyMetrics = emptyList(),
+            recommendations = emptyList()
         )
     }
 
