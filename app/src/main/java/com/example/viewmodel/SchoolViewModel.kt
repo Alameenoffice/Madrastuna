@@ -3071,6 +3071,17 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         showToastAlert("تم حفظ إعدادات المدرسة وتحديث الصفوف والشعب بنجاح", isSuccess = true)
     }
 
+    fun updateAcademicYear(newAcademicYear: String) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val cleanYear = InputSanitizer.sanitize(newAcademicYear).trim().ifBlank { "2026 - 2027" }
+        val updated = _schoolConfig.value.copy(academicYear = cleanYear)
+        _schoolConfig.value = updated
+        repo.saveSchoolConfig(updated)
+        repo.upsertRegisteredSchool(updated)
+        _registeredSchools.value = repo.loadRegisteredSchools()
+        showToastAlert("تم حفظ واعتماد العام الدراسي للمدرسة ($cleanYear) بنجاح", isSuccess = true)
+    }
+
     // =========================================================================
     // SUBJECTS MANAGEMENT & CLASS CUSTOMIZATION (إدارة وتخصيص المواد الدراسية)
     // =========================================================================
@@ -5736,7 +5747,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 driverIdentityDetails = cleanIdentityDetails,
                 driverUsername = prefixedDriverUser.ifBlank { existingMatch?.driverUsername.orEmpty() },
                 driverPassword = cleanDriverPass.ifBlank { existingMatch?.driverPassword.orEmpty() },
-                isDriverAccountEnabled = isDriverAccountEnabled
+                isDriverAccountEnabled = isDriverAccountEnabled,
+                activeBusEvent = existingMatch?.activeBusEvent.orEmpty(),
+                activeBusEventTimestamp = existingMatch?.activeBusEventTimestamp.orEmpty(),
+                activeBusEventDateIso = existingMatch?.activeBusEventDateIso.orEmpty()
             )
             val existingIdx = currentRoutes.indexOfFirst {
                 it.id == primaryItem.id || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true)
@@ -5825,7 +5839,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             driverIdentityDetails = cleanIdentity,
             driverUsername = prefixedDriverUser,
             driverPassword = cleanDriverPass,
-            isDriverAccountEnabled = isDriverAccountEnabled
+            isDriverAccountEnabled = isDriverAccountEnabled,
+            activeBusEvent = existingRoute?.activeBusEvent.orEmpty(),
+            activeBusEventTimestamp = existingRoute?.activeBusEventTimestamp.orEmpty(),
+            activeBusEventDateIso = existingRoute?.activeBusEventDateIso.orEmpty()
         )
 
         val idx = currentList.indexOfFirst { it.id == resolvedId || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true) }
@@ -6134,32 +6151,80 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
      * EXCLUSIVELY to parents of students subscribed to the school bus (`isBusSubscribed == true`).
      */
     fun sendBusTrackingAlert(eventType: BusEventType) {
+        sendBusTrackingAlert(eventType = eventType, targetRouteId = "ALL")
+    }
+
+    fun sendBusTrackingAlert(eventType: BusEventType, targetRouteId: String) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
         val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val nowStamp = SimpleDateFormat("yyyy/MM/dd hh:mm a", Locale("ar")).format(Date())
 
-        val updatedConfig = _schoolConfig.value.copy(
-            activeBusEvent = eventType.name,
-            activeBusEventTimestamp = nowStamp,
-            activeBusEventDateIso = todayIso
-        )
+        val currentEffectiveRoutes = _schoolConfig.value.effectiveBusRoutesList
+        val isAllVehicles = targetRouteId.isBlank() || targetRouteId.equals("ALL", ignoreCase = true)
+        val matchedSingleRoute = if (!isAllVehicles) {
+            currentEffectiveRoutes.firstOrNull {
+                it.id == targetRouteId || it.routeAreaName.equals(targetRouteId, ignoreCase = true)
+            }
+        } else null
+
+        val updatedRoutes = currentEffectiveRoutes.map { route ->
+            if (isAllVehicles || route.id == matchedSingleRoute?.id) {
+                route.copy(
+                    activeBusEvent = eventType.name,
+                    activeBusEventTimestamp = nowStamp,
+                    activeBusEventDateIso = todayIso
+                )
+            } else {
+                route
+            }
+        }
+
+        val updatedConfig = if (isAllVehicles || currentEffectiveRoutes.size <= 1) {
+            _schoolConfig.value.copy(
+                activeBusEvent = eventType.name,
+                activeBusEventTimestamp = nowStamp,
+                activeBusEventDateIso = todayIso,
+                registeredBusRoutes = updatedRoutes
+            )
+        } else {
+            _schoolConfig.value.copy(
+                registeredBusRoutes = updatedRoutes
+            )
+        }
         _schoolConfig.value = updatedConfig
         repo.saveSchoolConfig(updatedConfig)
 
-        val subscribedStudents = _students.value.filter {
+        val allSubscribedStudents = _students.value.filter {
             (it.schoolId.isEmpty() || it.schoolId == sid) && it.isBusSubscribed && it.isActive
         }
-        val targetStudentsForAlert = if (subscribedStudents.isNotEmpty()) {
-            subscribedStudents
+        val scopedSubscribedStudents = if (!isAllVehicles && matchedSingleRoute != null) {
+            val isOnlyRoute = currentEffectiveRoutes.size == 1
+            allSubscribedStudents.filter { stu ->
+                matchedSingleRoute.matchesStudent(stu, isOnlyRouteInSchool = isOnlyRoute)
+            }
         } else {
+            allSubscribedStudents
+        }
+
+        val targetStudentsForAlert = if (scopedSubscribedStudents.isNotEmpty()) {
+            scopedSubscribedStudents
+        } else if (isAllVehicles && allSubscribedStudents.isEmpty()) {
             _students.value.filter { (it.schoolId.isEmpty() || it.schoolId == sid) && it.isActive }
+        } else {
+            emptyList()
+        }
+
+        val routeHeaderSuffix = if (!isAllVehicles && matchedSingleRoute != null) {
+            " • ${matchedSingleRoute.routeAreaName.ifBlank { "الخط المدرسي" }}"
+        } else {
+            ""
         }
 
         targetStudentsForAlert.forEach { stu ->
             val body = String.format(Locale("ar"), eventType.notificationBodyTemplate, stu.fullNameWithFather)
             pushNotification(
-                title = eventType.notificationTitle,
+                title = "${eventType.notificationTitle}$routeHeaderSuffix",
                 body = body,
                 type = NotificationType.ATTENDANCE,
                 targetStudentId = stu.id,
@@ -6171,6 +6236,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         // Also record latest bus event in schools/{schoolId}/bus_tracking
         val payload = org.json.JSONObject().apply {
             put("eventType", eventType.name)
+            put("targetRouteId", if (isAllVehicles) "ALL" else (matchedSingleRoute?.id ?: targetRouteId))
+            put("targetRouteName", if (isAllVehicles) "جميع المركبات" else (matchedSingleRoute?.routeAreaName ?: ""))
             put("arabicLabel", eventType.arabicLabel)
             put("liveRouteStatusText", eventType.liveRouteStatusText)
             put("notifiedStudentsCount", targetStudentsForAlert.size)
@@ -6179,14 +6246,21 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
 
-        if (subscribedStudents.isEmpty()) {
+        if (!isAllVehicles && matchedSingleRoute != null) {
+            val routeLabel = matchedSingleRoute.routeAreaName.ifBlank { "المركبة المختارة" }
+            val driverLabel = matchedSingleRoute.driverName.ifBlank { "السائق" }
             showToastAlert(
-                "تم تحديث مسار الباص فوراً: (${eventType.liveRouteStatusText})",
+                "تم تحديث رحلة ($routeLabel - السائق: $driverLabel) إلى (${eventType.arabicLabel}) وإشعار (${scopedSubscribedStudents.size}) طالب مشترك في هذه المركبة فقط",
+                isSuccess = true
+            )
+        } else if (allSubscribedStudents.isEmpty()) {
+            showToastAlert(
+                "تم تحديث مسار جميع المركبات فوراً: (${eventType.liveRouteStatusText})",
                 isSuccess = true
             )
         } else {
             showToastAlert(
-                "تم إرسال إشعار (${eventType.arabicLabel}) حصرياً لأولياء أمور (${subscribedStudents.size}) طالب مشترك في الخط",
+                "تم تعميم (${eventType.arabicLabel}) على جميع المركبات وإشعار أولياء أمور (${allSubscribedStudents.size}) طالب مشترك",
                 isSuccess = true
             )
         }

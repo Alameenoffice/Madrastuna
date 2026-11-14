@@ -2149,6 +2149,9 @@ fun SettingsScreen(
     var registeredSections by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredSections) }
     var registeredSubjects by remember(schoolConfig) { mutableStateOf(schoolConfig.registeredSubjects) }
     var logoBase64 by remember(schoolConfig) { mutableStateOf(schoolConfig.logoBase64) }
+    var academicYearDraft by remember(schoolConfig.academicYear) {
+        mutableStateOf(schoolConfig.academicYear.ifBlank { "2026 - 2027" })
+    }
 
     var newCustomClass by remember { mutableStateOf("") }
     var newCustomSection by remember { mutableStateOf("") }
@@ -2306,6 +2309,133 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // قسم بارز لمدير المدرسة: تحديد العام الدراسي المعتمد للمدرسة
+        if (isAdmin && (selectedSettingsCategory == 0 || selectedSettingsCategory == 3)) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_academic_year_card"),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
+                border = BorderStroke(1.5.dp, Color(0xFF059669)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF065F46),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFDE68A),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "العام الدراسي المعتمد للمدرسة",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF065F46)
+                            )
+                            Text(
+                                text = "ينعكس تلقائياً في الهوية الرقمية للطالب، والتقويم المدرسي، والشهادات، والواجهة الرسمية للمدرسة.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF047857),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("2025 - 2026", "2026 - 2027", "2027 - 2028").forEach { presetYear ->
+                            val isSelectedYear = academicYearDraft.trim() == presetYear
+                            FilterChip(
+                                selected = isSelectedYear,
+                                onClick = {
+                                    academicYearDraft = presetYear
+                                    viewModel.updateAcademicYear(presetYear)
+                                },
+                                label = {
+                                    Text(
+                                        text = presetYear,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFF065F46),
+                                    selectedLabelColor = Color(0xFFFDE68A)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("academic_year_chip_${presetYear.replace(" ", "")}")
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = academicYearDraft,
+                        onValueChange = { academicYearDraft = it },
+                        label = { Text("العام الدراسي المعتمد (إدخال يدوي مرن)") },
+                        placeholder = { Text("مثال: 2026 - 2027") },
+                        leadingIcon = {
+                            Icon(Icons.Filled.EventNote, contentDescription = null, tint = Color(0xFF059669))
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("settings_academic_year_input")
+                    )
+
+                    Button(
+                        onClick = {
+                            viewModel.updateAcademicYear(academicYearDraft)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("save_academic_year_btn"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF065F46),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Verified,
+                            contentDescription = null,
+                            tint = Color(0xFFFDE68A),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "حفظ واعتماد العام الدراسي",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.5.sp,
+                            color = Color.White
+                        )
                     }
                 }
             }
