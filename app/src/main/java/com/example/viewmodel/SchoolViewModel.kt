@@ -2407,6 +2407,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun navigateToSection(section: AppSection) {
+        _isAiAdvisorOpen.value = false
         val feat = _schoolConfig.value.featureSettings
         if (section == AppSection.TUITION_FEES && (_schoolConfig.value.schoolType == SchoolType.PUBLIC || !feat.tuitionEnabled)) {
             _activeSection.value = AppSection.DASHBOARD
@@ -10719,6 +10720,31 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             isSuccess = true
         )
     }
+
+    // =========================================================================
+    // AI SCHOOL ADVISOR & SMART COMMUNICATION CENTER (PRINCIPAL EXCLUSIVE)
+    // =========================================================================
+
+    private val _isAiAdvisorOpen = MutableStateFlow(false)
+    val isAiAdvisorOpen: StateFlow<Boolean> = _isAiAdvisorOpen.asStateFlow()
+
+    private val _aiAdvisorInitialTab = MutableStateFlow(0)
+    val aiAdvisorInitialTab: StateFlow<Int> = _aiAdvisorInitialTab.asStateFlow()
+
+    fun openAiSchoolAdvisor(initialTab: Int = 0) {
+        if (_currentUser.value?.role != UserRole.ADMIN) {
+            showToastAlert("المستشار الإداري الذكي متاح حصرياً لمدير المدرسة", isSuccess = false)
+            return
+        }
+        _aiAdvisorInitialTab.value = initialTab.coerceIn(0, 3)
+        _isAiAdvisorOpen.value = true
+        _activeSection.value = AppSection.DASHBOARD
+    }
+
+    fun closeAiSchoolAdvisor() {
+        _isAiAdvisorOpen.value = false
+    }
 }
+
 
 

@@ -104,6 +104,20 @@ fun DashboardScreen(
     val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
     val isTeacher = currentUser?.role == UserRole.TEACHER
     val isAdmin = currentUser?.role == UserRole.ADMIN
+    val isAiAdvisorOpen by viewModel.isAiAdvisorOpen.collectAsState()
+    val aiAdvisorInitialTab by viewModel.aiAdvisorInitialTab.collectAsState()
+
+    if (isAdmin && isAiAdvisorOpen) {
+        androidx.activity.compose.BackHandler {
+            viewModel.closeAiSchoolAdvisor()
+        }
+        AiSchoolAdvisorScreen(
+            viewModel = viewModel,
+            initialTab = aiAdvisorInitialTab,
+            onBack = { viewModel.closeAiSchoolAdvisor() }
+        )
+        return
+    }
 
     var isEditingUrgentAlertRequested by remember { mutableStateOf(false) }
     var dashboardBehaviorVisibleCount by remember(selectedParentChildId) { mutableStateOf(3) }
@@ -712,6 +726,125 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Principal-Exclusive AI School Advisor & Smart Communication Center Executive Banner Card
+                    if (isAdmin) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.openAiSchoolAdvisor(0) }
+                                .testTag("dashboard_open_ai_school_advisor_card"),
+                            shape = RoundedCornerShape(20.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFFFBBF24)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(
+                                                Color(0xFF042F24),
+                                                Color(0xFF065F46),
+                                                Color(0xFF059669)
+                                            )
+                                        )
+                                    )
+                                    .padding(16.dp)
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            ExecutiveAnalyticsRadarVectorCanvas(
+                                                modifier = Modifier.size(46.dp)
+                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "المستشار الإداري الذكي ومركز التواصل",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                                Text(
+                                                    text = "تحليل بيانات المدرسة الفعلي • 10 تقارير PDF رسمية • إشعارات ذكية باعتماد المدير",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFFFDE68A),
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFFFBBF24),
+                                            shadowElevation = 2.dp
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Insights,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF042F24),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "فتح المستشار",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFF042F24),
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Quick 4-Tab Shortcut Pills for the Principal
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        val quickTabs = listOf(
+                                            0 to "المحادثة الذكية",
+                                            1 to "لوحة المؤشرات",
+                                            2 to "10 تقارير PDF",
+                                            3 to "سجل الإشعارات"
+                                        )
+                                        quickTabs.forEach { (tIdx, tLabel) ->
+                                            Surface(
+                                                onClick = { viewModel.openAiSchoolAdvisor(tIdx) },
+                                                shape = RoundedCornerShape(50),
+                                                color = Color.White.copy(alpha = 0.14f),
+                                                border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.4f)),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .testTag("dashboard_ai_advisor_quick_tab_$tIdx")
+                                            ) {
+                                                Text(
+                                                    text = tLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    textAlign = TextAlign.Center,
+                                                    maxLines = 1,
+                                                    modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // 3D Daily Attendance & Gate Summary Banner Card (موجز الدوام وحركة البوابة اليومية)
                     ThreeDDailyAttendanceGateSummaryCard(
                         title = "موجز الدوام وحركة البوابة اليومية",
@@ -956,6 +1089,17 @@ fun DashboardScreen(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (isAdmin) {
+                    SectionWaveQuickCard3D(
+                        title = "المستشار الإداري الذكي",
+                        subtitle = "المحادثة التحليلية، التقارير الـ 10 الرسمية + PDF، ومركز الإشعارات الذكية للمدير",
+                        icon = Icons.Filled.Insights,
+                        isBlueAccent = false,
+                        onClick = { viewModel.openAiSchoolAdvisor(0) },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "section_card_AI_SCHOOL_ADVISOR"
+                    )
+                }
                 sectionsList.chunked(2).forEachIndexed { rowIdx, pair ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
