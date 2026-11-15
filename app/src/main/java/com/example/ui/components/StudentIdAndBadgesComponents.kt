@@ -198,8 +198,38 @@ fun DigitalStudentIdCardView(
             else -> if (student.getGateLogForDate(todayIso)?.checkInTime?.isNotBlank() == true) "حاضر" else "بانتظار الرصد"
         }
     }
-    val activeQrString = if (isWalletPassMode) student.walletBarcode else student.qrCodeValue
     val localCardContext = androidx.compose.ui.platform.LocalContext.current
+    val isSmartIdExamPassEnabled = remember(schoolConfig.schoolId, student.id) {
+        com.example.ui.screens.MinistrySuiteLocalStore.isSmartIdExamPassEnabled(
+            localCardContext,
+            schoolConfig.schoolId
+        )
+    }
+    val isStudentExamAllowed = remember(schoolConfig.schoolId, student.id) {
+        com.example.ui.screens.MinistrySuiteLocalStore.isStudentExamAllowed(
+            localCardContext,
+            schoolConfig.schoolId,
+            student.id
+        )
+    }
+    val studentExamSeatLabel = remember(schoolConfig.schoolId, student.id, student.gradeClass) {
+        com.example.ui.screens.MinistrySuiteLocalStore.getStudentExamSeatLabel(
+            localCardContext,
+            schoolConfig.schoolId,
+            student.id,
+            student.gradeClass
+        )
+    }
+    val activeQrString = remember(isWalletPassMode, student.walletBarcode, student.qrCodeValue, isSmartIdExamPassEnabled, isStudentExamAllowed) {
+        if (isWalletPassMode) {
+            student.walletBarcode
+        } else if (isSmartIdExamPassEnabled) {
+            val examTag = if (isStudentExamAllowed) "EXAM:ALLOWED" else "EXAM:BLOCKED"
+            "${student.qrCodeValue}:$examTag"
+        } else {
+            student.qrCodeValue
+        }
+    }
     LaunchedEffect(student.id, activeQrString) {
         runCatching {
             localCardContext.getSharedPreferences("madrasati_multitenant_v2", android.content.Context.MODE_PRIVATE)
@@ -545,6 +575,45 @@ fun DigitalStudentIdCardView(
                                         .padding(6.dp),
                                     contentScale = ContentScale.Fit
                                 )
+                            }
+
+                            // شارة تخويل بطاقة دخول الامتحان المدرسي الرسمية (مرتبطة باللجنة الامتحانية)
+                            if (isSmartIdExamPassEnabled) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isStudentExamAllowed) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isStudentExamAllowed) Color(0xFF10B981) else Color(0xFFF87171)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isStudentExamAllowed) Icons.Default.Verified else Icons.Default.Block,
+                                            contentDescription = null,
+                                            tint = if (isStudentExamAllowed) DeepEmerald else Color(0xFF991B1B),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isStudentExamAllowed) {
+                                                "مخول بدخول القاعة الامتحانية ($studentExamSeatLabel)"
+                                            } else {
+                                                "غير مشمول / محجوب عن الامتحان ✗"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isStudentExamAllowed) DeepForestGreen else Color(0xFF991B1B)
+                                        )
+                                    }
+                                }
                             }
 
                             // شارة حالة الدوام اليوم

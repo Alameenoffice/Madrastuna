@@ -795,65 +795,72 @@ fun DashboardScreen(
                                             )
                                         )
                                     )
-                                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    .padding(horizontal = 16.dp, vertical = 14.dp)
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Row(
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.weight(1f)
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         ExecutiveAnalyticsRadarVectorCanvas(
-                                            modifier = Modifier.size(44.dp)
+                                            modifier = Modifier.size(48.dp)
                                         )
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
                                             Text(
                                                 text = "المستشار الإداري الذكي ومركز التواصل",
-                                                style = MaterialTheme.typography.titleSmall,
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontSize = 15.sp,
+                                                    lineHeight = 21.sp
+                                                ),
                                                 color = Color.White,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                fontWeight = FontWeight.ExtraBold
                                             )
                                             Text(
                                                 text = "تحليل بيانات المدرسة الفعلي • 10 تقارير PDF • إشعارات ذكية",
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 12.sp,
+                                                    lineHeight = 18.sp
+                                                ),
                                                 color = Color(0xFFFDE68A),
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                fontWeight = FontWeight.SemiBold
                                             )
                                         }
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = Color(0xFFFBBF24),
-                                        shadowElevation = 2.dp
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFFFBBF24),
+                                            shadowElevation = 2.dp
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Insights,
-                                                contentDescription = null,
-                                                tint = Color(0xFF042F24),
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                            Text(
-                                                text = "فتح المستشار",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF042F24),
-                                                fontWeight = FontWeight.ExtraBold,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Insights,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF042F24),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "فتح المستشار",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = Color(0xFF042F24),
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -861,7 +868,7 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Ministry Executive & Exam Control Suite Banner for Principal
+                    // School Administration & Exam Control Center Banner for Principal
                     if (isAdmin) {
                         Card(
                             modifier = Modifier
@@ -884,65 +891,72 @@ fun DashboardScreen(
                                             )
                                         )
                                     )
-                                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    .padding(horizontal = 16.dp, vertical = 14.dp)
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Row(
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.weight(1f)
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         MinistryExecutiveCrestVectorCanvas(
-                                            modifier = Modifier.size(44.dp)
+                                            modifier = Modifier.size(48.dp)
                                         )
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
                                             Text(
-                                                text = "المنظومة الوزارية واللجنة الامتحانية",
-                                                style = MaterialTheme.typography.titleSmall,
+                                                text = "مركز الإدارة المدرسية واللجنة الامتحانية",
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontSize = 15.sp,
+                                                    lineHeight = 21.sp
+                                                ),
                                                 color = Color.White,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                fontWeight = FontWeight.ExtraBold
                                             )
                                             Text(
                                                 text = "الكنترول والإعفاء • السجلات والإنذارات • الملاك • الرعاية • الترحيل والجرد",
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 12.sp,
+                                                    lineHeight = 18.sp
+                                                ),
                                                 color = Color(0xFFFDE68A),
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                fontWeight = FontWeight.SemiBold
                                             )
                                         }
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = Color(0xFFFBBF24),
-                                        shadowElevation = 2.dp
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFFFBBF24),
+                                            shadowElevation = 2.dp
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Gavel,
-                                                contentDescription = null,
-                                                tint = Color(0xFF042F24),
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                            Text(
-                                                text = "فتح المنظومة",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF042F24),
-                                                fontWeight = FontWeight.ExtraBold,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Gavel,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF042F24),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "فتح المركز",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = Color(0xFF042F24),
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1196,7 +1210,7 @@ fun DashboardScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (isAdmin) {
                     SectionWaveQuickCard3D(
-                        title = "المنظومة الوزارية واللجنة الامتحانية",
+                        title = "مركز الإدارة المدرسية واللجنة الامتحانية",
                         subtitle = "اللجنة الامتحانية والكنترول، السجلات والإنذارات، إضبارة الملاك، الرعاية، الترحيل والجرد",
                         icon = Icons.Filled.Gavel,
                         isBlueAccent = true,

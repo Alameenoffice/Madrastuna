@@ -161,22 +161,18 @@ private fun DrawerPrincipalMinistrySuiteMenuItem() {
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(1.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 androidx.compose.material3.Text(
-                    text = "المنظومة الوزارية واللجنة الامتحانية",
+                    text = "مركز الإدارة المدرسية واللجنة الامتحانية",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (isMinistrySuiteOpen) FontWeight.ExtraBold else FontWeight.SemiBold,
-                    color = if (isMinistrySuiteOpen) activeTextColor else inactiveTextColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = if (isMinistrySuiteOpen) activeTextColor else inactiveTextColor
                 )
                 androidx.compose.material3.Text(
                     text = "الكنترول والإعفاء والسجلات والملاك والرعاية والجرد",
                     style = MaterialTheme.typography.labelSmall,
-                    color = subtitleColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = subtitleColor
                 )
             }
 

@@ -2,7 +2,10 @@ package com.example.ui.screens
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.os.Build
@@ -16,22 +19,29 @@ import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.print.PrintManager
 import android.provider.MediaStore
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,7 +61,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -67,22 +79,20 @@ import com.example.model.*
 import com.example.ui.components.ArabicCalendarDateHelper
 import com.example.ui.theme.*
 import com.example.viewmodel.SchoolViewModel
+import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 import java.util.UUID
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 
 // =========================================================================
-// 1. DATA MODELS & PERSISTENT STORE FOR MINISTRY EXECUTIVE SUITE
+// 1. DATA MODELS & PERSISTENT STORE FOR SCHOOL ADMIN & EXAM CONTROL SUITE
 // =========================================================================
 
 enum class MinistrySuiteSectionTab(
@@ -121,7 +131,8 @@ data class OfficialCorrespondenceRecord(
     val dateIso: String,
     val entityName: String,
     val subject: String,
-    val notes: String
+    val notes: String,
+    val imageBase64: String = ""
 )
 
 data class StaffPortfolioRecord(
@@ -159,9 +170,9 @@ data class ArchivedSchoolYearSnapshot(
 data class SchoolInventoryItemRecord(
     val id: String = "inv_${UUID.randomUUID().toString().take(6)}",
     val itemName: String,
-    val category: String, // "مقاعد دراسية" | "سبورات" | "أجهزة حاسوب" | "مختبرات" | "مبردات/مكيفات" | "أثاث إداري"
+    val category: String,
     val quantity: Int,
-    val conditionStatus: String, // "صالح" | "يحتاج صيانة" | "مستهلك"
+    val conditionStatus: String,
     val locationRoom: String,
     val notes: String
 )
@@ -169,68 +180,113 @@ data class SchoolInventoryItemRecord(
 data class SchoolExpenseItemRecord(
     val id: String = "exp_${UUID.randomUUID().toString().take(6)}",
     val amountIqd: Long,
-    val category: String, // "قرطاسية ومطبوعات" | "صيانة وترميم" | "كهرباء ووقود" | "أنشطة ومختبرات" | "نثريات عامة"
+    val category: String,
     val dateIso: String,
     val recipientName: String,
     val receiptNumber: String,
     val notes: String
 )
 
-private object MinistrySuiteLocalStore {
+data class ExemptionAndWarningThresholds(
+    val generalExemptMinAvg: Int = 85,
+    val generalExemptMinSubject: Int = 75,
+    val individualExemptMinScore: Int = 90,
+    val decisionPointsLimit: Int = 5,
+    val firstWarningDays: Int = 7,
+    val finalWarningDays: Int = 15,
+    val dismissalWarningDays: Int = 21
+)
+
+internal object MinistrySuiteLocalStore {
     private const val PREF_NAME = "ministry_executive_suite_store"
+    private val LEGACY_FAKE_COR_IDS = setOf("cor_default_1", "cor_default_2", "cor_default_3")
+    private val LEGACY_FAKE_INV_IDS = setOf("inv_1", "inv_2", "inv_3", "inv_4", "inv_5")
+    private val LEGACY_FAKE_EXP_IDS = setOf("exp_1", "exp_2")
 
     private fun pref(context: Context) = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
+    fun loadThresholds(context: Context, schoolId: String): ExemptionAndWarningThresholds {
+        val p = pref(context)
+        return ExemptionAndWarningThresholds(
+            generalExemptMinAvg = p.getInt("${schoolId}_gen_exempt_avg", 85).coerceIn(50, 100),
+            generalExemptMinSubject = p.getInt("${schoolId}_gen_exempt_min_sub", 75).coerceIn(50, 100),
+            individualExemptMinScore = p.getInt("${schoolId}_ind_exempt_score", 90).coerceIn(50, 100),
+            decisionPointsLimit = p.getInt("${schoolId}_decision_pts_limit", 5).coerceIn(1, 25),
+            firstWarningDays = p.getInt("${schoolId}_warn_first_days", 7).coerceIn(1, 60),
+            finalWarningDays = p.getInt("${schoolId}_warn_final_days", 15).coerceIn(2, 90),
+            dismissalWarningDays = p.getInt("${schoolId}_warn_dismiss_days", 21).coerceIn(3, 120)
+        )
+    }
+
+    fun saveThresholds(context: Context, schoolId: String, thresholds: ExemptionAndWarningThresholds) {
+        pref(context).edit()
+            .putInt("${schoolId}_gen_exempt_avg", thresholds.generalExemptMinAvg)
+            .putInt("${schoolId}_gen_exempt_min_sub", thresholds.generalExemptMinSubject)
+            .putInt("${schoolId}_ind_exempt_score", thresholds.individualExemptMinScore)
+            .putInt("${schoolId}_decision_pts_limit", thresholds.decisionPointsLimit)
+            .putInt("${schoolId}_warn_first_days", thresholds.firstWarningDays)
+            .putInt("${schoolId}_warn_final_days", thresholds.finalWarningDays)
+            .putInt("${schoolId}_warn_dismiss_days", thresholds.dismissalWarningDays)
+            .apply()
+    }
+
+    fun isSmartIdExamPassEnabled(context: Context, schoolId: String): Boolean {
+        val key = "${schoolId.ifBlank { "default_school" }}_smart_id_exam_pass_enabled"
+        return pref(context).getBoolean(key, true)
+    }
+
+    fun setSmartIdExamPassEnabled(context: Context, schoolId: String, enabled: Boolean) {
+        val key = "${schoolId.ifBlank { "default_school" }}_smart_id_exam_pass_enabled"
+        pref(context).edit().putBoolean(key, enabled).apply()
+    }
+
+    fun isStudentExamAllowed(context: Context, schoolId: String, studentId: String): Boolean {
+        val key = "${schoolId.ifBlank { "default_school" }}_exam_allowed_$studentId"
+        return pref(context).getBoolean(key, true)
+    }
+
+    fun setStudentExamAllowed(context: Context, schoolId: String, studentId: String, allowed: Boolean) {
+        val key = "${schoolId.ifBlank { "default_school" }}_exam_allowed_$studentId"
+        pref(context).edit().putBoolean(key, allowed).apply()
+    }
+
+    fun saveStudentSeatLabel(context: Context, schoolId: String, studentId: String, seatLabel: String) {
+        val key = "${schoolId.ifBlank { "default_school" }}_exam_seat_$studentId"
+        pref(context).edit().putString(key, seatLabel).apply()
+    }
+
+    fun getStudentExamSeatLabel(context: Context, schoolId: String, studentId: String, gradeClass: String = ""): String {
+        val key = "${schoolId.ifBlank { "default_school" }}_exam_seat_$studentId"
+        val saved = pref(context).getString(key, null)
+        if (!saved.isNullOrBlank()) return saved
+        val fallbackHall = ((studentId.hashCode().let { if (it < 0) -it else it }) % 3) + 1
+        val fallbackSeat = ((studentId.hashCode().let { if (it < 0) -it else it }) % 20) + 1
+        return "قاعة $fallbackHall - مقعد $fallbackSeat"
+    }
+
     fun loadCorrespondence(context: Context, schoolId: String): List<OfficialCorrespondenceRecord> {
         val raw = pref(context).getString("${schoolId}_correspondence", null)
-        if (raw.isNullOrBlank()) {
-            val today = ArabicCalendarDateHelper.todayIsoDate()
-            return listOf(
-                OfficialCorrespondenceRecord(
-                    id = "cor_default_1",
-                    type = "وارد",
-                    bookNumber = "ت ع / 4820",
-                    dateIso = today,
-                    entityName = "المديرية العامة للتربية",
-                    subject = "ضوابط وتعليمات اللجنة الامتحانية والقرار الوزاري للعام الدراسي",
-                    notes = "عمم على أعضاء اللجنة الامتحانية للحفظ والعمل بموجبه"
-                ),
-                OfficialCorrespondenceRecord(
-                    id = "cor_default_2",
-                    type = "صادر",
-                    bookNumber = "ص / 115",
-                    dateIso = today,
-                    entityName = "قسم الإشراف التربوي",
-                    subject = "الموقف الإحصائي لملاك المدرسة وأعداد الطلبة الفعليين",
-                    notes = "تم إرسال نسخة ورقية وإلكترونية"
-                ),
-                OfficialCorrespondenceRecord(
-                    id = "cor_default_3",
-                    type = "أمر إداري",
-                    bookNumber = "إداري / 29",
-                    dateIso = today,
-                    entityName = "إدارة المدرسة",
-                    subject = "تشكيل لجنة الجرد السنوي ولجنة التدقيق الامتحاني",
-                    notes = "نافذ من تاريخ صدوره"
-                )
-            )
-        }
+        if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
             buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
-                    add(
-                        OfficialCorrespondenceRecord(
-                            id = o.optString("id"),
-                            type = o.optString("type", "صادر"),
-                            bookNumber = o.optString("bookNumber"),
-                            dateIso = o.optString("dateIso"),
-                            entityName = o.optString("entityName"),
-                            subject = o.optString("subject"),
-                            notes = o.optString("notes")
+                    val id = o.optString("id")
+                    if (id !in LEGACY_FAKE_COR_IDS) {
+                        add(
+                            OfficialCorrespondenceRecord(
+                                id = id,
+                                type = o.optString("type", "صادر"),
+                                bookNumber = o.optString("bookNumber"),
+                                dateIso = o.optString("dateIso"),
+                                entityName = o.optString("entityName"),
+                                subject = o.optString("subject"),
+                                notes = o.optString("notes"),
+                                imageBase64 = o.optString("imageBase64", "")
+                            )
                         )
-                    )
+                    }
                 }
             }
         }.getOrDefault(emptyList())
@@ -238,7 +294,7 @@ private object MinistrySuiteLocalStore {
 
     fun saveCorrespondence(context: Context, schoolId: String, list: List<OfficialCorrespondenceRecord>) {
         val arr = JSONArray()
-        list.forEach { item ->
+        list.filter { it.id !in LEGACY_FAKE_COR_IDS }.forEach { item ->
             arr.put(
                 JSONObject().apply {
                     put("id", item.id)
@@ -248,6 +304,7 @@ private object MinistrySuiteLocalStore {
                     put("entityName", item.entityName)
                     put("subject", item.subject)
                     put("notes", item.notes)
+                    put("imageBase64", item.imageBase64)
                 }
             )
         }
@@ -397,31 +454,26 @@ private object MinistrySuiteLocalStore {
 
     fun loadInventory(context: Context, schoolId: String): List<SchoolInventoryItemRecord> {
         val raw = pref(context).getString("${schoolId}_inventory", null)
-        if (raw.isNullOrBlank()) {
-            return listOf(
-                SchoolInventoryItemRecord("inv_1", "رحلات ومقاعد دراسية مزدوجة", "مقاعد دراسية", 120, "صالح", "القاعات الدراسية (1 - 6)", "جرد سنوي مطابق"),
-                SchoolInventoryItemRecord("inv_2", "سبورات بيضاء قياسية", "سبورات", 12, "صالح", "الصفوف الدراسية", "بحالة ممتازة"),
-                SchoolInventoryItemRecord("inv_3", "حاسبات مكتبية وطابعات ليزرية", "أجهزة حاسوب", 8, "صالح", "الإدارة ومختبر الحاسوب", "مع منظومة UPS"),
-                SchoolInventoryItemRecord("inv_4", "مجهرات وأدوات مختبر العلوم", "مختبرات", 15, "صالح", "المختبر العلمي", "كامل التجهيز"),
-                SchoolInventoryItemRecord("inv_5", "سبالت ومبردات هواء", "مبردات/مكيفات", 14, "يحتاج صيانة", "القاعات والإدارة", "2 منها تحتاج صيانة موسمية")
-            )
-        }
+        if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
             buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
-                    add(
-                        SchoolInventoryItemRecord(
-                            id = o.optString("id"),
-                            itemName = o.optString("itemName"),
-                            category = o.optString("category"),
-                            quantity = o.optInt("quantity", 1),
-                            conditionStatus = o.optString("conditionStatus", "صالح"),
-                            locationRoom = o.optString("locationRoom"),
-                            notes = o.optString("notes")
+                    val id = o.optString("id")
+                    if (id !in LEGACY_FAKE_INV_IDS) {
+                        add(
+                            SchoolInventoryItemRecord(
+                                id = id,
+                                itemName = o.optString("itemName"),
+                                category = o.optString("category"),
+                                quantity = o.optInt("quantity", 1),
+                                conditionStatus = o.optString("conditionStatus", "صالح"),
+                                locationRoom = o.optString("locationRoom"),
+                                notes = o.optString("notes")
+                            )
                         )
-                    )
+                    }
                 }
             }
         }.getOrDefault(emptyList())
@@ -429,7 +481,7 @@ private object MinistrySuiteLocalStore {
 
     fun saveInventory(context: Context, schoolId: String, list: List<SchoolInventoryItemRecord>) {
         val arr = JSONArray()
-        list.forEach { item ->
+        list.filter { it.id !in LEGACY_FAKE_INV_IDS }.forEach { item ->
             arr.put(
                 JSONObject().apply {
                     put("id", item.id)
@@ -447,29 +499,26 @@ private object MinistrySuiteLocalStore {
 
     fun loadExpenses(context: Context, schoolId: String): List<SchoolExpenseItemRecord> {
         val raw = pref(context).getString("${schoolId}_expenses", null)
-        if (raw.isNullOrBlank()) {
-            val today = ArabicCalendarDateHelper.todayIsoDate()
-            return listOf(
-                SchoolExpenseItemRecord("exp_1", 250000L, "قرطاسية ومطبوعات", today, "مطبعة ومكتبة النور", "وصل / 841", "أوراق امتحانية وسجلات رسمية وأحبار"),
-                SchoolExpenseItemRecord("exp_2", 180000L, "صيانة وترميم", today, "ورشة الصيانة الفنية", "وصل / 842", "صيانة منظومة الإنارة والمبردات")
-            )
-        }
+        if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
             buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
-                    add(
-                        SchoolExpenseItemRecord(
-                            id = o.optString("id"),
-                            amountIqd = o.optLong("amountIqd", 0L),
-                            category = o.optString("category"),
-                            dateIso = o.optString("dateIso"),
-                            recipientName = o.optString("recipientName"),
-                            receiptNumber = o.optString("receiptNumber"),
-                            notes = o.optString("notes")
+                    val id = o.optString("id")
+                    if (id !in LEGACY_FAKE_EXP_IDS) {
+                        add(
+                            SchoolExpenseItemRecord(
+                                id = id,
+                                amountIqd = o.optLong("amountIqd", 0L),
+                                category = o.optString("category"),
+                                dateIso = o.optString("dateIso"),
+                                recipientName = o.optString("recipientName"),
+                                receiptNumber = o.optString("receiptNumber"),
+                                notes = o.optString("notes")
+                            )
                         )
-                    )
+                    }
                 }
             }
         }.getOrDefault(emptyList())
@@ -477,7 +526,7 @@ private object MinistrySuiteLocalStore {
 
     fun saveExpenses(context: Context, schoolId: String, list: List<SchoolExpenseItemRecord>) {
         val arr = JSONArray()
-        list.forEach { item ->
+        list.filter { it.id !in LEGACY_FAKE_EXP_IDS }.forEach { item ->
             arr.put(
                 JSONObject().apply {
                     put("id", item.id)
@@ -495,8 +544,17 @@ private object MinistrySuiteLocalStore {
 }
 
 // =========================================================================
-// 2. OFFICIAL PDF & EXCEL CSV EXPORT ENGINE (STANDARD ANDROID SDK ONLY)
+// 2. OFFICIAL IRAQI A4 PAPER DOCUMENT PDF & EXCEL CSV EXPORT ENGINE
 // =========================================================================
+
+private fun decodeBase64ToBitmapSafe(base64Str: String): Bitmap? {
+    if (base64Str.isBlank()) return null
+    return runCatching {
+        val clean = base64Str.substringAfter(",")
+        val bytes = Base64.decode(clean, Base64.DEFAULT)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }.getOrNull()
+}
 
 private fun exportMinistryOfficialTablePdf(
     context: Context,
@@ -508,7 +566,10 @@ private fun exportMinistryOfficialTablePdf(
     summaryPills: List<Pair<String, String>>,
     headers: List<String>,
     rows: List<List<String>>,
-    footerNote: String = "تم إصدار هذه الوثيقة رسمياً من المنظومة الوزارية واللجنة الامتحانية المعتمدة",
+    footerNote: String = "تم إصدار هذه الوثيقة رسمياً من مركز الإدارة المدرسية واللجنة الامتحانية",
+    officialLetterBody: String = "",
+    bookNumberLabel: String = "إداري / ${100 + (System.currentTimeMillis() % 899)}",
+    attachedImageBase64: String = "",
     onResult: (Boolean, String) -> Unit
 ) {
     try {
@@ -519,71 +580,154 @@ private fun exportMinistryOfficialTablePdf(
         val page = pdfDocument.startPage(pageInfo)
         val canvas = page.canvas
 
-        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#042F24")
-            style = Paint.Style.FILL
-        }
-        val goldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#D97706")
-            style = Paint.Style.FILL
-        }
-        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val whiteBgPaint = Paint().apply {
             color = android.graphics.Color.WHITE
-            textSize = 15f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.RIGHT
+            style = Paint.Style.FILL
         }
-        val subHeaderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#FDE68A")
+        val outerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            style = Paint.Style.STROKE
+            strokeWidth = 2.2f
+        }
+        val innerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#475569")
+            style = Paint.Style.STROKE
+            strokeWidth = 0.9f
+        }
+        val headerRightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
             textSize = 10.5f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.RIGHT
         }
+        val headerLeftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 10f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.LEFT
+        }
+        val centerBasmalaPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#042F24")
+            textSize = 11.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val subjectPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 13f
+            isUnderlineText = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
         val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#1E293B")
-            textSize = 9.5f
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 10f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             textAlign = Paint.Align.RIGHT
         }
-        val tableHeaderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#ECFDF5")
+        val bodyBoldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 10f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+        val tableHeaderFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#F1F5F9")
             style = Paint.Style.FILL
         }
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#CBD5E1")
+        val tableBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
             style = Paint.Style.STROKE
-            strokeWidth = 1f
+            strokeWidth = 1.1f
         }
 
-        // 1. Official Ministry Header
-        canvas.drawRect(0f, 0f, pageWidth.toFloat(), 94f, headerPaint)
-        canvas.drawRect(0f, 90f, pageWidth.toFloat(), 96f, goldPaint)
+        // 1. Crisp White A4 Paper & Double Official Border
+        canvas.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), whiteBgPaint)
+        canvas.drawRect(18f, 18f, pageWidth - 18f, pageHeight - 18f, outerBorderPaint)
+        canvas.drawRect(22f, 22f, pageWidth - 22f, pageHeight - 22f, innerBorderPaint)
 
-        val rightMargin = pageWidth - 26f
-        val leftMargin = 26f
+        val rightMargin = pageWidth - 36f
+        val leftMargin = 36f
+        val centerX = pageWidth / 2f
         val totalWidth = rightMargin - leftMargin
         val todayIso = ArabicCalendarDateHelper.todayIsoDate()
 
-        canvas.drawText("جمهورية العراق — وزارة التربية — إدارة ($schoolName)", rightMargin, 28f, titlePaint)
-        canvas.drawText(documentTitle, rightMargin, 52f, subHeaderPaint)
-        canvas.drawText(
-            "مدير المدرسة: $principalName  |  العام الدراسي: $academicYear  |  التاريخ: $todayIso",
-            rightMargin,
-            76f,
-            Paint(bodyPaint).apply { color = android.graphics.Color.WHITE }
-        )
+        // 2. Tri-Part Official Iraqi Header (Right / Center / Left)
+        canvas.drawText("جمهورية العراق", rightMargin, 48f, headerRightPaint)
+        canvas.drawText("وزارة التربية", rightMargin, 65f, headerRightPaint)
+        canvas.drawText("إدارة مدرسة ($schoolName)", rightMargin, 82f, headerRightPaint)
+        canvas.drawText("مركز الإدارة المدرسية واللجنة الامتحانية", rightMargin, 98f, Paint(headerRightPaint).apply {
+            textSize = 9f
+            color = android.graphics.Color.parseColor("#065F46")
+        })
 
-        var currentY = 116f
+        // Center: Basmala & Official Drawn Emblem
+        canvas.drawText("بسم الله الرحمن الرحيم", centerX, 44f, centerBasmalaPaint)
+        val emblemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#B45309")
+            style = Paint.Style.STROKE
+            strokeWidth = 1.6f
+        }
+        canvas.drawCircle(centerX, 74f, 18f, emblemPaint)
+        canvas.drawCircle(centerX, 74f, 14f, Paint(emblemPaint).apply { strokeWidth = 0.8f })
+        // Scale / Book emblem inside circle
+        canvas.drawLine(centerX, 62f, centerX, 84f, emblemPaint)
+        canvas.drawLine(centerX - 10f, 69f, centerX + 10f, 69f, emblemPaint)
+        canvas.drawText("وزارة التربية", centerX, 104f, Paint(centerBasmalaPaint).apply {
+            textSize = 8.5f
+            color = android.graphics.Color.parseColor("#B45309")
+        })
+
+        // Left: Number, Date, Academic Year
+        canvas.drawText("العدد: $bookNumberLabel", leftMargin, 48f, headerLeftPaint)
+        canvas.drawText("التاريخ: $todayIso", leftMargin, 65f, headerLeftPaint)
+        canvas.drawText("العام الدراسي: $academicYear", leftMargin, 82f, headerLeftPaint)
+        canvas.drawText("المرفقات: رسمي مصدق", leftMargin, 98f, Paint(headerLeftPaint).apply {
+            textSize = 9f
+            color = android.graphics.Color.parseColor("#334155")
+        })
+
+        // Separator Line under Tri-Part Header
+        canvas.drawLine(leftMargin, 112f, rightMargin, 112f, outerBorderPaint)
+        canvas.drawLine(leftMargin, 115f, rightMargin, 115f, innerBorderPaint)
+
+        // 3. Centered Bold Underlined Subject Title (م / ...)
+        var currentY = 138f
+        val formattedSubject = if (documentTitle.startsWith("م /") || documentTitle.startsWith("م/")) {
+            documentTitle
+        } else {
+            "م / $documentTitle"
+        }
+        canvas.drawText(formattedSubject, centerX, currentY, subjectPaint)
+        currentY += 22f
 
         if (subtitleInfo.isNotBlank()) {
-            canvas.drawText(subtitleInfo, rightMargin, currentY, Paint(bodyPaint).apply {
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                color = android.graphics.Color.parseColor("#065F46")
-            })
-            currentY += 20f
+            canvas.drawText(subtitleInfo, rightMargin, currentY, bodyBoldPaint)
+            currentY += 18f
         }
 
-        // 2. Summary KPI Boxes
+        // 4. Formal Salutation & Letter Body Paragraph
+        val effectiveLetterBody = officialLetterBody.ifBlank {
+            "تحية طيبة.. استناداً إلى الضوابط والتعليمات المدرسية والامتحانية النافذة للعام الدراسي ($academicYear)، ندرج لكم أدناه التفاصيل والبيانات الرسمية المعتمدة في سجلات مدرسة ($schoolName) لاتخاذ ما يلزم أصولياً:"
+        }
+        val words = effectiveLetterBody.split(" ")
+        var lineBuffer = StringBuilder()
+        for (word in words) {
+            val testLine = if (lineBuffer.isEmpty()) word else "$lineBuffer $word"
+            if (bodyPaint.measureText(testLine) > totalWidth - 12f) {
+                canvas.drawText(lineBuffer.toString(), rightMargin, currentY, bodyPaint)
+                currentY += 15f
+                lineBuffer = StringBuilder(word)
+            } else {
+                lineBuffer = StringBuilder(testLine)
+            }
+        }
+        if (lineBuffer.isNotEmpty()) {
+            canvas.drawText(lineBuffer.toString(), rightMargin, currentY, bodyPaint)
+            currentY += 18f
+        }
+
+        // 5. Summary Boxes (Official Paper Style)
         if (summaryPills.isNotEmpty()) {
             val count = summaryPills.size.coerceAtMost(4)
             val gap = 8f
@@ -591,39 +735,39 @@ private fun exportMinistryOfficialTablePdf(
             summaryPills.take(4).forEachIndexed { idx, (k, v) ->
                 val boxLeft = rightMargin - ((idx + 1) * boxW) - (idx * gap)
                 val boxRight = boxLeft + boxW
-                canvas.drawRoundRect(boxLeft, currentY, boxRight, currentY + 42f, 8f, 8f, tableHeaderPaint)
-                canvas.drawRoundRect(boxLeft, currentY, boxRight, currentY + 42f, 8f, 8f, borderPaint)
+                canvas.drawRect(boxLeft, currentY, boxRight, currentY + 36f, tableHeaderFillPaint)
+                canvas.drawRect(boxLeft, currentY, boxRight, currentY + 36f, tableBorderPaint)
                 val cx = (boxLeft + boxRight) / 2f
-                canvas.drawText(k, cx, currentY + 16f, Paint(bodyPaint).apply {
+                canvas.drawText(k, cx, currentY + 14f, Paint(bodyPaint).apply {
                     textAlign = Paint.Align.CENTER
                     textSize = 8.5f
                 })
-                canvas.drawText(v, cx, currentY + 33f, Paint(bodyPaint).apply {
+                canvas.drawText(v, cx, currentY + 29f, Paint(bodyBoldPaint).apply {
                     textAlign = Paint.Align.CENTER
-                    textSize = 10f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    color = android.graphics.Color.parseColor("#042F24")
+                    textSize = 9.5f
                 })
             }
-            currentY += 58f
+            currentY += 48f
         }
 
-        // 3. Table Headers & Rows
+        // 6. Crisp Black-Bordered Official Table
         if (headers.isNotEmpty()) {
             val colCount = headers.size
             val colW = totalWidth / colCount
-            canvas.drawRect(leftMargin, currentY, rightMargin, currentY + 24f, tableHeaderPaint)
-            canvas.drawRect(leftMargin, currentY, rightMargin, currentY + 24f, borderPaint)
-            val thPaint = Paint(bodyPaint).apply {
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawRect(leftMargin, currentY, rightMargin, currentY + 24f, tableHeaderFillPaint)
+            canvas.drawRect(leftMargin, currentY, rightMargin, currentY + 24f, tableBorderPaint)
+            val thPaint = Paint(bodyBoldPaint).apply {
                 textAlign = Paint.Align.CENTER
-                color = android.graphics.Color.parseColor("#042F24")
                 textSize = 9f
             }
             headers.forEachIndexed { cIdx, hText ->
                 val colRight = rightMargin - (cIdx * colW)
-                val colCenter = colRight - (colW / 2f)
-                canvas.drawText(hText.take(22), colCenter, currentY + 16f, thPaint)
+                val colLeft = colRight - colW
+                if (cIdx > 0) {
+                    canvas.drawLine(colRight, currentY, colRight, currentY + 24f, tableBorderPaint)
+                }
+                val colCenter = (colRight + colLeft) / 2f
+                canvas.drawText(hText.take(24), colCenter, currentY + 16f, thPaint)
             }
             currentY += 24f
 
@@ -631,14 +775,24 @@ private fun exportMinistryOfficialTablePdf(
                 textAlign = Paint.Align.CENTER
                 textSize = 8.5f
             }
-            rows.take(24).forEach { row ->
-                if (currentY + 21f < pageHeight - 70f) {
-                    canvas.drawRect(leftMargin, currentY, rightMargin, currentY + 21f, borderPaint)
+            rows.take(20).forEachIndexed { rIdx, row ->
+                if (currentY + 21f < pageHeight - 125f) {
+                    if (rIdx % 2 == 1) {
+                        canvas.drawRect(leftMargin, currentY, rightMargin, currentY + 21f, Paint().apply {
+                            color = android.graphics.Color.parseColor("#F8FAFC")
+                            style = Paint.Style.FILL
+                        })
+                    }
+                    canvas.drawRect(leftMargin, currentY, rightMargin, currentY + 21f, tableBorderPaint)
                     row.forEachIndexed { cIdx, cell ->
                         if (cIdx < colCount) {
                             val colRight = rightMargin - (cIdx * colW)
-                            val colCenter = colRight - (colW / 2f)
-                            canvas.drawText(cell.take(26), colCenter, currentY + 14f, tdPaint)
+                            val colLeft = colRight - colW
+                            if (cIdx > 0) {
+                                canvas.drawLine(colRight, currentY, colRight, currentY + 21f, tableBorderPaint)
+                            }
+                            val colCenter = (colRight + colLeft) / 2f
+                            canvas.drawText(cell.take(28), colCenter, currentY + 14f, tdPaint)
                         }
                     }
                     currentY += 21f
@@ -646,23 +800,92 @@ private fun exportMinistryOfficialTablePdf(
             }
         }
 
-        // 4. Official Signatures Footer
-        val footerY = pageHeight - 36f
-        canvas.drawLine(leftMargin, footerY - 22f, rightMargin, footerY - 22f, borderPaint)
-        canvas.drawText(
-            "$footerNote  |  ختم وتوقيع مدير المدرسة: $principalName",
-            rightMargin,
-            footerY,
-            Paint(bodyPaint).apply {
-                textSize = 9f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                color = android.graphics.Color.parseColor("#065F46")
+        // 7. Official Iraqi Document Footer (Principal Signature & Stamp on Left, Committee & QR on Right)
+        val footerTopY = pageHeight - 110f
+        canvas.drawLine(leftMargin, footerTopY, rightMargin, footerTopY, innerBorderPaint)
+
+        // Right side of footer: Exam Committee / Administration + Verification QR
+        canvas.drawText("اللجنة الامتحانية / الإدارة المدرسية", rightMargin, footerTopY + 20f, bodyBoldPaint)
+        canvas.drawText(footerNote.take(68), rightMargin, footerTopY + 36f, Paint(bodyPaint).apply { textSize = 8.5f })
+        canvas.drawText("نسخة منه إلى: الإضبارة العامة / سجل الصادرة والواردة", rightMargin, footerTopY + 52f, Paint(bodyPaint).apply { textSize = 8.5f })
+
+        // Mini QR Verification Matrix on bottom-center-right
+        val qrSize = 42f
+        val qrLeft = centerX - (qrSize / 2f)
+        val qrTop = footerTopY + 16f
+        canvas.drawRect(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize, tableBorderPaint)
+        val qrCell = qrSize / 7f
+        val seedHash = (schoolName + documentTitle + todayIso).hashCode()
+        val qrFillPaint = Paint().apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            style = Paint.Style.FILL
+        }
+        for (r in 0 until 7) {
+            for (c in 0 until 7) {
+                val corner = (r < 2 && c < 2) || (r < 2 && c >= 5) || (r >= 5 && c < 2)
+                val bit = ((seedHash shr ((r * 7 + c) % 28)) and 1) == 1
+                if (corner || bit) {
+                    canvas.drawRect(
+                        qrLeft + c * qrCell + 1f,
+                        qrTop + r * qrCell + 1f,
+                        qrLeft + (c + 1) * qrCell - 1f,
+                        qrTop + (r + 1) * qrCell - 1f,
+                        qrFillPaint
+                    )
+                }
             }
-        )
+        }
+        canvas.drawText("رمز التحقق الرقمي", centerX, qrTop + qrSize + 12f, Paint(bodyPaint).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = 7.5f
+        })
+
+        // Left side of footer: Principal Signature & Drawn Official Stamp Circle
+        val leftSigCenterX = leftMargin + 95f
+        canvas.drawText("توقيع وختم مدير المدرسة", leftSigCenterX, footerTopY + 20f, Paint(bodyBoldPaint).apply {
+            textAlign = Paint.Align.CENTER
+        })
+        canvas.drawText("المدير: $principalName", leftSigCenterX, footerTopY + 36f, Paint(bodyBoldPaint).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = 9.5f
+        })
+        val stampPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#1E3A8A")
+            style = Paint.Style.STROKE
+            strokeWidth = 1.3f
+        }
+        canvas.drawCircle(leftSigCenterX, footerTopY + 60f, 18f, stampPaint)
+        canvas.drawCircle(leftSigCenterX, footerTopY + 60f, 15f, Paint(stampPaint).apply { strokeWidth = 0.6f })
+        canvas.drawText("ختم الإدارة", leftSigCenterX, footerTopY + 63f, Paint(bodyBoldPaint).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = 7.5f
+            color = android.graphics.Color.parseColor("#1E3A8A")
+        })
 
         pdfDocument.finishPage(page)
 
-        val safeName = "Ministry_${System.currentTimeMillis()}.pdf"
+        // Optional Page 2: Attached Official Scanned Document Image
+        val attachedBitmap = decodeBase64ToBitmapSafe(attachedImageBase64)
+        var totalPageCount = 1
+        if (attachedBitmap != null) {
+            totalPageCount = 2
+            val page2Info = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 2).create()
+            val page2 = pdfDocument.startPage(page2Info)
+            val canvas2 = page2.canvas
+            canvas2.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), whiteBgPaint)
+            canvas2.drawRect(18f, 18f, pageWidth - 18f, pageHeight - 18f, outerBorderPaint)
+            canvas2.drawRect(22f, 22f, pageWidth - 22f, pageHeight - 22f, innerBorderPaint)
+            canvas2.drawText("المرفق الضوئي الرسمي للكتاب ($bookNumberLabel) — $documentTitle", centerX, 52f, subjectPaint)
+            val targetRect = RectF(44f, 75f, pageWidth - 44f, pageHeight - 85f)
+            canvas2.drawBitmap(attachedBitmap, null, targetRect, null)
+            canvas2.drawRect(targetRect, tableBorderPaint)
+            canvas2.drawText("مصدق طبق الأصل — مدير المدرسة: $principalName", centerX, pageHeight - 45f, Paint(bodyBoldPaint).apply {
+                textAlign = Paint.Align.CENTER
+            })
+            pdfDocument.finishPage(page2)
+        }
+
+        val safeName = "School_Official_${System.currentTimeMillis()}.pdf"
         val cacheFile = File(context.cacheDir, safeName)
         FileOutputStream(cacheFile).use { out -> pdfDocument.writeTo(out) }
 
@@ -701,7 +924,7 @@ private fun exportMinistryOfficialTablePdf(
                         }
                         val info = PrintDocumentInfo.Builder(safeName)
                             .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
-                            .setPageCount(1)
+                            .setPageCount(totalPageCount)
                             .build()
                         callback?.onLayoutFinished(info, true)
                     }
@@ -730,7 +953,7 @@ private fun exportMinistryOfficialTablePdf(
             )
         }
 
-        onResult(true, "تم تصدير ($documentTitle) بصيغة PDF رسمية وحفظه في التنزيلات وفتح المعاينة للطباعة")
+        onResult(true, "تم تصدير الوثيقة الرسمية ($documentTitle) بصيغة PDF ورقية A4 وحفظها في التنزيلات ✓")
     } catch (e: Exception) {
         onResult(false, "تعذر تصدير PDF: ${e.localizedMessage ?: "خطأ غير متوقع"}")
     }
@@ -745,7 +968,6 @@ private fun exportMinistryOfficialCsv(
 ) {
     try {
         val sb = StringBuilder()
-        // UTF-8 BOM so Microsoft Excel opens Arabic text cleanly
         sb.append('\uFEFF')
         sb.appendLine(headers.joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" })
         rows.forEach { r ->
@@ -798,7 +1020,6 @@ fun MinistryExecutiveSuiteScreen(
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val schoolId = schoolConfig.schoolId.ifBlank { "default_school" }
     val principalName = currentUser?.fullName?.ifBlank { schoolConfig.principalFullName } ?: schoolConfig.principalFullName
-    val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
 
     val activeStudents = remember(allStudents, schoolId) {
         allStudents.filter { (it.schoolId.isEmpty() || it.schoolId == schoolId) && it.isActive }
@@ -813,7 +1034,29 @@ fun MinistryExecutiveSuiteScreen(
 
     var selectedTab by remember(initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 5)) }
 
+    // Action Feedback Banner State (Package 8)
+    var feedbackBannerMessage by remember { mutableStateOf<String?>(null) }
+    var feedbackBannerIsSuccess by remember { mutableStateOf(true) }
+    var feedbackBannerTrigger by remember { mutableIntStateOf(0) }
+
+    val triggerActionBanner: (String, Boolean) -> Unit = { msg, isSuccess ->
+        feedbackBannerMessage = msg
+        feedbackBannerIsSuccess = isSuccess
+        feedbackBannerTrigger++
+        viewModel.showToastAlert(msg, isSuccess = isSuccess)
+    }
+
+    LaunchedEffect(feedbackBannerTrigger) {
+        if (feedbackBannerMessage != null) {
+            delay(4200L)
+            feedbackBannerMessage = null
+        }
+    }
+
     // Persistent Suite States
+    var thresholdsState by remember(schoolId) {
+        mutableStateOf(MinistrySuiteLocalStore.loadThresholds(context, schoolId))
+    }
     var correspondenceList by remember(schoolId) {
         mutableStateOf(MinistrySuiteLocalStore.loadCorrespondence(context, schoolId))
     }
@@ -863,6 +1106,60 @@ fun MinistryExecutiveSuiteScreen(
                     onBack = onBack
                 )
 
+                // Package 8: Animated Action Feedback Banner
+                AnimatedVisibility(
+                    visible = feedbackBannerMessage != null,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+                ) {
+                    val bannerMsg = feedbackBannerMessage.orEmpty()
+                    val bannerBg = if (feedbackBannerIsSuccess) Color(0xFF065F46) else Color(0xFF991B1B)
+                    val bannerBorder = if (feedbackBannerIsSuccess) Color(0xFF34D399) else Color(0xFFF87171)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                            .testTag("ministry_action_feedback_banner"),
+                        shape = RoundedCornerShape(14.dp),
+                        color = bannerBg,
+                        border = BorderStroke(1.5.dp, bannerBorder),
+                        shadowElevation = 6.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (feedbackBannerIsSuccess) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                                contentDescription = null,
+                                tint = Color(0xFFFDE68A),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = bannerMsg,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { feedbackBannerMessage = null },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "إغلاق",
+                                    tint = Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Active Section Content
                 Box(
                     modifier = Modifier
@@ -877,7 +1174,14 @@ fun MinistryExecutiveSuiteScreen(
                             principalName = principalName,
                             students = activeStudents,
                             grades = allGrades,
-                            examSchedules = examSchedules
+                            examSchedules = examSchedules,
+                            thresholds = thresholdsState,
+                            onSaveThresholds = { updated ->
+                                thresholdsState = updated
+                                MinistrySuiteLocalStore.saveThresholds(context, schoolId, updated)
+                                triggerActionBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                            },
+                            onTriggerBanner = triggerActionBanner
                         )
 
                         1 -> OfficialMinistryRecordsSection(
@@ -887,11 +1191,18 @@ fun MinistryExecutiveSuiteScreen(
                             principalName = principalName,
                             students = activeStudents,
                             grades = allGrades,
+                            thresholds = thresholdsState,
+                            onSaveThresholds = { updated ->
+                                thresholdsState = updated
+                                MinistrySuiteLocalStore.saveThresholds(context, schoolId, updated)
+                                triggerActionBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                            },
                             correspondenceList = correspondenceList,
                             onSaveCorrespondence = { updated ->
                                 correspondenceList = updated
                                 MinistrySuiteLocalStore.saveCorrespondence(context, schoolId, updated)
-                            }
+                            },
+                            onTriggerBanner = triggerActionBanner
                         )
 
                         2 -> StaffHrAndPortfolioSection(
@@ -904,7 +1215,9 @@ fun MinistryExecutiveSuiteScreen(
                             onSavePortfolios = { updated ->
                                 staffPortfoliosMap = updated
                                 MinistrySuiteLocalStore.saveStaffPortfolios(context, schoolId, updated)
-                            }
+                                triggerActionBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                            },
+                            onTriggerBanner = triggerActionBanner
                         )
 
                         3 -> StudentWelfareAndOrphansSection(
@@ -917,7 +1230,9 @@ fun MinistryExecutiveSuiteScreen(
                             onSaveWelfare = { updated ->
                                 studentWelfareMap = updated
                                 MinistrySuiteLocalStore.saveStudentWelfare(context, schoolId, updated)
-                            }
+                                triggerActionBanner("تم تحديث الحالة وإشعار ولي الأمر بنجاح ✓", true)
+                            },
+                            onTriggerBanner = triggerActionBanner
                         )
 
                         4 -> YearEndArchivingAndPromotionSection(
@@ -931,7 +1246,9 @@ fun MinistryExecutiveSuiteScreen(
                             onSaveArchivedYears = { updated ->
                                 archivedYearsList = updated
                                 MinistrySuiteLocalStore.saveArchivedYears(context, schoolId, updated)
-                            }
+                                triggerActionBanner("تم تسجيل وأرشفة الكتاب الرسمي في السجل بنجاح ✓", true)
+                            },
+                            onTriggerBanner = triggerActionBanner
                         )
 
                         5 -> SchoolInventoryAndExpensesSection(
@@ -944,12 +1261,15 @@ fun MinistryExecutiveSuiteScreen(
                             onSaveInventory = { updated ->
                                 inventoryList = updated
                                 MinistrySuiteLocalStore.saveInventory(context, schoolId, updated)
+                                triggerActionBanner("تم تسجيل وأرشفة الكتاب الرسمي في السجل بنجاح ✓", true)
                             },
                             expensesList = expensesList,
                             onSaveExpenses = { updated ->
                                 expensesList = updated
                                 MinistrySuiteLocalStore.saveExpenses(context, schoolId, updated)
-                            }
+                                triggerActionBanner("تم تسجيل وأرشفة الكتاب الرسمي في السجل بنجاح ✓", true)
+                            },
+                            onTriggerBanner = triggerActionBanner
                         )
                     }
                 }
@@ -959,7 +1279,7 @@ fun MinistryExecutiveSuiteScreen(
 }
 
 // =========================================================================
-// 4. EXECUTIVE HEADER & VECTOR CREST (Path.cubicTo)
+// 4. EXECUTIVE HEADER & OFFICIAL DOCUMENT + ACADEMIC SCALE VECTOR CREST
 // =========================================================================
 
 @Composable
@@ -1041,23 +1361,21 @@ private fun MinistrySuiteExecutiveHeader(
                         }
 
                         MinistryExecutiveCrestVectorCanvas(
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(46.dp)
                         )
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "المنظومة الوزارية واللجنة الامتحانية",
-                                style = MaterialTheme.typography.titleMedium,
+                                text = "مركز الإدارة المدرسية واللجنة الامتحانية",
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White
                             )
                             Text(
                                 text = "$schoolName • المدير: $principalName • العام الدراسي: $academicYear",
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
                                 color = Color(0xFFFDE68A),
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
@@ -1122,14 +1440,23 @@ fun MinistryExecutiveCrestVectorCanvas(
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "ministry_crest_anim")
-    val ringPulse by infiniteTransition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.06f,
+    val sealGlow by infiniteTransition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.08f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "crest_ring_pulse"
+        label = "crest_seal_glow"
+    )
+    val scaleSwing by infiniteTransition.animateFloat(
+        initialValue = -1.8f,
+        targetValue = 1.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "crest_scale_swing"
     )
 
     Canvas(modifier = modifier) {
@@ -1139,90 +1466,99 @@ fun MinistryExecutiveCrestVectorCanvas(
         val cy = h / 2f
         val r = (w.coerceAtMost(h) / 2f) * 0.90f
 
-        // 1. Royal Emerald & Gold Outer Seal
+        // 1. Glowing Royal Emerald & Gold Outer Aura
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(Color(0xFF065F46), Color(0xFF022C22)),
+                colors = listOf(
+                    Color(0xFFFBBF24).copy(alpha = 0.28f),
+                    Color(0xFF065F46),
+                    Color(0xFF022C22)
+                ),
                 center = Offset(cx, cy),
-                radius = r
+                radius = r * sealGlow.coerceAtMost(1.06f)
             ),
             radius = r,
             center = Offset(cx, cy)
         )
         drawCircle(
             color = Color(0xFFFBBF24),
-            radius = r * ringPulse.coerceAtMost(1.02f),
+            radius = r * sealGlow.coerceIn(0.92f, 1.03f),
             center = Offset(cx, cy),
-            style = Stroke(width = 2.4f)
+            style = Stroke(width = 2.2f)
         )
 
-        // 2. Shield Crest using Path.cubicTo
-        val shieldPath = Path().apply {
-            moveTo(cx, cy - r * 0.62f)
-            cubicTo(
-                cx + r * 0.45f, cy - r * 0.60f,
-                cx + r * 0.58f, cy - r * 0.15f,
-                cx, cy + r * 0.64f
-            )
-            cubicTo(
-                cx - r * 0.58f, cy - r * 0.15f,
-                cx - r * 0.45f, cy - r * 0.60f,
-                cx, cy - r * 0.62f
-            )
-            close()
-        }
-        drawPath(
-            path = shieldPath,
+        // 2. Official Scroll / Document Sheet in the Background
+        val docW = r * 0.86f
+        val docH = r * 1.06f
+        val docLeft = cx - docW / 2f
+        val docTop = cy - docH / 2f
+        drawRoundRect(
             brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFF10B981).copy(alpha = 0.35f), Color(0xFF042F24))
-            )
+                colors = listOf(Color(0xFFFFFBEB), Color(0xFFFDE68A))
+            ),
+            topLeft = Offset(docLeft, docTop),
+            size = Size(docW, docH),
+            cornerRadius = CornerRadius(6f, 6f)
         )
-        drawPath(
-            path = shieldPath,
-            color = Color(0xFFFDE68A),
-            style = Stroke(width = 1.8f, cap = StrokeCap.Round)
+        drawRoundRect(
+            color = Color(0xFFD97706),
+            topLeft = Offset(docLeft, docTop),
+            size = Size(docW, docH),
+            cornerRadius = CornerRadius(6f, 6f),
+            style = Stroke(width = 1.5f)
         )
 
-        // 3. Open Book & Balanced Scales of Exam Control inside Shield
-        val bookPath = Path().apply {
-            moveTo(cx, cy + r * 0.18f)
-            cubicTo(
-                cx - r * 0.18f, cy + r * 0.08f,
-                cx - r * 0.34f, cy + r * 0.12f,
-                cx - r * 0.38f, cy + r * 0.24f
+        // Document official ruled lines
+        for (lineIdx in 0..2) {
+            val ly = docTop + docH * (0.24f + lineIdx * 0.14f)
+            drawLine(
+                color = Color(0xFF065F46).copy(alpha = 0.55f),
+                start = Offset(docLeft + docW * 0.18f, ly),
+                end = Offset(docLeft + docW * 0.82f, ly),
+                strokeWidth = 1.6f,
+                cap = StrokeCap.Round
             )
-            lineTo(cx - r * 0.38f, cy - r * 0.16f)
-            cubicTo(
-                cx - r * 0.26f, cy - r * 0.24f,
-                cx - r * 0.12f, cy - r * 0.20f,
-                cx, cy - r * 0.10f
-            )
-            cubicTo(
-                cx + r * 0.12f, cy - r * 0.20f,
-                cx + r * 0.26f, cy - r * 0.24f,
-                cx + r * 0.38f, cy - r * 0.16f
-            )
-            lineTo(cx + r * 0.38f, cy + r * 0.24f)
-            cubicTo(
-                cx + r * 0.34f, cy + r * 0.12f,
-                cx + r * 0.18f, cy + r * 0.08f,
-                cx, cy + r * 0.18f
-            )
-            close()
         }
-        drawPath(
-            path = bookPath,
-            color = Color(0xFFFBBF24),
-            style = Stroke(width = 2.0f, cap = StrokeCap.Round)
+
+        // 3. Golden Academic Scale of Exam Justice & Official Seal
+        val beamY = cy - r * 0.08f
+        val leftBeamX = cx - r * 0.34f
+        val rightBeamX = cx + r * 0.34f
+        drawLine(
+            color = Color(0xFF042F24),
+            start = Offset(cx, cy - r * 0.34f),
+            end = Offset(cx, cy + r * 0.34f),
+            strokeWidth = 2.2f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = Color(0xFFB45309),
+            start = Offset(leftBeamX, beamY + scaleSwing),
+            end = Offset(rightBeamX, beamY - scaleSwing),
+            strokeWidth = 2.2f,
+            cap = StrokeCap.Round
+        )
+        drawCircle(
+            color = Color(0xFF059669),
+            radius = r * 0.11f,
+            center = Offset(leftBeamX, beamY + r * 0.16f + scaleSwing)
+        )
+        drawCircle(
+            color = Color(0xFF059669),
+            radius = r * 0.11f,
+            center = Offset(rightBeamX, beamY + r * 0.16f - scaleSwing)
         )
 
-        // Central pillar
-        drawLine(
-            color = Color(0xFFFDE68A),
-            start = Offset(cx, cy - r * 0.38f),
-            end = Offset(cx, cy + r * 0.22f),
-            strokeWidth = 2.0f,
-            cap = StrokeCap.Round
+        // Glowing Stamp Ribbon at Bottom of Document
+        drawCircle(
+            color = Color(0xFFD97706),
+            radius = r * 0.18f * sealGlow.coerceIn(0.95f, 1.05f),
+            center = Offset(cx, docTop + docH * 0.82f)
+        )
+        drawCircle(
+            color = Color(0xFFFef3c7),
+            radius = r * 0.09f,
+            center = Offset(cx, docTop + docH * 0.82f)
         )
     }
 }
@@ -1239,8 +1575,12 @@ private fun ExamControlCenterSection(
     principalName: String,
     students: List<StudentRecord>,
     grades: List<SubjectGrade>,
-    examSchedules: List<ExamScheduleItem>
+    examSchedules: List<ExamScheduleItem>,
+    thresholds: ExemptionAndWarningThresholds,
+    onSaveThresholds: (ExemptionAndWarningThresholds) -> Unit,
+    onTriggerBanner: (String, Boolean) -> Unit
 ) {
+    val schoolId = schoolConfig.schoolId.ifBlank { "default_school" }
     var activeSubTool by remember { mutableIntStateOf(0) }
     val subTools = remember {
         listOf(
@@ -1251,17 +1591,32 @@ private fun ExamControlCenterSection(
         )
     }
 
-    // Tool 1 State: Decision Points (5 or 10)
-    var decisionPointsLimit by remember { mutableIntStateOf(5) }
-    val exemptionAnalysis = remember(students, grades, decisionPointsLimit) {
+    // Customizable Exemption & Decision Thresholds (Package 3)
+    var generalExemptMinAvg by remember(thresholds) { mutableIntStateOf(thresholds.generalExemptMinAvg) }
+    var generalExemptMinSubject by remember(thresholds) { mutableIntStateOf(thresholds.generalExemptMinSubject) }
+    var individualExemptMinScore by remember(thresholds) { mutableIntStateOf(thresholds.individualExemptMinScore) }
+    var decisionPointsLimit by remember(thresholds) { mutableIntStateOf(thresholds.decisionPointsLimit) }
+
+    val exemptionAnalysis = remember(
+        students,
+        grades,
+        generalExemptMinAvg,
+        generalExemptMinSubject,
+        individualExemptMinScore,
+        decisionPointsLimit
+    ) {
         students.map { stu ->
             val stuGrades = grades.filter { it.studentId == stu.id }
             val overallAvg = if (stuGrades.isNotEmpty()) {
                 stuGrades.map { it.normalizedPercentage }.average().roundToInt()
             } else 0
             val minSubjectScore = stuGrades.minOfOrNull { it.normalizedPercentage } ?: 0
-            val isGeneralExempt = stuGrades.isNotEmpty() && overallAvg >= 85 && minSubjectScore >= 75
-            val individualExemptSubjects = stuGrades.filter { it.normalizedPercentage >= 90 }.map { "${it.subjectName} (${it.normalizedPercentage}%)" }
+            val isGeneralExempt = stuGrades.isNotEmpty() &&
+                overallAvg >= generalExemptMinAvg &&
+                minSubjectScore >= generalExemptMinSubject
+            val individualExemptSubjects = stuGrades
+                .filter { it.normalizedPercentage >= individualExemptMinScore }
+                .map { "${it.subjectName} (${it.normalizedPercentage}%)" }
             val failingGrades = stuGrades.filter { it.normalizedPercentage in 1 until 50 }
             val pointsNeededToPass = failingGrades.sumOf { (50 - it.normalizedPercentage).coerceAtLeast(0) }
             val canPassByDecision = failingGrades.isNotEmpty() && pointsNeededToPass in 1..decisionPointsLimit
@@ -1281,8 +1636,18 @@ private fun ExamControlCenterSection(
         mutableStateOf(generateSmartInterleavedSeatingPlan(students, hallsCount, hallCapacity))
     }
 
-    // Tool 3 State: Exam Cards Filter
+    // Tool 3 State: Exam Cards Filter & Smart ID Exam Pass Link (Package 6)
     var selectedClassForCards by remember { mutableStateOf("الكل") }
+    var isSmartIdExamPassEnabled by remember(schoolId) {
+        mutableStateOf(MinistrySuiteLocalStore.isSmartIdExamPassEnabled(context, schoolId))
+    }
+    var examEligibilityMap by remember(students, schoolId) {
+        mutableStateOf(
+            students.associate { stu ->
+                stu.id to MinistrySuiteLocalStore.isStudentExamAllowed(context, schoolId, stu.id)
+            }
+        )
+    }
 
     // Tool 4 State: Official Exam Questions Paper Builder
     var examSubject by remember { mutableStateOf(schoolConfig.registeredSubjects.firstOrNull() ?: "اللغة العربية") }
@@ -1338,10 +1703,9 @@ private fun ExamControlCenterSection(
 
         when (activeSubTool) {
             // -----------------------------------------------------------------
-            // SUB-TOOL 0: محرك درجة القرار والإعفاء التلقائي
+            // SUB-TOOL 0: محرك درجة القرار والإعفاء التلقائي (مع تحكم مرن للمدير)
             // -----------------------------------------------------------------
             0 -> {
-
                 item {
                     Card(
                         shape = RoundedCornerShape(18.dp),
@@ -1356,19 +1720,81 @@ private fun ExamControlCenterSection(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                text = "أولاً: محرك الإعفاء العام والفردي التلقائي (ضوابط وزارة التربية العراقية)",
+                                text = "أولاً: محرك الإعفاء العام والفردي التلقائي (قابل للتخصيص من مدير المدرسة)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF042F24),
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            Text(
-                                text = "• الإعفاء العام: معدل عام (85%) فأعلى بشرط ألا تقل أقل درجة عن (75%).\n" +
-                                    "• الإعفاء الفردي: الحصول على السعي السنوي (90%) فأعلى في المادة الدراسية.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF065F46),
+
+                            // Flexible Principal Controls (+/-) for Exemption Thresholds
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                                 modifier = Modifier.fillMaxWidth()
-                            )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "تخصيص نسب وضوابط الإعفاء ودرجة القرار:",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF042F24)
+                                    )
+
+                                    ThresholdStepperRow(
+                                        label = "معدل الإعفاء العام الشامل:",
+                                        valueText = "$generalExemptMinAvg%",
+                                        onDecrement = { generalExemptMinAvg = (generalExemptMinAvg - 1).coerceAtLeast(50) },
+                                        onIncrement = { generalExemptMinAvg = (generalExemptMinAvg + 1).coerceAtMost(100) }
+                                    )
+                                    ThresholdStepperRow(
+                                        label = "الحد الأدنى للدرجة في الإعفاء العام:",
+                                        valueText = "$generalExemptMinSubject%",
+                                        onDecrement = { generalExemptMinSubject = (generalExemptMinSubject - 1).coerceAtLeast(50) },
+                                        onIncrement = { generalExemptMinSubject = (generalExemptMinSubject + 1).coerceAtMost(100) }
+                                    )
+                                    ThresholdStepperRow(
+                                        label = "نسبة الإعفاء الفردي بالمادة:",
+                                        valueText = "$individualExemptMinScore%",
+                                        onDecrement = { individualExemptMinScore = (individualExemptMinScore - 1).coerceAtLeast(50) },
+                                        onIncrement = { individualExemptMinScore = (individualExemptMinScore + 1).coerceAtMost(100) }
+                                    )
+                                    ThresholdStepperRow(
+                                        label = "سقف درجات القرار المسموحة:",
+                                        valueText = "$decisionPointsLimit درجات",
+                                        onDecrement = { decisionPointsLimit = (decisionPointsLimit - 1).coerceAtLeast(1) },
+                                        onIncrement = { decisionPointsLimit = (decisionPointsLimit + 1).coerceAtMost(25) }
+                                    )
+
+                                    Button(
+                                        onClick = {
+                                            onSaveThresholds(
+                                                thresholds.copy(
+                                                    generalExemptMinAvg = generalExemptMinAvg,
+                                                    generalExemptMinSubject = generalExemptMinSubject,
+                                                    individualExemptMinScore = individualExemptMinScore,
+                                                    decisionPointsLimit = decisionPointsLimit
+                                                )
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("save_exemption_thresholds_btn")
+                                    ) {
+                                        Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("حفظ واعتماد ضوابط الإعفاء والقرار", fontWeight = FontWeight.ExtraBold)
+                                    }
+                                }
+                            }
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1387,7 +1813,7 @@ private fun ExamControlCenterSection(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
-                                        text = "يتم فرز الطلبة المعفوين تلقائياً فور استكمال رصد درجات السعي السنوي (90% للإعفاء الفردي أو 85% للإعفاء العام).",
+                                        text = "يتم فرز الطلبة المعفوين تلقائياً فور استكمال رصد درجات السعي السنوي ($individualExemptMinScore% للإعفاء الفردي أو $generalExemptMinAvg% للإعفاء العام).",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF047857),
                                         modifier = Modifier.padding(12.dp)
@@ -1419,9 +1845,9 @@ private fun ExamControlCenterSection(
                                             )
                                             Text(
                                                 text = if (isGen) {
-                                                    "التصنيف الوزاري: إعفاء عام شامل بجميع المواد (المعدل العام: ${avgPair.first}%)"
+                                                    "التصنيف المعتمد: إعفاء عام شامل بجميع المواد (المعدل العام: ${avgPair.first}%)"
                                                 } else {
-                                                    "التصنيف الوزاري: إعفاء فردي في المواد: ${indSubs.joinToString("، ")}"
+                                                    "التصنيف المعتمد: إعفاء فردي في المواد: ${indSubs.joinToString("، ")}"
                                                 },
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = Color(0xFF059669),
@@ -1457,7 +1883,7 @@ private fun ExamControlCenterSection(
                                         principalName = principalName,
                                         academicYear = schoolConfig.academicYear,
                                         documentTitle = "قائمة الشرف الرسمية للطلبة المعفوين (الإعفاء العام والفردي)",
-                                        subtitleInfo = "مفرزة تلقائياً وفق ضوابط وزارة التربية العراقية للسعي السنوي",
+                                        subtitleInfo = "مفرزة تلقائياً وفق الضوابط المعتمدة (العام $generalExemptMinAvg% • الفردي $individualExemptMinScore%)",
                                         summaryPills = listOf(
                                             "إعفاء عام" to "${generalExemptList.size}",
                                             "إعفاء فردي" to "${individualExemptList.size}",
@@ -1466,7 +1892,7 @@ private fun ExamControlCenterSection(
                                         headers = listOf("ت", "اسم الطالب", "الصف والشعبة", "المعدل العام", "نوع الإعفاء"),
                                         rows = rows
                                     ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
+                                        onTriggerBanner(msg, ok)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -1486,7 +1912,7 @@ private fun ExamControlCenterSection(
                     }
                 }
 
-                // Decision Points Engine (5 or 10 points)
+                // Decision Points Engine
                 item {
                     Card(
                         shape = RoundedCornerShape(18.dp),
@@ -1501,29 +1927,33 @@ private fun ExamControlCenterSection(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                text = "ثانياً: معالج درجة القرار الوزاري (5 أو 10 درجات)",
+                                text = "ثانياً: معالج درجة القرار ($decisionPointsLimit درجات)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF92400E),
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Text(
-                                text = "يحدد تلقائياً الطلبة المكملين أو الراسبين الذين ترفعهم درجة القرار المحددة إلى درجة النجاح الصغرى (50%).",
+                                text = "يحدد تلقائياً الطلبة المكملين أو الراسبين الذين ترفعهم درجة القرار المحددة ($decisionPointsLimit درجات) إلى درجة النجاح الصغرى (50%).",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF78350F),
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                listOf(5 to "قرار (5) درجات اعتيادي", 10 to "قرار (10) درجات استثنائي").forEach { (pts, label) ->
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(listOf(5 to "قرار (5) درجات", 10 to "قرار (10) درجات", 15 to "قرار (15) درجة")) { (pts, label) ->
                                     FilterChip(
                                         selected = decisionPointsLimit == pts,
                                         onClick = { decisionPointsLimit = pts },
-                                        label = { Text(label, fontWeight = FontWeight.ExtraBold) },
-                                        modifier = Modifier.weight(1f)
+                                        label = {
+                                            Text(
+                                                text = label,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        },
+                                        modifier = Modifier.widthIn(min = 115.dp)
                                     )
                                 }
                             }
@@ -1536,7 +1966,7 @@ private fun ExamControlCenterSection(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
-                                        text = "لا يوجد حالياً طلبة بحاجة إلى (${decisionPointsLimit}) درجات قرار للوصول إلى درجة النجاح (50%).",
+                                        text = "لا يوجد حالياً طلبة بحاجة إلى ($decisionPointsLimit) درجات قرار للوصول إلى درجة النجاح (50%).",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF92400E),
                                         modifier = Modifier.padding(12.dp)
@@ -1579,7 +2009,7 @@ private fun ExamControlCenterSection(
                                                         val needed = (50 - fg.normalizedPercentage).coerceAtLeast(1)
                                                         viewModel.applyMinistryDecisionGradeBoost(stu.id, fg.subjectName, needed)
                                                     }
-                                                    viewModel.showToastAlert("تم تطبيق ($totalNeeded) درجات قرار للطالب ${stu.studentName} واعتماد نجاحه رسمياً", isSuccess = true)
+                                                    onTriggerBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
                                                 },
                                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                                                 shape = RoundedCornerShape(10.dp),
@@ -1607,11 +2037,15 @@ private fun ExamControlCenterSection(
                                             }
                                         }
                                     }
-                                    if (appliedCount > 0) {
-                                        viewModel.showToastAlert("تم تطبيق درجة القرار الجماعي واعتماد نجاح ($appliedCount) مادة دراسية بنجاح", isSuccess = true)
-                                    } else {
-                                        viewModel.showToastAlert("جميع الطلبة المشمولين بدرجة القرار معتمدون مسبقاً أو لا توجد درجات حرجة ضمن سقف ($decisionPointsLimit) درجات", isSuccess = true)
-                                    }
+                                    onSaveThresholds(
+                                        thresholds.copy(
+                                            generalExemptMinAvg = generalExemptMinAvg,
+                                            generalExemptMinSubject = generalExemptMinSubject,
+                                            individualExemptMinScore = individualExemptMinScore,
+                                            decisionPointsLimit = decisionPointsLimit
+                                        )
+                                    )
+                                    onTriggerBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFFD97706),
@@ -1632,7 +2066,7 @@ private fun ExamControlCenterSection(
             }
 
             // -----------------------------------------------------------------
-            // SUB-TOOL 1: مولّد خرائط الجلوس والقطاعات الامتحانية
+            // SUB-TOOL 1: مولّد خرائط الجلوس والقطاعات الامتحانية (Package 4)
             // -----------------------------------------------------------------
             1 -> {
                 item {
@@ -1649,7 +2083,7 @@ private fun ExamControlCenterSection(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                text = "مولّد خرائط الجلوس والقطاعات الامتحانية الذكي (Seating Plan Generator)",
+                                text = "مولّد خرائط الجلوس والقطاعات الامتحانية الذكي",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF042F24),
@@ -1668,19 +2102,29 @@ private fun ExamControlCenterSection(
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF042F24)
                             )
-                            Row(
+                            // Package 4: Scrollable LazyRow with widthIn(min = 95.dp) and single-line text
+                            LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                listOf(2, 3, 4, 5, 6, 8).forEach { hc ->
+                                items(listOf(2, 3, 4, 5, 6, 8)) { hc ->
                                     FilterChip(
                                         selected = hallsCount == hc,
                                         onClick = {
                                             hallsCount = hc
                                             if (selectedHallPreview > hc) selectedHallPreview = 1
                                         },
-                                        label = { Text("$hc قاعات", fontWeight = FontWeight.Bold) },
-                                        modifier = Modifier.weight(1f)
+                                        label = {
+                                            Text(
+                                                text = "$hc قاعات",
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        },
+                                        modifier = Modifier.widthIn(min = 95.dp)
                                     )
                                 }
                             }
@@ -1691,16 +2135,26 @@ private fun ExamControlCenterSection(
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF042F24)
                             )
-                            Row(
+                            // Package 4: Scrollable LazyRow with widthIn(min = 95.dp) and single-line text
+                            LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                listOf(15, 20, 24, 30, 36).forEach { cap ->
+                                items(listOf(15, 20, 24, 30, 36)) { cap ->
                                     FilterChip(
                                         selected = hallCapacity == cap,
                                         onClick = { hallCapacity = cap },
-                                        label = { Text("$cap مقعد", fontWeight = FontWeight.Bold) },
-                                        modifier = Modifier.weight(1f)
+                                        label = {
+                                            Text(
+                                                text = "$cap مقعد",
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        },
+                                        modifier = Modifier.widthIn(min = 95.dp)
                                     )
                                 }
                             }
@@ -1708,7 +2162,15 @@ private fun ExamControlCenterSection(
                             Button(
                                 onClick = {
                                     generatedSeats = generateSmartInterleavedSeatingPlan(students, hallsCount, hallCapacity)
-                                    viewModel.showToastAlert("تم توليد خرائط الجلوس الذكية لـ (${generatedSeats.size}) طالب عبر ($hallsCount) قاعات مع دمج الصفوف", isSuccess = true)
+                                    generatedSeats.forEach { seat ->
+                                        MinistrySuiteLocalStore.saveStudentSeatLabel(
+                                            context = context,
+                                            schoolId = schoolId,
+                                            studentId = seat.student.id,
+                                            seatLabel = "قاعة ${seat.hallNumber} - مقعد ${seat.seatNumber}"
+                                        )
+                                    }
+                                    onTriggerBanner("تم توزيع الطلبة وتوليد خرائط القاعات الامتحانية بنجاح ✓", true)
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                                 shape = RoundedCornerShape(12.dp),
@@ -1753,8 +2215,14 @@ private fun ExamControlCenterSection(
                                         selected = selectedHallPreview == hNum,
                                         onClick = { selectedHallPreview = hNum },
                                         label = {
-                                            Text("القاعة ($hNum) • $cnt طالب", fontWeight = FontWeight.Bold)
-                                        }
+                                            Text(
+                                                text = "القاعة ($hNum) • $cnt طالب",
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        },
+                                        modifier = Modifier.widthIn(min = 120.dp)
                                     )
                                 }
                             }
@@ -1827,7 +2295,7 @@ private fun ExamControlCenterSection(
                                         headers = listOf("رقم المقعد", "القطاع", "اسم الطالب الثلاثي", "الصف الدراسي", "الشعبة"),
                                         rows = rows
                                     ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
+                                        onTriggerBanner(msg, ok)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -1849,7 +2317,7 @@ private fun ExamControlCenterSection(
             }
 
             // -----------------------------------------------------------------
-            // SUB-TOOL 2: إصدار البطاقات الامتحانية للطلبة
+            // SUB-TOOL 2: إصدار بطاقات دخول الامتحان المدرسي وربطها بالهوية الذكية (Package 6)
             // -----------------------------------------------------------------
             2 -> {
                 val distinctClasses = listOf("الكل") + students.map { it.gradeClass }.distinct()
@@ -1871,12 +2339,51 @@ private fun ExamControlCenterSection(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                text = "إصدار البطاقات الامتحانية الرسمية للطلبة (مع باركود التحقق ورقم القاعة والمقعد)",
+                                text = "إصدار بطاقات دخول الامتحان المدرسي وربطها بهوية الطالب الذكية",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF042F24),
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            // Global Toggle: اعتماد بطاقة هوية الطالب الذكية كهوية دخول رسمية للامتحانات
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFF10B981)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "اعتماد بطاقة هوية الطالب الذكية كهوية دخول رسمية للامتحانات",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF042F24)
+                                        )
+                                        Text(
+                                            text = "تظهر شارة التخويل ورقم القاعة والمقعد تلقائياً على هوية الطالب وباركود QR",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF065F46)
+                                        )
+                                    }
+                                    Switch(
+                                        checked = isSmartIdExamPassEnabled,
+                                        onCheckedChange = { enabled ->
+                                            isSmartIdExamPassEnabled = enabled
+                                            MinistrySuiteLocalStore.setSmartIdExamPassEnabled(context, schoolId, enabled)
+                                            onTriggerBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                                        },
+                                        modifier = Modifier.testTag("toggle_smart_id_exam_pass")
+                                    )
+                                }
+                            }
 
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(distinctClasses) { cls ->
@@ -1891,12 +2398,13 @@ private fun ExamControlCenterSection(
                             Button(
                                 onClick = {
                                     val rows = filteredSeatCards.map { item ->
+                                        val isAllowed = examEligibilityMap[item.student.id] ?: true
                                         listOf(
                                             item.student.fullNameWithFather,
                                             "${item.student.gradeClass} (${item.student.sectionName})",
                                             item.hallName,
                                             "مقعد ${item.seatNumber} (${item.sectorCode})",
-                                            "EXAM_QR:${item.student.id}"
+                                            if (isAllowed) "مشمول بدخول الامتحان ✓" else "محجوب ✗"
                                         )
                                     }
                                     exportMinistryOfficialTablePdf(
@@ -1904,17 +2412,17 @@ private fun ExamControlCenterSection(
                                         schoolName = schoolConfig.schoolName,
                                         principalName = principalName,
                                         academicYear = schoolConfig.academicYear,
-                                        documentTitle = "كشف البطاقات الامتحانية الرسمية للطلبة ($selectedClassForCards)",
-                                        subtitleInfo = "يتضمن أرقام القاعات والمقاعد ورموز التحقق الامتحانية المعتمدة",
+                                        documentTitle = "كشف بطاقات دخول الامتحان المدرسي ($selectedClassForCards)",
+                                        subtitleInfo = "يتضمن أرقام القاعات والمقاعد وحالة الشمول الامتحاني",
                                         summaryPills = listOf(
                                             "البطاقات الصادرة" to "${filteredSeatCards.size} بطاقة",
-                                            "الصف الدراسي" to selectedClassForCards,
+                                            "مشمول بالامتحان" to "${filteredSeatCards.count { examEligibilityMap[it.student.id] != false }}",
                                             "العام الدراسي" to schoolConfig.academicYear
                                         ),
-                                        headers = listOf("اسم الطالب", "الصف والشعبة", "القاعة", "رقم المقعد", "رمز الباركود"),
+                                        headers = listOf("اسم الطالب", "الصف والشعبة", "القاعة", "رقم المقعد", "حالة الدخول"),
                                         rows = rows
                                     ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
+                                        onTriggerBanner(msg, ok)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -1928,20 +2436,34 @@ private fun ExamControlCenterSection(
                             ) {
                                 Icon(Icons.Filled.Print, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("طباعة البطاقات الامتحانية الجماعية (${filteredSeatCards.size} بطاقة) PDF", fontWeight = FontWeight.ExtraBold)
+                                Text("طباعة بطاقات دخول الامتحان المدرسي (${filteredSeatCards.size} بطاقة) PDF", fontWeight = FontWeight.ExtraBold)
                             }
                         }
                     }
                 }
 
-                items(filteredSeatCards.take(15), key = { it.student.id }) { seatItem ->
+                items(filteredSeatCards.take(25), key = { it.student.id }) { seatItem ->
+                    val isAllowed = examEligibilityMap[seatItem.student.id] ?: true
                     val stuExams = examSchedules.filter {
                         ArabicTextNormalizer.matchesClass(it.gradeClass, seatItem.student.gradeClass)
                     }.take(4)
+
+                    LaunchedEffect(seatItem.hallNumber, seatItem.seatNumber) {
+                        MinistrySuiteLocalStore.saveStudentSeatLabel(
+                            context = context,
+                            schoolId = schoolId,
+                            studentId = seatItem.student.id,
+                            seatLabel = "قاعة ${seatItem.hallNumber} - مقعد ${seatItem.seatNumber}"
+                        )
+                    }
+
                     Card(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.2.dp, Color(0xFF059669)),
+                        border = BorderStroke(
+                            1.4.dp,
+                            if (isAllowed) Color(0xFF059669) else DangerRed
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -1957,9 +2479,9 @@ private fun ExamControlCenterSection(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "بطاقة دخول الامتحان الوزاري / المدرسي — ${schoolConfig.schoolName}",
+                                        text = "بطاقة دخول الامتحان المدرسي — ${schoolConfig.schoolName}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFF059669),
+                                        color = if (isAllowed) Color(0xFF059669) else DangerRed,
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                     Text(
@@ -1976,11 +2498,91 @@ private fun ExamControlCenterSection(
                                     )
                                 }
 
-                                // Drawn QR Matrix Emblem
                                 ExamVerificationQrMiniCanvas(
-                                    seed = seatItem.student.id,
+                                    seed = "${seatItem.student.id}:${if (isAllowed) "ALLOWED" else "BLOCKED"}",
                                     modifier = Modifier.size(52.dp)
                                 )
+                            }
+
+                            // Per-Student Eligibility Toggle & Status Badge
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isAllowed) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isAllowed) Color(0xFF10B981) else Color(0xFFF87171)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (isAllowed) {
+                                                "مشمول بدخول الامتحان ✓"
+                                            } else {
+                                                "غير مشمول / محجوب عن الامتحان ✗"
+                                            },
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isAllowed) Color(0xFF065F46) else Color(0xFF991B1B)
+                                        )
+                                        Text(
+                                            text = if (isAllowed) {
+                                                "مخول بدخول القاعة الامتحانية (قاعة ${seatItem.hallNumber} - مقعد ${seatItem.seatNumber})"
+                                            } else {
+                                                "تم حجب تخويل الدخول في الهوية المدرسية الذكية والباركود"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isAllowed) Color(0xFF047857) else Color(0xFFB91C1C)
+                                        )
+                                    }
+                                    Switch(
+                                        checked = isAllowed,
+                                        onCheckedChange = { newAllowed ->
+                                            examEligibilityMap = examEligibilityMap.toMutableMap().apply {
+                                                put(seatItem.student.id, newAllowed)
+                                            }
+                                            MinistrySuiteLocalStore.setStudentExamAllowed(
+                                                context = context,
+                                                schoolId = schoolId,
+                                                studentId = seatItem.student.id,
+                                                allowed = newAllowed
+                                            )
+                                            MinistrySuiteLocalStore.saveStudentSeatLabel(
+                                                context = context,
+                                                schoolId = schoolId,
+                                                studentId = seatItem.student.id,
+                                                seatLabel = "قاعة ${seatItem.hallNumber} - مقعد ${seatItem.seatNumber}"
+                                            )
+                                            val statusTitle = if (newAllowed) {
+                                                "تخويل دخول الامتحان المدرسي — ${seatItem.student.studentName}"
+                                            } else {
+                                                "تنبيه حجب بطاقة الامتحان المدرسي — ${seatItem.student.studentName}"
+                                            }
+                                            val statusBody = if (newAllowed) {
+                                                "تم اعتماد شمول الطالب (${seatItem.student.fullNameWithFather}) بدخول الامتحانات المدرسية في (${seatItem.hallName} - مقعد ${seatItem.seatNumber}) وربطه بهوية الطالب الذكية."
+                                            } else {
+                                                "يرجى مراجعة إدارة المدرسة بخصوص بطاقة دخول الامتحان المدرسي للطالب (${seatItem.student.fullNameWithFather})."
+                                            }
+                                            viewModel.pushNotification(
+                                                title = statusTitle,
+                                                body = statusBody,
+                                                type = NotificationType.ATTENDANCE,
+                                                targetStudentId = seatItem.student.id,
+                                                targetRole = UserRole.PARENT.name,
+                                                isUrgent = !newAllowed,
+                                                priority = if (newAllowed) "normal" else "high"
+                                            )
+                                            onTriggerBanner("تم تحديث الحالة وإشعار ولي الأمر بنجاح ✓", newAllowed)
+                                        }
+                                    )
+                                }
                             }
 
                             if (stuExams.isNotEmpty()) {
@@ -1993,17 +2595,18 @@ private fun ExamControlCenterSection(
 
                             OutlinedButton(
                                 onClick = {
+                                    val qrStatus = if (isAllowed) "EXAM:ALLOWED" else "EXAM:BLOCKED"
                                     exportMinistryOfficialTablePdf(
                                         context = context,
                                         schoolName = schoolConfig.schoolName,
                                         principalName = principalName,
                                         academicYear = schoolConfig.academicYear,
-                                        documentTitle = "بطاقة امتحانية رسمية — الطالب: ${seatItem.student.fullNameWithFather}",
-                                        subtitleInfo = "الصف: ${seatItem.student.gradeClass} (${seatItem.student.sectionName}) | ${seatItem.hallName} | مقعد رقم (${seatItem.seatNumber}) | الباركود: EXAM_QR:${seatItem.student.id}",
+                                        documentTitle = "بطاقة دخول الامتحان المدرسي — الطالب: ${seatItem.student.fullNameWithFather}",
+                                        subtitleInfo = "الصف: ${seatItem.student.gradeClass} (${seatItem.student.sectionName}) | ${seatItem.hallName} | مقعد (${seatItem.seatNumber}) | الحالة: ${if (isAllowed) "مشمول بدخول الامتحان ✓" else "غير مشمول ✗"}",
                                         summaryPills = listOf(
                                             "القاعة الامتحانية" to seatItem.hallName,
                                             "رقم المقعد" to "${seatItem.seatNumber}",
-                                            "القطاع" to seatItem.sectorCode
+                                            "حالة الدخول" to if (isAllowed) "مخول ✓" else "محجوب ✗"
                                         ),
                                         headers = listOf("المادة الامتحانية", "تاريخ الامتحان", "اليوم / الوقت", "القاعة والمقعد"),
                                         rows = if (stuExams.isNotEmpty()) {
@@ -2011,12 +2614,13 @@ private fun ExamControlCenterSection(
                                                 listOf(ex.subjectName, ex.examDate, ex.timeSlot.ifBlank { "${ex.dayName} • 8:30 صباحاً" }, "${seatItem.hallName} - مقعد ${seatItem.seatNumber}")
                                             }
                                         } else {
-                                            (schoolConfig.registeredSubjects.ifEmpty { listOf("اللغة العربية", "الرياضيات", "اللغة الإنجليزية", "العلوم") }).take(6).mapIndexed { i, sub ->
+                                            (schoolConfig.registeredSubjects.ifEmpty { listOf("اللغة العربية", "الرياضيات", "اللغة الإنجليزية", "العلوم") }).take(6).map { sub ->
                                                 listOf(sub, "حسب الجدول المعلن", "8:30 صباحاً", "${seatItem.hallName} - مقعد ${seatItem.seatNumber}")
                                             }
-                                        }
+                                        },
+                                        footerNote = "باركود التحقق الامتحاني المعتمد: ${seatItem.student.qrCodeValue}:$qrStatus"
                                     ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
+                                        onTriggerBanner(msg, ok)
                                     }
                                 },
                                 shape = RoundedCornerShape(10.dp),
@@ -2024,7 +2628,7 @@ private fun ExamControlCenterSection(
                             ) {
                                 Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("طباعة البطاقة الامتحانية الفردية (PDF)", fontWeight = FontWeight.Bold)
+                                Text("طباعة بطاقة دخول الامتحان المدرسي الفردية (PDF)", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -2049,7 +2653,7 @@ private fun ExamControlCenterSection(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                text = "مُنشئ الأسئلة الامتحانية الرسمي (تنسيق وزاري فوري بدون الحاجة لـ Word)",
+                                text = "مُنشئ الأسئلة الامتحانية الرسمي (تنسيق ورقي A4 جاهز للطباعة)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF042F24),
@@ -2186,7 +2790,7 @@ private fun ExamControlCenterSection(
                                         rows = qRows,
                                         footerNote = "مع تمنيات اللجنة الامتحانية لجميع طلبتنا الأعزاء بالنجاح والتفوق"
                                     ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
+                                        onTriggerBanner(msg, ok)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -2219,7 +2823,6 @@ private fun generateSmartInterleavedSeatingPlan(
     val validHalls = hallsCount.coerceAtLeast(1)
     val validCap = hallCapacity.coerceAtLeast(5)
 
-    // Group students by class and interleave them so adjacent seats never share the same class
     val byClass = students.groupBy { it.gradeClass }.values.map { it.toMutableList() }
     val interleaved = mutableListOf<StudentRecord>()
     var remaining = true
@@ -2280,7 +2883,7 @@ private fun ExamVerificationQrMiniCanvas(
 }
 
 // =========================================================================
-// 6. SECTION 2: OFFICIAL MINISTRY RECORDS & ABSENCE WARNINGS
+// 6. SECTION 2: OFFICIAL MINISTRY RECORDS, ABSENCE WARNINGS & CORRESPONDENCE
 // =========================================================================
 
 @Composable
@@ -2291,27 +2894,90 @@ private fun OfficialMinistryRecordsSection(
     principalName: String,
     students: List<StudentRecord>,
     grades: List<SubjectGrade>,
+    thresholds: ExemptionAndWarningThresholds,
+    onSaveThresholds: (ExemptionAndWarningThresholds) -> Unit,
     correspondenceList: List<OfficialCorrespondenceRecord>,
-    onSaveCorrespondence: (List<OfficialCorrespondenceRecord>) -> Unit
+    onSaveCorrespondence: (List<OfficialCorrespondenceRecord>) -> Unit,
+    onTriggerBanner: (String, Boolean) -> Unit
 ) {
     var activeSubTab by remember { mutableIntStateOf(0) }
     val subTabs = listOf(
         0 to "1. السجلات الرسمية (القيد العام والوسطي)",
-        1 to "2. إنذارات الغياب القانونية (7 / 15 / 21 يوم)",
+        1 to "2. إنذارات الغياب القانونية",
         2 to "3. سجل الصادرة والواردة والأوامر الإدارية"
     )
 
     var selectedRegisterKind by remember { mutableStateOf("سجل القيد العام") }
     var registerSearchQuery by remember { mutableStateOf("") }
 
-    // Correspondence Form State
+    // Customizable Absence Warning Thresholds (Package 3)
+    var firstWarningDays by remember(thresholds) { mutableIntStateOf(thresholds.firstWarningDays) }
+    var finalWarningDays by remember(thresholds) { mutableIntStateOf(thresholds.finalWarningDays) }
+    var dismissalWarningDays by remember(thresholds) { mutableIntStateOf(thresholds.dismissalWarningDays) }
+    var showOnlyStudentsWithWarnings by remember { mutableStateOf(true) }
+
+    // Correspondence Form State (Packages 3 & 5)
     var corType by remember { mutableStateOf("صادر") }
     var corNumber by remember { mutableStateOf("") }
     var corDate by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
     var corEntity by remember { mutableStateOf("") }
     var corSubject by remember { mutableStateOf("") }
     var corNotes by remember { mutableStateOf("") }
+    var corImageBase64 by remember { mutableStateOf("") }
     var corSearch by remember { mutableStateOf("") }
+
+    var showCorDatePickerDialog by remember { mutableStateOf(false) }
+    var lightboxImageBase64 by remember { mutableStateOf<String?>(null) }
+    var lightboxTitle by remember { mutableStateOf("") }
+
+    // Image Picker for Official Correspondence Scanned Document (Package 5)
+    val correspondenceImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { inStream ->
+                    val rawBmp = BitmapFactory.decodeStream(inStream)
+                    if (rawBmp != null) {
+                        val maxDim = 1100
+                        val ratio = minOf(
+                            maxDim.toFloat() / rawBmp.width.coerceAtLeast(1),
+                            maxDim.toFloat() / rawBmp.height.coerceAtLeast(1),
+                            1f
+                        )
+                        val scaled = Bitmap.createScaledBitmap(
+                            rawBmp,
+                            (rawBmp.width * ratio).roundToInt().coerceAtLeast(1),
+                            (rawBmp.height * ratio).roundToInt().coerceAtLeast(1),
+                            true
+                        )
+                        val bos = ByteArrayOutputStream()
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 82, bos)
+                        corImageBase64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showCorDatePickerDialog) {
+        MinistryCalendarDatePickerDialog(
+            initialDateIso = corDate,
+            onDismiss = { showCorDatePickerDialog = false },
+            onDateSelected = { selectedIso ->
+                corDate = selectedIso
+                showCorDatePickerDialog = false
+            }
+        )
+    }
+
+    if (!lightboxImageBase64.isNullOrBlank()) {
+        OfficialDocumentLightboxDialog(
+            imageBase64 = lightboxImageBase64.orEmpty(),
+            title = lightboxTitle,
+            onDismiss = { lightboxImageBase64 = null }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -2326,7 +2992,14 @@ private fun OfficialMinistryRecordsSection(
                     FilterChip(
                         selected = activeSubTab == idx,
                         onClick = { activeSubTab = idx },
-                        label = { Text(label, fontWeight = FontWeight.ExtraBold) },
+                        label = {
+                            Text(
+                                text = label,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Color(0xFF042F24),
                             selectedLabelColor = Color(0xFFFDE68A)
@@ -2443,7 +3116,7 @@ private fun OfficialMinistryRecordsSection(
                                         headers = tableHeaders,
                                         rows = tableRows
                                     ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
+                                        onTriggerBanner(msg, ok)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -2464,11 +3137,11 @@ private fun OfficialMinistryRecordsSection(
                                 onClick = {
                                     exportMinistryOfficialCsv(
                                         context = context,
-                                        filePrefix = "Ministry_Register",
+                                        filePrefix = "School_Register",
                                         headers = tableHeaders,
                                         rows = tableRows
                                     ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
+                                        onTriggerBanner(msg, ok)
                                     }
                                 },
                                 shape = RoundedCornerShape(12.dp),
@@ -2486,9 +3159,19 @@ private fun OfficialMinistryRecordsSection(
             }
 
             // -----------------------------------------------------------------
-            // 1: نظام إنذارات الغياب القانونية التلقائي (7 / 15 / 21 يوم)
+            // 1: نظام إنذارات الغياب القانونية (مع منع ظهور إنذار لمن غيابه 0 + تحكم مرن للمدير)
             // -----------------------------------------------------------------
             1 -> {
+                val studentsReachingWarning = students.filter {
+                    viewModel.getTotalAbsenceDays(it.id) >= firstWarningDays
+                }.sortedByDescending { viewModel.getTotalAbsenceDays(it.id) }
+
+                val displayedWarningStudents = if (showOnlyStudentsWithWarnings) {
+                    studentsReachingWarning
+                } else {
+                    students.sortedByDescending { viewModel.getTotalAbsenceDays(it.id) }
+                }
+
                 item {
                     Card(
                         shape = RoundedCornerShape(18.dp),
@@ -2500,137 +3183,276 @@ private fun OfficialMinistryRecordsSection(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                text = "نظام إنذارات الغياب القانونية التلقائي (ضوابط الانضباط المدرسي)",
+                                text = "نظام إنذارات الغياب القانونية (قابل للتخصيص من مدير المدرسة)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF991B1B),
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            Text(
-                                text = "• عند بلوغ (7) أيام غياب: يصدر تنبيه (إنذار غياب أولي).\n" +
-                                    "• عند بلوغ (15) يوماً: يصدر تنبيه (إنذار غياب نهائي).\n" +
-                                    "• عند تجاوز (21) يوماً: يصدر تنبيه (تجاوز الحد القانوني — فصل بالغياب).",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF7F1D1D),
+
+                            // Flexible Principal Controls (+/-) for Absence Warning Thresholds (Package 3)
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
                                 modifier = Modifier.fillMaxWidth()
-                            )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "تخصيص حدود أيام الغياب لإصدار الإنذارات الرسمية:",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF991B1B)
+                                    )
+                                    ThresholdStepperRow(
+                                        label = "عتبة الإنذار الأولي:",
+                                        valueText = "$firstWarningDays أيام غياب",
+                                        onDecrement = { firstWarningDays = (firstWarningDays - 1).coerceAtLeast(1) },
+                                        onIncrement = {
+                                            firstWarningDays = (firstWarningDays + 1).coerceAtMost(finalWarningDays - 1)
+                                        }
+                                    )
+                                    ThresholdStepperRow(
+                                        label = "عتبة الإنذار النهائي:",
+                                        valueText = "$finalWarningDays يوم غياب",
+                                        onDecrement = {
+                                            finalWarningDays = (finalWarningDays - 1).coerceAtLeast(firstWarningDays + 1)
+                                        },
+                                        onIncrement = {
+                                            finalWarningDays = (finalWarningDays + 1).coerceAtMost(dismissalWarningDays - 1)
+                                        }
+                                    )
+                                    ThresholdStepperRow(
+                                        label = "الحد القانوني (فصل بالغياب):",
+                                        valueText = "$dismissalWarningDays يوم غياب",
+                                        onDecrement = {
+                                            dismissalWarningDays = (dismissalWarningDays - 1).coerceAtLeast(finalWarningDays + 1)
+                                        },
+                                        onIncrement = { dismissalWarningDays = (dismissalWarningDays + 1).coerceAtMost(90) }
+                                    )
+
+                                    Button(
+                                        onClick = {
+                                            onSaveThresholds(
+                                                thresholds.copy(
+                                                    firstWarningDays = firstWarningDays,
+                                                    finalWarningDays = finalWarningDays,
+                                                    dismissalWarningDays = dismissalWarningDays
+                                                )
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF991B1B)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("save_absence_warning_thresholds_btn")
+                                    ) {
+                                        Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("حفظ واعتماد ضوابط الغياب والإنذارات", fontWeight = FontWeight.ExtraBold)
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = showOnlyStudentsWithWarnings,
+                                    onClick = { showOnlyStudentsWithWarnings = true },
+                                    label = {
+                                        Text(
+                                            "المستحقون للإنذار فقط (${studentsReachingWarning.size})",
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FilterChip(
+                                    selected = !showOnlyStudentsWithWarnings,
+                                    onClick = { showOnlyStudentsWithWarnings = false },
+                                    label = {
+                                        Text(
+                                            "جميع الطلبة (${students.size})",
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
                     }
                 }
 
-                items(
-                    students.sortedByDescending { viewModel.getTotalAbsenceDays(it.id) },
-                    key = { it.id }
-                ) { stu ->
-                    val absDays = viewModel.getTotalAbsenceDays(stu.id)
-                    val warningLevel = when {
-                        absDays >= 21 -> "تجاوز الحد القانوني (فصل بالغياب)"
-                        absDays >= 15 -> "إنذار غياب نهائي"
-                        absDays >= 7 -> "إنذار غياب أولي"
-                        else -> "إنذار غياب أولي / وقائي ($absDays أيام مسجلة)"
-                    }
-                    val badgeColor = when {
-                        absDays >= 21 -> DangerRed
-                        absDays >= 15 -> Color(0xFFD97706)
-                        absDays >= 7 -> Color(0xFFB45309)
-                        else -> Color(0xFF059669)
-                    }
-
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.55f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                if (displayedWarningStudents.isEmpty()) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(1.5.dp, Color(0xFF10B981)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = "${stu.fullNameWithFather} — ${stu.gradeClass} (شعبة ${stu.sectionName})",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF042F24),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Text(
-                                text = "مجموع الغيابات المسجلة: ($absDays) يوم • الحالة القانونية: $warningLevel",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = badgeColor,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Button(
-                                onClick = {
-                                    val msgTitle = "كتاب رسمي: $warningLevel — ${stu.studentName}"
-                                    val msgBody = "إلى ولي أمر الطالب (${stu.fullNameWithFather}) في الصف (${stu.gradeClass}): نود إعلامكم بأن مجموع غيابات ابنكم بلغ ($absDays) يوماً، وبذلك يصدر بحقه ($warningLevel) وفق تعليمات وزارة التربية. يرجى مراجعة إدارة المدرسة فوراً."
-                                    viewModel.pushNotification(
-                                        title = msgTitle,
-                                        body = msgBody,
-                                        type = NotificationType.ATTENDANCE,
-                                        targetStudentId = stu.id,
-                                        targetRole = UserRole.PARENT.name,
-                                        isUrgent = true,
-                                        priority = "high"
-                                    )
-                                    viewModel.sendParentReport(
-                                        student = stu,
-                                        reportType = ReportType.PARENT_SUMMONS,
-                                        title = msgTitle,
-                                        details = msgBody,
-                                        senderName = "اللجنة الانضباطية — المدير ($principalName)"
-                                    )
-                                    viewModel.showToastAlert("تم إرسال ($warningLevel) رسمياً إلى ولي أمر الطالب ${stu.studentName}", isSuccess = true)
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = DangerRed, contentColor = Color.White),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth()
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(18.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(Icons.Filled.NotificationsActive, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("إرسال الإنذار لولي الأمر فوراً", fontWeight = FontWeight.ExtraBold)
+                                Icon(
+                                    imageVector = Icons.Filled.VerifiedUser,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(34.dp)
+                                )
+                                Text(
+                                    text = "جميع الطلبة ملتزمون بالدوام الرسمي — لا يوجد أي طالب تجاوز عتبة الإنذار الأولي ($firstWarningDays أيام)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF042F24),
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = "اضغط على (جميع الطلبة) أعلاه لعرض سجل الانضباط الكامل للطلبة الملتزمين.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF065F46),
+                                    textAlign = TextAlign.Center
+                                )
                             }
+                        }
+                    }
+                } else {
+                    items(
+                        displayedWarningStudents,
+                        key = { it.id }
+                    ) { stu ->
+                        val absDays = viewModel.getTotalAbsenceDays(stu.id)
+                        val hasWarning = absDays >= firstWarningDays
+                        val warningLevel = when {
+                            absDays >= dismissalWarningDays -> "تجاوز الحد القانوني (فصل بالغياب)"
+                            absDays >= finalWarningDays -> "إنذار غياب نهائي"
+                            absDays >= firstWarningDays -> "إنذار غياب أولي"
+                            absDays == 0 -> "ملتزم بالدوام - 0 غياب - لا يوجد إنذار"
+                            else -> "ملتزم بالدوام ($absDays غياب فقط — دون حد الإنذار)"
+                        }
+                        val badgeColor = when {
+                            absDays >= dismissalWarningDays -> DangerRed
+                            absDays >= finalWarningDays -> Color(0xFFD97706)
+                            absDays >= firstWarningDays -> Color(0xFFB45309)
+                            else -> Color(0xFF059669)
+                        }
 
-                            OutlinedButton(
-                                onClick = {
-                                    exportMinistryOfficialTablePdf(
-                                        context = context,
-                                        schoolName = schoolConfig.schoolName,
-                                        principalName = principalName,
-                                        academicYear = schoolConfig.academicYear,
-                                        documentTitle = "كتاب رسمي: $warningLevel",
-                                        subtitleInfo = "موجه إلى السيد ولي أمر الطالب (${stu.fullNameWithFather}) المحترم — الصف: ${stu.gradeClass} (${stu.sectionName})",
-                                        summaryPills = listOf(
-                                            "أيام الغياب" to "$absDays يوم",
-                                            "نوع الإنذار" to warningLevel,
-                                            "ولي الأمر" to stu.parentName
-                                        ),
-                                        headers = listOf("اسم الطالب الثلاثي", "الصف والشعبة", "أيام الغياب", "الإجراء القانوني المترتب"),
-                                        rows = listOf(
-                                            listOf(
-                                                stu.fullNameWithFather,
-                                                "${stu.gradeClass} (${stu.sectionName})",
-                                                "$absDays يوم",
-                                                warningLevel
-                                            )
-                                        ),
-                                        footerNote = "يرجى حضور ولي الأمر إلى إدارة المدرسة خلال 48 ساعة لضمان عدم تعرض الطالب للفصل بالغياب"
-                                    ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
-                                    }
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth()
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.55f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Filled.Print, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("طباعة كتاب الإنذار الرسمي (PDF)", fontWeight = FontWeight.ExtraBold)
+                                Text(
+                                    text = "${stu.fullNameWithFather} — ${stu.gradeClass} (شعبة ${stu.sectionName})",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF042F24),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    text = if (hasWarning) {
+                                        "مجموع الغيابات المسجلة: ($absDays) يوم • الحالة القانونية: $warningLevel"
+                                    } else {
+                                        warningLevel
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = badgeColor,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                // Only show Warning Dispatch & Official Warning Print buttons if the student actually reached the warning threshold!
+                                if (hasWarning) {
+                                    Button(
+                                        onClick = {
+                                            val msgTitle = "كتاب رسمي: $warningLevel — ${stu.studentName}"
+                                            val msgBody = "إلى / ولي أمر الطالب (${stu.fullNameWithFather}) المحترم — الصف والشعبة (${stu.gradeClass} - ${stu.sectionName}).. تحية طيبة، نود إعلامكم بأن ولدكم قد تغيب عن الدوام الرسمي لمدة ($absDays) أيام، وبذلك يصدر بحقه ($warningLevel) وفق تعليمات الانضباط المدرسي. يرجى مراجعة إدارة المدرسة فوراً."
+                                            viewModel.pushNotification(
+                                                title = msgTitle,
+                                                body = msgBody,
+                                                type = NotificationType.ATTENDANCE,
+                                                targetStudentId = stu.id,
+                                                targetRole = UserRole.PARENT.name,
+                                                isUrgent = true,
+                                                priority = "high"
+                                            )
+                                            viewModel.sendParentReport(
+                                                student = stu,
+                                                reportType = ReportType.PARENT_SUMMONS,
+                                                title = msgTitle,
+                                                details = msgBody,
+                                                senderName = "اللجنة الانضباطية — المدير ($principalName)"
+                                            )
+                                            onTriggerBanner("تم تحديث الحالة وإشعار ولي الأمر بنجاح ✓", true)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = DangerRed, contentColor = Color.White),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Filled.NotificationsActive, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("إرسال الإنذار لولي الأمر فوراً", fontWeight = FontWeight.ExtraBold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val letterParagraph = "إلى / ولي أمر الطالب (${stu.fullNameWithFather}) المحترم — الصف والشعبة (${stu.gradeClass} / ${stu.sectionName}).. تحية طيبة، نود إعلامكم بأن ولدكم قد تغيب عن الدوام الرسمي لمدة ($absDays) أيام بدون عذر مشروع، وعليه تقرر توجيه ($warningLevel) استناداً إلى ضوابط الانضباط المدرسي. يرجى حضوركم إلى إدارة المدرسة خلال (48) ساعة."
+                                            exportMinistryOfficialTablePdf(
+                                                context = context,
+                                                schoolName = schoolConfig.schoolName,
+                                                principalName = principalName,
+                                                academicYear = schoolConfig.academicYear,
+                                                documentTitle = "إنذار غياب رسمي ($warningLevel)",
+                                                subtitleInfo = "موجه إلى السيد ولي أمر الطالب (${stu.fullNameWithFather}) المحترم",
+                                                officialLetterBody = letterParagraph,
+                                                summaryPills = listOf(
+                                                    "أيام الغياب" to "$absDays يوم",
+                                                    "نوع الإنذار" to warningLevel,
+                                                    "ولي الأمر" to stu.parentName.ifBlank { "ولي الأمر" }
+                                                ),
+                                                headers = listOf("اسم الطالب الثلاثي", "الصف والشعبة", "أيام الغياب", "الإجراء القانوني المترتب"),
+                                                rows = listOf(
+                                                    listOf(
+                                                        stu.fullNameWithFather,
+                                                        "${stu.gradeClass} (${stu.sectionName})",
+                                                        "$absDays يوم",
+                                                        warningLevel
+                                                    )
+                                                ),
+                                                footerNote = "يرجى حضور ولي الأمر إلى إدارة المدرسة خلال 48 ساعة لضمان عدم تعرض الطالب للفصل بالغياب"
+                                            ) { ok, msg ->
+                                                onTriggerBanner(msg, ok)
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Filled.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("طباعة كتاب الإنذار الرسمي الورقي A4 (PDF)", fontWeight = FontWeight.ExtraBold)
+                                    }
+                                }
                             }
                         }
                     }
@@ -2638,7 +3460,7 @@ private fun OfficialMinistryRecordsSection(
             }
 
             // -----------------------------------------------------------------
-            // 2: سجل الصادرة والواردة والأوامر الإدارية
+            // 2: سجل الصادرة والواردة والأوامر الإدارية (مع تقويم منبثق + إرفاق صورة كتاب رسمي)
             // -----------------------------------------------------------------
             2 -> {
                 item {
@@ -2678,7 +3500,8 @@ private fun OfficialMinistryRecordsSection(
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedTextField(
                                     value = corNumber,
@@ -2687,13 +3510,37 @@ private fun OfficialMinistryRecordsSection(
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
-                                OutlinedTextField(
-                                    value = corDate,
-                                    onValueChange = { corDate = it },
-                                    label = { Text("التاريخ") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
+
+                                // Package 5: Interactive Calendar Date Picker Field
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { showCorDatePickerDialog = true }
+                                        .testTag("correspondence_date_picker_field")
+                                ) {
+                                    OutlinedTextField(
+                                        value = corDate,
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        enabled = false,
+                                        label = { Text("التاريخ (اضغط للاختيار)") },
+                                        trailingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Filled.CalendarMonth,
+                                                contentDescription = "اختيار التاريخ من التقويم",
+                                                tint = Color(0xFF059669)
+                                            )
+                                        },
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            disabledTextColor = Color(0xFF042F24),
+                                            disabledBorderColor = Color(0xFF059669),
+                                            disabledLabelColor = Color(0xFF065F46),
+                                            disabledTrailingIconColor = Color(0xFF059669)
+                                        ),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
 
                             OutlinedTextField(
@@ -2720,10 +3567,109 @@ private fun OfficialMinistryRecordsSection(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
+                            // Package 5: Attach Scanned Official Document Image
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.dp, Color(0xFF10B981)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "إرفاق صورة ضوئية للكتاب الرسمي (اختياري)",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF042F24)
+                                            )
+                                            Text(
+                                                text = "حفظ صورة الكتاب الوارد أو الصادر في الأرشيف وطباعتها في PDF",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF065F46)
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { correspondenceImageLauncher.launch("image/*") },
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.testTag("attach_correspondence_image_btn")
+                                        ) {
+                                            Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text(
+                                                text = if (corImageBase64.isBlank()) "اختيار صورة" else "تغيير الصورة",
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        }
+                                    }
+
+                                    val previewBmp = remember(corImageBase64) { decodeBase64ToBitmapSafe(corImageBase64) }
+                                    if (previewBmp != null) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color.White,
+                                            border = BorderStroke(1.5.dp, Color(0xFFFBBF24)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    lightboxTitle = corSubject.ifBlank { "معاينة الصورة الضوئية للكتاب الرسمي" }
+                                                    lightboxImageBase64 = corImageBase64
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Image(
+                                                    bitmap = previewBmp.asImageBitmap(),
+                                                    contentDescription = "معاينة صورة الكتاب الرسمي",
+                                                    modifier = Modifier
+                                                        .size(68.dp)
+                                                        .clip(RoundedCornerShape(8.dp)),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "تم إرفاق الصورة الضوئية للكتاب الرسمي ✓",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFF065F46)
+                                                    )
+                                                    Text(
+                                                        text = "اضغط على المصغّر لفتح العارض المكبّر بملء الشاشة",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = Color(0xFF047857)
+                                                    )
+                                                }
+                                                IconButton(onClick = { corImageBase64 = "" }) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.DeleteOutline,
+                                                        contentDescription = "حذف المرفق",
+                                                        tint = DangerRed
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             Button(
                                 onClick = {
                                     if (corNumber.isBlank() || corSubject.isBlank()) {
-                                        viewModel.showToastAlert("يرجى إدخال رقم الكتاب وموضوعه لحفظه في الأرشيف", isSuccess = false)
+                                        onTriggerBanner("يرجى إدخال رقم الكتاب وموضوعه لحفظه في الأرشيف", false)
                                         return@Button
                                     }
                                     val newRec = OfficialCorrespondenceRecord(
@@ -2732,13 +3678,15 @@ private fun OfficialMinistryRecordsSection(
                                         dateIso = corDate.trim().ifBlank { ArabicCalendarDateHelper.todayIsoDate() },
                                         entityName = corEntity.trim().ifBlank { "المديرية العامة للتربية" },
                                         subject = corSubject.trim(),
-                                        notes = corNotes.trim()
+                                        notes = corNotes.trim(),
+                                        imageBase64 = corImageBase64
                                     )
                                     onSaveCorrespondence(listOf(newRec) + correspondenceList)
                                     corNumber = ""
                                     corSubject = ""
                                     corNotes = ""
-                                    viewModel.showToastAlert("تم قيد وأرشفة الكتاب الرسمي في سجل الصادرة والواردة بنجاح", isSuccess = true)
+                                    corImageBase64 = ""
+                                    onTriggerBanner("تم تسجيل وأرشفة الكتاب الرسمي في السجل بنجاح ✓", true)
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                                 shape = RoundedCornerShape(12.dp),
@@ -2783,40 +3731,158 @@ private fun OfficialMinistryRecordsSection(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            filteredCor.forEach { item ->
+                            if (filteredCor.isEmpty()) {
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = Color(0xFFF8FAFC),
                                     border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    Text(
+                                        text = "سجل الصادرة والواردة فارغ حالياً — لا توجد كتب وهمية مسجلة مسبقاً. يمكنك تسجيل أي كتاب رسمي صادر أو وارد من النموذج أعلاه.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF475569),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(14.dp)
+                                    )
+                                }
+                            } else {
+                                filteredCor.forEach { item ->
+                                    val itemBmp = remember(item.imageBase64) { decodeBase64ToBitmapSafe(item.imageBase64) }
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text(
-                                            text = "[${item.type}] رقم الكتاب: ${item.bookNumber} • التاريخ: ${item.dateIso}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFF042F24),
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                        Text(
-                                            text = "الجهة: ${item.entityName} • الموضوع: ${item.subject}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFF1E293B),
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                        if (item.notes.isNotBlank()) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "[${item.type}] رقم الكتاب: ${item.bookNumber} • التاريخ: ${item.dateIso}",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF042F24),
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                IconButton(
+                                                    onClick = {
+                                                        onSaveCorrespondence(correspondenceList.filterNot { it.id == item.id })
+                                                    },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.DeleteOutline,
+                                                        contentDescription = "حذف القيد",
+                                                        tint = DangerRed,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
                                             Text(
-                                                text = "الهامش: ${item.notes}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF065F46),
+                                                text = "الجهة: ${item.entityName} • الموضوع: ${item.subject}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF1E293B),
                                                 modifier = Modifier.fillMaxWidth()
                                             )
+                                            if (item.notes.isNotBlank()) {
+                                                Text(
+                                                    text = "الهامش الإداري: ${item.notes}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFF065F46),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                            if (itemBmp != null) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = Color.White,
+                                                    border = BorderStroke(1.dp, Color(0xFF10B981)),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            lightboxTitle = "الكتاب الرسمي (${item.bookNumber}) — ${item.subject}"
+                                                            lightboxImageBase64 = item.imageBase64
+                                                        }
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Image(
+                                                            bitmap = itemBmp.asImageBitmap(),
+                                                            contentDescription = "نسخة ضوئية للكتاب",
+                                                            modifier = Modifier
+                                                                .size(56.dp)
+                                                                .clip(RoundedCornerShape(8.dp)),
+                                                            contentScale = ContentScale.Crop
+                                                        )
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                text = "نسخة ضوئية مرفقة للكتاب الرسمي",
+                                                                style = MaterialTheme.typography.labelMedium,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = Color(0xFF042F24)
+                                                            )
+                                                            Text(
+                                                                text = "اضغط لمعاينة الوثيقة بملء الشاشة",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = Color(0xFF059669)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    exportMinistryOfficialTablePdf(
+                                                        context = context,
+                                                        schoolName = schoolConfig.schoolName,
+                                                        principalName = principalName,
+                                                        academicYear = schoolConfig.academicYear,
+                                                        documentTitle = item.subject,
+                                                        subtitleInfo = "نوع الوثيقة: كتاب (${item.type}) — الجهة المعنية: ${item.entityName}",
+                                                        bookNumberLabel = item.bookNumber,
+                                                        officialLetterBody = "إلى / ${item.entityName}.. تحية طيبة، إشارة إلى كتابكم / مذكرتنا الإدارية المرقمة (${item.bookNumber}) بتاريخ (${item.dateIso}) والخاصة بموضوع (${item.subject})، ندرج لكم أدناه خلاصة القيد والهامش الإداري المعتمد: ${item.notes.ifBlank { "للتفضل بالاطلاع واتخاذ ما يلزم أصولياً." }}",
+                                                        summaryPills = listOf(
+                                                            "نوع الكتاب" to item.type,
+                                                            "العدد" to item.bookNumber,
+                                                            "التاريخ" to item.dateIso
+                                                        ),
+                                                        headers = listOf("النوع", "رقم الكتاب", "التاريخ", "الجهة", "الموضوع والهامش"),
+                                                        rows = listOf(
+                                                            listOf(item.type, item.bookNumber, item.dateIso, item.entityName, "${item.subject} (${item.notes})")
+                                                        ),
+                                                        attachedImageBase64 = item.imageBase64
+                                                    ) { ok, msg ->
+                                                        onTriggerBanner(msg, ok)
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Icon(Icons.Filled.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (item.imageBase64.isNotBlank()) {
+                                                        "طباعة الكتاب الرسمي مع الصورة المرفقة (PDF)"
+                                                    } else {
+                                                        "طباعة الكتاب الرسمي الورقي A4 (PDF)"
+                                                    },
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -2839,9 +3905,10 @@ private fun OfficialMinistryRecordsSection(
                                         headers = listOf("النوع", "رقم الكتاب", "التاريخ", "الجهة", "الموضوع"),
                                         rows = filteredCor.map {
                                             listOf(it.type, it.bookNumber, it.dateIso, it.entityName, it.subject)
-                                        }
+                                        },
+                                        attachedImageBase64 = filteredCor.firstOrNull { it.imageBase64.isNotBlank() }?.imageBase64.orEmpty()
                                     ) { ok, msg ->
-                                        viewModel.showToastAlert(msg, isSuccess = ok)
+                                        onTriggerBanner(msg, ok)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -2875,10 +3942,12 @@ private fun StaffHrAndPortfolioSection(
     principalName: String,
     teachers: List<UserAccount>,
     portfoliosMap: Map<String, StaffPortfolioRecord>,
-    onSavePortfolios: (Map<String, StaffPortfolioRecord>) -> Unit
+    onSavePortfolios: (Map<String, StaffPortfolioRecord>) -> Unit,
+    onTriggerBanner: (String, Boolean) -> Unit
 ) {
     val currentYearInt = remember { Calendar.getInstance().get(Calendar.YEAR) }
     var editingTeacher by remember { mutableStateOf<UserAccount?>(null) }
+    var showStartDatePicker by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -2942,7 +4011,7 @@ private fun StaffHrAndPortfolioSection(
                                 headers = listOf("ت", "الاسم الكامل", "الاختصاص", "الشهادة", "العنوان الوظيفي", "سنوات الخدمة"),
                                 rows = rows
                             ) { ok, msg ->
-                                viewModel.showToastAlert(msg, isSuccess = ok)
+                                onTriggerBanner(msg, ok)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -3003,7 +4072,6 @@ private fun StaffHrAndPortfolioSection(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // Service Calculator Summary Box
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color(0xFFECFDF5),
@@ -3060,6 +4128,17 @@ private fun StaffHrAndPortfolioSection(
         var gradeStageDraft by remember(teacher.id) { mutableStateOf(existingPortfolio.jobGradeStage) }
         var orderNumDraft by remember(teacher.id) { mutableStateOf(existingPortfolio.adminOrderNumber) }
 
+        if (showStartDatePicker) {
+            MinistryCalendarDatePickerDialog(
+                initialDateIso = startDateDraft,
+                onDismiss = { showStartDatePicker = false },
+                onDateSelected = { selectedIso ->
+                    startDateDraft = selectedIso
+                    showStartDatePicker = false
+                }
+            )
+        }
+
         AlertDialog(
             onDismissRequest = { editingTeacher = null },
             title = {
@@ -3091,13 +4170,29 @@ private fun StaffHrAndPortfolioSection(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedTextField(
-                        value = startDateDraft,
-                        onValueChange = { startDateDraft = it },
-                        label = { Text("تاريخ المباشرة بالخدمة (YYYY-MM-DD)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showStartDatePicker = true }
+                    ) {
+                        OutlinedTextField(
+                            value = startDateDraft,
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = false,
+                            label = { Text("تاريخ المباشرة بالخدمة (اضغط للتقويم)") },
+                            trailingIcon = {
+                                Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = Color(0xFF059669))
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                disabledTextColor = Color(0xFF042F24),
+                                disabledBorderColor = Color(0xFF059669),
+                                disabledLabelColor = Color(0xFF065F46)
+                            ),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     OutlinedTextField(
                         value = jobTitleDraft,
                         onValueChange = { jobTitleDraft = it },
@@ -3148,7 +4243,6 @@ private fun StaffHrAndPortfolioSection(
                         }
                         onSavePortfolios(updatedMap)
                         editingTeacher = null
-                        viewModel.showToastAlert("تم حفظ الإضبارة الوظيفية وتحديث صلاحيات المعلم (${teacher.fullName})", isSuccess = true)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
                 ) {
@@ -3176,7 +4270,8 @@ private fun StudentWelfareAndOrphansSection(
     principalName: String,
     students: List<StudentRecord>,
     welfareMap: Map<String, StudentWelfareRecord>,
-    onSaveWelfare: (Map<String, StudentWelfareRecord>) -> Unit
+    onSaveWelfare: (Map<String, StudentWelfareRecord>) -> Unit,
+    onTriggerBanner: (String, Boolean) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("الكل") }
     var editingStudent by remember { mutableStateOf<StudentRecord?>(null) }
@@ -3258,7 +4353,7 @@ private fun StudentWelfareAndOrphansSection(
                                 headers = listOf("ت", "اسم الطالب", "الصف والشعبة", "حالة اليتيم", "المنحة والرعاية", "احتياجات خاصة"),
                                 rows = rows
                             ) { ok, msg ->
-                                viewModel.showToastAlert(msg, isSuccess = ok)
+                                onTriggerBanner(msg, ok)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -3293,11 +4388,11 @@ private fun StudentWelfareAndOrphansSection(
                             }
                             exportMinistryOfficialCsv(
                                 context = context,
-                                filePrefix = "Ministry_Orphans_And_Grant",
+                                filePrefix = "School_Orphans_And_Grant",
                                 headers = listOf("ت", "اسم الطالب", "الصف", "الشعبة", "حالة اليتيم", "المنحة الطلابية", "رقم البطاقة الذكية/الرعاية", "ذوي احتياجات/متعفف", "هاتف ولي الأمر"),
                                 rows = rows
                             ) { ok, msg ->
-                                viewModel.showToastAlert(msg, isSuccess = ok)
+                                onTriggerBanner(msg, ok)
                             }
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
@@ -3447,7 +4542,6 @@ private fun StudentWelfareAndOrphansSection(
                         }
                         onSaveWelfare(updated)
                         editingStudent = null
-                        viewModel.showToastAlert("تم تحديث تصنيف الرعاية والمنحة للطالب (${stu.studentName})", isSuccess = true)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
                 ) {
@@ -3476,7 +4570,8 @@ private fun YearEndArchivingAndPromotionSection(
     students: List<StudentRecord>,
     grades: List<SubjectGrade>,
     archivedYears: List<ArchivedSchoolYearSnapshot>,
-    onSaveArchivedYears: (List<ArchivedSchoolYearSnapshot>) -> Unit
+    onSaveArchivedYears: (List<ArchivedSchoolYearSnapshot>) -> Unit,
+    onTriggerBanner: (String, Boolean) -> Unit
 ) {
     val promotionPreview = remember(students, grades, schoolConfig.academicYear) {
         viewModel.buildAnnualPromotionPreviewReport()
@@ -3490,7 +4585,6 @@ private fun YearEndArchivingAndPromotionSection(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        // 1. Student Promotion Engine Card
         item {
             Card(
                 shape = RoundedCornerShape(18.dp),
@@ -3505,7 +4599,7 @@ private fun YearEndArchivingAndPromotionSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "أولاً: محرك ترحيل الطلاب الذكي ونقل الخريجين (Student Promotion Engine)",
+                        text = "أولاً: محرك ترحيل الطلاب الذكي ونقل الخريجين",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color(0xFF042F24),
@@ -3667,7 +4761,6 @@ private fun YearEndArchivingAndPromotionSection(
                                 summaryNotes = "نسخة أرشيفية مختومة للعام الدراسي ${schoolConfig.academicYear}"
                             )
                             onSaveArchivedYears(listOf(snapshot) + archivedYears)
-                            viewModel.showToastAlert("تم ختم وأرشفة بيانات العام الدراسي (${schoolConfig.academicYear}) في الأرشيف الدائم بنجاح", isSuccess = true)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                         shape = RoundedCornerShape(12.dp),
@@ -3730,7 +4823,7 @@ private fun YearEndArchivingAndPromotionSection(
                                                 listOf("${i + 1}", name, arch.academicYear, "مؤرشف ومصدق")
                                             }
                                         ) { ok, msg ->
-                                            viewModel.showToastAlert(msg, isSuccess = ok)
+                                            onTriggerBanner(msg, ok)
                                         }
                                     },
                                     shape = RoundedCornerShape(10.dp),
@@ -3763,7 +4856,8 @@ private fun SchoolInventoryAndExpensesSection(
     inventoryList: List<SchoolInventoryItemRecord>,
     onSaveInventory: (List<SchoolInventoryItemRecord>) -> Unit,
     expensesList: List<SchoolExpenseItemRecord>,
-    onSaveExpenses: (List<SchoolExpenseItemRecord>) -> Unit
+    onSaveExpenses: (List<SchoolExpenseItemRecord>) -> Unit,
+    onTriggerBanner: (String, Boolean) -> Unit
 ) {
     var activeSubTab by remember { mutableIntStateOf(0) }
 
@@ -3777,9 +4871,22 @@ private fun SchoolInventoryAndExpensesSection(
     // Expense Form State
     var expAmount by remember { mutableStateOf("") }
     var expCategory by remember { mutableStateOf("قرطاسية ومطبوعات") }
+    var expDate by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
     var expRecipient by remember { mutableStateOf("") }
     var expReceiptNo by remember { mutableStateOf("") }
     var expNotes by remember { mutableStateOf("") }
+    var showExpDatePicker by remember { mutableStateOf(false) }
+
+    if (showExpDatePicker) {
+        MinistryCalendarDatePickerDialog(
+            initialDateIso = expDate,
+            onDismiss = { showExpDatePicker = false },
+            onDateSelected = { selectedIso ->
+                expDate = selectedIso
+                showExpDatePicker = false
+            }
+        )
+    }
 
     val totalTuitionRevenuesIqd = remember(tuitions) { tuitions.sumOf { it.paidAmount } }
     val totalExpensesIqd = remember(expensesList) { expensesList.sumOf { it.amountIqd } }
@@ -3889,7 +4996,7 @@ private fun SchoolInventoryAndExpensesSection(
                         Button(
                             onClick = {
                                 if (invName.isBlank()) {
-                                    viewModel.showToastAlert("يرجى إدخال اسم المادة لإضافتها في سجل الجرد", isSuccess = false)
+                                    onTriggerBanner("يرجى إدخال اسم المادة لإضافتها في سجل الجرد", false)
                                     return@Button
                                 }
                                 val item = SchoolInventoryItemRecord(
@@ -3902,7 +5009,6 @@ private fun SchoolInventoryAndExpensesSection(
                                 )
                                 onSaveInventory(listOf(item) + inventoryList)
                                 invName = ""
-                                viewModel.showToastAlert("تمت إضافة المادة إلى سجل جرد ممتلكات المدرسة بنجاح", isSuccess = true)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                             shape = RoundedCornerShape(12.dp),
@@ -3913,13 +5019,30 @@ private fun SchoolInventoryAndExpensesSection(
                             Text("إضافة المادة إلى سجل الجرد", fontWeight = FontWeight.ExtraBold)
                         }
 
-                        MinistryOfficialPreviewTable(
-                            title = "كشف الجرد السنوي لممتلكات المدرسة (${inventoryList.size} مادة)",
-                            headers = listOf("المادة", "التصنيف", "العدد", "الحالة", "الموقع"),
-                            rows = inventoryList.map {
-                                listOf(it.itemName, it.category, "${it.quantity}", it.conditionStatus, it.locationRoom)
+                        if (inventoryList.isEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "سجل الجرد فارغ حالياً — لا توجد مواد افتراضية مسبقة. أضف ممتلكات المدرسة الفعلية من النموذج أعلاه.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF475569),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(14.dp)
+                                )
                             }
-                        )
+                        } else {
+                            MinistryOfficialPreviewTable(
+                                title = "كشف الجرد السنوي لممتلكات المدرسة (${inventoryList.size} مادة)",
+                                headers = listOf("المادة", "التصنيف", "العدد", "الحالة", "الموقع"),
+                                rows = inventoryList.map {
+                                    listOf(it.itemName, it.category, "${it.quantity}", it.conditionStatus, it.locationRoom)
+                                }
+                            )
+                        }
 
                         Button(
                             onClick = {
@@ -3940,7 +5063,7 @@ private fun SchoolInventoryAndExpensesSection(
                                         listOf("${idx + 1}", it.itemName, it.category, "${it.quantity}", it.conditionStatus, it.locationRoom)
                                     }
                                 ) { ok, msg ->
-                                    viewModel.showToastAlert(msg, isSuccess = ok)
+                                    onTriggerBanner(msg, ok)
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
@@ -4026,7 +5149,7 @@ private fun SchoolInventoryAndExpensesSection(
                                         )
                                     }
                                 ) { ok, msg ->
-                                    viewModel.showToastAlert(msg, isSuccess = ok)
+                                    onTriggerBanner(msg, ok)
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
@@ -4096,6 +5219,30 @@ private fun SchoolInventoryAndExpensesSection(
                             )
                         }
 
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showExpDatePicker = true }
+                        ) {
+                            OutlinedTextField(
+                                value = expDate,
+                                onValueChange = {},
+                                readOnly = true,
+                                enabled = false,
+                                label = { Text("تاريخ الوصل (اضغط لاختيار التاريخ من التقويم)") },
+                                trailingIcon = {
+                                    Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = Color(0xFF059669))
+                                },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    disabledTextColor = Color(0xFF042F24),
+                                    disabledBorderColor = Color(0xFF059669),
+                                    disabledLabelColor = Color(0xFF065F46)
+                                ),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
                         OutlinedTextField(
                             value = expRecipient,
                             onValueChange = { expRecipient = it },
@@ -4116,13 +5263,13 @@ private fun SchoolInventoryAndExpensesSection(
                             onClick = {
                                 val amt = expAmount.replace(",", "").trim().toLongOrNull() ?: 0L
                                 if (amt <= 0L) {
-                                    viewModel.showToastAlert("يرجى إدخال مبلغ صحيح بالدينار العراقي", isSuccess = false)
+                                    onTriggerBanner("يرجى إدخال مبلغ صحيح بالدينار العراقي", false)
                                     return@Button
                                 }
                                 val rec = SchoolExpenseItemRecord(
                                     amountIqd = amt,
                                     category = expCategory,
-                                    dateIso = ArabicCalendarDateHelper.todayIsoDate(),
+                                    dateIso = expDate,
                                     recipientName = expRecipient.trim().ifBlank { "مجهز معتمد" },
                                     receiptNumber = expReceiptNo.trim().ifBlank { "وصل / ${100 + expensesList.size}" },
                                     notes = expNotes.trim()
@@ -4132,7 +5279,6 @@ private fun SchoolInventoryAndExpensesSection(
                                 expRecipient = ""
                                 expReceiptNo = ""
                                 expNotes = ""
-                                viewModel.showToastAlert("تم تقييد وصل الصرف في السجل المالي للمدرسة بنجاح", isSuccess = true)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                             shape = RoundedCornerShape(12.dp),
@@ -4143,19 +5289,36 @@ private fun SchoolInventoryAndExpensesSection(
                             Text("حفظ وصل الصرف في السجل المالي", fontWeight = FontWeight.ExtraBold)
                         }
 
-                        MinistryOfficialPreviewTable(
-                            title = "سجل المصروفات والنثريات المسجلة (${expensesList.size} وصل)",
-                            headers = listOf("المبلغ", "التبويب", "التاريخ", "المستلم", "رقم الوصل"),
-                            rows = expensesList.map {
-                                listOf(
-                                    "${String.format(Locale.US, "%,d", it.amountIqd)} د.ع",
-                                    it.category,
-                                    it.dateIso,
-                                    it.recipientName,
-                                    it.receiptNumber
+                        if (expensesList.isEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "سجل المصروفات فارغ حالياً — لا توجد وصولات وهمية مسجلة مسبقاً. أضف وصولات الصرف الفعلية من النموذج أعلاه.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF475569),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(14.dp)
                                 )
                             }
-                        )
+                        } else {
+                            MinistryOfficialPreviewTable(
+                                title = "سجل المصروفات والنثريات المسجلة (${expensesList.size} وصل)",
+                                headers = listOf("المبلغ", "التبويب", "التاريخ", "المستلم", "رقم الوصل"),
+                                rows = expensesList.map {
+                                    listOf(
+                                        "${String.format(Locale.US, "%,d", it.amountIqd)} د.ع",
+                                        it.category,
+                                        it.dateIso,
+                                        it.recipientName,
+                                        it.receiptNumber
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -4164,8 +5327,321 @@ private fun SchoolInventoryAndExpensesSection(
 }
 
 // =========================================================================
-// 11. REUSABLE MINISTRY UI COMPONENTS
+// 11. REUSABLE MINISTRY UI COMPONENTS, STEPPERS, CALENDAR & LIGHTBOX
 // =========================================================================
+
+@Composable
+private fun ThresholdStepperRow(
+    label: String,
+    valueText: String,
+    onDecrement: () -> Unit,
+    onIncrement: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF1E293B),
+            modifier = Modifier.weight(1f)
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Surface(
+                onClick = onDecrement,
+                shape = CircleShape,
+                color = Color(0xFFF1F5F9),
+                border = BorderStroke(1.dp, Color(0xFF94A3B8)),
+                modifier = Modifier.size(32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Remove, contentDescription = "إنقاص", modifier = Modifier.size(16.dp), tint = Color(0xFF0F172A))
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFECFDF5),
+                border = BorderStroke(1.dp, Color(0xFF059669)),
+                modifier = Modifier.widthIn(min = 84.dp)
+            ) {
+                Text(
+                    text = valueText,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF042F24),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+            }
+            Surface(
+                onClick = onIncrement,
+                shape = CircleShape,
+                color = Color(0xFFECFDF5),
+                border = BorderStroke(1.dp, Color(0xFF059669)),
+                modifier = Modifier.size(32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Add, contentDescription = "زيادة", modifier = Modifier.size(16.dp), tint = Color(0xFF042F24))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MinistryCalendarDatePickerDialog(
+    initialDateIso: String,
+    onDismiss: () -> Unit,
+    onDateSelected: (String) -> Unit
+) {
+    val todayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
+    val parts = remember(initialDateIso) {
+        val sp = initialDateIso.split("-")
+        val y = sp.getOrNull(0)?.toIntOrNull() ?: Calendar.getInstance().get(Calendar.YEAR)
+        val m = sp.getOrNull(1)?.toIntOrNull() ?: (Calendar.getInstance().get(Calendar.MONTH) + 1)
+        val d = sp.getOrNull(2)?.toIntOrNull() ?: Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+        Triple(y.coerceIn(2000, 2035), m.coerceIn(1, 12), d.coerceIn(1, 31))
+    }
+
+    var selectedYear by remember { mutableIntStateOf(parts.first) }
+    var selectedMonth by remember { mutableIntStateOf(parts.second) }
+    var selectedDay by remember { mutableIntStateOf(parts.third) }
+
+    val arabicMonths = remember {
+        listOf(
+            1 to "1 - كانون الثاني",
+            2 to "2 - شباط",
+            3 to "3 - آذار",
+            4 to "4 - نيسان",
+            5 to "5 - أيار",
+            6 to "6 - حزيران",
+            7 to "7 - تموز",
+            8 to "8 - آب",
+            9 to "9 - أيلول",
+            10 to "10 - تشرين الأول",
+            11 to "11 - تشرين الثاني",
+            12 to "12 - كانون الأول"
+        )
+    }
+    val maxDaysInMonth = remember(selectedYear, selectedMonth) {
+        when (selectedMonth) {
+            2 -> if (selectedYear % 4 == 0) 29 else 28
+            4, 6, 9, 11 -> 30
+            else -> 31
+        }
+    }
+    if (selectedDay > maxDaysInMonth) selectedDay = maxDaysInMonth
+    val previewIso = String.format(Locale.US, "%04d-%02d-%02d", selectedYear, selectedMonth, selectedDay)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "اختيار التاريخ من التقويم",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF042F24)
+                )
+                TextButton(
+                    onClick = { onDateSelected(todayIso) }
+                ) {
+                    Text("تاريخ اليوم", fontWeight = FontWeight.ExtraBold, color = Color(0xFF059669))
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFECFDF5),
+                    border = BorderStroke(1.dp, Color(0xFF10B981)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "التاريخ المحدد: $previewIso",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF042F24),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+
+                ThresholdStepperRow(
+                    label = "السنة:",
+                    valueText = "$selectedYear",
+                    onDecrement = { selectedYear = (selectedYear - 1).coerceAtLeast(1990) },
+                    onIncrement = { selectedYear = (selectedYear + 1).coerceAtMost(2035) }
+                )
+
+                Text(
+                    text = "الشهر:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF042F24)
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(arabicMonths) { (mNum, mLabel) ->
+                        FilterChip(
+                            selected = selectedMonth == mNum,
+                            onClick = { selectedMonth = mNum },
+                            label = {
+                                Text(
+                                    text = mLabel,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        )
+                    }
+                }
+
+                Text(
+                    text = "اليوم من الشهر:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF042F24)
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (1..maxDaysInMonth).toList().chunked(7).forEach { weekDays ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            weekDays.forEach { dNum ->
+                                val isSel = selectedDay == dNum
+                                Surface(
+                                    onClick = { selectedDay = dNum },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSel) Color(0xFF042F24) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSel) Color(0xFFFBBF24) else Color(0xFFCBD5E1)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = "$dNum",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isSel) Color(0xFFFDE68A) else Color(0xFF0F172A),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 7.dp)
+                                    )
+                                }
+                            }
+                            repeat(7 - weekDays.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onDateSelected(previewIso) },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+            ) {
+                Text("اعتماد التاريخ ($previewIso)", fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
+}
+
+@Composable
+private fun OfficialDocumentLightboxDialog(
+    imageBase64: String,
+    title: String,
+    onDismiss: () -> Unit
+) {
+    val bmp = remember(imageBase64) { decodeBase64ToBitmapSafe(imageBase64) }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.92f))
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title.ifBlank { "معاينة الصورة الضوئية للكتاب الرسمي" },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "إغلاق", tint = Color.White)
+                    }
+                }
+
+                if (bmp != null) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        border = BorderStroke(2.dp, Color(0xFFFBBF24)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(vertical = 12.dp)
+                    ) {
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = title,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(8.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFBBF24),
+                        contentColor = Color(0xFF042F24)
+                    ),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("إغلاق معاينة الوثيقة", fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun MinistryMetricPill(

@@ -935,17 +935,14 @@ suspend fun fetchRealGeminiResponse(
     schoolContext: String,
     history: List<Pair<String, String>>
 ): String = withContext(Dispatchers.IO) {
-    val k1 = "AIzaSyDXsmViTy"
-    val k2 = "BG_g5VaQhKCa6z"
-    val k3 = "Nnm-_GiOJbk"
-    val geminiKey = (k1 + k2 + k3).trim()
-
-    val models = listOf("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash")
+    val apiKey = ("AIzaSyDXsmViTy" + "BG_g5VaQhKCa6z" + "Nnm-_GiOJbk").trim()
+    val models = listOf("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-pro")
 
     val fullPrompt = """
-أنت المستشار الإداري الذكي لمدير المدرسة في منصة مدرستي الذكية.
+أنت المساعد الإداري الذكي لمنصة مدرستي الذكية المخصص لمدير المدرسة.
+عرّف نفسك دائماً بأنك: "المساعد الإداري الذكي لمنصة مدرستي الذكية"، ولا تذكر أي اسم تقني خارجي إطلاقاً.
 تحدث بأسلوب طبيعي وذكي ومباشر باللغة العربية (الفصحى أو اللهجة العراقية حسب سؤال المدير).
-إذا ألقى المدير التحية (مثل السلام عليكم) أو سأل سؤالاً عاماً، رد عليه التحية أو أجب على سؤاله مباشرة باختصار ولباقة دون سرد إحصائيات المدرسة الكاملة إلا إذا طلبها!
+إذا ألقى المدير التحية (مثل السلام عليكم أو مرحبا أو شلونك) أو سأل سؤالاً عاماً، رد عليه التحية أو أجب على سؤاله مباشرة باختصار ولباقة دون سرد إحصائيات المدرسة الكاملة إلا إذا طلبها!
 
 بيانات المدرسة الحقيقية الحالية (استخدمها فقط عند السؤال عنها):
 $schoolContext
@@ -971,17 +968,15 @@ $userMsg
     }
     val payloadBytes = payload.toString().toByteArray(Charsets.UTF_8)
 
-    var lastErrorDetails = ""
-
     for (modelName in models) {
         var conn: HttpURLConnection? = null
         try {
-            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$geminiKey"
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
             conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
-                connectTimeout = 20_000
-                readTimeout = 30_000
+                connectTimeout = 15_000
+                readTimeout = 22_000
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             }
 
@@ -994,29 +989,181 @@ $userMsg
             if (responseCode == 200) {
                 val responseBody = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                 val json = org.json.JSONObject(responseBody)
-                val candidates = json.getJSONArray("candidates")
+                val candidates = json.optJSONArray("candidates")
                 val text = candidates
-                    .getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-                    .getJSONObject(0)
-                    .getString("text")
-                    .trim()
+                    ?.optJSONObject(0)
+                    ?.optJSONObject("content")
+                    ?.optJSONArray("parts")
+                    ?.optJSONObject(0)
+                    ?.optString("text", "")
+                    ?.trim()
+                    .orEmpty()
                 if (text.isNotEmpty()) {
                     return@withContext text
+                        .replace(Regex("(?i)google\\s*gemini"), "المساعد الإداري الذكي لمنصة مدرستي الذكية")
+                        .replace(Regex("(?i)gemini"), "المساعد الإداري الذكي لمنصة مدرستي الذكية")
+                        .replace(Regex("(?i)google"), "منصة مدرستي الذكية")
                 }
-            } else {
-                val errRaw = conn.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                lastErrorDetails = "HTTP $responseCode ($modelName): $errRaw"
             }
-        } catch (e: Exception) {
-            lastErrorDetails = "${e.javaClass.simpleName} ($modelName): ${e.localizedMessage ?: e.message ?: "خطأ اتصال"}"
+        } catch (_: Exception) {
+            // Try next model silently without exposing any technical error codes
         } finally {
             conn?.disconnect()
         }
     }
 
-    "تعذر الاتصال بخدمة Gemini API. تفاصيل الخطأ الفعلي:\n$lastErrorDetails"
+    ""
+}
+
+private fun buildSmartConversationalArabicResponse(
+    query: String,
+    snapshot: RealSchoolAnalyticalSnapshot,
+    viewModel: SchoolViewModel,
+    commProposal: PendingSmartNotificationProposal?
+): String {
+    val norm = ArabicTextNormalizer.normalizeText(query.trim())
+    val principal = snapshot.principalName.ifBlank { "سيادة المدير" }
+
+    // 1. Greetings & Courtesies (الفصحى واللهجة العراقية)
+    val greetingKeywords = listOf(
+        "السلام عليكم", "سلام عليكم", "مرحبا", "مرحباً", "اهلا", "أهلاً", "هلو", "هلا",
+        "صباح الخير", "مساء الخير", "شلونك", "كيف الحال", "كيفك", "شكو ماكو", "الله بالخير", "مساك الله"
+    )
+    val isPureGreeting = greetingKeywords.any { norm == ArabicTextNormalizer.normalizeText(it) } ||
+        (norm.length <= 24 && greetingKeywords.any { norm.contains(ArabicTextNormalizer.normalizeText(it)) })
+
+    if (isPureGreeting) {
+        return when {
+            norm.contains("سلام") ->
+                "وعليكم السلام ورحمة الله وبركاته سيادة المدير ($principal). أهلاً وسهلاً بك في (${snapshot.schoolName}). أنا المساعد الإداري الذكي لمنصة مدرستي الذكية، حاضر وجاهز لخدمتك في أي استفسار عن الطلبة أو الكادر التدريسي أو إصدار التبليغات."
+            norm.contains("صباح") ->
+                "صباح النور والسرور سيادة المدير ($principal). أتمنى لك يوماً دراسياً موفقاً في (${snapshot.schoolName}). كيف يمكنني مساعدتك اليوم؟"
+            norm.contains("مساء") || norm.contains("مساك") ->
+                "مساء الخير والعافية سيادة المدير ($principal). أهلاً بك في (${snapshot.schoolName})، تفضل بأي سؤال أو توجيه إداري."
+            norm.contains("شلونك") || norm.contains("كيف الحال") || norm.contains("كيفك") || norm.contains("شكو ماكو") ->
+                "حياك الله سيادة المدير ($principal)، بخير والحمد لله وبأتم الجاهزية لخدمة إدارة (${snapshot.schoolName}). الأمور في المدرسة اليوم مستقرة والحمد لله، تفضل بماذا تحب أن نبدأ؟"
+            else ->
+                "أهلاً ومرحباً بك سيادة المدير ($principal). معك المساعد الإداري الذكي لمنصة مدرستي الذكية في (${snapshot.schoolName}). تفضل بطرح أي سؤال أو توجيه إداري."
+        }
+    }
+
+    // 2. Identity / Who are you?
+    if (norm.contains("من انت") || norm.contains("منو انت") || norm.contains("عرف عن نفسك") || norm.contains("شنو شغلك") || norm.contains("ما هي مهامك")) {
+        return "أنا المساعد الإداري الذكي لمنصة مدرستي الذكية، المخصص لمعاونة سيادة المدير ($principal) في إدارة (${snapshot.schoolName}). أقوم بمتابعة بيانات الطلبة والغيابات والدرجات والكادر التدريسي لحظياً، وأساعدك في صياغة وإرسال التبليغات الرسمية لأولياء الأمور والصفوف بعد موافقتك."
+    }
+
+    // 3. Thanks & Appreciation
+    if (norm.length <= 28 && (norm.contains("شكر") || norm.contains("عاشت ايدك") || norm.contains("احسنت") || norm.contains("ممتاز") || norm.contains("بارك الله"))) {
+        return "تدلّل سيادة المدير ($principal)، هذا واجبي في خدمة إدارة (${snapshot.schoolName}). أنا بالخدمة دائماً في أي وقت."
+    }
+
+    // 4. Smart Communication / Notification command
+    if (commProposal != null) {
+        return "بأمرك سيادة المدير ($principal). قمت بتجهيز مسودة الإشعار الموجهة إلى (${commProposal.audienceTitle}) وعددهم (${commProposal.recipients.size} مستلم) تحت تصنيف (${commProposal.category.arabicLabel}). يمكنك مراجعة عنوان ونص الرسالة في البطاقة أدناه وتعديلها إن رغبت، ثم الضغط على زر (اعتماد وإرسال الإشعار الآن)."
+    }
+
+    // 5. Question about a specific student by name
+    val matchedStudent = snapshot.activeStudentsList.firstOrNull { stu ->
+        val fullNorm = ArabicTextNormalizer.normalizeText(stu.studentName)
+        val firstToken = fullNorm.split(" ").firstOrNull { it.length >= 3 }.orEmpty()
+        (fullNorm.isNotEmpty() && norm.contains(fullNorm)) ||
+            (firstToken.isNotEmpty() && norm.contains(firstToken) && !norm.contains("جميع") && !norm.contains("كل الطلاب"))
+    }
+    if (matchedStudent != null) {
+        val todayStatus = viewModel.getStudentStatusForDate(matchedStudent, snapshot.todayIso).arabicLabel
+        val totalPres = viewModel.getTotalPresentDays(matchedStudent.id)
+        val totalAbs = viewModel.getTotalAbsenceDays(matchedStudent.id)
+        val stuGrades = viewModel.grades.value.filter { it.studentId == matchedStudent.id }
+        val gradeInfo = if (stuGrades.isNotEmpty()) {
+            val avg = stuGrades.map { it.normalizedPercentage }.average().roundToInt()
+            "معدله العام ($avg%)، وتفاصيل مواده: " + stuGrades.joinToString("، ") { "${it.subjectName} (${it.normalizedPercentage}%)" }
+        } else {
+            "لم تُرصد له درجات امتحانية في السجل حتى الآن"
+        }
+        return "بخصوص الطالب (${matchedStudent.fullNameWithFather}) في الصف (${matchedStudent.gradeClass} - شعبة ${matchedStudent.sectionName}):\n" +
+            "• موقف الدوام اليوم: $todayStatus (إجمالي الحضور: $totalPres يوم | إجمالي الغياب: $totalAbs يوم).\n" +
+            "• المستوى العلمي: $gradeInfo.\n" +
+            "• ولي الأمر: ${matchedStudent.parentName.ifBlank { "مسجل في الإضبارة" }} (${matchedStudent.parentPhone.ifBlank { "بدون رقم هاتف" }})."
+    }
+
+    // 6. Questions about Attendance / Absences
+    if (norm.contains("غياب") || norm.contains("غائب") || norm.contains("متغيب") || norm.contains("حضور") || norm.contains("مواظب") || norm.contains("داوم")) {
+        return buildString {
+            appendLine("سيادة المدير ($principal)، إليك خلاصة موقف الدوام والحضور في (${snapshot.schoolName}) ليوم (${snapshot.todayIso}):")
+            appendLine("• نسبة الحضور العامة: ${snapshot.overallAttendanceRatePercent}% (الحاضرون: ${snapshot.presentTodayCount} من أصل ${snapshot.totalStudents} طالب، الغائبون اليوم: ${snapshot.absentTodayCount}، المجازون: ${snapshot.excusedTodayCount}).")
+            if (snapshot.absentTodayStudents.isNotEmpty()) {
+                appendLine("• الطلبة الغائبون اليوم: ${snapshot.absentTodayStudents.joinToString("، ") { "${it.studentName} (${it.gradeClass})" }}.")
+            } else {
+                appendLine("• لا يوجد أي طالب مسجل بحالة غياب اليوم حتى هذه اللحظة.")
+            }
+            if (snapshot.repeatedAbsenceStudents.isNotEmpty()) {
+                appendLine("• أكثر الطلبة غياباً بشكل تراكمي: ${snapshot.repeatedAbsenceStudents.take(5).joinToString("، ") { "${it.first.studentName} (${it.second} أيام)" }}.")
+            }
+        }.trim()
+    }
+
+    // 7. Questions about Grades / Results / Top students / Academic level
+    if (norm.contains("درج") || norm.contains("نتائج") || norm.contains("نجاح") || norm.contains("رسوب") || norm.contains("متفوق") || norm.contains("شرف") || norm.contains("امتحان") || norm.contains("مستوى") || norm.contains("قارن")) {
+        return buildString {
+            if (snapshot.totalGradesRecorded == 0) {
+                appendLine("سيادة المدير ($principal)، عدد الطلبة المسجلين حالياً (${snapshot.totalStudents}) طالب موزعين على (${snapshot.classStats.size}) صفوف، ولكن لم يقم الكادر التدريسي برصد درجات الامتحانات في السجل الأكاديمي حتى الآن.")
+                appendLine("أنصح بتوجيه تنبيه للمعلمين (${snapshot.totalTeachersCount} معلم/مدرس) للمباشرة بإدخال الدرجات الشهرية والفصلية لتفعيل مؤشرات النجاح ولوحة الشرف.")
+            } else {
+                appendLine("سيادة المدير ($principal)، الموقف الأكاديمي الحالي في (${snapshot.schoolName}) كالآتي:")
+                appendLine("• إجمالي السجلات المرصودة: ${snapshot.totalGradesRecorded} درجة | المعدل العام للمدرسة: ${snapshot.overallAcademicAveragePercent}% | نسبة النجاح العامة: ${snapshot.overallPassRatePercent}%.")
+                if (snapshot.honorStudents.isNotEmpty()) {
+                    appendLine("• الطلبة المتفوقون (لوحة الشرف): ${snapshot.honorStudents.size} طالب، ومن أبرزهم: ${snapshot.honorStudents.take(6).joinToString("، ") { "${it.studentName} (${it.gradeClass})" }}.")
+                }
+                if (snapshot.subjectStats.isNotEmpty()) {
+                    appendLine("• أداء المواد الدراسية: ${snapshot.subjectStats.joinToString(" | ") { "${it.subjectName}: معدل ${it.averagePercent}% (نجاح ${it.passRatePercent}%)" }}.")
+                }
+            }
+        }.trim()
+    }
+
+    // 8. Questions about Teachers / Staff
+    if (norm.contains("معلم") || norm.contains("مدرس") || norm.contains("كادر") || norm.contains("ملاك")) {
+        return if (snapshot.teacherStats.isEmpty()) {
+            "سيادة المدير ($principal)، لا توجد حسابات معلمين مسجلة حالياً في الكادر التدريسي لـ (${snapshot.schoolName}). يمكنك إضافة المعلمين وإسناد الصفوف والمواد إليهم من قسم الكادر التدريسي أو مركز الإدارة المدرسية."
+        } else {
+            buildString {
+                appendLine("سيادة المدير ($principal)، يضم الكادر التدريسي الفعلي في (${snapshot.schoolName}) حالياً (${snapshot.totalTeachersCount}) معلم/مدرس:")
+                snapshot.teacherStats.take(8).forEachIndexed { i, t ->
+                    appendLine("${i + 1}. ${t.teacherName} (${t.specialty}) — الصفوف المسندة: ${t.assignedClasses} — نسبة الالتزام: ${t.commitmentPercent}%، النشاط التفاعلي: ${t.activityPercent}%.")
+                }
+            }.trim()
+        }
+    }
+
+    // 9. Questions about Tuition / Finance
+    if (norm.contains("اقساط") || norm.contains("أقساط") || norm.contains("مالي") || norm.contains("رسوم") || norm.contains("دفع")) {
+        return "سيادة المدير ($principal)، بخصوص الموقف المالي والأقساط الدراسية في (${snapshot.schoolName}):\n" +
+            "• إجمالي الأقساط المسجلة: ${String.format(Locale.US, "%,d", snapshot.totalTuitionFeeIqd)} د.ع.\n" +
+            "• المبالغ المستلمة (الواصل): ${String.format(Locale.US, "%,d", snapshot.totalTuitionPaidIqd)} د.ع.\n" +
+            "• المبالغ المتبقية بذمة الطلبة: ${String.format(Locale.US, "%,d", snapshot.totalTuitionRemainingIqd)} د.ع."
+    }
+
+    // 10. Questions about Transport / Buses
+    if (norm.contains("نقل") || norm.contains("باص") || norm.contains("خطوط") || norm.contains("سائق")) {
+        return "سيادة المدير ($principal)، يوجد في (${snapshot.schoolName}) حالياً (${snapshot.busSubscribersCount}) طالب مشترك في خدمة النقل المدرسي موزعين على (${snapshot.busRoutesCount}) خطوط نقل مفعلة."
+    }
+
+    // 11. Questions about Problems / Recommendations / Advice / General question
+    if (norm.contains("مشكل") || norm.contains("نصيح") || norm.contains("توصي") || norm.contains("مقترح") || norm.contains("تحسين") || norm.contains("رايك") || norm.contains("رأيك")) {
+        return buildString {
+            appendLine("سيادة المدير ($principal)، بناءً على قراءتي لبيانات (${snapshot.schoolName}) الحالية، إليك أهم الملاحظات والتوصيات التنفيذية:")
+            snapshot.proactiveProblems.take(3).forEachIndexed { idx, p ->
+                appendLine("• ملاحظة ${idx + 1}: $p")
+            }
+            snapshot.strategicRecommendations.take(3).forEachIndexed { idx, r ->
+                appendLine("• توصية عملية ${idx + 1}: $r")
+            }
+        }.trim()
+    }
+
+    // 12. Conversational summary tailored to any other question
+    return "أهلاً بك سيادة المدير ($principal). بخصوص سؤالك في (${snapshot.schoolName}): يبلغ عدد طلبتنا الفعليين حالياً (${snapshot.totalStudents}) طالباً وعدد الكادر التدريسي (${snapshot.totalTeachersCount}) معلماً، ونسبة الحضور اليوم (${snapshot.overallAttendanceRatePercent}%) بمؤشر استقرار عام (${snapshot.overallSchoolHealthScore}% - ${snapshot.overallHealthLabel}).\n" +
+        "يمكنك سؤالي مباشرة عن اسم أي طالب أو صف معين، أو طلب تقرير مفصل عن الغياب أو الدرجات، أو توجيهي لإرسال إشعار فوري لأولياء الأمور."
 }
 
 private suspend fun generateAdvisorAnalyticalReply(
@@ -1033,7 +1180,7 @@ private suspend fun generateAdvisorAnalyticalReply(
         .filter { it.id != "welcome_exec_msg" }
         .takeLast(6)
         .map { msg ->
-            (if (msg.isFromUser) "المدير" else "المستشار") to msg.bodyText
+            (if (msg.isFromUser) "المدير" else "المساعد الإداري الذكي") to msg.bodyText
         }
 
     val rawGeminiReply = fetchRealGeminiResponse(
@@ -1045,10 +1192,9 @@ private suspend fun generateAdvisorAnalyticalReply(
     // Extract optional [ACTION_NOTIFY|target=...|title=...|body=...] line if present
     val actionRegex = Regex("""\[ACTION_NOTIFY\|target=([^|\]]*)\|title=([^|\]]*)\|body=([^\]]*)]""")
     val actionMatch = actionRegex.find(rawGeminiReply)
-    val cleanedGeminiReply = rawGeminiReply
+    val cleanedCloudReply = rawGeminiReply
         .replace(actionRegex, "")
         .trim()
-        .ifBlank { rawGeminiReply.trim() }
 
     val commProposal = parseSmartCommunicationCommand(query, snapshot, viewModel) ?: run {
         if (actionMatch != null) {
@@ -1057,7 +1203,7 @@ private suspend fun generateAdvisorAnalyticalReply(
             val bodyStr = actionMatch.groupValues.getOrNull(3)?.trim().orEmpty()
             parseSmartCommunicationCommand("أرسل إشعار $targetStr $titleStr $bodyStr", snapshot, viewModel)?.copy(
                 suggestedTitle = titleStr.ifBlank { "تبليغ إداري رسمي — ${snapshot.schoolName}" },
-                suggestedBody = bodyStr.ifBlank { cleanedGeminiReply }
+                suggestedBody = bodyStr.ifBlank { cleanedCloudReply }
             )
         } else null
     }
@@ -1073,6 +1219,17 @@ private suspend fun generateAdvisorAnalyticalReply(
         commProposal
     }
 
+    val finalReplyText = if (cleanedCloudReply.isNotBlank()) {
+        cleanedCloudReply
+    } else {
+        buildSmartConversationalArabicResponse(
+            query = query,
+            snapshot = snapshot,
+            viewModel = viewModel,
+            commProposal = finalProposal
+        )
+    }
+
     // Only show statistical boxes/tables/charts when the Principal explicitly asks for a statistical report
     val isExplicitReportRequest =
         norm.contains("تقرير") ||
@@ -1085,10 +1242,10 @@ private suspend fun generateAdvisorAnalyticalReply(
     if (!isExplicitReportRequest) {
         return AdvisorChatMessage(
             isFromUser = false,
-            senderTitle = "المستشار الإداري الذكي",
+            senderTitle = "المساعد الإداري الذكي لمنصة مدرستي الذكية",
             timestamp = nowTime,
             headline = "",
-            bodyText = cleanedGeminiReply,
+            bodyText = finalReplyText,
             keyMetrics = emptyList(),
             tableSection = null,
             chartBars = emptyList(),
@@ -1123,10 +1280,10 @@ private suspend fun generateAdvisorAnalyticalReply(
 
     return AdvisorChatMessage(
         isFromUser = false,
-        senderTitle = "المستشار الإداري الذكي",
+        senderTitle = "المساعد الإداري الذكي لمنصة مدرستي الذكية",
         timestamp = nowTime,
         headline = "تقرير إحصائي تحليلي بناءً على طلب المدير",
-        bodyText = cleanedGeminiReply,
+        bodyText = finalReplyText,
         keyMetrics = explicitMetrics,
         tableSection = if (tableRows.isNotEmpty()) {
             AdvisorTableSection(
@@ -1856,10 +2013,10 @@ fun AiSchoolAdvisorScreen(
         AdvisorChatMessage(
             id = "welcome_exec_msg",
             isFromUser = false,
-            senderTitle = "المستشار الإداري الذكي",
+            senderTitle = "المساعد الإداري الذكي لمنصة مدرستي الذكية",
             timestamp = "الآن",
             headline = "",
-            bodyText = "أهلاً بك سيادة المدير (${snapshot.principalName}). أنا مستشارك الإداري الذكي في (${snapshot.schoolName})، متصل مباشرة بـ Google Gemini وبقاعدة بيانات المدرسة الحقيقية. تفضل بطرح أي سؤال أو توجيه أي أمر إداري أو إشعار.",
+            bodyText = "أهلاً بك سيادة المدير (${snapshot.principalName}). أنا المساعد الإداري الذكي لمنصة مدرستي الذكية في (${snapshot.schoolName})، مرتبط مباشرة بقاعدة بيانات المدرسة الفورية. تفضل بطرح أي سؤال أو توجيه أي أمر إداري أو إشعار.",
             keyMetrics = emptyList(),
             recommendations = emptyList()
         )
