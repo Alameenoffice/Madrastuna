@@ -118,11 +118,20 @@ data class ExamSeatAssignment(
 
 data class ExamQuestionItemDraft(
     val questionNumber: Int,
-    val mainPrompt: String,
-    val branchA: String,
-    val branchB: String,
-    val marks: Int = 20
-)
+    val mainPrompt: String = "",
+    val branchA: String = "",
+    val branchB: String = "",
+    val marks: Int = 20,
+    val branches: List<String> = emptyList()
+) {
+    fun effectiveBranches(): List<String> {
+        if (branches.isNotEmpty()) return branches
+        return listOfNotNull(
+            branchA.takeIf { it.isNotBlank() },
+            branchB.takeIf { it.isNotBlank() }
+        )
+    }
+}
 
 data class OfficialCorrespondenceRecord(
     val id: String = "cor_${UUID.randomUUID().toString().take(6)}",
@@ -137,11 +146,13 @@ data class OfficialCorrespondenceRecord(
 
 data class StaffPortfolioRecord(
     val teacherId: String,
-    val qualification: String = "بكالوريوس تربية",
-    val startDateIso: String = "2016-09-01",
-    val jobTitle: String = "معلم جامعي",
-    val jobGradeStage: String = "الدرجة الخامسة - المرحلة الثانية",
-    val adminOrderNumber: String = "إداري / 104"
+    val qualification: String = "",
+    val startDateIso: String = "",
+    val jobTitle: String = "",
+    val jobGradeStage: String = "",
+    val adminOrderNumber: String = "",
+    val assignedClasses: String = "",
+    val specialty: String = ""
 )
 
 data class StudentWelfareRecord(
@@ -197,75 +208,449 @@ data class ExemptionAndWarningThresholds(
     val dismissalWarningDays: Int = 21
 )
 
-internal object MinistrySuiteLocalStore {
-    private const val PREF_NAME = "ministry_executive_suite_store"
+/**
+ * مدير الحفظ الدائم والمزامنة الفورية لمركز الإدارة المدرسية واللجنة الامتحانية
+ * يحفظ جميع التعديلات فوراً في SharedPreferences الخاصة بالمدرسة (`ministry_suite_data_${schoolCode}`)
+ * ويرفعها تلقائياً إلى عقدة المدرسة في Firebase (`schools/${schoolCode}/ministrySuiteData`).
+ */
+object MinistryDataPersistenceManager {
+    private const val LEGACY_PREF_NAME = "ministry_executive_suite_store"
     private val LEGACY_FAKE_COR_IDS = setOf("cor_default_1", "cor_default_2", "cor_default_3")
     private val LEGACY_FAKE_INV_IDS = setOf("inv_1", "inv_2", "inv_3", "inv_4", "inv_5")
     private val LEGACY_FAKE_EXP_IDS = setOf("exp_1", "exp_2")
 
-    private fun pref(context: Context) = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private fun cleanId(schoolId: String): String =
+        schoolId.trim().ifBlank { "default_school" }
+
+    private fun schoolPref(context: Context, schoolId: String) =
+        context.getSharedPreferences("ministry_suite_data_${cleanId(schoolId)}", Context.MODE_PRIVATE)
+
+    private fun legacyPref(context: Context) =
+        context.getSharedPreferences(LEGACY_PREF_NAME, Context.MODE_PRIVATE)
+
+    private fun getStringWithFallback(context: Context, schoolId: String, keySuffix: String): String? {
+        val sid = cleanId(schoolId)
+        val primary = schoolPref(context, sid).getString(keySuffix, null)
+        if (!primary.isNullOrBlank()) return primary
+        return legacyPref(context).getString("${sid}_$keySuffix", null)
+    }
+
+    private fun putStringAndSync(context: Context, schoolId: String, keySuffix: String, value: String) {
+        val sid = cleanId(schoolId)
+        schoolPref(context, sid).edit().putString(keySuffix, value).apply()
+        legacyPref(context).edit().putString("${sid}_$keySuffix", value).apply()
+        pushSchoolSuiteToFirebase(context, sid)
+    }
+
+    fun pushSchoolSuiteToFirebase(context: Context, schoolId: String) {
+        val sid = cleanId(schoolId)
+        runCatching {
+            val sp = schoolPref(context, sid)
+            val lp = legacyPref(context)
+            val root = JSONObject().apply {
+                put("schoolId", sid)
+                put("updatedAtMillis", System.currentTimeMillis())
+                put("nextOfficialDocNumber", getNextOfficialDocNumber(context, sid))
+                put("smartIdExamPassEnabled", isSmartIdExamPassEnabled(context, sid))
+                val t = loadThresholds(context, sid)
+                put("thresholds", JSONObject().apply {
+                    put("generalExemptMinAvg", t.generalExemptMinAvg)
+                    put("generalExemptMinSubject", t.generalExemptMinSubject)
+                    put("individualExemptMinScore", t.individualExemptMinScore)
+                    put("decisionPointsLimit", t.decisionPointsLimit)
+                    put("firstWarningDays", t.firstWarningDays)
+                    put("finalWarningDays", t.finalWarningDays)
+                    put("dismissalWarningDays", t.dismissalWarningDays)
+                })
+                put("correspondence", JSONArray(getStringWithFallback(context, sid, "correspondence") ?: "[]"))
+                put("staffPortfolios", JSONArray(getStringWithFallback(context, sid, "staff_portfolios") ?: "[]"))
+                put("studentWelfare", JSONArray(getStringWithFallback(context, sid, "student_welfare") ?: "[]"))
+                put("archivedYears", JSONArray(getStringWithFallback(context, sid, "archived_years") ?: "[]"))
+                put("inventory", JSONArray(getStringWithFallback(context, sid, "inventory") ?: "[]"))
+                put("expenses", JSONArray(getStringWithFallback(context, sid, "expenses") ?: "[]"))
+                put("examQuestions", JSONArray(getStringWithFallback(context, sid, "exam_questions") ?: "[]"))
+
+                // Per-student exam eligibility & hall/seat map
+                val examAllowedObj = JSONObject()
+                val examSeatObj = JSONObject()
+                val examHallNumObj = JSONObject()
+                val examSeatNumObj = JSONObject()
+                (lp.all.keys + sp.all.keys).forEach { k ->
+                    when {
+                        k.startsWith("${sid}_exam_allowed_") -> {
+                            val stuId = k.removePrefix("${sid}_exam_allowed_")
+                            examAllowedObj.put(stuId, isStudentExamAllowed(context, sid, stuId))
+                        }
+                        k.startsWith("exam_allowed_") -> {
+                            val stuId = k.removePrefix("exam_allowed_")
+                            examAllowedObj.put(stuId, isStudentExamAllowed(context, sid, stuId))
+                        }
+                        k.startsWith("${sid}_exam_seat_") -> {
+                            val stuId = k.removePrefix("${sid}_exam_seat_")
+                            examSeatObj.put(stuId, getStudentExamSeatLabel(context, sid, stuId))
+                        }
+                        k.startsWith("exam_seat_") -> {
+                            val stuId = k.removePrefix("exam_seat_")
+                            examSeatObj.put(stuId, getStudentExamSeatLabel(context, sid, stuId))
+                        }
+                        k.startsWith("exam_hall_num_") -> {
+                            val stuId = k.removePrefix("exam_hall_num_")
+                            examHallNumObj.put(stuId, sp.getInt(k, 1))
+                        }
+                        k.startsWith("exam_seat_num_") -> {
+                            val stuId = k.removePrefix("exam_seat_num_")
+                            examSeatNumObj.put(stuId, sp.getInt(k, 1))
+                        }
+                    }
+                }
+                put("examAllowedMap", examAllowedObj)
+                put("examSeatMap", examSeatObj)
+                put("examHallNumMap", examHallNumObj)
+                put("examSeatNumMap", examSeatNumObj)
+            }
+            com.example.data.FirebaseCloudSync.pushSubCollectionAsync(
+                schoolId = sid,
+                subCollection = "ministrySuiteData",
+                jsonPayload = root.toString()
+            )
+        }
+    }
+
+    suspend fun syncFromFirebaseIfAvailable(context: Context, schoolId: String): Boolean {
+        val sid = cleanId(schoolId)
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val payload = com.example.data.FirebaseCloudSync.fetchSubCollectionPayload(sid, "ministrySuiteData")
+                if (payload.isNullOrBlank()) return@withContext false
+                val root = JSONObject(payload)
+                val cloudUpdated = root.optLong("updatedAtMillis", 0L)
+                val sp = schoolPref(context, sid)
+                val localUpdated = sp.getLong("updatedAtMillis", 0L)
+                if (cloudUpdated <= 0L && localUpdated > 0L) return@withContext false
+
+                val spEdit = sp.edit()
+                val lpEdit = legacyPref(context).edit()
+                spEdit.putLong("updatedAtMillis", cloudUpdated.coerceAtLeast(System.currentTimeMillis()))
+
+                if (root.has("nextOfficialDocNumber")) {
+                    val nextNum = root.optInt("nextOfficialDocNumber", 1).coerceAtLeast(1)
+                    spEdit.putInt("next_official_doc_number", nextNum)
+                    lpEdit.putInt("${sid}_next_official_doc_number", nextNum)
+                }
+                if (root.has("smartIdExamPassEnabled")) {
+                    val enabled = root.optBoolean("smartIdExamPassEnabled", true)
+                    spEdit.putBoolean("smart_id_exam_pass_enabled", enabled)
+                    lpEdit.putBoolean("${sid}_smart_id_exam_pass_enabled", enabled)
+                }
+                root.optJSONObject("thresholds")?.let { tObj ->
+                    val th = ExemptionAndWarningThresholds(
+                        generalExemptMinAvg = tObj.optInt("generalExemptMinAvg", 85),
+                        generalExemptMinSubject = tObj.optInt("generalExemptMinSubject", 75),
+                        individualExemptMinScore = tObj.optInt("individualExemptMinScore", 90),
+                        decisionPointsLimit = tObj.optInt("decisionPointsLimit", 5),
+                        firstWarningDays = tObj.optInt("firstWarningDays", 7),
+                        finalWarningDays = tObj.optInt("finalWarningDays", 15),
+                        dismissalWarningDays = tObj.optInt("dismissalWarningDays", 21)
+                    )
+                    spEdit.putInt("gen_exempt_avg", th.generalExemptMinAvg)
+                    spEdit.putInt("gen_exempt_min_sub", th.generalExemptMinSubject)
+                    spEdit.putInt("ind_exempt_score", th.individualExemptMinScore)
+                    spEdit.putInt("decision_pts_limit", th.decisionPointsLimit)
+                    spEdit.putInt("warn_first_days", th.firstWarningDays)
+                    spEdit.putInt("warn_final_days", th.finalWarningDays)
+                    spEdit.putInt("warn_dismiss_days", th.dismissalWarningDays)
+
+                    lpEdit.putInt("${sid}_gen_exempt_avg", th.generalExemptMinAvg)
+                    lpEdit.putInt("${sid}_gen_exempt_min_sub", th.generalExemptMinSubject)
+                    lpEdit.putInt("${sid}_ind_exempt_score", th.individualExemptMinScore)
+                    lpEdit.putInt("${sid}_decision_pts_limit", th.decisionPointsLimit)
+                    lpEdit.putInt("${sid}_warn_first_days", th.firstWarningDays)
+                    lpEdit.putInt("${sid}_warn_final_days", th.finalWarningDays)
+                    lpEdit.putInt("${sid}_warn_dismiss_days", th.dismissalWarningDays)
+                }
+
+                listOf(
+                    "correspondence" to "correspondence",
+                    "staffPortfolios" to "staff_portfolios",
+                    "studentWelfare" to "student_welfare",
+                    "archivedYears" to "archived_years",
+                    "inventory" to "inventory",
+                    "expenses" to "expenses",
+                    "examQuestions" to "exam_questions"
+                ).forEach { (jsonKey, prefKey) ->
+                    root.optJSONArray(jsonKey)?.let { arr ->
+                        val localStr = getStringWithFallback(context, sid, prefKey)
+                        if (arr.length() > 0 || localStr.isNullOrBlank()) {
+                            spEdit.putString(prefKey, arr.toString())
+                            lpEdit.putString("${sid}_$prefKey", arr.toString())
+                        }
+                    }
+                }
+
+                root.optJSONObject("examAllowedMap")?.let { obj ->
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val stuId = keys.next()
+                        val allowed = obj.optBoolean(stuId, true)
+                        spEdit.putBoolean("exam_allowed_$stuId", allowed)
+                        lpEdit.putBoolean("${sid}_exam_allowed_$stuId", allowed)
+                    }
+                }
+                root.optJSONObject("examSeatMap")?.let { obj ->
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val stuId = keys.next()
+                        val label = obj.optString(stuId, "")
+                        if (label.isNotBlank()) {
+                            spEdit.putString("exam_seat_$stuId", label)
+                            lpEdit.putString("${sid}_exam_seat_$stuId", label)
+                        }
+                    }
+                }
+                root.optJSONObject("examHallNumMap")?.let { obj ->
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val stuId = keys.next()
+                        val hNum = obj.optInt(stuId, 1)
+                        spEdit.putInt("exam_hall_num_$stuId", hNum)
+                        lpEdit.putInt("${sid}_exam_hall_num_$stuId", hNum)
+                    }
+                }
+                root.optJSONObject("examSeatNumMap")?.let { obj ->
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val stuId = keys.next()
+                        val sNum = obj.optInt(stuId, 1)
+                        spEdit.putInt("exam_seat_num_$stuId", sNum)
+                        lpEdit.putInt("${sid}_exam_seat_num_$stuId", sNum)
+                    }
+                }
+
+                spEdit.apply()
+                lpEdit.apply()
+                true
+            }.getOrDefault(false)
+        }
+    }
+
+    fun getNextOfficialDocNumber(context: Context, schoolId: String): Int {
+        val sid = cleanId(schoolId)
+        val sp = schoolPref(context, sid)
+        if (sp.contains("next_official_doc_number")) {
+            return sp.getInt("next_official_doc_number", 1).coerceAtLeast(1)
+        }
+        val existingCount = loadCorrespondence(context, sid).size
+        return (existingCount + 1).coerceAtLeast(1)
+    }
+
+    fun peekNextDocNumber(context: Context, schoolId: String): Int =
+        getNextOfficialDocNumber(context, schoolId)
+
+    fun peekNextOfficialBookNumberFormatted(context: Context, schoolId: String): String {
+        val num = getNextOfficialDocNumber(context, schoolId)
+        return "إداري / $num"
+    }
+
+    fun nextAndIncrementDocNumber(context: Context, schoolId: String): String {
+        val sid = cleanId(schoolId)
+        val current = getNextOfficialDocNumber(context, sid)
+        val next = current + 1
+        schoolPref(context, sid).edit()
+            .putInt("next_official_doc_number", next)
+            .putLong("updatedAtMillis", System.currentTimeMillis())
+            .apply()
+        legacyPref(context).edit()
+            .putInt("${sid}_next_official_doc_number", next)
+            .apply()
+        pushSchoolSuiteToFirebase(context, sid)
+        return "إداري / $current"
+    }
+
+    fun consumeNextDocNumberFormatted(context: Context, schoolId: String): String =
+        nextAndIncrementDocNumber(context, schoolId)
+
+    fun archiveOfficialDocumentAutomatically(
+        context: Context,
+        schoolId: String,
+        bookNumber: String,
+        docType: String = "صادر",
+        entityName: String = "إدارة المدرسة / أولياء الأمور",
+        subject: String,
+        notes: String = "",
+        imageBase64: String = ""
+    ): List<OfficialCorrespondenceRecord> {
+        val sid = cleanId(schoolId)
+        val currentList = loadCorrespondence(context, sid)
+        val todayIso = ArabicCalendarDateHelper.todayIsoDate()
+        val alreadyExists = currentList.any {
+            it.bookNumber == bookNumber && it.subject == subject && it.dateIso == todayIso
+        }
+        if (alreadyExists) return currentList
+        val record = OfficialCorrespondenceRecord(
+            type = docType,
+            bookNumber = bookNumber,
+            dateIso = todayIso,
+            entityName = entityName,
+            subject = subject,
+            notes = notes.ifBlank { "تم إصداره وأرشفته تلقائياً من مركز الإدارة المدرسية" },
+            imageBase64 = imageBase64
+        )
+        val updated = listOf(record) + currentList
+        saveCorrespondence(context, sid, updated)
+        return updated
+    }
 
     fun loadThresholds(context: Context, schoolId: String): ExemptionAndWarningThresholds {
-        val p = pref(context)
+        val sid = cleanId(schoolId)
+        val sp = schoolPref(context, sid)
+        val lp = legacyPref(context)
         return ExemptionAndWarningThresholds(
-            generalExemptMinAvg = p.getInt("${schoolId}_gen_exempt_avg", 85).coerceIn(50, 100),
-            generalExemptMinSubject = p.getInt("${schoolId}_gen_exempt_min_sub", 75).coerceIn(50, 100),
-            individualExemptMinScore = p.getInt("${schoolId}_ind_exempt_score", 90).coerceIn(50, 100),
-            decisionPointsLimit = p.getInt("${schoolId}_decision_pts_limit", 5).coerceIn(1, 25),
-            firstWarningDays = p.getInt("${schoolId}_warn_first_days", 7).coerceIn(1, 60),
-            finalWarningDays = p.getInt("${schoolId}_warn_final_days", 15).coerceIn(2, 90),
-            dismissalWarningDays = p.getInt("${schoolId}_warn_dismiss_days", 21).coerceIn(3, 120)
+            generalExemptMinAvg = (if (sp.contains("gen_exempt_avg")) sp.getInt("gen_exempt_avg", 85) else lp.getInt("${sid}_gen_exempt_avg", 85)).coerceIn(50, 100),
+            generalExemptMinSubject = (if (sp.contains("gen_exempt_min_sub")) sp.getInt("gen_exempt_min_sub", 75) else lp.getInt("${sid}_gen_exempt_min_sub", 75)).coerceIn(50, 100),
+            individualExemptMinScore = (if (sp.contains("ind_exempt_score")) sp.getInt("ind_exempt_score", 90) else lp.getInt("${sid}_ind_exempt_score", 90)).coerceIn(50, 100),
+            decisionPointsLimit = (if (sp.contains("decision_pts_limit")) sp.getInt("decision_pts_limit", 5) else lp.getInt("${sid}_decision_pts_limit", 5)).coerceIn(1, 25),
+            firstWarningDays = (if (sp.contains("warn_first_days")) sp.getInt("warn_first_days", 7) else lp.getInt("${sid}_warn_first_days", 7)).coerceIn(1, 60),
+            finalWarningDays = (if (sp.contains("warn_final_days")) sp.getInt("warn_final_days", 15) else lp.getInt("${sid}_warn_final_days", 15)).coerceIn(2, 90),
+            dismissalWarningDays = (if (sp.contains("warn_dismiss_days")) sp.getInt("warn_dismiss_days", 21) else lp.getInt("${sid}_warn_dismiss_days", 21)).coerceIn(3, 120)
         )
     }
 
     fun saveThresholds(context: Context, schoolId: String, thresholds: ExemptionAndWarningThresholds) {
-        pref(context).edit()
-            .putInt("${schoolId}_gen_exempt_avg", thresholds.generalExemptMinAvg)
-            .putInt("${schoolId}_gen_exempt_min_sub", thresholds.generalExemptMinSubject)
-            .putInt("${schoolId}_ind_exempt_score", thresholds.individualExemptMinScore)
-            .putInt("${schoolId}_decision_pts_limit", thresholds.decisionPointsLimit)
-            .putInt("${schoolId}_warn_first_days", thresholds.firstWarningDays)
-            .putInt("${schoolId}_warn_final_days", thresholds.finalWarningDays)
-            .putInt("${schoolId}_warn_dismiss_days", thresholds.dismissalWarningDays)
+        val sid = cleanId(schoolId)
+        schoolPref(context, sid).edit()
+            .putInt("gen_exempt_avg", thresholds.generalExemptMinAvg)
+            .putInt("gen_exempt_min_sub", thresholds.generalExemptMinSubject)
+            .putInt("ind_exempt_score", thresholds.individualExemptMinScore)
+            .putInt("decision_pts_limit", thresholds.decisionPointsLimit)
+            .putInt("warn_first_days", thresholds.firstWarningDays)
+            .putInt("warn_final_days", thresholds.finalWarningDays)
+            .putInt("warn_dismiss_days", thresholds.dismissalWarningDays)
+            .putLong("updatedAtMillis", System.currentTimeMillis())
             .apply()
+        legacyPref(context).edit()
+            .putInt("${sid}_gen_exempt_avg", thresholds.generalExemptMinAvg)
+            .putInt("${sid}_gen_exempt_min_sub", thresholds.generalExemptMinSubject)
+            .putInt("${sid}_ind_exempt_score", thresholds.individualExemptMinScore)
+            .putInt("${sid}_decision_pts_limit", thresholds.decisionPointsLimit)
+            .putInt("${sid}_warn_first_days", thresholds.firstWarningDays)
+            .putInt("${sid}_warn_final_days", thresholds.finalWarningDays)
+            .putInt("${sid}_warn_dismiss_days", thresholds.dismissalWarningDays)
+            .apply()
+        pushSchoolSuiteToFirebase(context, sid)
     }
 
     fun isSmartIdExamPassEnabled(context: Context, schoolId: String): Boolean {
-        val key = "${schoolId.ifBlank { "default_school" }}_smart_id_exam_pass_enabled"
-        return pref(context).getBoolean(key, true)
+        val sid = cleanId(schoolId)
+        val sp = schoolPref(context, sid)
+        if (sp.contains("smart_id_exam_pass_enabled")) {
+            return sp.getBoolean("smart_id_exam_pass_enabled", true)
+        }
+        return legacyPref(context).getBoolean("${sid}_smart_id_exam_pass_enabled", true)
     }
 
     fun setSmartIdExamPassEnabled(context: Context, schoolId: String, enabled: Boolean) {
-        val key = "${schoolId.ifBlank { "default_school" }}_smart_id_exam_pass_enabled"
-        pref(context).edit().putBoolean(key, enabled).apply()
+        val sid = cleanId(schoolId)
+        schoolPref(context, sid).edit()
+            .putBoolean("smart_id_exam_pass_enabled", enabled)
+            .putLong("updatedAtMillis", System.currentTimeMillis())
+            .apply()
+        legacyPref(context).edit()
+            .putBoolean("${sid}_smart_id_exam_pass_enabled", enabled)
+            .apply()
+        pushSchoolSuiteToFirebase(context, sid)
     }
 
     fun isStudentExamAllowed(context: Context, schoolId: String, studentId: String): Boolean {
-        val key = "${schoolId.ifBlank { "default_school" }}_exam_allowed_$studentId"
-        return pref(context).getBoolean(key, true)
+        val sid = cleanId(schoolId)
+        val sp = schoolPref(context, sid)
+        if (sp.contains("exam_allowed_$studentId")) {
+            return sp.getBoolean("exam_allowed_$studentId", true)
+        }
+        return legacyPref(context).getBoolean("${sid}_exam_allowed_$studentId", true)
     }
 
     fun setStudentExamAllowed(context: Context, schoolId: String, studentId: String, allowed: Boolean) {
-        val key = "${schoolId.ifBlank { "default_school" }}_exam_allowed_$studentId"
-        pref(context).edit().putBoolean(key, allowed).apply()
+        val sid = cleanId(schoolId)
+        schoolPref(context, sid).edit()
+            .putBoolean("exam_allowed_$studentId", allowed)
+            .putLong("updatedAtMillis", System.currentTimeMillis())
+            .apply()
+        legacyPref(context).edit()
+            .putBoolean("${sid}_exam_allowed_$studentId", allowed)
+            .apply()
+        pushSchoolSuiteToFirebase(context, sid)
     }
 
-    fun saveStudentSeatLabel(context: Context, schoolId: String, studentId: String, seatLabel: String) {
-        val key = "${schoolId.ifBlank { "default_school" }}_exam_seat_$studentId"
-        pref(context).edit().putString(key, seatLabel).apply()
+    fun saveStudentSeatLabel(
+        context: Context,
+        schoolId: String,
+        studentId: String,
+        seatLabel: String,
+        hallNumber: Int = 0,
+        seatNumber: Int = 0
+    ) {
+        val sid = cleanId(schoolId)
+        val spEdit = schoolPref(context, sid).edit()
+            .putString("exam_seat_$studentId", seatLabel)
+            .putLong("updatedAtMillis", System.currentTimeMillis())
+        val lpEdit = legacyPref(context).edit()
+            .putString("${sid}_exam_seat_$studentId", seatLabel)
+        if (hallNumber > 0) {
+            spEdit.putInt("exam_hall_num_$studentId", hallNumber)
+            lpEdit.putInt("${sid}_exam_hall_num_$studentId", hallNumber)
+        }
+        if (seatNumber > 0) {
+            spEdit.putInt("exam_seat_num_$studentId", seatNumber)
+            lpEdit.putInt("${sid}_exam_seat_num_$studentId", seatNumber)
+        }
+        spEdit.apply()
+        lpEdit.apply()
+        pushSchoolSuiteToFirebase(context, sid)
+    }
+
+    fun getStudentExamHallAndSeatNumbers(
+        context: Context,
+        schoolId: String,
+        studentId: String,
+        defaultHall: Int = 1,
+        defaultSeat: Int = 1
+    ): Pair<Int, Int> {
+        val sid = cleanId(schoolId)
+        val sp = schoolPref(context, sid)
+        val lp = legacyPref(context)
+        val savedHall = if (sp.contains("exam_hall_num_$studentId")) {
+            sp.getInt("exam_hall_num_$studentId", 0)
+        } else {
+            lp.getInt("${sid}_exam_hall_num_$studentId", 0)
+        }
+        val savedSeat = if (sp.contains("exam_seat_num_$studentId")) {
+            sp.getInt("exam_seat_num_$studentId", 0)
+        } else {
+            lp.getInt("${sid}_exam_seat_num_$studentId", 0)
+        }
+        if (savedHall > 0 && savedSeat > 0) return savedHall to savedSeat
+
+        // Parse from saved label if present
+        val savedLabel = sp.getString("exam_seat_$studentId", null)
+            ?: lp.getString("${sid}_exam_seat_$studentId", null)
+        if (!savedLabel.isNullOrBlank()) {
+            val nums = Regex("\\d+").findAll(savedLabel).mapNotNull { it.value.toIntOrNull() }.toList()
+            if (nums.size >= 2) return nums[0] to nums[1]
+        }
+
+        val absHash = studentId.hashCode().let { if (it < 0) -it else it }
+        val fallbackHall = if (defaultHall > 0) ((absHash % 3) + 1) else defaultHall.coerceAtLeast(1)
+        val fallbackSeat = if (defaultSeat > 0) ((absHash % 20) + 1) else defaultSeat.coerceAtLeast(1)
+        return fallbackHall to fallbackSeat
     }
 
     fun getStudentExamSeatLabel(context: Context, schoolId: String, studentId: String, gradeClass: String = ""): String {
-        val key = "${schoolId.ifBlank { "default_school" }}_exam_seat_$studentId"
-        val saved = pref(context).getString(key, null)
-        if (!saved.isNullOrBlank()) return saved
-        val fallbackHall = ((studentId.hashCode().let { if (it < 0) -it else it }) % 3) + 1
-        val fallbackSeat = ((studentId.hashCode().let { if (it < 0) -it else it }) % 20) + 1
-        return "قاعة $fallbackHall - مقعد $fallbackSeat"
+        val (hallNum, seatNum) = getStudentExamHallAndSeatNumbers(context, schoolId, studentId)
+        return "قاعة ($hallNum) - مقعد ($seatNum)"
     }
 
     fun loadCorrespondence(context: Context, schoolId: String): List<OfficialCorrespondenceRecord> {
-        val raw = pref(context).getString("${schoolId}_correspondence", null)
+        val raw = getStringWithFallback(context, schoolId, "correspondence")
         if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
@@ -308,11 +693,11 @@ internal object MinistrySuiteLocalStore {
                 }
             )
         }
-        pref(context).edit().putString("${schoolId}_correspondence", arr.toString()).apply()
+        putStringAndSync(context, schoolId, "correspondence", arr.toString())
     }
 
     fun loadStaffPortfolios(context: Context, schoolId: String): Map<String, StaffPortfolioRecord> {
-        val raw = pref(context).getString("${schoolId}_staff_portfolios", null) ?: return emptyMap()
+        val raw = getStringWithFallback(context, schoolId, "staff_portfolios") ?: return emptyMap()
         return runCatching {
             val arr = JSONArray(raw)
             buildMap {
@@ -320,15 +705,32 @@ internal object MinistrySuiteLocalStore {
                     val o = arr.getJSONObject(i)
                     val tid = o.optString("teacherId")
                     if (tid.isNotBlank()) {
+                        val qual = o.optString("qualification", "").let {
+                            if (it == "بكالوريوس تربية" && !o.optBoolean("userEdited", false)) "" else it
+                        }
+                        val startIso = o.optString("startDateIso", "").let {
+                            if (it == "2016-09-01" && !o.optBoolean("userEdited", false)) "" else it
+                        }
+                        val jTitle = o.optString("jobTitle", "").let {
+                            if (it == "معلم جامعي" && !o.optBoolean("userEdited", false)) "" else it
+                        }
+                        val jGrade = o.optString("jobGradeStage", "").let {
+                            if (it == "الدرجة الخامسة - المرحلة الثانية" && !o.optBoolean("userEdited", false)) "" else it
+                        }
+                        val ordNum = o.optString("adminOrderNumber", "").let {
+                            if (it == "إداري / 104" && !o.optBoolean("userEdited", false)) "" else it
+                        }
                         put(
                             tid,
                             StaffPortfolioRecord(
                                 teacherId = tid,
-                                qualification = o.optString("qualification", "بكالوريوس تربية"),
-                                startDateIso = o.optString("startDateIso", "2016-09-01"),
-                                jobTitle = o.optString("jobTitle", "معلم جامعي"),
-                                jobGradeStage = o.optString("jobGradeStage", "الدرجة الخامسة - المرحلة الثانية"),
-                                adminOrderNumber = o.optString("adminOrderNumber", "إداري / 104")
+                                qualification = qual,
+                                startDateIso = startIso,
+                                jobTitle = jTitle,
+                                jobGradeStage = jGrade,
+                                adminOrderNumber = ordNum,
+                                assignedClasses = o.optString("assignedClasses", ""),
+                                specialty = o.optString("specialty", "")
                             )
                         )
                     }
@@ -348,14 +750,17 @@ internal object MinistrySuiteLocalStore {
                     put("jobTitle", item.jobTitle)
                     put("jobGradeStage", item.jobGradeStage)
                     put("adminOrderNumber", item.adminOrderNumber)
+                    put("assignedClasses", item.assignedClasses)
+                    put("specialty", item.specialty)
+                    put("userEdited", true)
                 }
             )
         }
-        pref(context).edit().putString("${schoolId}_staff_portfolios", arr.toString()).apply()
+        putStringAndSync(context, schoolId, "staff_portfolios", arr.toString())
     }
 
     fun loadStudentWelfare(context: Context, schoolId: String): Map<String, StudentWelfareRecord> {
-        val raw = pref(context).getString("${schoolId}_student_welfare", null) ?: return emptyMap()
+        val raw = getStringWithFallback(context, schoolId, "student_welfare") ?: return emptyMap()
         return runCatching {
             val arr = JSONArray(raw)
             buildMap {
@@ -396,11 +801,11 @@ internal object MinistrySuiteLocalStore {
                 }
             )
         }
-        pref(context).edit().putString("${schoolId}_student_welfare", arr.toString()).apply()
+        putStringAndSync(context, schoolId, "student_welfare", arr.toString())
     }
 
     fun loadArchivedYears(context: Context, schoolId: String): List<ArchivedSchoolYearSnapshot> {
-        val raw = pref(context).getString("${schoolId}_archived_years", null) ?: return emptyList()
+        val raw = getStringWithFallback(context, schoolId, "archived_years") ?: return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
             buildList {
@@ -449,11 +854,11 @@ internal object MinistrySuiteLocalStore {
                 }
             )
         }
-        pref(context).edit().putString("${schoolId}_archived_years", arr.toString()).apply()
+        putStringAndSync(context, schoolId, "archived_years", arr.toString())
     }
 
     fun loadInventory(context: Context, schoolId: String): List<SchoolInventoryItemRecord> {
-        val raw = pref(context).getString("${schoolId}_inventory", null)
+        val raw = getStringWithFallback(context, schoolId, "inventory")
         if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
@@ -494,11 +899,11 @@ internal object MinistrySuiteLocalStore {
                 }
             )
         }
-        pref(context).edit().putString("${schoolId}_inventory", arr.toString()).apply()
+        putStringAndSync(context, schoolId, "inventory", arr.toString())
     }
 
     fun loadExpenses(context: Context, schoolId: String): List<SchoolExpenseItemRecord> {
-        val raw = pref(context).getString("${schoolId}_expenses", null)
+        val raw = getStringWithFallback(context, schoolId, "expenses")
         if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
@@ -539,8 +944,147 @@ internal object MinistrySuiteLocalStore {
                 }
             )
         }
-        pref(context).edit().putString("${schoolId}_expenses", arr.toString()).apply()
+        putStringAndSync(context, schoolId, "expenses", arr.toString())
     }
+
+    fun loadExamQuestions(context: Context, schoolId: String): List<ExamQuestionItemDraft> {
+        val raw = getStringWithFallback(context, schoolId, "exam_questions")
+        if (raw.isNullOrBlank()) {
+            return listOf(
+                ExamQuestionItemDraft(questionNumber = 1, mainPrompt = "", marks = 20, branches = emptyList()),
+                ExamQuestionItemDraft(questionNumber = 2, mainPrompt = "", marks = 20, branches = emptyList())
+            )
+        }
+        return runCatching {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val bArr = o.optJSONArray("branches")
+                    val branchList = buildList {
+                        if (bArr != null) {
+                            for (j in 0 until bArr.length()) {
+                                add(bArr.optString(j, ""))
+                            }
+                        } else {
+                            val bA = o.optString("branchA", "")
+                            val bB = o.optString("branchB", "")
+                            if (bA.isNotBlank()) add(bA)
+                            if (bB.isNotBlank()) add(bB)
+                        }
+                    }
+                    add(
+                        ExamQuestionItemDraft(
+                            questionNumber = i + 1,
+                            mainPrompt = o.optString("mainPrompt", ""),
+                            branchA = branchList.getOrNull(0) ?: "",
+                            branchB = branchList.getOrNull(1) ?: "",
+                            marks = o.optInt("marks", 20).coerceIn(1, 100),
+                            branches = branchList
+                        )
+                    )
+                }
+            }.ifEmpty {
+                listOf(
+                    ExamQuestionItemDraft(questionNumber = 1, mainPrompt = "", marks = 20, branches = emptyList())
+                )
+            }
+        }.getOrDefault(
+            listOf(
+                ExamQuestionItemDraft(questionNumber = 1, mainPrompt = "", marks = 20, branches = emptyList())
+            )
+        )
+    }
+
+    fun saveExamQuestions(context: Context, schoolId: String, questions: List<ExamQuestionItemDraft>) {
+        val arr = JSONArray()
+        questions.forEachIndexed { idx, q ->
+            val bArr = JSONArray()
+            q.branches.forEach { bArr.put(it) }
+            arr.put(
+                JSONObject().apply {
+                    put("questionNumber", idx + 1)
+                    put("mainPrompt", q.mainPrompt)
+                    put("branchA", q.branches.getOrNull(0) ?: q.branchA)
+                    put("branchB", q.branches.getOrNull(1) ?: q.branchB)
+                    put("marks", q.marks)
+                    put("branches", bArr)
+                }
+            )
+        }
+        putStringAndSync(context, schoolId, "exam_questions", arr.toString())
+    }
+}
+
+internal object MinistrySuiteLocalStore {
+    fun loadThresholds(context: Context, schoolId: String): ExemptionAndWarningThresholds =
+        MinistryDataPersistenceManager.loadThresholds(context, schoolId)
+
+    fun saveThresholds(context: Context, schoolId: String, thresholds: ExemptionAndWarningThresholds) =
+        MinistryDataPersistenceManager.saveThresholds(context, schoolId, thresholds)
+
+    fun isSmartIdExamPassEnabled(context: Context, schoolId: String): Boolean =
+        MinistryDataPersistenceManager.isSmartIdExamPassEnabled(context, schoolId)
+
+    fun setSmartIdExamPassEnabled(context: Context, schoolId: String, enabled: Boolean) =
+        MinistryDataPersistenceManager.setSmartIdExamPassEnabled(context, schoolId, enabled)
+
+    fun isStudentExamAllowed(context: Context, schoolId: String, studentId: String): Boolean =
+        MinistryDataPersistenceManager.isStudentExamAllowed(context, schoolId, studentId)
+
+    fun setStudentExamAllowed(context: Context, schoolId: String, studentId: String, allowed: Boolean) =
+        MinistryDataPersistenceManager.setStudentExamAllowed(context, schoolId, studentId, allowed)
+
+    fun saveStudentSeatLabel(
+        context: Context,
+        schoolId: String,
+        studentId: String,
+        seatLabel: String,
+        hallNumber: Int = 0,
+        seatNumber: Int = 0
+    ) = MinistryDataPersistenceManager.saveStudentSeatLabel(context, schoolId, studentId, seatLabel, hallNumber, seatNumber)
+
+    fun getStudentExamHallAndSeatNumbers(context: Context, schoolId: String, studentId: String): Pair<Int, Int> =
+        MinistryDataPersistenceManager.getStudentExamHallAndSeatNumbers(context, schoolId, studentId)
+
+    fun getStudentExamSeatLabel(context: Context, schoolId: String, studentId: String, gradeClass: String = ""): String =
+        MinistryDataPersistenceManager.getStudentExamSeatLabel(context, schoolId, studentId, gradeClass)
+
+    fun loadCorrespondence(context: Context, schoolId: String): List<OfficialCorrespondenceRecord> =
+        MinistryDataPersistenceManager.loadCorrespondence(context, schoolId)
+
+    fun saveCorrespondence(context: Context, schoolId: String, list: List<OfficialCorrespondenceRecord>) =
+        MinistryDataPersistenceManager.saveCorrespondence(context, schoolId, list)
+
+    fun loadStaffPortfolios(context: Context, schoolId: String): Map<String, StaffPortfolioRecord> =
+        MinistryDataPersistenceManager.loadStaffPortfolios(context, schoolId)
+
+    fun saveStaffPortfolios(context: Context, schoolId: String, map: Map<String, StaffPortfolioRecord>) =
+        MinistryDataPersistenceManager.saveStaffPortfolios(context, schoolId, map)
+
+    fun loadStudentWelfare(context: Context, schoolId: String): Map<String, StudentWelfareRecord> =
+        MinistryDataPersistenceManager.loadStudentWelfare(context, schoolId)
+
+    fun saveStudentWelfare(context: Context, schoolId: String, map: Map<String, StudentWelfareRecord>) =
+        MinistryDataPersistenceManager.saveStudentWelfare(context, schoolId, map)
+
+    fun loadArchivedYears(context: Context, schoolId: String): List<ArchivedSchoolYearSnapshot> =
+        MinistryDataPersistenceManager.loadArchivedYears(context, schoolId)
+
+    fun saveArchivedYears(context: Context, schoolId: String, list: List<ArchivedSchoolYearSnapshot>) =
+        MinistryDataPersistenceManager.saveArchivedYears(context, schoolId, list)
+
+    fun loadInventory(context: Context, schoolId: String): List<SchoolInventoryItemRecord> =
+        MinistryDataPersistenceManager.loadInventory(context, schoolId)
+
+    fun saveInventory(context: Context, schoolId: String, list: List<SchoolInventoryItemRecord>) =
+        MinistryDataPersistenceManager.saveInventory(context, schoolId, list)
+
+    fun loadExpenses(context: Context, schoolId: String): List<SchoolExpenseItemRecord> =
+        MinistryDataPersistenceManager.loadExpenses(context, schoolId)
+
+    fun saveExpenses(context: Context, schoolId: String, list: List<SchoolExpenseItemRecord>) =
+        MinistryDataPersistenceManager.saveExpenses(context, schoolId, list)
 }
 
 // =========================================================================
@@ -568,11 +1112,34 @@ private fun exportMinistryOfficialTablePdf(
     rows: List<List<String>>,
     footerNote: String = "تم إصدار هذه الوثيقة رسمياً من مركز الإدارة المدرسية واللجنة الامتحانية",
     officialLetterBody: String = "",
-    bookNumberLabel: String = "إداري / ${100 + (System.currentTimeMillis() % 899)}",
+    bookNumberLabel: String = "",
     attachedImageBase64: String = "",
+    schoolId: String = "default_school",
+    autoArchiveToCorrespondence: Boolean = true,
+    onArchivedRecordCreated: ((List<OfficialCorrespondenceRecord>) -> Unit)? = null,
     onResult: (Boolean, String) -> Unit
 ) {
     try {
+        val resolvedBookNumber = if (bookNumberLabel.isBlank() || bookNumberLabel == "AUTO") {
+            MinistryDataPersistenceManager.nextAndIncrementDocNumber(context, schoolId)
+        } else {
+            bookNumberLabel
+        }
+
+        if (autoArchiveToCorrespondence) {
+            val updatedCor = MinistryDataPersistenceManager.archiveOfficialDocumentAutomatically(
+                context = context,
+                schoolId = schoolId,
+                bookNumber = resolvedBookNumber,
+                docType = if (documentTitle.contains("أمر إداري")) "أمر إداري" else "صادر",
+                entityName = subtitleInfo.takeIf { it.isNotBlank() }?.take(45) ?: "إدارة المدرسة / أولياء الأمور",
+                subject = documentTitle,
+                notes = footerNote,
+                imageBase64 = attachedImageBase64
+            )
+            onArchivedRecordCreated?.invoke(updatedCor)
+        }
+
         val pdfDocument = PdfDocument()
         val pageWidth = 595
         val pageHeight = 842
@@ -608,7 +1175,7 @@ private fun exportMinistryOfficialTablePdf(
         }
         val centerBasmalaPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.parseColor("#042F24")
-            textSize = 11.5f
+            textSize = 13f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
@@ -661,28 +1228,14 @@ private fun exportMinistryOfficialTablePdf(
             color = android.graphics.Color.parseColor("#065F46")
         })
 
-        // Center: Basmala & Official Drawn Emblem
-        canvas.drawText("بسم الله الرحمن الرحيم", centerX, 44f, centerBasmalaPaint)
-        val emblemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#B45309")
-            style = Paint.Style.STROKE
-            strokeWidth = 1.6f
-        }
-        canvas.drawCircle(centerX, 74f, 18f, emblemPaint)
-        canvas.drawCircle(centerX, 74f, 14f, Paint(emblemPaint).apply { strokeWidth = 0.8f })
-        // Scale / Book emblem inside circle
-        canvas.drawLine(centerX, 62f, centerX, 84f, emblemPaint)
-        canvas.drawLine(centerX - 10f, 69f, centerX + 10f, 69f, emblemPaint)
-        canvas.drawText("وزارة التربية", centerX, 104f, Paint(centerBasmalaPaint).apply {
-            textSize = 8.5f
-            color = android.graphics.Color.parseColor("#B45309")
-        })
+        // Center: ONLY "بسم الله الرحمن الرحيم" in elegant official font (No circle or crossed lines underneath)
+        canvas.drawText("بسم الله الرحمن الرحيم", centerX, 58f, centerBasmalaPaint)
 
-        // Left: Number, Date, Academic Year
-        canvas.drawText("العدد: $bookNumberLabel", leftMargin, 48f, headerLeftPaint)
+        // Left: Sequential Number (العدد), Date, Academic Year
+        canvas.drawText("العدد: $resolvedBookNumber", leftMargin, 48f, headerLeftPaint)
         canvas.drawText("التاريخ: $todayIso", leftMargin, 65f, headerLeftPaint)
         canvas.drawText("العام الدراسي: $academicYear", leftMargin, 82f, headerLeftPaint)
-        canvas.drawText("المرفقات: رسمي مصدق", leftMargin, 98f, Paint(headerLeftPaint).apply {
+        canvas.drawText("المرفقات: وثيقة رسمية مصدقة", leftMargin, 98f, Paint(headerLeftPaint).apply {
             textSize = 9f
             color = android.graphics.Color.parseColor("#334155")
         })
@@ -775,8 +1328,8 @@ private fun exportMinistryOfficialTablePdf(
                 textAlign = Paint.Align.CENTER
                 textSize = 8.5f
             }
-            rows.take(20).forEachIndexed { rIdx, row ->
-                if (currentY + 21f < pageHeight - 125f) {
+            rows.take(19).forEachIndexed { rIdx, row ->
+                if (currentY + 21f < pageHeight - 135f) {
                     if (rIdx % 2 == 1) {
                         canvas.drawRect(leftMargin, currentY, rightMargin, currentY + 21f, Paint().apply {
                             color = android.graphics.Color.parseColor("#F8FAFC")
@@ -800,67 +1353,66 @@ private fun exportMinistryOfficialTablePdf(
             }
         }
 
-        // 7. Official Iraqi Document Footer (Principal Signature & Stamp on Left, Committee & QR on Right)
-        val footerTopY = pageHeight - 110f
+        // 7. Official Iraqi Document Footer (Principal Signature & Real Official School Stamp on Left, Real Scannable QR on Center-Right)
+        val footerTopY = pageHeight - 122f
         canvas.drawLine(leftMargin, footerTopY, rightMargin, footerTopY, innerBorderPaint)
 
-        // Right side of footer: Exam Committee / Administration + Verification QR
+        // Right side of footer: Exam Committee / Administration
         canvas.drawText("اللجنة الامتحانية / الإدارة المدرسية", rightMargin, footerTopY + 20f, bodyBoldPaint)
-        canvas.drawText(footerNote.take(68), rightMargin, footerTopY + 36f, Paint(bodyPaint).apply { textSize = 8.5f })
-        canvas.drawText("نسخة منه إلى: الإضبارة العامة / سجل الصادرة والواردة", rightMargin, footerTopY + 52f, Paint(bodyPaint).apply { textSize = 8.5f })
+        canvas.drawText(footerNote.take(64), rightMargin, footerTopY + 36f, Paint(bodyPaint).apply { textSize = 8.5f })
+        canvas.drawText("العدد الصادر: ($resolvedBookNumber) • مؤرشف في سجل الصادرة والواردة", rightMargin, footerTopY + 52f, Paint(bodyPaint).apply { textSize = 8.5f })
 
-        // Mini QR Verification Matrix on bottom-center-right
-        val qrSize = 42f
+        // Real 100% Scannable QR Code Bitmap in Footer Center
+        val qrSize = 56f
         val qrLeft = centerX - (qrSize / 2f)
-        val qrTop = footerTopY + 16f
-        canvas.drawRect(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize, tableBorderPaint)
-        val qrCell = qrSize / 7f
-        val seedHash = (schoolName + documentTitle + todayIso).hashCode()
-        val qrFillPaint = Paint().apply {
-            color = android.graphics.Color.parseColor("#0F172A")
-            style = Paint.Style.FILL
-        }
-        for (r in 0 until 7) {
-            for (c in 0 until 7) {
-                val corner = (r < 2 && c < 2) || (r < 2 && c >= 5) || (r >= 5 && c < 2)
-                val bit = ((seedHash shr ((r * 7 + c) % 28)) and 1) == 1
-                if (corner || bit) {
-                    canvas.drawRect(
-                        qrLeft + c * qrCell + 1f,
-                        qrTop + r * qrCell + 1f,
-                        qrLeft + (c + 1) * qrCell - 1f,
-                        qrTop + (r + 1) * qrCell - 1f,
-                        qrFillPaint
-                    )
-                }
-            }
-        }
-        canvas.drawText("رمز التحقق الرقمي", centerX, qrTop + qrSize + 12f, Paint(bodyPaint).apply {
+        val qrTop = footerTopY + 10f
+        val qrPayload = "DOC:${schoolId.ifBlank { schoolName }}:$resolvedBookNumber:$todayIso"
+        val realQrBmp = com.example.util.DocumentAndIdExporter.generateQrCodeBitmap(qrPayload, 160)
+        val qrRect = RectF(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize)
+        canvas.drawBitmap(realQrBmp, null, qrRect, null)
+        canvas.drawRect(qrRect, tableBorderPaint)
+        canvas.drawText("باركود التحقق الرسمي", centerX, qrTop + qrSize + 11f, Paint(bodyBoldPaint).apply {
             textAlign = Paint.Align.CENTER
             textSize = 7.5f
         })
 
-        // Left side of footer: Principal Signature & Drawn Official Stamp Circle
-        val leftSigCenterX = leftMargin + 95f
-        canvas.drawText("توقيع وختم مدير المدرسة", leftSigCenterX, footerTopY + 20f, Paint(bodyBoldPaint).apply {
-            textAlign = Paint.Align.CENTER
-        })
-        canvas.drawText("المدير: $principalName", leftSigCenterX, footerTopY + 36f, Paint(bodyBoldPaint).apply {
+        // Left side of footer: Principal Signature & Large Double-Bordered Official School Stamp
+        val leftSigCenterX = leftMargin + 105f
+        canvas.drawText("مدير المدرسة: $principalName", leftSigCenterX, footerTopY + 16f, Paint(bodyBoldPaint).apply {
             textAlign = Paint.Align.CENTER
             textSize = 9.5f
         })
+
+        val stampCenterY = footerTopY + 56f
+        val stampRx = 72f
+        val stampRy = 30f
+        val stampOuterRect = RectF(leftSigCenterX - stampRx, stampCenterY - stampRy, leftSigCenterX + stampRx, stampCenterY + stampRy)
+        val stampInnerRect = RectF(leftSigCenterX - stampRx + 3.5f, stampCenterY - stampRy + 3.5f, leftSigCenterX + stampRx - 3.5f, stampCenterY + stampRy - 3.5f)
         val stampPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.parseColor("#1E3A8A")
             style = Paint.Style.STROKE
-            strokeWidth = 1.3f
+            strokeWidth = 1.8f
         }
-        canvas.drawCircle(leftSigCenterX, footerTopY + 60f, 18f, stampPaint)
-        canvas.drawCircle(leftSigCenterX, footerTopY + 60f, 15f, Paint(stampPaint).apply { strokeWidth = 0.6f })
-        canvas.drawText("ختم الإدارة", leftSigCenterX, footerTopY + 63f, Paint(bodyBoldPaint).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = 7.5f
+        val stampInnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.parseColor("#1E3A8A")
+            style = Paint.Style.STROKE
+            strokeWidth = 0.9f
+        }
+        canvas.drawRoundRect(stampOuterRect, 28f, 28f, stampPaint)
+        canvas.drawRoundRect(stampInnerRect, 24f, 24f, stampInnerPaint)
+
+        val stampTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#1E3A8A")
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 8f
+        }
+        canvas.drawText("إدارة مدرسة ${schoolName.take(22)}", leftSigCenterX, stampCenterY - 10f, stampTextPaint)
+        canvas.drawText("التاريخ: $todayIso", leftSigCenterX, stampCenterY + 3f, Paint(stampTextPaint).apply {
+            textSize = 8.2f
+            color = android.graphics.Color.parseColor("#065F46")
         })
+        canvas.drawText("الختم الإداري المعتمد", leftSigCenterX, stampCenterY + 16f, stampTextPaint)
 
         pdfDocument.finishPage(page)
 
@@ -875,7 +1427,7 @@ private fun exportMinistryOfficialTablePdf(
             canvas2.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), whiteBgPaint)
             canvas2.drawRect(18f, 18f, pageWidth - 18f, pageHeight - 18f, outerBorderPaint)
             canvas2.drawRect(22f, 22f, pageWidth - 22f, pageHeight - 22f, innerBorderPaint)
-            canvas2.drawText("المرفق الضوئي الرسمي للكتاب ($bookNumberLabel) — $documentTitle", centerX, 52f, subjectPaint)
+            canvas2.drawText("المرفق الضوئي الرسمي للكتاب ($resolvedBookNumber) — $documentTitle", centerX, 52f, subjectPaint)
             val targetRect = RectF(44f, 75f, pageWidth - 44f, pageHeight - 85f)
             canvas2.drawBitmap(attachedBitmap, null, targetRect, null)
             canvas2.drawRect(targetRect, tableBorderPaint)
@@ -953,9 +1505,307 @@ private fun exportMinistryOfficialTablePdf(
             )
         }
 
-        onResult(true, "تم تصدير الوثيقة الرسمية ($documentTitle) بصيغة PDF ورقية A4 وحفظها في التنزيلات ✓")
+        onResult(true, "تم تصدير الوثيقة الرسمية ($documentTitle) بالعدد ($resolvedBookNumber) وأرشفتها تلقائياً ✓")
     } catch (e: Exception) {
         onResult(false, "تعذر تصدير PDF: ${e.localizedMessage ?: "خطأ غير متوقع"}")
+    }
+}
+
+/**
+ * تصدير ورقة الأسئلة الامتحانية العراقية الرسمية (تخطيط عمودي حر بدون جداول وبدون نص كتاب إداري)
+ */
+private fun exportOfficialExamQuestionsPaperPdf(
+    context: Context,
+    schoolId: String,
+    schoolName: String,
+    principalName: String,
+    subjectTeacherName: String,
+    academicYear: String,
+    examSubject: String,
+    examGradeClass: String,
+    examRound: String,
+    examDuration: String,
+    examDate: String,
+    examInstructionNote: String,
+    questions: List<ExamQuestionItemDraft>,
+    onResult: (Boolean, String) -> Unit
+) {
+    try {
+        val pdfDocument = PdfDocument()
+        val pageWidth = 595
+        val pageHeight = 842
+        val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas = page.canvas
+
+        val whiteBgPaint = Paint().apply {
+            color = android.graphics.Color.WHITE
+            style = Paint.Style.FILL
+        }
+        val outerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            style = Paint.Style.STROKE
+            strokeWidth = 2.2f
+        }
+        val innerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#475569")
+            style = Paint.Style.STROKE
+            strokeWidth = 0.9f
+        }
+        val headerRightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 10.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+        val headerLeftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 10.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.LEFT
+        }
+        val headerCenterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#042F24")
+            textSize = 12.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val questionTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 11.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+        val branchPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#1E293B")
+            textSize = 10.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textAlign = Paint.Align.RIGHT
+        }
+        val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#CBD5E1")
+            style = Paint.Style.STROKE
+            strokeWidth = 0.8f
+        }
+
+        // 1. White A4 Page & Double Frame
+        canvas.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), whiteBgPaint)
+        canvas.drawRect(18f, 18f, pageWidth - 18f, pageHeight - 18f, outerBorderPaint)
+        canvas.drawRect(22f, 22f, pageWidth - 22f, pageHeight - 22f, innerBorderPaint)
+
+        val rightMargin = pageWidth - 36f
+        val leftMargin = 36f
+        val centerX = pageWidth / 2f
+        val totalWidth = rightMargin - leftMargin
+        val totalMarks = questions.sumOf { it.marks }.let { if (it > 0) it else 100 }
+
+        // 2. Top Framed Iraqi Exam Header Box (Right / Center / Left)
+        val headerBoxRect = RectF(leftMargin, 32f, rightMargin, 114f)
+        canvas.drawRoundRect(headerBoxRect, 8f, 8f, Paint().apply {
+            color = android.graphics.Color.parseColor("#F8FAFC")
+            style = Paint.Style.FILL
+        })
+        canvas.drawRoundRect(headerBoxRect, 8f, 8f, outerBorderPaint)
+
+        // Right Column of Header
+        canvas.drawText("إدارة مدرسة $schoolName", rightMargin - 10f, 54f, headerRightPaint)
+        canvas.drawText("المادة: $examSubject", rightMargin - 10f, 76f, headerRightPaint)
+        canvas.drawText("الصف: $examGradeClass", rightMargin - 10f, 98f, headerRightPaint)
+
+        // Center Column of Header
+        canvas.drawText("بسم الله الرحمن الرحيم", centerX, 52f, headerCenterPaint)
+        canvas.drawText(examRound, centerX, 75f, Paint(headerCenterPaint).apply { textSize = 11f })
+        canvas.drawText("للعام الدراسي ($academicYear)", centerX, 97f, Paint(headerCenterPaint).apply {
+            textSize = 10f
+            color = android.graphics.Color.parseColor("#065F46")
+        })
+
+        // Left Column of Header
+        canvas.drawText("التاريخ: $examDate", leftMargin + 10f, 54f, headerLeftPaint)
+        canvas.drawText("الزمن: $examDuration", leftMargin + 10f, 76f, headerLeftPaint)
+        canvas.drawText("الدرجة الكلية: ($totalMarks) درجة", leftMargin + 10f, 98f, headerLeftPaint)
+
+        var currentY = 132f
+
+        // 3. Exam Note Line under Header
+        if (examInstructionNote.isNotBlank()) {
+            val noteRect = RectF(leftMargin, currentY - 14f, rightMargin, currentY + 10f)
+            canvas.drawRoundRect(noteRect, 6f, 6f, Paint().apply {
+                color = android.graphics.Color.parseColor("#FFFBEB")
+                style = Paint.Style.FILL
+            })
+            canvas.drawRoundRect(noteRect, 6f, 6f, innerBorderPaint)
+            canvas.drawText(examInstructionNote, centerX, currentY + 2f, Paint(headerCenterPaint).apply {
+                textSize = 10.5f
+                color = android.graphics.Color.parseColor("#92400E")
+            })
+            currentY += 32f
+        } else {
+            currentY += 10f
+        }
+
+        // 4. Vertical Questions Layout (Full Width, Right-to-Left, Zero Tables)
+        val arabicBranchLetters = listOf("أ", "ب", "ج", "د", "هـ", "و")
+        val nonBlankQuestions = questions.filter {
+            it.mainPrompt.isNotBlank() || it.effectiveBranches().any { b -> b.isNotBlank() }
+        }.ifEmpty { questions }
+
+        nonBlankQuestions.forEachIndexed { idx, q ->
+            if (currentY < pageHeight - 135f) {
+                val qNum = idx + 1
+                val promptText = q.mainPrompt.ifBlank { "أجب عما يأتي:" }
+                val fullQuestionLine = "س$qNum / $promptText   (${q.marks} درجة)"
+
+                // Wrap main question line if long
+                val words = fullQuestionLine.split(" ")
+                var lineBuf = StringBuilder()
+                for (w in words) {
+                    val candidate = if (lineBuf.isEmpty()) w else "$lineBuf $w"
+                    if (questionTitlePaint.measureText(candidate) > totalWidth - 16f) {
+                        canvas.drawText(lineBuf.toString(), rightMargin, currentY, questionTitlePaint)
+                        currentY += 18f
+                        lineBuf = StringBuilder(w)
+                    } else {
+                        lineBuf = StringBuilder(candidate)
+                    }
+                }
+                if (lineBuf.isNotEmpty()) {
+                    canvas.drawText(lineBuf.toString(), rightMargin, currentY, questionTitlePaint)
+                    currentY += 19f
+                }
+
+                // Branches indented underneath
+                val branches = q.effectiveBranches().filter { it.isNotBlank() }
+                branches.forEachIndexed { bIdx, bText ->
+                    if (currentY < pageHeight - 130f) {
+                        val bLetter = arabicBranchLetters.getOrElse(bIdx) { "${bIdx + 1}" }
+                        val branchLine = if (bText.startsWith("فرع") || bText.startsWith("$bLetter)") || bText.startsWith("($bLetter)")) {
+                            bText
+                        } else {
+                            "$bLetter) $bText"
+                        }
+                        val bWords = branchLine.split(" ")
+                        var bBuf = StringBuilder()
+                        for (bw in bWords) {
+                            val cand = if (bBuf.isEmpty()) bw else "$bBuf $bw"
+                            if (branchPaint.measureText(cand) > totalWidth - 36f) {
+                                canvas.drawText(bBuf.toString(), rightMargin - 16f, currentY, branchPaint)
+                                currentY += 16f
+                                bBuf = StringBuilder(bw)
+                            } else {
+                                bBuf = StringBuilder(cand)
+                            }
+                        }
+                        if (bBuf.isNotEmpty()) {
+                            canvas.drawText(bBuf.toString(), rightMargin - 16f, currentY, branchPaint)
+                            currentY += 17f
+                        }
+                    }
+                }
+
+                currentY += 6f
+                if (idx < nonBlankQuestions.lastIndex && currentY < pageHeight - 140f) {
+                    canvas.drawLine(leftMargin + 14f, currentY, rightMargin - 14f, currentY, dividerPaint)
+                    currentY += 18f
+                }
+            }
+        }
+
+        // 5. Bottom Exam Paper Footer: Best Wishes + Subject Teacher & Principal
+        val footerTopY = pageHeight - 102f
+        canvas.drawLine(leftMargin, footerTopY, rightMargin, footerTopY, outerBorderPaint)
+        canvas.drawText(
+            "مع تمنياتنا لجميع طلبتنا الأعزاء بالنجاح والتوفيق",
+            centerX,
+            footerTopY + 24f,
+            Paint(headerCenterPaint).apply { textSize = 11.5f }
+        )
+        canvas.drawText(
+            "معلم / مدرس المادة: ${subjectTeacherName.ifBlank { "مدرّس المادة" }}",
+            rightMargin - 10f,
+            footerTopY + 52f,
+            headerRightPaint
+        )
+        canvas.drawText(
+            "مدير المدرسة: $principalName",
+            leftMargin + 10f,
+            footerTopY + 52f,
+            headerLeftPaint
+        )
+
+        pdfDocument.finishPage(page)
+
+        val safeName = "Exam_Questions_${System.currentTimeMillis()}.pdf"
+        val cacheFile = File(context.cacheDir, safeName)
+        FileOutputStream(cacheFile).use { out -> pdfDocument.writeTo(out) }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, safeName)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri != null) {
+                    context.contentResolver.openOutputStream(uri)?.use { outStream ->
+                        FileInputStream(cacheFile).use { inStream -> inStream.copyTo(outStream) }
+                    }
+                }
+            }
+        }
+        pdfDocument.close()
+
+        runCatching {
+            val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+            printManager?.print(
+                "أسئلة امتحان $examSubject - $examGradeClass",
+                object : PrintDocumentAdapter() {
+                    override fun onLayout(
+                        oldAttributes: PrintAttributes?,
+                        newAttributes: PrintAttributes?,
+                        cancellationSignal: CancellationSignal?,
+                        callback: LayoutResultCallback?,
+                        extras: Bundle?
+                    ) {
+                        if (cancellationSignal?.isCanceled == true) {
+                            callback?.onLayoutCancelled()
+                            return
+                        }
+                        val info = PrintDocumentInfo.Builder(safeName)
+                            .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                            .setPageCount(1)
+                            .build()
+                        callback?.onLayoutFinished(info, true)
+                    }
+
+                    override fun onWrite(
+                        pages: Array<out PageRange>?,
+                        destination: ParcelFileDescriptor?,
+                        cancellationSignal: CancellationSignal?,
+                        callback: WriteResultCallback?
+                    ) {
+                        try {
+                            if (destination != null) {
+                                FileInputStream(cacheFile).use { input ->
+                                    FileOutputStream(destination.fileDescriptor).use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                            }
+                            callback?.onWriteFinished(arrayOf(PageRange.ALL_PAGES))
+                        } catch (e: Exception) {
+                            callback?.onWriteFailed(e.message)
+                        }
+                    }
+                },
+                null
+            )
+        }
+
+        onResult(true, "تم تصدير ورقة الأسئلة الامتحانية الرسمية لمادة ($examSubject) بالتنسيق العمودي المعتمد ✓")
+    } catch (e: Exception) {
+        onResult(false, "تعذر تصدير ورقة الأسئلة: ${e.localizedMessage ?: "خطأ غير متوقع"}")
     }
 }
 
@@ -1053,7 +1903,7 @@ fun MinistryExecutiveSuiteScreen(
         }
     }
 
-    // Persistent Suite States
+    // Persistent Suite States (SharedPreferences + Firebase Realtime Sync)
     var thresholdsState by remember(schoolId) {
         mutableStateOf(MinistrySuiteLocalStore.loadThresholds(context, schoolId))
     }
@@ -1076,6 +1926,23 @@ fun MinistryExecutiveSuiteScreen(
         mutableStateOf(MinistrySuiteLocalStore.loadExpenses(context, schoolId))
     }
 
+    LaunchedEffect(schoolId) {
+        val synced = MinistryDataPersistenceManager.syncFromFirebaseIfAvailable(context, schoolId)
+        if (synced) {
+            thresholdsState = MinistrySuiteLocalStore.loadThresholds(context, schoolId)
+            correspondenceList = MinistrySuiteLocalStore.loadCorrespondence(context, schoolId)
+            staffPortfoliosMap = MinistrySuiteLocalStore.loadStaffPortfolios(context, schoolId)
+            studentWelfareMap = MinistrySuiteLocalStore.loadStudentWelfare(context, schoolId)
+            archivedYearsList = MinistrySuiteLocalStore.loadArchivedYears(context, schoolId)
+            inventoryList = MinistrySuiteLocalStore.loadInventory(context, schoolId)
+            expensesList = MinistrySuiteLocalStore.loadExpenses(context, schoolId)
+        }
+    }
+
+    val refreshCorrespondenceState: (List<OfficialCorrespondenceRecord>) -> Unit = { updatedCor ->
+        correspondenceList = updatedCor
+    }
+
     if (!isAdmin) {
         return
     }
@@ -1096,7 +1963,7 @@ fun MinistryExecutiveSuiteScreen(
                     .navigationBarsPadding()
                     .imePadding()
             ) {
-                // Top Royal Emerald & Gold Header with Vector Crest & 6 Horizontal Scrollable Tabs
+                // Top Royal Emerald & Gold Header with Official Document Crest & 6 Horizontal Scrollable Tabs
                 MinistrySuiteExecutiveHeader(
                     schoolName = schoolConfig.schoolName,
                     principalName = principalName,
@@ -1179,8 +2046,9 @@ fun MinistryExecutiveSuiteScreen(
                             onSaveThresholds = { updated ->
                                 thresholdsState = updated
                                 MinistrySuiteLocalStore.saveThresholds(context, schoolId, updated)
-                                triggerActionBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                                triggerActionBanner("تم حفظ واعتماد الضوابط في قاعدة البيانات بنجاح ✓", true)
                             },
+                            onCorrespondenceAutoUpdated = refreshCorrespondenceState,
                             onTriggerBanner = triggerActionBanner
                         )
 
@@ -1195,7 +2063,7 @@ fun MinistryExecutiveSuiteScreen(
                             onSaveThresholds = { updated ->
                                 thresholdsState = updated
                                 MinistrySuiteLocalStore.saveThresholds(context, schoolId, updated)
-                                triggerActionBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                                triggerActionBanner("تم حفظ واعتماد الضوابط في قاعدة البيانات بنجاح ✓", true)
                             },
                             correspondenceList = correspondenceList,
                             onSaveCorrespondence = { updated ->
@@ -1215,8 +2083,9 @@ fun MinistryExecutiveSuiteScreen(
                             onSavePortfolios = { updated ->
                                 staffPortfoliosMap = updated
                                 MinistrySuiteLocalStore.saveStaffPortfolios(context, schoolId, updated)
-                                triggerActionBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                                triggerActionBanner("تم حفظ الإضبارة الوظيفية للمعلم في قاعدة البيانات بنجاح ✓", true)
                             },
+                            onCorrespondenceAutoUpdated = refreshCorrespondenceState,
                             onTriggerBanner = triggerActionBanner
                         )
 
@@ -1230,8 +2099,9 @@ fun MinistryExecutiveSuiteScreen(
                             onSaveWelfare = { updated ->
                                 studentWelfareMap = updated
                                 MinistrySuiteLocalStore.saveStudentWelfare(context, schoolId, updated)
-                                triggerActionBanner("تم تحديث الحالة وإشعار ولي الأمر بنجاح ✓", true)
+                                triggerActionBanner("تم حفظ تصنيف الرعاية والمنحة للطالب بشكل دائم ✓", true)
                             },
+                            onCorrespondenceAutoUpdated = refreshCorrespondenceState,
                             onTriggerBanner = triggerActionBanner
                         )
 
@@ -1246,8 +2116,9 @@ fun MinistryExecutiveSuiteScreen(
                             onSaveArchivedYears = { updated ->
                                 archivedYearsList = updated
                                 MinistrySuiteLocalStore.saveArchivedYears(context, schoolId, updated)
-                                triggerActionBanner("تم تسجيل وأرشفة الكتاب الرسمي في السجل بنجاح ✓", true)
+                                triggerActionBanner("تم حفظ وأرشفة السنة الدراسية في قاعدة البيانات بنجاح ✓", true)
                             },
+                            onCorrespondenceAutoUpdated = refreshCorrespondenceState,
                             onTriggerBanner = triggerActionBanner
                         )
 
@@ -1261,14 +2132,15 @@ fun MinistryExecutiveSuiteScreen(
                             onSaveInventory = { updated ->
                                 inventoryList = updated
                                 MinistrySuiteLocalStore.saveInventory(context, schoolId, updated)
-                                triggerActionBanner("تم تسجيل وأرشفة الكتاب الرسمي في السجل بنجاح ✓", true)
+                                triggerActionBanner("تم حفظ سجل الجرد في قاعدة البيانات بنجاح ✓", true)
                             },
                             expensesList = expensesList,
                             onSaveExpenses = { updated ->
                                 expensesList = updated
                                 MinistrySuiteLocalStore.saveExpenses(context, schoolId, updated)
-                                triggerActionBanner("تم تسجيل وأرشفة الكتاب الرسمي في السجل بنجاح ✓", true)
+                                triggerActionBanner("تم حفظ وصل الصرف في قاعدة البيانات بنجاح ✓", true)
                             },
+                            onCorrespondenceAutoUpdated = refreshCorrespondenceState,
                             onTriggerBanner = triggerActionBanner
                         )
                     }
@@ -1279,7 +2151,7 @@ fun MinistryExecutiveSuiteScreen(
 }
 
 // =========================================================================
-// 4. EXECUTIVE HEADER & OFFICIAL DOCUMENT + ACADEMIC SCALE VECTOR CREST
+// 4. EXECUTIVE HEADER & OFFICIAL DOCUMENT BOOK VECTOR CREST (NO CROSSED LINES)
 // =========================================================================
 
 @Composable
@@ -1439,127 +2311,20 @@ private fun MinistrySuiteExecutiveHeader(
 fun MinistryExecutiveCrestVectorCanvas(
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "ministry_crest_anim")
-    val sealGlow by infiniteTransition.animateFloat(
-        initialValue = 0.88f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "crest_seal_glow"
-    )
-    val scaleSwing by infiniteTransition.animateFloat(
-        initialValue = -1.8f,
-        targetValue = 1.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "crest_scale_swing"
-    )
-
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val cx = w / 2f
-        val cy = h / 2f
-        val r = (w.coerceAtMost(h) / 2f) * 0.90f
-
-        // 1. Glowing Royal Emerald & Gold Outer Aura
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color(0xFFFBBF24).copy(alpha = 0.28f),
-                    Color(0xFF065F46),
-                    Color(0xFF022C22)
-                ),
-                center = Offset(cx, cy),
-                radius = r * sealGlow.coerceAtMost(1.06f)
-            ),
-            radius = r,
-            center = Offset(cx, cy)
-        )
-        drawCircle(
-            color = Color(0xFFFBBF24),
-            radius = r * sealGlow.coerceIn(0.92f, 1.03f),
-            center = Offset(cx, cy),
-            style = Stroke(width = 2.2f)
-        )
-
-        // 2. Official Scroll / Document Sheet in the Background
-        val docW = r * 0.86f
-        val docH = r * 1.06f
-        val docLeft = cx - docW / 2f
-        val docTop = cy - docH / 2f
-        drawRoundRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFFFFFBEB), Color(0xFFFDE68A))
-            ),
-            topLeft = Offset(docLeft, docTop),
-            size = Size(docW, docH),
-            cornerRadius = CornerRadius(6f, 6f)
-        )
-        drawRoundRect(
-            color = Color(0xFFD97706),
-            topLeft = Offset(docLeft, docTop),
-            size = Size(docW, docH),
-            cornerRadius = CornerRadius(6f, 6f),
-            style = Stroke(width = 1.5f)
-        )
-
-        // Document official ruled lines
-        for (lineIdx in 0..2) {
-            val ly = docTop + docH * (0.24f + lineIdx * 0.14f)
-            drawLine(
-                color = Color(0xFF065F46).copy(alpha = 0.55f),
-                start = Offset(docLeft + docW * 0.18f, ly),
-                end = Offset(docLeft + docW * 0.82f, ly),
-                strokeWidth = 1.6f,
-                cap = StrokeCap.Round
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF065F46),
+        border = BorderStroke(1.5.dp, Color(0xFFFBBF24))
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Filled.MenuBook,
+                contentDescription = "وثيقة رسمية",
+                tint = Color(0xFFFDE68A),
+                modifier = Modifier.size(24.dp)
             )
         }
-
-        // 3. Golden Academic Scale of Exam Justice & Official Seal
-        val beamY = cy - r * 0.08f
-        val leftBeamX = cx - r * 0.34f
-        val rightBeamX = cx + r * 0.34f
-        drawLine(
-            color = Color(0xFF042F24),
-            start = Offset(cx, cy - r * 0.34f),
-            end = Offset(cx, cy + r * 0.34f),
-            strokeWidth = 2.2f,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = Color(0xFFB45309),
-            start = Offset(leftBeamX, beamY + scaleSwing),
-            end = Offset(rightBeamX, beamY - scaleSwing),
-            strokeWidth = 2.2f,
-            cap = StrokeCap.Round
-        )
-        drawCircle(
-            color = Color(0xFF059669),
-            radius = r * 0.11f,
-            center = Offset(leftBeamX, beamY + r * 0.16f + scaleSwing)
-        )
-        drawCircle(
-            color = Color(0xFF059669),
-            radius = r * 0.11f,
-            center = Offset(rightBeamX, beamY + r * 0.16f - scaleSwing)
-        )
-
-        // Glowing Stamp Ribbon at Bottom of Document
-        drawCircle(
-            color = Color(0xFFD97706),
-            radius = r * 0.18f * sealGlow.coerceIn(0.95f, 1.05f),
-            center = Offset(cx, docTop + docH * 0.82f)
-        )
-        drawCircle(
-            color = Color(0xFFFef3c7),
-            radius = r * 0.09f,
-            center = Offset(cx, docTop + docH * 0.82f)
-        )
     }
 }
 
@@ -1578,6 +2343,7 @@ private fun ExamControlCenterSection(
     examSchedules: List<ExamScheduleItem>,
     thresholds: ExemptionAndWarningThresholds,
     onSaveThresholds: (ExemptionAndWarningThresholds) -> Unit,
+    onCorrespondenceAutoUpdated: (List<OfficialCorrespondenceRecord>) -> Unit = {},
     onTriggerBanner: (String, Boolean) -> Unit
 ) {
     val schoolId = schoolConfig.schoolId.ifBlank { "default_school" }
@@ -1628,12 +2394,25 @@ private fun ExamControlCenterSection(
     val individualExemptList = remember(exemptionAnalysis) { exemptionAnalysis.filter { !it.first.second.first && it.first.second.second.isNotEmpty() } }
     val decisionEligibleList = remember(exemptionAnalysis) { exemptionAnalysis.filter { it.second.second } }
 
-    // Tool 2 State: Seating Plan Generator
+    // Tool 2 State: Seating Plan Generator (Persisted per student)
     var hallsCount by remember { mutableIntStateOf(3) }
     var hallCapacity by remember { mutableIntStateOf(20) }
     var selectedHallPreview by remember { mutableIntStateOf(1) }
     var generatedSeats by remember(students, hallsCount, hallCapacity) {
-        mutableStateOf(generateSmartInterleavedSeatingPlan(students, hallsCount, hallCapacity))
+        mutableStateOf(
+            generateSmartInterleavedSeatingPlan(students, hallsCount, hallCapacity).map { defaultSeat ->
+                val savedPair = MinistrySuiteLocalStore.getStudentExamHallAndSeatNumbers(context, schoolId, defaultSeat.student.id)
+                if (savedPair.first > 0 && savedPair.second > 0) {
+                    defaultSeat.copy(
+                        hallNumber = savedPair.first,
+                        hallName = "القاعة الامتحانية (${savedPair.first})",
+                        seatNumber = savedPair.second
+                    )
+                } else {
+                    defaultSeat
+                }
+            }
+        )
     }
 
     // Tool 3 State: Exam Cards Filter & Smart ID Exam Pass Link (Package 6)
@@ -1649,23 +2428,28 @@ private fun ExamControlCenterSection(
         )
     }
 
-    // Tool 4 State: Official Exam Questions Paper Builder
+    // Tool 4 State: Dynamic Official Exam Questions Paper Builder (Persisted & Zero Fake Texts)
     var examSubject by remember { mutableStateOf(schoolConfig.registeredSubjects.firstOrNull() ?: "اللغة العربية") }
     var examGradeClass by remember { mutableStateOf(schoolConfig.registeredClasses.firstOrNull() ?: "الأول المتوسط") }
     var examRound by remember { mutableStateOf("امتحانات نهاية السنة — الدور الأول") }
     var examDuration by remember { mutableStateOf("ساعتان") }
+    var examDateIso by remember { mutableStateOf(ArabicCalendarDateHelper.todayIsoDate()) }
+    var subjectTeacherName by remember { mutableStateOf("") }
     var examInstructionNote by remember { mutableStateOf("ملاحظة: الإجابة عن خمسة أسئلة فقط، ولكل سؤال (20) درجة.") }
-    var questionDrafts by remember {
-        mutableStateOf(
-            listOf(
-                ExamQuestionItemDraft(1, "أجب عن الفرعين الآتيين بدقة مع ذكر الشواهد:", "فرع (أ): عرف المصطلحات الأساسية ومثّل لها في جمل مفيدة.", "فرع (ب): استخرج القواعد المطلوبة وبين السبب.", 20),
-                ExamQuestionItemDraft(2, "علل خمساً مما يأتي تعليلاً علمياً دقيقاً:", "فرع (أ): أذكر ثلاثة أسباب رئيسية مع الشرح الموجز.", "فرع (ب): قارن في جدول بين الحالتين الأولى والثانية.", 20),
-                ExamQuestionItemDraft(3, "املا الفراغات الآتية بما يناسبها في خمسٍ فقط:", "فرع (أ): أكمل النصوص أو المعادلات المقررة في المنهج.", "فرع (ب): صحح الخطأ إن وجد في العبارات الآتية.", 20),
-                ExamQuestionItemDraft(4, "حل المسألة أو التطبيق العملي الآتي بخطوات متسلسلة:", "فرع (أ): اكتب القانون الأساسي وعوض القيم المعطاة.", "فرع (ب): فسر النتيجة النهائية وحدد وحدات القياس.", 20),
-                ExamQuestionItemDraft(5, "اختر الإجابة الصحيحة من بين الأقواس لخمس فقرات:", "فرع (أ): اختر الجواب الأصح مع بيان خطوات الحل.", "فرع (ب): اربط عناصر القائمة (أ) بما يناسبها في القائمة (ب).", 20),
-                ExamQuestionItemDraft(6, "اشرح بإيجاز أحد الموضوعين الآتيين:", "فرع (أ): الموضوع الأول ومميزاته وتطبيقاته.", "فرع (ب): الموضوع الثاني وأهميته العلمية.", 20)
+    var questionDrafts by remember(schoolId) {
+        mutableStateOf(MinistryDataPersistenceManager.loadExamQuestions(context, schoolId))
+    }
+
+    val saveQuestionDraftsState: (List<ExamQuestionItemDraft>) -> Unit = { newList ->
+        val renumbered = newList.mapIndexed { i, item ->
+            item.copy(
+                questionNumber = i + 1,
+                branchA = item.branches.getOrNull(0) ?: "",
+                branchB = item.branches.getOrNull(1) ?: ""
             )
-        )
+        }
+        questionDrafts = renumbered
+        MinistryDataPersistenceManager.saveExamQuestions(context, schoolId, renumbered)
     }
 
     LazyColumn(
@@ -1727,7 +2511,6 @@ private fun ExamControlCenterSection(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            // Flexible Principal Controls (+/-) for Exemption Thresholds
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color.White,
@@ -1890,7 +2673,9 @@ private fun ExamControlCenterSection(
                                             "إجمالي الطلبة" to "${students.size}"
                                         ),
                                         headers = listOf("ت", "اسم الطالب", "الصف والشعبة", "المعدل العام", "نوع الإعفاء"),
-                                        rows = rows
+                                        rows = rows,
+                                        schoolId = schoolId,
+                                        onArchivedRecordCreated = onCorrespondenceAutoUpdated
                                     ) { ok, msg ->
                                         onTriggerBanner(msg, ok)
                                     }
@@ -2009,7 +2794,7 @@ private fun ExamControlCenterSection(
                                                         val needed = (50 - fg.normalizedPercentage).coerceAtLeast(1)
                                                         viewModel.applyMinistryDecisionGradeBoost(stu.id, fg.subjectName, needed)
                                                     }
-                                                    onTriggerBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                                                    onTriggerBanner("تم تطبيق درجة القرار واعتماد النجاح ✓", true)
                                                 },
                                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                                                 shape = RoundedCornerShape(10.dp),
@@ -2026,15 +2811,12 @@ private fun ExamControlCenterSection(
 
                             Button(
                                 onClick = {
-                                    var appliedCount = 0
                                     decisionEligibleList.forEach { (triple, _) ->
                                         val stu = triple.first
                                         val failingList = triple.third.first
                                         failingList.forEach { fg ->
                                             val needed = (50 - fg.normalizedPercentage).coerceAtLeast(1)
-                                            if (viewModel.applyMinistryDecisionGradeBoost(stu.id, fg.subjectName, needed)) {
-                                                appliedCount++
-                                            }
+                                            viewModel.applyMinistryDecisionGradeBoost(stu.id, fg.subjectName, needed)
                                         }
                                     }
                                     onSaveThresholds(
@@ -2045,7 +2827,7 @@ private fun ExamControlCenterSection(
                                             decisionPointsLimit = decisionPointsLimit
                                         )
                                     )
-                                    onTriggerBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                                    onTriggerBanner("تم حفظ واعتماد الضوابط في قاعدة البيانات بنجاح ✓", true)
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFFD97706),
@@ -2102,7 +2884,6 @@ private fun ExamControlCenterSection(
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF042F24)
                             )
-                            // Package 4: Scrollable LazyRow with widthIn(min = 95.dp) and single-line text
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2135,7 +2916,6 @@ private fun ExamControlCenterSection(
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF042F24)
                             )
-                            // Package 4: Scrollable LazyRow with widthIn(min = 95.dp) and single-line text
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2167,10 +2947,12 @@ private fun ExamControlCenterSection(
                                             context = context,
                                             schoolId = schoolId,
                                             studentId = seat.student.id,
-                                            seatLabel = "قاعة ${seat.hallNumber} - مقعد ${seat.seatNumber}"
+                                            seatLabel = "قاعة (${seat.hallNumber}) - مقعد (${seat.seatNumber})",
+                                            hallNumber = seat.hallNumber,
+                                            seatNumber = seat.seatNumber
                                         )
                                     }
-                                    onTriggerBanner("تم توزيع الطلبة وتوليد خرائط القاعات الامتحانية بنجاح ✓", true)
+                                    onTriggerBanner("تم توزيع الطلبة وحفظ القاعات والمقاعد في قاعدة البيانات ✓", true)
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                                 shape = RoundedCornerShape(12.dp),
@@ -2180,7 +2962,7 @@ private fun ExamControlCenterSection(
                             ) {
                                 Icon(Icons.Filled.GridView, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("توليد خرائط الجلوس الذكية", fontWeight = FontWeight.ExtraBold)
+                                Text("توليد وحفظ خرائط الجلوس الذكية", fontWeight = FontWeight.ExtraBold)
                             }
                         }
                     }
@@ -2293,7 +3075,9 @@ private fun ExamControlCenterSection(
                                             "إجمالي القاعات" to "$hallsCount قاعات"
                                         ),
                                         headers = listOf("رقم المقعد", "القطاع", "اسم الطالب الثلاثي", "الصف الدراسي", "الشعبة"),
-                                        rows = rows
+                                        rows = rows,
+                                        schoolId = schoolId,
+                                        onArchivedRecordCreated = onCorrespondenceAutoUpdated
                                     ) { ok, msg ->
                                         onTriggerBanner(msg, ok)
                                     }
@@ -2346,7 +3130,6 @@ private fun ExamControlCenterSection(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            // Global Toggle: اعتماد بطاقة هوية الطالب الذكية كهوية دخول رسمية للامتحانات
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFFECFDF5),
@@ -2368,7 +3151,7 @@ private fun ExamControlCenterSection(
                                             color = Color(0xFF042F24)
                                         )
                                         Text(
-                                            text = "تظهر شارة التخويل ورقم القاعة والمقعد تلقائياً على هوية الطالب وباركود QR",
+                                            text = "تظهر شارة التخويل ورقم القاعة والمقعد تلقائياً على هوية الطالب المحفوظة والمطبوعة وباركود QR",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = Color(0xFF065F46)
                                         )
@@ -2378,7 +3161,7 @@ private fun ExamControlCenterSection(
                                         onCheckedChange = { enabled ->
                                             isSmartIdExamPassEnabled = enabled
                                             MinistrySuiteLocalStore.setSmartIdExamPassEnabled(context, schoolId, enabled)
-                                            onTriggerBanner("تم حفظ واعتماد الضوابط بنجاح ✓", true)
+                                            onTriggerBanner("تم حفظ واعتماد الضوابط في قاعدة البيانات بنجاح ✓", true)
                                         },
                                         modifier = Modifier.testTag("toggle_smart_id_exam_pass")
                                     )
@@ -2420,7 +3203,9 @@ private fun ExamControlCenterSection(
                                             "العام الدراسي" to schoolConfig.academicYear
                                         ),
                                         headers = listOf("اسم الطالب", "الصف والشعبة", "القاعة", "رقم المقعد", "حالة الدخول"),
-                                        rows = rows
+                                        rows = rows,
+                                        schoolId = schoolId,
+                                        onArchivedRecordCreated = onCorrespondenceAutoUpdated
                                     ) { ok, msg ->
                                         onTriggerBanner(msg, ok)
                                     }
@@ -2453,7 +3238,9 @@ private fun ExamControlCenterSection(
                             context = context,
                             schoolId = schoolId,
                             studentId = seatItem.student.id,
-                            seatLabel = "قاعة ${seatItem.hallNumber} - مقعد ${seatItem.seatNumber}"
+                            seatLabel = "قاعة (${seatItem.hallNumber}) - مقعد (${seatItem.seatNumber})",
+                            hallNumber = seatItem.hallNumber,
+                            seatNumber = seatItem.seatNumber
                         )
                     }
 
@@ -2499,12 +3286,11 @@ private fun ExamControlCenterSection(
                                 }
 
                                 ExamVerificationQrMiniCanvas(
-                                    seed = "${seatItem.student.id}:${if (isAllowed) "ALLOWED" else "BLOCKED"}",
-                                    modifier = Modifier.size(52.dp)
+                                    seed = "${seatItem.student.qrCodeValue}:EXAM:${if (isAllowed) "ALLOWED" else "BLOCKED"}:H${seatItem.hallNumber}:S${seatItem.seatNumber}",
+                                    modifier = Modifier.size(54.dp)
                                 )
                             }
 
-                            // Per-Student Eligibility Toggle & Status Badge
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isAllowed) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
@@ -2534,12 +3320,13 @@ private fun ExamControlCenterSection(
                                         )
                                         Text(
                                             text = if (isAllowed) {
-                                                "مخول بدخول القاعة الامتحانية (قاعة ${seatItem.hallNumber} - مقعد ${seatItem.seatNumber})"
+                                                "مخول بدخول الامتحان • قاعة (${seatItem.hallNumber}) - مقعد (${seatItem.seatNumber})"
                                             } else {
                                                 "تم حجب تخويل الدخول في الهوية المدرسية الذكية والباركود"
                                             },
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = if (isAllowed) Color(0xFF047857) else Color(0xFFB91C1C)
+                                            color = if (isAllowed) Color(0xFF047857) else Color(0xFFB91C1C),
+                                            maxLines = 1
                                         )
                                     }
                                     Switch(
@@ -2558,7 +3345,9 @@ private fun ExamControlCenterSection(
                                                 context = context,
                                                 schoolId = schoolId,
                                                 studentId = seatItem.student.id,
-                                                seatLabel = "قاعة ${seatItem.hallNumber} - مقعد ${seatItem.seatNumber}"
+                                                seatLabel = "قاعة (${seatItem.hallNumber}) - مقعد (${seatItem.seatNumber})",
+                                                hallNumber = seatItem.hallNumber,
+                                                seatNumber = seatItem.seatNumber
                                             )
                                             val statusTitle = if (newAllowed) {
                                                 "تخويل دخول الامتحان المدرسي — ${seatItem.student.studentName}"
@@ -2579,7 +3368,7 @@ private fun ExamControlCenterSection(
                                                 isUrgent = !newAllowed,
                                                 priority = if (newAllowed) "normal" else "high"
                                             )
-                                            onTriggerBanner("تم تحديث الحالة وإشعار ولي الأمر بنجاح ✓", newAllowed)
+                                            onTriggerBanner("تم تحديث الحالة وحفظها وإشعار ولي الأمر بنجاح ✓", newAllowed)
                                         }
                                     )
                                 }
@@ -2595,7 +3384,7 @@ private fun ExamControlCenterSection(
 
                             OutlinedButton(
                                 onClick = {
-                                    val qrStatus = if (isAllowed) "EXAM:ALLOWED" else "EXAM:BLOCKED"
+                                    val qrStatus = if (isAllowed) "EXAM:ALLOWED:H${seatItem.hallNumber}:S${seatItem.seatNumber}" else "EXAM:BLOCKED"
                                     exportMinistryOfficialTablePdf(
                                         context = context,
                                         schoolName = schoolConfig.schoolName,
@@ -2618,7 +3407,9 @@ private fun ExamControlCenterSection(
                                                 listOf(sub, "حسب الجدول المعلن", "8:30 صباحاً", "${seatItem.hallName} - مقعد ${seatItem.seatNumber}")
                                             }
                                         },
-                                        footerNote = "باركود التحقق الامتحاني المعتمد: ${seatItem.student.qrCodeValue}:$qrStatus"
+                                        footerNote = "باركود التحقق الامتحاني المعتمد: ${seatItem.student.qrCodeValue}:$qrStatus",
+                                        schoolId = schoolId,
+                                        onArchivedRecordCreated = onCorrespondenceAutoUpdated
                                     ) { ok, msg ->
                                         onTriggerBanner(msg, ok)
                                     }
@@ -2636,9 +3427,10 @@ private fun ExamControlCenterSection(
             }
 
             // -----------------------------------------------------------------
-            // SUB-TOOL 3: مُنشئ الأسئلة الامتحانية الرسمي (بدون الحاجة لـ Word)
+            // SUB-TOOL 3: مُنشئ وورقة الأسئلة الامتحانية الرسمية (ديناميكي 100% + عمودي حر بدون جداول)
             // -----------------------------------------------------------------
             3 -> {
+                val arabicBranchLetters = listOf("أ", "ب", "ج", "د", "هـ", "و")
                 item {
                     Card(
                         shape = RoundedCornerShape(18.dp),
@@ -2653,7 +3445,7 @@ private fun ExamControlCenterSection(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                text = "مُنشئ الأسئلة الامتحانية الرسمي (تنسيق ورقي A4 جاهز للطباعة)",
+                                text = "مُنشئ الأسئلة الامتحانية الرسمي (تخطيط عمودي وزاري/مدرسي حر بدون جداول)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF042F24),
@@ -2687,7 +3479,7 @@ private fun ExamControlCenterSection(
                                 OutlinedTextField(
                                     value = examRound,
                                     onValueChange = { examRound = it },
-                                    label = { Text("الدور / الفصل") },
+                                    label = { Text("الدور / الفصل الامتحاني") },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -2700,95 +3492,236 @@ private fun ExamControlCenterSection(
                                 )
                             }
 
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = examDateIso,
+                                    onValueChange = { examDateIso = it },
+                                    label = { Text("تاريخ الامتحان") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = subjectTeacherName,
+                                    onValueChange = { subjectTeacherName = it },
+                                    label = { Text("معلم / مدرس المادة") },
+                                    placeholder = { Text("اكتب اسم معلم المادة...") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
                             OutlinedTextField(
                                 value = examInstructionNote,
                                 onValueChange = { examInstructionNote = it },
-                                label = { Text("ملاحظة اللجنة الامتحانية أعلى الورقة") },
+                                label = { Text("ملاحظة اللجنة الامتحانية تحت الترويسة") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
                             questionDrafts.forEachIndexed { idx, q ->
+                                val currentBranches = q.effectiveBranches()
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     color = Color(0xFFF8FAFC),
-                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.45f)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            .padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text(
-                                            text = "السؤال (${q.questionNumber}) — (${q.marks} درجة):",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFF042F24)
-                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "س${idx + 1} / السؤال (${idx + 1}) — (${q.marks} درجة)",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF042F24),
+                                                modifier = Modifier.weight(1f)
+                                            )
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Surface(
+                                                    onClick = {
+                                                        val updated = questionDrafts.toMutableList()
+                                                        updated[idx] = q.copy(marks = (q.marks - 5).coerceAtLeast(5))
+                                                        saveQuestionDraftsState(updated)
+                                                    },
+                                                    shape = CircleShape,
+                                                    color = Color(0xFFE2E8F0),
+                                                    modifier = Modifier.size(26.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(Icons.Filled.Remove, contentDescription = "إنقاص الدرجة", modifier = Modifier.size(14.dp))
+                                                    }
+                                                }
+                                                Text(
+                                                    text = "${q.marks}د",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF065F46)
+                                                )
+                                                Surface(
+                                                    onClick = {
+                                                        val updated = questionDrafts.toMutableList()
+                                                        updated[idx] = q.copy(marks = (q.marks + 5).coerceAtMost(100))
+                                                        saveQuestionDraftsState(updated)
+                                                    },
+                                                    shape = CircleShape,
+                                                    color = Color(0xFFD1FAE5),
+                                                    modifier = Modifier.size(26.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(Icons.Filled.Add, contentDescription = "زيادة الدرجة", modifier = Modifier.size(14.dp))
+                                                    }
+                                                }
+
+                                                if (questionDrafts.size > 1) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            val updated = questionDrafts.toMutableList().apply { removeAt(idx) }
+                                                            saveQuestionDraftsState(updated)
+                                                        },
+                                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed),
+                                                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.55f)),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        modifier = Modifier
+                                                            .height(30.dp)
+                                                            .testTag("delete_exam_question_btn_${idx + 1}")
+                                                    ) {
+                                                        Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text("حذف السؤال", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                                                    }
+                                                }
+                                            }
+                                        }
+
                                         OutlinedTextField(
                                             value = q.mainPrompt,
                                             onValueChange = { newVal ->
-                                                questionDrafts = questionDrafts.toMutableList().also {
-                                                    it[idx] = q.copy(mainPrompt = newVal)
-                                                }
+                                                val updated = questionDrafts.toMutableList()
+                                                updated[idx] = q.copy(mainPrompt = newVal, branches = currentBranches)
+                                                saveQuestionDraftsState(updated)
                                             },
-                                            label = { Text("منطوق س${q.questionNumber} الرئيسي") },
+                                            label = { Text("منطوق س${idx + 1} الرئيسي") },
+                                            placeholder = { Text("اكتب منطوق السؤال هنا (مثال: أجب عن فرعين مما يأتي)...") },
                                             modifier = Modifier.fillMaxWidth()
                                         )
-                                        OutlinedTextField(
-                                            value = q.branchA,
-                                            onValueChange = { newVal ->
-                                                questionDrafts = questionDrafts.toMutableList().also {
-                                                    it[idx] = q.copy(branchA = newVal)
+
+                                        currentBranches.forEachIndexed { bIdx, bText ->
+                                            val bLetter = arabicBranchLetters.getOrElse(bIdx) { "${bIdx + 1}" }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                OutlinedTextField(
+                                                    value = bText,
+                                                    onValueChange = { newBranchVal ->
+                                                        val updatedBranches = currentBranches.toMutableList().apply {
+                                                            set(bIdx, newBranchVal)
+                                                        }
+                                                        val updated = questionDrafts.toMutableList()
+                                                        updated[idx] = q.copy(branches = updatedBranches)
+                                                        saveQuestionDraftsState(updated)
+                                                    },
+                                                    label = { Text("فرع ($bLetter)") },
+                                                    placeholder = { Text("اكتب نص فرع ($bLetter)...") },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                IconButton(
+                                                    onClick = {
+                                                        val updatedBranches = currentBranches.toMutableList().apply {
+                                                            removeAt(bIdx)
+                                                        }
+                                                        val updated = questionDrafts.toMutableList()
+                                                        updated[idx] = q.copy(branches = updatedBranches, branchA = "", branchB = "")
+                                                        saveQuestionDraftsState(updated)
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.DeleteOutline,
+                                                        contentDescription = "حذف الفرع",
+                                                        tint = DangerRed
+                                                    )
                                                 }
-                                            },
-                                            label = { Text("فرع (أ)") },
-                                            singleLine = true,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                        OutlinedTextField(
-                                            value = q.branchB,
-                                            onValueChange = { newVal ->
-                                                questionDrafts = questionDrafts.toMutableList().also {
-                                                    it[idx] = q.copy(branchB = newVal)
-                                                }
-                                            },
-                                            label = { Text("فرع (ب)") },
-                                            singleLine = true,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
+                                            }
+                                        }
+
+                                        if (currentBranches.size < 6) {
+                                            val nextBranchLetter = arabicBranchLetters.getOrElse(currentBranches.size) { "${currentBranches.size + 1}" }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val updatedBranches = currentBranches + listOf("")
+                                                    val updated = questionDrafts.toMutableList()
+                                                    updated[idx] = q.copy(branches = updatedBranches)
+                                                    saveQuestionDraftsState(updated)
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("+ إضافة فرع ($nextBranchLetter)", fontWeight = FontWeight.ExtraBold)
+                                            }
+                                        }
                                     }
                                 }
                             }
 
+                            OutlinedButton(
+                                onClick = {
+                                    val updated = questionDrafts + listOf(
+                                        ExamQuestionItemDraft(
+                                            questionNumber = questionDrafts.size + 1,
+                                            mainPrompt = "",
+                                            marks = 20,
+                                            branches = emptyList()
+                                        )
+                                    )
+                                    saveQuestionDraftsState(updated)
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF042F24)),
+                                border = BorderStroke(1.5.dp, Color(0xFF059669)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("add_new_exam_question_btn")
+                            ) {
+                                Icon(Icons.Filled.AddCircleOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("+ إضافة سؤال جديد (س${questionDrafts.size + 1})", fontWeight = FontWeight.ExtraBold)
+                            }
+
                             Button(
                                 onClick = {
-                                    val qRows = questionDrafts.map { q ->
-                                        listOf(
-                                            "س${q.questionNumber} (${q.marks}د)",
-                                            q.mainPrompt,
-                                            q.branchA,
-                                            q.branchB
-                                        )
-                                    }
-                                    exportMinistryOfficialTablePdf(
+                                    exportOfficialExamQuestionsPaperPdf(
                                         context = context,
+                                        schoolId = schoolId,
                                         schoolName = schoolConfig.schoolName,
                                         principalName = principalName,
+                                        subjectTeacherName = subjectTeacherName.ifBlank { "مدرّس المادة" },
                                         academicYear = schoolConfig.academicYear,
-                                        documentTitle = "ورقة الأسئلة الامتحانية الرسمية — مادة: $examSubject ($examGradeClass)",
-                                        subtitleInfo = "$examRound  |  الزمن: $examDuration  |  $examInstructionNote",
-                                        summaryPills = listOf(
-                                            "المادة" to examSubject,
-                                            "الصف" to examGradeClass,
-                                            "الزمن" to examDuration,
-                                            "الدرجة الكلية" to "100 درجة"
-                                        ),
-                                        headers = listOf("السؤال والدرجة", "منطوق السؤال الرئيسي", "الفرع الأول (أ)", "الفرع الثاني (ب)"),
-                                        rows = qRows,
-                                        footerNote = "مع تمنيات اللجنة الامتحانية لجميع طلبتنا الأعزاء بالنجاح والتفوق"
+                                        examSubject = examSubject,
+                                        examGradeClass = examGradeClass,
+                                        examRound = examRound,
+                                        examDuration = examDuration,
+                                        examDate = examDateIso,
+                                        examInstructionNote = examInstructionNote,
+                                        questions = questionDrafts
                                     ) { ok, msg ->
                                         onTriggerBanner(msg, ok)
                                     }
@@ -2856,29 +3789,23 @@ private fun ExamVerificationQrMiniCanvas(
     seed: String,
     modifier: Modifier = Modifier
 ) {
-    Canvas(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
-            .padding(4.dp)
+    val qrBmp = remember(seed) {
+        com.example.util.DocumentAndIdExporter.generateQrCodeBitmap(seed, 160).asImageBitmap()
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFF059669))
     ) {
-        val grid = 7
-        val cellW = size.width / grid
-        val cellH = size.height / grid
-        val hash = seed.hashCode()
-        for (r in 0 until grid) {
-            for (c in 0 until grid) {
-                val isCorner = (r < 2 && c < 2) || (r < 2 && c >= grid - 2) || (r >= grid - 2 && c < 2)
-                val bit = ((hash shr ((r * grid + c) % 28)) and 1) == 1
-                if (isCorner || bit) {
-                    drawRect(
-                        color = Color(0xFF042F24),
-                        topLeft = Offset(c * cellW, r * cellH),
-                        size = Size(cellW * 0.88f, cellH * 0.88f)
-                    )
-                }
-            }
-        }
+        Image(
+            bitmap = qrBmp,
+            contentDescription = "باركود التحقق",
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(3.dp),
+            contentScale = ContentScale.Fit
+        )
     }
 }
 
@@ -3114,7 +4041,9 @@ private fun OfficialMinistryRecordsSection(
                                             "العام الدراسي" to schoolConfig.academicYear
                                         ),
                                         headers = tableHeaders,
-                                        rows = tableRows
+                                        rows = tableRows,
+                                        schoolId = schoolConfig.schoolId.ifBlank { "default_school" },
+                                        onArchivedRecordCreated = onSaveCorrespondence
                                     ) { ok, msg ->
                                         onTriggerBanner(msg, ok)
                                     }
@@ -3440,7 +4369,9 @@ private fun OfficialMinistryRecordsSection(
                                                         warningLevel
                                                     )
                                                 ),
-                                                footerNote = "يرجى حضور ولي الأمر إلى إدارة المدرسة خلال 48 ساعة لضمان عدم تعرض الطالب للفصل بالغياب"
+                                                footerNote = "يرجى حضور ولي الأمر إلى إدارة المدرسة خلال 48 ساعة لضمان عدم تعرض الطالب للفصل بالغياب",
+                                                schoolId = schoolConfig.schoolId.ifBlank { "default_school" },
+                                                onArchivedRecordCreated = onSaveCorrespondence
                                             ) { ok, msg ->
                                                 onTriggerBanner(msg, ok)
                                             }
@@ -3460,10 +4391,14 @@ private fun OfficialMinistryRecordsSection(
             }
 
             // -----------------------------------------------------------------
-            // 2: سجل الصادرة والواردة والأوامر الإدارية (مع تقويم منبثق + إرفاق صورة كتاب رسمي)
+            // 2: سجل الصادرة والواردة والأوامر الإدارية (مع تقويم منبثق + إرفاق صورة كتاب رسمي + ترقيم تسلسلي تلقائي)
             // -----------------------------------------------------------------
             2 -> {
+                val activeSchoolId = schoolConfig.schoolId.ifBlank { "default_school" }
                 item {
+                    val nextSeqPreview = remember(correspondenceList) {
+                        MinistryDataPersistenceManager.peekNextDocNumber(context, activeSchoolId)
+                    }
                     Card(
                         shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -3506,7 +4441,8 @@ private fun OfficialMinistryRecordsSection(
                                 OutlinedTextField(
                                     value = corNumber,
                                     onValueChange = { corNumber = it },
-                                    label = { Text("رقم الكتاب / الأمر") },
+                                    label = { Text("رقم الكتاب (التلقائي: إداري / $nextSeqPreview)") },
+                                    placeholder = { Text("اتركه فارغاً للترقيم التسلسلي (إداري / $nextSeqPreview)") },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -3668,13 +4604,16 @@ private fun OfficialMinistryRecordsSection(
 
                             Button(
                                 onClick = {
-                                    if (corNumber.isBlank() || corSubject.isBlank()) {
-                                        onTriggerBanner("يرجى إدخال رقم الكتاب وموضوعه لحفظه في الأرشيف", false)
+                                    if (corSubject.isBlank()) {
+                                        onTriggerBanner("يرجى إدخال موضوع الكتاب لحفظه في الأرشيف الرسمي", false)
                                         return@Button
+                                    }
+                                    val finalNumber = corNumber.trim().ifBlank {
+                                        MinistryDataPersistenceManager.consumeNextDocNumberFormatted(context, activeSchoolId)
                                     }
                                     val newRec = OfficialCorrespondenceRecord(
                                         type = corType,
-                                        bookNumber = corNumber.trim(),
+                                        bookNumber = finalNumber,
                                         dateIso = corDate.trim().ifBlank { ArabicCalendarDateHelper.todayIsoDate() },
                                         entityName = corEntity.trim().ifBlank { "المديرية العامة للتربية" },
                                         subject = corSubject.trim(),
@@ -3686,7 +4625,7 @@ private fun OfficialMinistryRecordsSection(
                                     corSubject = ""
                                     corNotes = ""
                                     corImageBase64 = ""
-                                    onTriggerBanner("تم تسجيل وأرشفة الكتاب الرسمي في السجل بنجاح ✓", true)
+                                    onTriggerBanner("تم تسجيل وأرشفة الكتاب الرسمي برقم ($finalNumber) في السجل بنجاح ✓", true)
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                                 shape = RoundedCornerShape(12.dp),
@@ -3707,7 +4646,8 @@ private fun OfficialMinistryRecordsSection(
                         corSearch.isBlank() ||
                             it.bookNumber.contains(corSearch, ignoreCase = true) ||
                             it.subject.contains(corSearch, ignoreCase = true) ||
-                            it.entityName.contains(corSearch, ignoreCase = true)
+                            it.entityName.contains(corSearch, ignoreCase = true) ||
+                            it.dateIso.contains(corSearch, ignoreCase = true)
                     }
 
                     Card(
@@ -3725,7 +4665,7 @@ private fun OfficialMinistryRecordsSection(
                             OutlinedTextField(
                                 value = corSearch,
                                 onValueChange = { corSearch = it },
-                                label = { Text("بحث فوري برقم الكتاب أو الموضوع أو الجهة...") },
+                                label = { Text("بحث فوري برقم الكتاب أو الموضوع أو التاريخ أو الجهة...") },
                                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -3739,7 +4679,7 @@ private fun OfficialMinistryRecordsSection(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
-                                        text = "سجل الصادرة والواردة فارغ حالياً — لا توجد كتب وهمية مسجلة مسبقاً. يمكنك تسجيل أي كتاب رسمي صادر أو وارد من النموذج أعلاه.",
+                                        text = "سجل الصادرة والواردة فارغ حالياً — يتم أرشفة كل كتاب رسمي صادر أو مطبوع تلقائياً هنا مع رقمه الإداري المتسلسل.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF475569),
                                         textAlign = TextAlign.Center,
@@ -3864,7 +4804,9 @@ private fun OfficialMinistryRecordsSection(
                                                         rows = listOf(
                                                             listOf(item.type, item.bookNumber, item.dateIso, item.entityName, "${item.subject} (${item.notes})")
                                                         ),
-                                                        attachedImageBase64 = item.imageBase64
+                                                        attachedImageBase64 = item.imageBase64,
+                                                        schoolId = activeSchoolId,
+                                                        autoArchiveToCorrespondence = false
                                                     ) { ok, msg ->
                                                         onTriggerBanner(msg, ok)
                                                     }
@@ -3906,7 +4848,9 @@ private fun OfficialMinistryRecordsSection(
                                         rows = filteredCor.map {
                                             listOf(it.type, it.bookNumber, it.dateIso, it.entityName, it.subject)
                                         },
-                                        attachedImageBase64 = filteredCor.firstOrNull { it.imageBase64.isNotBlank() }?.imageBase64.orEmpty()
+                                        attachedImageBase64 = filteredCor.firstOrNull { it.imageBase64.isNotBlank() }?.imageBase64.orEmpty(),
+                                        schoolId = activeSchoolId,
+                                        autoArchiveToCorrespondence = false
                                     ) { ok, msg ->
                                         onTriggerBanner(msg, ok)
                                     }
@@ -3943,11 +4887,29 @@ private fun StaffHrAndPortfolioSection(
     teachers: List<UserAccount>,
     portfoliosMap: Map<String, StaffPortfolioRecord>,
     onSavePortfolios: (Map<String, StaffPortfolioRecord>) -> Unit,
+    onCorrespondenceAutoUpdated: (List<OfficialCorrespondenceRecord>) -> Unit = {},
     onTriggerBanner: (String, Boolean) -> Unit
 ) {
     val currentYearInt = remember { Calendar.getInstance().get(Calendar.YEAR) }
     var editingTeacher by remember { mutableStateOf<UserAccount?>(null) }
     var showStartDatePicker by remember { mutableStateOf(false) }
+    var staffSearchQuery by remember { mutableStateOf("") }
+
+    val filteredTeachers = remember(teachers, portfoliosMap, staffSearchQuery) {
+        val q = staffSearchQuery.trim()
+        if (q.isBlank()) {
+            teachers
+        } else {
+            teachers.filter { t ->
+                val p = portfoliosMap[t.id]
+                t.fullName.contains(q, ignoreCase = true) ||
+                    t.specialty.contains(q, ignoreCase = true) ||
+                    (p?.jobTitle?.contains(q, ignoreCase = true) == true) ||
+                    (p?.qualification?.contains(q, ignoreCase = true) == true) ||
+                    (p?.adminOrderNumber?.contains(q, ignoreCase = true) == true)
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -3976,7 +4938,7 @@ private fun StaffHrAndPortfolioSection(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        text = "إجمالي الكادر التدريسي الفعلي (مع العزل التام لسائقي النقل): (${teachers.size}) معلم/مدرس",
+                        text = "إجمالي الكادر التدريسي الفعلي: (${teachers.size}) معلم/مدرس",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFFDE68A),
                         modifier = Modifier.fillMaxWidth()
@@ -3984,17 +4946,21 @@ private fun StaffHrAndPortfolioSection(
 
                     Button(
                         onClick = {
-                            val rows = teachers.mapIndexed { idx, t ->
+                            val rows = filteredTeachers.mapIndexed { idx, t ->
                                 val p = portfoliosMap[t.id] ?: StaffPortfolioRecord(t.id)
-                                val startYear = p.startDateIso.take(4).toIntOrNull() ?: 2016
-                                val yearsServed = (currentYearInt - startYear).coerceAtLeast(1)
+                                val startYear = p.startDateIso.take(4).toIntOrNull()
+                                val yearsServedText = if (startYear != null) {
+                                    "${(currentYearInt - startYear).coerceAtLeast(1)} سنة (${p.startDateIso})"
+                                } else {
+                                    "غير محدد"
+                                }
                                 listOf(
                                     "${idx + 1}",
                                     t.fullName,
-                                    t.specialty.ifBlank { "عام" },
-                                    p.qualification,
-                                    p.jobTitle,
-                                    "$yearsServed سنة (${p.startDateIso})"
+                                    t.specialty.ifBlank { "غير محدد" },
+                                    p.qualification.ifBlank { "غير محدد" },
+                                    p.jobTitle.ifBlank { "غير محدد" },
+                                    yearsServedText
                                 )
                             }
                             exportMinistryOfficialTablePdf(
@@ -4003,13 +4969,15 @@ private fun StaffHrAndPortfolioSection(
                                 principalName = principalName,
                                 academicYear = schoolConfig.academicYear,
                                 documentTitle = "خلاصة الخدمة التربوية والإضبارة الوظيفية للملاك التدريسي",
-                                subtitleInfo = "ملاك المدرسة الفعلي المعتمد (باستثناء سائقي الخطوط)",
+                                subtitleInfo = "إجمالي الكادر التدريسي الفعلي: (${filteredTeachers.size}) معلم/مدرس",
                                 summaryPills = listOf(
-                                    "إجمالي الملاك" to "${teachers.size} معلم",
+                                    "إجمالي الملاك" to "${filteredTeachers.size} معلم",
                                     "العام الدراسي" to schoolConfig.academicYear
                                 ),
                                 headers = listOf("ت", "الاسم الكامل", "الاختصاص", "الشهادة", "العنوان الوظيفي", "سنوات الخدمة"),
-                                rows = rows
+                                rows = rows,
+                                schoolId = schoolConfig.schoolId.ifBlank { "default_school" },
+                                onArchivedRecordCreated = onCorrespondenceAutoUpdated
                             ) { ok, msg ->
                                 onTriggerBanner(msg, ok)
                             }
@@ -4031,13 +4999,52 @@ private fun StaffHrAndPortfolioSection(
             }
         }
 
-        items(teachers, key = { it.id }) { teacher ->
+        item {
+            OutlinedTextField(
+                value = staffSearchQuery,
+                onValueChange = { staffSearchQuery = it },
+                label = { Text("بحث سريع باسم المعلم أو الاختصاص أو العنوان الوظيفي...") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (staffSearchQuery.isNotBlank()) {
+                        IconButton(onClick = { staffSearchQuery = "" }) {
+                            Icon(Icons.Filled.Clear, contentDescription = "مسح البحث")
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("staff_hr_search_input")
+            )
+        }
+
+        items(filteredTeachers, key = { it.id }) { teacher ->
             val portfolio = portfoliosMap[teacher.id] ?: StaffPortfolioRecord(teacherId = teacher.id)
-            val startYear = portfolio.startDateIso.take(4).toIntOrNull() ?: 2016
-            val serviceYears = (currentYearInt - startYear).coerceAtLeast(1)
-            val nextAllowanceDate = "${currentYearInt + 1}-${portfolio.startDateIso.drop(5).ifBlank { "09-01" }}"
-            val teacherAge = if (teacher.ageYears > 0) teacher.ageYears else 35
-            val remainingToRetirement = (60 - teacherAge).coerceAtLeast(1)
+            val unsetLabel = "غير محدد — اضغط على تعديل الإضبارة لإدخاله"
+            val qualificationText = portfolio.qualification.ifBlank { unsetLabel }
+            val jobTitleText = portfolio.jobTitle.ifBlank { unsetLabel }
+            val jobGradeText = portfolio.jobGradeStage.ifBlank { unsetLabel }
+            val startDateText = portfolio.startDateIso.ifBlank { unsetLabel }
+            val adminOrderText = portfolio.adminOrderNumber.ifBlank { unsetLabel }
+
+            val startYear = portfolio.startDateIso.take(4).toIntOrNull()
+            val serviceYearsLabel = if (startYear != null) {
+                "${(currentYearInt - startYear).coerceAtLeast(1)} سنة"
+            } else {
+                "غير محدد"
+            }
+            val nextAllowanceDate = if (portfolio.startDateIso.length >= 10) {
+                "${currentYearInt + 1}-${portfolio.startDateIso.drop(5)}"
+            } else {
+                "يُحسب بعد إدخال تاريخ المباشرة"
+            }
+            val remainingToRetirement = if (teacher.ageYears > 0) {
+                "${(60 - teacher.ageYears).coerceAtLeast(1)} سنة"
+            } else {
+                "حسب السن القانوني"
+            }
+            val assignedClassesDisplay = teacher.assignedClasses.trim().ifBlank { unsetLabel }
 
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -4052,21 +5059,27 @@ private fun StaffHrAndPortfolioSection(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "${teacher.fullName} — الاختصاص: ${teacher.specialty.ifBlank { "عام" }}",
+                        text = "${teacher.fullName} — الاختصاص: ${teacher.specialty.ifBlank { unsetLabel }}",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color(0xFF042F24),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        text = "الشهادة: ${portfolio.qualification} • العنوان الوظيفي: ${portfolio.jobTitle} • ${portfolio.jobGradeStage}",
+                        text = "الشهادة: $qualificationText • العنوان الوظيفي: $jobTitleText",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF1E293B),
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        text = "تاريخ المباشرة: ${portfolio.startDateIso} • الأمر الإداري: ${portfolio.adminOrderNumber}",
+                        text = "الدرجة والمرحلة: $jobGradeText",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF334155),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "تاريخ المباشرة: $startDateText • الأمر الإداري: $adminOrderText",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF475569),
                         modifier = Modifier.fillMaxWidth()
@@ -4091,13 +5104,13 @@ private fun StaffHrAndPortfolioSection(
                                 color = Color(0xFF042F24)
                             )
                             Text(
-                                text = "• الخدمة الفعلية: ($serviceYears) سنة  |  العلاوة السنوية القادمة: ($nextAllowanceDate)  |  المتبقي للتقاعد: ($remainingToRetirement) سنة",
+                                text = "• الخدمة الفعلية: ($serviceYearsLabel)  |  العلاوة السنوية القادمة: ($nextAllowanceDate)  |  المتبقي للتقاعد: ($remainingToRetirement)",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF065F46)
                             )
                             Text(
-                                text = "• الصفوف والشعب المخولة لاستلام الدرجات والواجبات: ${teacher.formattedAssignedClassesForDisplay}",
+                                text = "• الصفوف والشعب المخولة لاستلام الدرجات والواجبات: ${if (assignedClassesDisplay == unsetLabel) unsetLabel else teacher.formattedAssignedClassesForDisplay}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color(0xFF047857)
                             )
@@ -4130,7 +5143,7 @@ private fun StaffHrAndPortfolioSection(
 
         if (showStartDatePicker) {
             MinistryCalendarDatePickerDialog(
-                initialDateIso = startDateDraft,
+                initialDateIso = startDateDraft.ifBlank { ArabicCalendarDateHelper.todayIsoDate() },
                 onDismiss = { showStartDatePicker = false },
                 onDateSelected = { selectedIso ->
                     startDateDraft = selectedIso
@@ -4153,6 +5166,7 @@ private fun StaffHrAndPortfolioSection(
                         value = specialtyDraft,
                         onValueChange = { specialtyDraft = it },
                         label = { Text("المواد والاختصاص المسموح رصد درجاته") },
+                        placeholder = { Text("مثال: اللغة العربية والتربية الإسلامية") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -4160,6 +5174,7 @@ private fun StaffHrAndPortfolioSection(
                         value = assignedClassesDraft,
                         onValueChange = { assignedClassesDraft = it },
                         label = { Text("الصفوف والشعب المخصصة (مفصولة بـ |)") },
+                        placeholder = { Text("مثال: الأول الابتدائي|الثاني الابتدائي") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -4167,6 +5182,7 @@ private fun StaffHrAndPortfolioSection(
                         value = qualificationDraft,
                         onValueChange = { qualificationDraft = it },
                         label = { Text("الشهادة والتحصيل الدراسي") },
+                        placeholder = { Text("مثال: بكالوريوس تربية / دبلوم معلمين") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -4181,6 +5197,7 @@ private fun StaffHrAndPortfolioSection(
                             readOnly = true,
                             enabled = false,
                             label = { Text("تاريخ المباشرة بالخدمة (اضغط للتقويم)") },
+                            placeholder = { Text("اضغط لاختيار تاريخ المباشرة") },
                             trailingIcon = {
                                 Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = Color(0xFF059669))
                             },
@@ -4197,6 +5214,7 @@ private fun StaffHrAndPortfolioSection(
                         value = jobTitleDraft,
                         onValueChange = { jobTitleDraft = it },
                         label = { Text("العنوان الوظيفي") },
+                        placeholder = { Text("مثال: معلم جامعي / مدرس أول") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -4204,6 +5222,7 @@ private fun StaffHrAndPortfolioSection(
                         value = gradeStageDraft,
                         onValueChange = { gradeStageDraft = it },
                         label = { Text("الدرجة والمرحلة الوظيفية") },
+                        placeholder = { Text("مثال: الدرجة الخامسة / المرحلة الثانية") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -4211,6 +5230,7 @@ private fun StaffHrAndPortfolioSection(
                         value = orderNumDraft,
                         onValueChange = { orderNumDraft = it },
                         label = { Text("رقم الأمر الإداري") },
+                        placeholder = { Text("مثال: أمر إداري / 215") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -4222,8 +5242,8 @@ private fun StaffHrAndPortfolioSection(
                         viewModel.updateTeacherAccount(
                             teacherId = teacher.id,
                             fullName = teacher.fullName,
-                            specialty = specialtyDraft,
-                            assignedClasses = assignedClassesDraft,
+                            specialty = specialtyDraft.trim(),
+                            assignedClasses = assignedClassesDraft.trim(),
                             phone = teacher.phone,
                             username = teacher.username,
                             password = teacher.password
@@ -4271,6 +5291,7 @@ private fun StudentWelfareAndOrphansSection(
     students: List<StudentRecord>,
     welfareMap: Map<String, StudentWelfareRecord>,
     onSaveWelfare: (Map<String, StudentWelfareRecord>) -> Unit,
+    onCorrespondenceAutoUpdated: (List<OfficialCorrespondenceRecord>) -> Unit = {},
     onTriggerBanner: (String, Boolean) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("الكل") }
@@ -4351,7 +5372,9 @@ private fun StudentWelfareAndOrphansSection(
                                     "المتعففون" to "$specialCount"
                                 ),
                                 headers = listOf("ت", "اسم الطالب", "الصف والشعبة", "حالة اليتيم", "المنحة والرعاية", "احتياجات خاصة"),
-                                rows = rows
+                                rows = rows,
+                                schoolId = schoolConfig.schoolId.ifBlank { "default_school" },
+                                onArchivedRecordCreated = onCorrespondenceAutoUpdated
                             ) { ok, msg ->
                                 onTriggerBanner(msg, ok)
                             }
@@ -4571,6 +5594,7 @@ private fun YearEndArchivingAndPromotionSection(
     grades: List<SubjectGrade>,
     archivedYears: List<ArchivedSchoolYearSnapshot>,
     onSaveArchivedYears: (List<ArchivedSchoolYearSnapshot>) -> Unit,
+    onCorrespondenceAutoUpdated: (List<OfficialCorrespondenceRecord>) -> Unit = {},
     onTriggerBanner: (String, Boolean) -> Unit
 ) {
     val promotionPreview = remember(students, grades, schoolConfig.academicYear) {
@@ -4821,7 +5845,9 @@ private fun YearEndArchivingAndPromotionSection(
                                             headers = listOf("ت", "اسم الخريج / الطالب", "العام الدراسي", "حالة التخرج"),
                                             rows = arch.graduatesNames.ifEmpty { students.map { it.fullNameWithFather } }.mapIndexed { i, name ->
                                                 listOf("${i + 1}", name, arch.academicYear, "مؤرشف ومصدق")
-                                            }
+                                            },
+                                            schoolId = schoolConfig.schoolId.ifBlank { "default_school" },
+                                            onArchivedRecordCreated = onCorrespondenceAutoUpdated
                                         ) { ok, msg ->
                                             onTriggerBanner(msg, ok)
                                         }
@@ -4857,6 +5883,7 @@ private fun SchoolInventoryAndExpensesSection(
     onSaveInventory: (List<SchoolInventoryItemRecord>) -> Unit,
     expensesList: List<SchoolExpenseItemRecord>,
     onSaveExpenses: (List<SchoolExpenseItemRecord>) -> Unit,
+    onCorrespondenceAutoUpdated: (List<OfficialCorrespondenceRecord>) -> Unit = {},
     onTriggerBanner: (String, Boolean) -> Unit
 ) {
     var activeSubTab by remember { mutableIntStateOf(0) }
@@ -5061,7 +6088,9 @@ private fun SchoolInventoryAndExpensesSection(
                                     headers = listOf("ت", "اسم المادة", "التصنيف", "العدد", "الحالة الفنية", "الموقع"),
                                     rows = inventoryList.mapIndexed { idx, it ->
                                         listOf("${idx + 1}", it.itemName, it.category, "${it.quantity}", it.conditionStatus, it.locationRoom)
-                                    }
+                                    },
+                                    schoolId = schoolConfig.schoolId.ifBlank { "default_school" },
+                                    onArchivedRecordCreated = onCorrespondenceAutoUpdated
                                 ) { ok, msg ->
                                     onTriggerBanner(msg, ok)
                                 }
@@ -5147,7 +6176,9 @@ private fun SchoolInventoryAndExpensesSection(
                                             ex.recipientName,
                                             ex.receiptNumber
                                         )
-                                    }
+                                    },
+                                    schoolId = schoolConfig.schoolId.ifBlank { "default_school" },
+                                    onArchivedRecordCreated = onCorrespondenceAutoUpdated
                                 ) { ok, msg ->
                                     onTriggerBanner(msg, ok)
                                 }

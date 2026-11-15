@@ -413,6 +413,28 @@ object DocumentAndIdExporter {
             subValuePaint
         )
 
+        // Check if Smart ID Exam Pass Mode is enabled for this school
+        val effectiveContext = context ?: com.example.viewmodel.SchoolViewModel.activeAppContext
+        val schoolIdKey = schoolConfig.schoolId.ifBlank { "default_school" }
+        val isExamPassActive = !isWalletMode && effectiveContext != null &&
+            com.example.ui.screens.MinistryDataPersistenceManager.isSmartIdExamPassEnabled(effectiveContext, schoolIdKey)
+        val isExamAllowed = if (isExamPassActive && effectiveContext != null) {
+            com.example.ui.screens.MinistryDataPersistenceManager.isStudentExamAllowed(effectiveContext, schoolIdKey, student.id)
+        } else {
+            true
+        }
+        val (examHallNum, examSeatNum) = if (isExamPassActive && effectiveContext != null) {
+            com.example.ui.screens.MinistryDataPersistenceManager.getStudentExamHallAndSeatNumbers(
+                effectiveContext,
+                schoolIdKey,
+                student.id,
+                defaultHall = 1,
+                defaultSeat = 1
+            )
+        } else {
+            1 to 1
+        }
+
         // Row 4: Badges strip strictly within x = 415..930 (NEVER touches Left QR Zone!)
         val badgeTitles = buildList {
             if (student.isOnHonorRoll && student.honorTitle.isNotBlank()) add(student.honorTitle)
@@ -420,7 +442,9 @@ object DocumentAndIdExporter {
             if (isEmpty()) add("وسام الالتزام الذهبي")
         }.distinct()
 
-        val badgeStripRect = RectF(infoLeftLimitX, 582f, infoRightX, 650f)
+        val badgeStripTop = if (isExamPassActive) 568f else 582f
+        val badgeStripBottom = if (isExamPassActive) 628f else 650f
+        val badgeStripRect = RectF(infoLeftLimitX, badgeStripTop, infoRightX, badgeStripBottom)
         val stripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_LIGHT_GOLD
             style = Paint.Style.FILL
@@ -430,7 +454,7 @@ object DocumentAndIdExporter {
 
         val stripTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = COLOR_DEEP_EMERALD
-            textSize = 24f
+            textSize = if (isExamPassActive) 22f else 24f
             typeface = boldTypeface
             textAlign = Paint.Align.RIGHT
         }
@@ -438,10 +462,46 @@ object DocumentAndIdExporter {
             canvas,
             "الأوسمة: " + badgeTitles.joinToString(" • "),
             badgeStripRect.right - 18f,
-            badgeStripRect.centerY() + 9f,
+            badgeStripRect.centerY() + 8f,
             badgeStripRect.width() - 36f,
             stripTextPaint
         )
+
+        // Row 5 (When Exam Pass Mode is Active): Prominent Exam Pass & Hall/Seat Badge on Saved PNG & Exported PDF
+        if (isExamPassActive) {
+            val examBadgeRect = RectF(infoLeftLimitX, 638f, infoRightX, 706f)
+            val examBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = if (isExamAllowed) 0xFFECFDF5.toInt() else 0xFFFEF2F2.toInt()
+                style = Paint.Style.FILL
+            }
+            val examBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = if (isExamAllowed) 0xFF059669.toInt() else 0xFFDC2626.toInt()
+                style = Paint.Style.STROKE
+                strokeWidth = 3f
+            }
+            canvas.drawRoundRect(examBadgeRect, 18f, 18f, examBgPaint)
+            canvas.drawRoundRect(examBadgeRect, 18f, 18f, examBorderPaint)
+
+            val examTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = if (isExamAllowed) 0xFF042F24.toInt() else 0xFF991B1B.toInt()
+                textSize = 22f
+                typeface = boldTypeface
+                textAlign = Paint.Align.CENTER
+            }
+            val examBannerText = if (isExamAllowed) {
+                "✓ مخول بدخول الامتحان المدرسي | القاعة: ($examHallNum) • المقعد: ($examSeatNum)"
+            } else {
+                "✗ غير مخول بدخول القاعة الامتحانية (موقوف امتحانياً)"
+            }
+            drawFittedCenterText(
+                canvas,
+                examBannerText,
+                examBadgeRect.centerX(),
+                examBadgeRect.centerY() + 8f,
+                examBadgeRect.width() - 28f,
+                examTextPaint
+            )
+        }
 
         // =========================================================================
         // ZONE 3 (LEFT): Self-Contained QR Code Card (strictly x = 46..382)
@@ -459,7 +519,13 @@ object DocumentAndIdExporter {
         canvas.drawRoundRect(qrCardRect, 24f, 24f, qrCardBgPaint)
         canvas.drawRoundRect(qrCardRect, 24f, 24f, qrCardBorderPaint)
 
-        val activeQrPayload = if (isWalletMode) student.walletBarcode else student.qrCodeValue
+        val baseQrPayload = if (isWalletMode) student.walletBarcode else student.qrCodeValue
+        val activeQrPayload = if (isExamPassActive) {
+            val examSuffix = if (isExamAllowed) "EXAM:ALLOWED:H$examHallNum:S$examSeatNum" else "EXAM:BLOCKED"
+            "$baseQrPayload:$examSuffix"
+        } else {
+            baseQrPayload
+        }
         val qrSize = 248
         val qrBitmap = generateQrCodeBitmap(activeQrPayload, qrSize)
         val qrLeft = qrCardRect.centerX() - qrSize / 2f
@@ -472,10 +538,10 @@ object DocumentAndIdExporter {
             typeface = boldTypeface
             textAlign = Paint.Align.CENTER
         }
-        val qrCaption = if (isWalletMode) {
-            "باركود محفظة الحانوت المدرسي"
-        } else {
-            "امسح رمز QR لتسجيل الحضور الفوري"
+        val qrCaption = when {
+            isWalletMode -> "باركود محفظة الحانوت المدرسي"
+            isExamPassActive -> "باج امتحاني ذكي • قاعة ($examHallNum) مقعد ($examSeatNum)"
+            else -> "امسح رمز QR لتسجيل الحضور الفوري"
         }
         drawFittedCenterText(
             canvas,
@@ -508,7 +574,7 @@ object DocumentAndIdExporter {
         }
         drawFittedCenterText(
             canvas,
-            activeQrPayload,
+            baseQrPayload,
             codePillRect.centerX(),
             codePillRect.centerY() + 6f,
             codePillRect.width() - 20f,
@@ -523,7 +589,11 @@ object DocumentAndIdExporter {
         }
         drawFittedCenterText(
             canvas,
-            if (isWalletMode) "صالح للدفع الإلكتروني في الحانوت" else "بصمة حضور ذكية معتمدة للمدرسة",
+            when {
+                isWalletMode -> "صالح للدفع الإلكتروني في الحانوت"
+                isExamPassActive -> if (isExamAllowed) "مخول رسمياً بدخول القاعة الامتحانية" else "موقوف امتحانياً — راجع الإدارة"
+                else -> "بصمة حضور ذكية معتمدة للمدرسة"
+            },
             qrCardRect.centerX(),
             650f,
             qrCardRect.width() - 24f,

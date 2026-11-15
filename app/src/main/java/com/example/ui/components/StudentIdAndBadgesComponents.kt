@@ -186,45 +186,62 @@ fun DigitalStudentIdCardView(
     val todayIso = remember {
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
     }
-    val todayAttendanceLabel = remember(student, todayIso) {
-        val raw = student.dailyAttendance[todayIso]
-            ?: if (com.example.model.ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate) == todayIso) student.todayStatus else ""
-        when (raw.trim().uppercase()) {
-            "PRESENT" -> "حاضر"
-            "ABSENT" -> "غائب"
-            "EXCUSED" -> "مجاز رسمياً"
-            "LATE" -> "متأخر"
-            "HOLIDAY" -> "عطلة رسمية"
-            else -> if (student.getGateLogForDate(todayIso)?.checkInTime?.isNotBlank() == true) "حاضر" else "بانتظار الرصد"
+    val localCardContext = androidx.compose.ui.platform.LocalContext.current
+    val isTodayOfficialHoliday = remember(todayIso, schoolConfig.schoolId) {
+        com.example.viewmodel.SchoolViewModel.activeInstance?.isDateHoliday(todayIso) == true
+    }
+    val todayAttendanceNormalized = remember(student, todayIso, isTodayOfficialHoliday) {
+        val raw = (
+            student.dailyAttendance[todayIso]
+                ?: if (com.example.model.ArabicTextNormalizer.normalizeDateIso(student.todayStatusDate) == todayIso) student.todayStatus else ""
+            ).trim().uppercase()
+        when {
+            raw == "HOLIDAY" || (raw.isEmpty() && isTodayOfficialHoliday) -> "HOLIDAY"
+            raw == "PRESENT" -> "PRESENT"
+            raw == "ABSENT" -> "ABSENT"
+            raw == "LATE" -> "LATE"
+            raw == "EXCUSED" -> "EXCUSED"
+            student.getGateLogForDate(todayIso)?.checkInTime?.isNotBlank() == true -> "PRESENT"
+            else -> "UNRECORDED"
         }
     }
-    val localCardContext = androidx.compose.ui.platform.LocalContext.current
+    val todayAttendanceLabel = remember(todayAttendanceNormalized) {
+        when (todayAttendanceNormalized) {
+            "HOLIDAY" -> "عطلة رسمية"
+            "PRESENT" -> "حاضر ✓"
+            "ABSENT" -> "غائب"
+            "LATE" -> "متأخر"
+            "EXCUSED" -> "مجاز رسمياً"
+            else -> "لم يُرصد بعد"
+        }
+    }
     val isSmartIdExamPassEnabled = remember(schoolConfig.schoolId, student.id) {
-        com.example.ui.screens.MinistrySuiteLocalStore.isSmartIdExamPassEnabled(
+        com.example.ui.screens.MinistryDataPersistenceManager.isSmartIdExamPassEnabled(
             localCardContext,
-            schoolConfig.schoolId
+            schoolConfig.schoolId.ifBlank { "default_school" }
         )
     }
     val isStudentExamAllowed = remember(schoolConfig.schoolId, student.id) {
-        com.example.ui.screens.MinistrySuiteLocalStore.isStudentExamAllowed(
+        com.example.ui.screens.MinistryDataPersistenceManager.isStudentExamAllowed(
             localCardContext,
-            schoolConfig.schoolId,
+            schoolConfig.schoolId.ifBlank { "default_school" },
             student.id
         )
     }
-    val studentExamSeatLabel = remember(schoolConfig.schoolId, student.id, student.gradeClass) {
-        com.example.ui.screens.MinistrySuiteLocalStore.getStudentExamSeatLabel(
+    val (examHallNum, examSeatNum) = remember(schoolConfig.schoolId, student.id) {
+        com.example.ui.screens.MinistryDataPersistenceManager.getStudentExamHallAndSeatNumbers(
             localCardContext,
-            schoolConfig.schoolId,
+            schoolConfig.schoolId.ifBlank { "default_school" },
             student.id,
-            student.gradeClass
+            defaultHall = 1,
+            defaultSeat = 1
         )
     }
-    val activeQrString = remember(isWalletPassMode, student.walletBarcode, student.qrCodeValue, isSmartIdExamPassEnabled, isStudentExamAllowed) {
+    val activeQrString = remember(isWalletPassMode, student.walletBarcode, student.qrCodeValue, isSmartIdExamPassEnabled, isStudentExamAllowed, examHallNum, examSeatNum) {
         if (isWalletPassMode) {
             student.walletBarcode
         } else if (isSmartIdExamPassEnabled) {
-            val examTag = if (isStudentExamAllowed) "EXAM:ALLOWED" else "EXAM:BLOCKED"
+            val examTag = if (isStudentExamAllowed) "EXAM:ALLOWED:H$examHallNum:S$examSeatNum" else "EXAM:BLOCKED"
             "${student.qrCodeValue}:$examTag"
         } else {
             student.qrCodeValue
@@ -402,7 +419,7 @@ fun DigitalStudentIdCardView(
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
                                 Text(
-                                    text = "هوية الحضور الأكاديمية",
+                                    text = "الهوية الأكاديمية",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (!isWalletPassMode) Color.White else DeepForestGreen,
@@ -434,7 +451,7 @@ fun DigitalStudentIdCardView(
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
                                 Text(
-                                    text = "بطاقة محفظة الحانوت",
+                                    text = "المحفظة المدرسية",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (isWalletPassMode) Color.White else DeepForestGreen,
@@ -604,27 +621,59 @@ fun DigitalStudentIdCardView(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = if (isStudentExamAllowed) {
-                                                "مخول بدخول القاعة الامتحانية ($studentExamSeatLabel)"
+                                                "مخول بدخول الامتحان • قاعة ($examHallNum) - مقعد ($examSeatNum)"
                                             } else {
-                                                "غير مشمول / محجوب عن الامتحان ✗"
+                                                "غير مخول بدخول القاعة الامتحانية (موقوف امتحانياً)"
                                             },
-                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = if (isStudentExamAllowed) DeepForestGreen else Color(0xFF991B1B)
+                                            color = if (isStudentExamAllowed) DeepForestGreen else Color(0xFF991B1B),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
                             }
 
-                            // شارة حالة الدوام اليوم
+                            // شارة حالة الدوام اليوم (متلونة ديناميكياً حسب الحضور أو الغياب أو العطلة)
+                            val attendanceBgColor = when (todayAttendanceNormalized) {
+                                "PRESENT" -> Color(0xFFECFDF5)
+                                "ABSENT" -> Color(0xFFFEF2F2)
+                                "LATE" -> Color(0xFFFFFBEB)
+                                "HOLIDAY" -> Color(0xFFF1F5F9)
+                                "EXCUSED" -> Color(0xFFEFF6FF)
+                                else -> Color(0xFFF8FAFC)
+                            }
+                            val attendanceBorderColor = when (todayAttendanceNormalized) {
+                                "PRESENT" -> Color(0xFF10B981)
+                                "ABSENT" -> Color(0xFFEF4444)
+                                "LATE" -> Color(0xFFF59E0B)
+                                "HOLIDAY" -> Color(0xFF64748B)
+                                "EXCUSED" -> Color(0xFF3B82F6)
+                                else -> Color(0xFF94A3B8)
+                            }
+                            val attendanceContentColor = when (todayAttendanceNormalized) {
+                                "PRESENT" -> Color(0xFF065F46)
+                                "ABSENT" -> Color(0xFF991B1B)
+                                "LATE" -> Color(0xFF92400E)
+                                "HOLIDAY" -> Color(0xFF334155)
+                                "EXCUSED" -> Color(0xFF1E40AF)
+                                else -> Color(0xFF475569)
+                            }
+                            val attendanceIcon = when (todayAttendanceNormalized) {
+                                "PRESENT" -> Icons.Default.VerifiedUser
+                                "ABSENT", "LATE" -> Icons.Default.WarningAmber
+                                "HOLIDAY", "EXCUSED" -> Icons.Default.Verified
+                                else -> Icons.Default.History
+                            }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Surface(
                                     shape = RoundedCornerShape(50),
-                                    color = DeepEmerald.copy(alpha = 0.12f),
-                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f))
+                                    color = attendanceBgColor,
+                                    border = BorderStroke(1.2.dp, attendanceBorderColor)
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -632,15 +681,15 @@ fun DigitalStudentIdCardView(
                                         horizontalArrangement = Arrangement.spacedBy(5.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.VerifiedUser,
+                                            imageVector = attendanceIcon,
                                             contentDescription = null,
-                                            tint = DeepEmerald,
+                                            tint = attendanceContentColor,
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Text(
                                             text = "حالة الدوام اليوم: $todayAttendanceLabel",
                                             style = MaterialTheme.typography.labelMedium,
-                                            color = DeepForestGreen,
+                                            color = attendanceContentColor,
                                             fontWeight = FontWeight.ExtraBold,
                                             maxLines = 1
                                         )
@@ -1007,8 +1056,8 @@ fun DigitalStudentIdDialog(
                             tint = DeepEmerald
                         )
                         Text(
-                            text = "بطاقة هوية الطالب الذكية ومحفظة الحانوت",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "هوية الطالب الذكية والمحفظة",
+                            fontSize = 15.sp,
                             color = DeepForestGreen,
                             fontWeight = FontWeight.ExtraBold,
                             maxLines = 1,
@@ -1044,8 +1093,9 @@ fun QrAttendanceScannerDialog(
     initialScanMode: GateScanMode = GateScanMode.CHECK_IN,
     onScanQrCode: (String) -> Unit,
     onScanStudentDetailed: (String) -> StudentRecord? = { code ->
-        onScanQrCode(code)
-        val trimmed = code.trim()
+        val normalizedCode = code.trim().substringBefore(":EXAM:")
+        onScanQrCode(normalizedCode)
+        val trimmed = normalizedCode.trim()
         val parts = trimmed.split("|")
         val extractedId = if (parts.size >= 3 && parts[0].equals("MADRASATI", ignoreCase = true)) {
             parts[2].trim()

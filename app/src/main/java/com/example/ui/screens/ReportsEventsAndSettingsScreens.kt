@@ -2179,8 +2179,10 @@ fun SettingsScreen(
             add(Triple(2, "المظهر والتنقل", Icons.Filled.Palette))
             if (isAdmin) {
                 add(Triple(3, "إدارة العطل الرسمية وأيام الدوام", Icons.Filled.EventAvailable))
+                add(Triple(4, "الإشعارات والنسخ الاحتياطي", Icons.Filled.SettingsBackupRestore))
+            } else {
+                add(Triple(4, "التنبيهات والإشعارات", Icons.Filled.NotificationsActive))
             }
-            add(Triple(4, "الإشعارات والنسخ الاحتياطي", Icons.Filled.SettingsBackupRestore))
         }
     }
 
@@ -2268,6 +2270,7 @@ fun SettingsScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .defaultMinSize(minHeight = 52.dp)
                                         .then(
                                             if (isSelected) {
                                                 Modifier.background(
@@ -2279,31 +2282,31 @@ fun SettingsScreen(
                                                 Modifier
                                             }
                                         )
-                                        .padding(horizontal = 10.dp, vertical = 11.dp),
+                                        .padding(horizontal = 8.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Surface(
                                         shape = CircleShape,
                                         color = if (isSelected) Color.White.copy(alpha = 0.22f) else AdaptiveSoftContainer,
-                                        modifier = Modifier.size(30.dp)
+                                        modifier = Modifier.size(28.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                             Icon(
                                                 imageVector = catIcon,
                                                 contentDescription = catTitle,
                                                 tint = if (isSelected) Color.White else DeepEmerald,
-                                                modifier = Modifier.size(16.dp)
+                                                modifier = Modifier.size(15.dp)
                                             )
                                         }
                                     }
                                     Text(
                                         text = catTitle,
-                                        fontSize = 11.5.sp,
+                                        fontSize = 12.sp,
+                                        lineHeight = 15.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = if (isSelected) Color.White else Color(0xFF0F172A),
                                         maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
                                 }

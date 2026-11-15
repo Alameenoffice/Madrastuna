@@ -317,7 +317,17 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     val weekDays = listOf("الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس")
 
+    companion object {
+        @Volatile
+        var activeInstance: SchoolViewModel? = null
+
+        @Volatile
+        var activeAppContext: android.content.Context? = null
+    }
+
     init {
+        activeInstance = this
+        activeAppContext = appContext
         SystemNotificationHelper.ensureChannelCreated(appContext)
         registerNetworkConnectivityCallback()
         refreshDeveloperCloudData()
@@ -3506,7 +3516,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             return Result.failure(IllegalStateException(lockMsg))
         }
 
-        val cleanPayload = barcodePayload.trim()
+        val cleanPayload = barcodePayload.trim().substringBefore(":EXAM:")
         if (cleanPayload.isEmpty()) {
             val emptyErr = "عفواً، باركود الهوية غير مسجل في هذه المدرسة أو غير صالح."
             showToastAlert(emptyErr, isSuccess = false)
@@ -4863,7 +4873,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         departureNote: String = "انصراف رسمي / مغادرة البوابة"
     ): StudentRecord? {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return null
-        val cleanInput = qrOrUsername.trim()
+        val cleanInput = qrOrUsername.trim().substringBefore(":EXAM:")
         if (cleanInput.isEmpty()) {
             showToastAlert("يرجى مسح أو إدخال رمز الباركود / الـ QR الخاص بالطالب", isSuccess = false)
             return null

@@ -2339,7 +2339,467 @@ fun SoftWaveMeshBackground(
                 )
             }
         }
-        content()
+        if (modifier !== Modifier) {
+            InteractiveOfflineWelcomeCard(isDarkOffline = isDarkMode)
+        } else {
+            content()
+        }
+    }
+}
+
+/**
+ * لوحة فيكتور تفاعلية حية لشاشة انقطاع الاتصال المؤقت (InteractiveOfflineVectorIllustration):
+ * مرسومة بالكامل بمنحنيات Path.cubicTo و Path.quadraticBezierTo مع نبض راداري ذكي وعُقد ضوئية مدارية
+ * ومنارة أكاديمية مع كتاب مفتوح تستجيب فوراً عند النقر أو الضغط على (إعادة المحاولة الآن).
+ */
+@Composable
+fun InteractiveOfflineVectorIllustration(
+    scanBurstCount: Int,
+    onIllustrationClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "offline_bezier_vector")
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "wave_phase"
+    )
+    val radarSweepAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radar_sweep"
+    )
+    val beaconPulse by infiniteTransition.animateFloat(
+        initialValue = 0.78f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "beacon_pulse"
+    )
+    val scanBurstProgress by animateFloatAsState(
+        targetValue = scanBurstCount.toFloat(),
+        animationSpec = tween(durationMillis = 950, easing = FastOutSlowInEasing),
+        label = "scan_burst_progress"
+    )
+
+    Box(
+        modifier = modifier
+            .size(196.dp)
+            .shadow(
+                elevation = 16.dp,
+                shape = RoundedCornerShape(36.dp),
+                ambientColor = Color(0xFF047857).copy(alpha = 0.30f),
+                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.35f)
+            )
+            .clip(RoundedCornerShape(36.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF042F24),
+                        Color(0xFF047857),
+                        Color(0xFF0F3D5E)
+                    )
+                )
+            )
+            .clickable { onIllustrationClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val cx = w * 0.5f
+            val cy = h * 0.48f
+            val burstFraction = (scanBurstProgress - kotlin.math.floor(scanBurstProgress)).coerceIn(0f, 1f)
+
+            // 1. Ambient Emerald & Warm Gold Radial Glow
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF10B981).copy(alpha = 0.28f * beaconPulse),
+                        Color(0xFFF59E0B).copy(alpha = 0.12f),
+                        Color.Transparent
+                    ),
+                    center = Offset(cx, cy),
+                    radius = w * 0.48f
+                ),
+                radius = w * 0.48f,
+                center = Offset(cx, cy)
+            )
+
+            // 2. Flowing Signal Waves at the Base using Path.cubicTo
+            val wave1Path = Path().apply {
+                val baseH = h * 0.78f
+                val amp = h * 0.045f * sin(wavePhase)
+                moveTo(0f, baseH)
+                cubicTo(
+                    w * 0.28f, baseH - amp - h * 0.04f,
+                    w * 0.72f, baseH + amp + h * 0.04f,
+                    w, baseH - amp * 0.5f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = wave1Path,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF10B981).copy(alpha = 0.38f),
+                        Color(0xFF047857).copy(alpha = 0.72f)
+                    ),
+                    startY = h * 0.70f,
+                    endY = h
+                )
+            )
+
+            val wave2Path = Path().apply {
+                val baseH = h * 0.84f
+                val amp = h * 0.038f * cos(wavePhase)
+                moveTo(0f, baseH)
+                cubicTo(
+                    w * 0.35f, baseH + amp + h * 0.03f,
+                    w * 0.65f, baseH - amp - h * 0.03f,
+                    w, baseH + amp * 0.4f
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                path = wave2Path,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFFF59E0B).copy(alpha = 0.30f),
+                        Color(0xFF10B981).copy(alpha = 0.45f),
+                        Color(0xFFF59E0B).copy(alpha = 0.30f)
+                    )
+                )
+            )
+
+            // 3. Dynamic Radar Pulse Rings & Interactive Scan Burst Wave
+            for (ringIdx in 1..3) {
+                val normalized = ((wavePhase / (2f * Math.PI.toFloat())) + ringIdx * 0.33f) % 1f
+                val ringRadius = w * (0.14f + normalized * 0.32f)
+                val ringAlpha = (1f - normalized).coerceIn(0f, 1f) * 0.45f
+                drawCircle(
+                    color = if (ringIdx % 2 == 0) Color(0xFFFDE68A).copy(alpha = ringAlpha) else Color(0xFF34D399).copy(alpha = ringAlpha),
+                    radius = ringRadius,
+                    center = Offset(cx, h * 0.34f),
+                    style = Stroke(width = 2.dp.toPx())
+                )
+            }
+
+            if (burstFraction > 0.01f && burstFraction < 0.99f) {
+                val burstRadius = w * (0.12f + burstFraction * 0.44f)
+                drawCircle(
+                    color = Color(0xFFFBBF24).copy(alpha = (1f - burstFraction) * 0.85f),
+                    radius = burstRadius,
+                    center = Offset(cx, h * 0.34f),
+                    style = Stroke(width = 3.5.dp.toPx())
+                )
+            }
+
+            // 4. Bezier Signal Arcs Above the Academic Beacon
+            for (arcIdx in 0..2) {
+                val spread = (arcIdx + 1) * w * 0.085f
+                val arcY = h * 0.27f - arcIdx * h * 0.055f
+                val signalArcPath = Path().apply {
+                    moveTo(cx - spread, arcY + h * 0.035f)
+                    quadraticBezierTo(
+                        cx,
+                        arcY - h * 0.045f * beaconPulse,
+                        cx + spread,
+                        arcY + h * 0.035f
+                    )
+                }
+                val alphaWave = (0.90f - arcIdx * 0.22f).coerceIn(0.25f, 0.95f)
+                drawPath(
+                    path = signalArcPath,
+                    color = if (arcIdx == 0) Color(0xFFFDE68A).copy(alpha = alphaWave) else Color(0xFF6EE7B7).copy(alpha = alphaWave),
+                    style = Stroke(width = (3.2f - arcIdx * 0.5f).dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+
+            // 5. Orbital Luminous Nodes Searching for Signal
+            for (nodeIdx in 0 until 4) {
+                val angleRad = Math.toRadians((radarSweepAngle + nodeIdx * 90f).toDouble())
+                val orbitRx = w * 0.33f
+                val orbitRy = h * 0.18f
+                val nx = cx + (orbitRx * cos(angleRad)).toFloat()
+                val ny = h * 0.42f + (orbitRy * sin(angleRad)).toFloat()
+                drawCircle(
+                    color = Color(0xFFFBBF24).copy(alpha = 0.30f),
+                    radius = 7.dp.toPx(),
+                    center = Offset(nx, ny)
+                )
+                drawCircle(
+                    color = Color(0xFFFDE68A),
+                    radius = 3.5.dp.toPx(),
+                    center = Offset(nx, ny)
+                )
+            }
+
+            // 6. Academic Dome & Beacon Tower (Path.quadraticBezierTo & Path.cubicTo)
+            val domePath = Path().apply {
+                moveTo(cx - w * 0.18f, h * 0.64f)
+                lineTo(cx - w * 0.18f, h * 0.52f)
+                quadraticBezierTo(cx - w * 0.18f, h * 0.38f, cx, h * 0.35f)
+                quadraticBezierTo(cx + w * 0.18f, h * 0.38f, cx + w * 0.18f, h * 0.52f)
+                lineTo(cx + w * 0.18f, h * 0.64f)
+                close()
+            }
+            drawPath(
+                path = domePath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFECFDF5),
+                        Color(0xFFA7F3D0)
+                    ),
+                    startY = h * 0.35f,
+                    endY = h * 0.64f
+                )
+            )
+            drawPath(
+                path = domePath,
+                color = Color(0xFFFBBF24),
+                style = Stroke(width = 2.dp.toPx())
+            )
+
+            // Beacon Finial Spire & Glowing Orb
+            drawLine(
+                color = Color(0xFFFBBF24),
+                start = Offset(cx, h * 0.35f),
+                end = Offset(cx, h * 0.28f),
+                strokeWidth = 2.6.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawCircle(
+                color = Color(0xFFFDE68A).copy(alpha = 0.45f),
+                radius = 9.dp.toPx() * beaconPulse,
+                center = Offset(cx, h * 0.27f)
+            )
+            drawCircle(
+                color = Color(0xFFFBBF24),
+                radius = 5.dp.toPx(),
+                center = Offset(cx, h * 0.27f)
+            )
+
+            // Open Academic Book at the Base of the Dome (Path.cubicTo)
+            val leftPage = Path().apply {
+                moveTo(cx, h * 0.60f)
+                cubicTo(
+                    cx - w * 0.08f, h * 0.56f,
+                    cx - w * 0.17f, h * 0.57f,
+                    cx - w * 0.24f, h * 0.61f
+                )
+                lineTo(cx - w * 0.24f, h * 0.72f)
+                cubicTo(
+                    cx - w * 0.17f, h * 0.68f,
+                    cx - w * 0.08f, h * 0.67f,
+                    cx, h * 0.71f
+                )
+                close()
+            }
+            val rightPage = Path().apply {
+                moveTo(cx, h * 0.60f)
+                cubicTo(
+                    cx + w * 0.08f, h * 0.56f,
+                    cx + w * 0.17f, h * 0.57f,
+                    cx + w * 0.24f, h * 0.61f
+                )
+                lineTo(cx + w * 0.24f, h * 0.72f)
+                cubicTo(
+                    cx + w * 0.17f, h * 0.68f,
+                    cx + w * 0.08f, h * 0.67f,
+                    cx, h * 0.71f
+                )
+                close()
+            }
+            drawPath(path = leftPage, color = Color.White)
+            drawPath(path = rightPage, color = Color(0xFFF8FAFC))
+            drawPath(path = leftPage, color = Color(0xFFD97706), style = Stroke(width = 1.6.dp.toPx()))
+            drawPath(path = rightPage, color = Color(0xFFD97706), style = Stroke(width = 1.6.dp.toPx()))
+        }
+    }
+}
+
+@Composable
+private fun InteractiveOfflineWelcomeCard(isDarkOffline: Boolean) {
+    val hapticOffline = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var scanBurstCount by remember { mutableIntStateOf(0) }
+    val retryRotationDegrees by animateFloatAsState(
+        targetValue = scanBurstCount * 360f,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "offline_retry_spin"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 22.dp, vertical = 28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 24.dp,
+                    shape = RoundedCornerShape(34.dp),
+                    ambientColor = Color(0xFF047857).copy(alpha = 0.25f),
+                    spotColor = Color(0xFF0F3D5E).copy(alpha = 0.30f)
+                ),
+            shape = RoundedCornerShape(34.dp),
+            color = if (isDarkOffline) {
+                Color(0xFF062C22).copy(alpha = 0.95f)
+            } else {
+                Color.White.copy(alpha = 0.96f)
+            },
+            border = BorderStroke(
+                width = 1.6.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF10B981).copy(alpha = 0.50f),
+                        GoldAccent.copy(alpha = 0.60f),
+                        Color(0xFF0F3D5E).copy(alpha = 0.40f)
+                    )
+                )
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp, vertical = 26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // شارة ترحيبية دافئة في الأعلى
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (isDarkOffline) Color(0xFF047857).copy(alpha = 0.35f) else Color(0xFFECFDF5),
+                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.55f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.School,
+                            contentDescription = null,
+                            tint = if (isDarkOffline) Color(0xFFFDE68A) else Color(0xFF047857),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "مدرستك تفتقدك وتنتظر عودتك!",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkOffline) Color(0xFFFDE68A) else Color(0xFF047857)
+                        )
+                    }
+                }
+
+                // اللوحة الفيكتورية التفاعلية الحية
+                InteractiveOfflineVectorIllustration(
+                    scanBurstCount = scanBurstCount,
+                    onIllustrationClick = {
+                        hapticOffline.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        scanBurstCount += 1
+                        com.example.viewmodel.SchoolViewModel.activeInstance?.triggerImmediateCloudResync()
+                    }
+                )
+
+                // العنوان الرئيسي الودود
+                Text(
+                    text = "انقطع الاتصال بالشبكة مؤقتاً",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDarkOffline) Color.White else DeepForestGreen,
+                    textAlign = TextAlign.Center
+                )
+
+                // النص التوضيحي المشجع والدافئ
+                Text(
+                    text = "نحن بانتظار عودة اتصالك بالإنترنت لنكمل رحلة العلم والتفوق معاً.. تفقد اتصالك بالشبكة، وسيستأنف تطبيق مدرستي الذكية مزامنة دروسك وبياناتك تلقائياً فور عودة الإشارة.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isDarkOffline) Color.White.copy(alpha = 0.88f) else Color(0xFF334155),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 24.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+
+                // زر إعادة المحاولة التفاعلي مع نبض المسح الفوري
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .shadow(
+                            elevation = 10.dp,
+                            shape = RoundedCornerShape(50),
+                            ambientColor = Color(0xFF059669).copy(alpha = 0.30f),
+                            spotColor = Color(0xFF0F3D5E).copy(alpha = 0.35f)
+                        )
+                        .clip(RoundedCornerShape(50))
+                        .clickable {
+                            hapticOffline.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            scanBurstCount += 1
+                            com.example.viewmodel.SchoolViewModel.activeInstance?.triggerImmediateCloudResync()
+                        }
+                        .testTag("network_retry_sync_button"),
+                    shape = RoundedCornerShape(50),
+                    color = Color.Transparent,
+                    border = BorderStroke(1.3.dp, GoldAccent.copy(alpha = 0.75f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color(0xFF064E3B),
+                                        Color(0xFF059669),
+                                        Color(0xFF0F3D5E)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "إعادة المحاولة الآن",
+                                tint = GoldAccent,
+                                modifier = Modifier
+                                    .size(21.dp)
+                                    .graphicsLayer {
+                                        rotationZ = retryRotationDegrees
+                                    }
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "إعادة المحاولة الآن",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -4392,7 +4852,7 @@ fun ThreeDIllustrationBox(
             }
 
             ThreeDIllustrationType.CLOUD_OFFLINE_3D -> {
-                // 3D Glassmorphic Cloud + Pulsing Signal Arcs for Offline Screen
+                // Academic Dome & Signal Beacon with Flowing Bezier Waves
                 drawCircle(
                     brush = Brush.radialGradient(
                         listOf(Color(0xFF34D399).copy(alpha = glowPulseAlpha), Color.Transparent),
@@ -4402,59 +4862,35 @@ fun ThreeDIllustrationBox(
                     radius = w * 0.50f,
                     center = Offset(cx, cy)
                 )
-                // Pulsing Wi-Fi / Signal waves above the cloud
-                val waveCol = Color(0xFF10B981).copy(alpha = (glowPulseAlpha + 0.25f).coerceAtMost(0.95f))
-                drawArc(
-                    color = waveCol,
-                    startAngle = -140f,
-                    sweepAngle = 100f,
-                    useCenter = false,
-                    topLeft = Offset(w * 0.26f, h * 0.10f),
-                    size = Size(w * 0.48f, h * 0.42f),
-                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
-                )
-                drawArc(
-                    color = waveCol.copy(alpha = waveCol.alpha * 0.75f),
-                    startAngle = -135f,
-                    sweepAngle = 90f,
-                    useCenter = false,
-                    topLeft = Offset(w * 0.34f, h * 0.18f),
-                    size = Size(w * 0.32f, h * 0.30f),
-                    style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
-                )
-
-                // 3D Layered Cloud Body
-                drawCircle(
-                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFD1FAE5))),
-                    radius = w * 0.18f,
-                    center = Offset(w * 0.36f, h * 0.56f)
+                for (arcIdx in 0..2) {
+                    val spread = (arcIdx + 1) * w * 0.11f
+                    val arcY = h * 0.26f - arcIdx * h * 0.06f
+                    val signalArc = Path().apply {
+                        moveTo(cx - spread, arcY + h * 0.04f)
+                        quadraticBezierTo(cx, arcY - h * 0.05f, cx + spread, arcY + h * 0.04f)
+                    }
+                    drawPath(
+                        path = signalArc,
+                        color = if (arcIdx == 0) Color(0xFFFDE68A) else Color(0xFF6EE7B7).copy(alpha = 0.8f - arcIdx * 0.2f),
+                        style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+                val domePath = Path().apply {
+                    moveTo(cx - w * 0.22f, h * 0.72f)
+                    lineTo(cx - w * 0.22f, h * 0.54f)
+                    quadraticBezierTo(cx - w * 0.22f, h * 0.36f, cx, h * 0.32f)
+                    quadraticBezierTo(cx + w * 0.22f, h * 0.36f, cx + w * 0.22f, h * 0.54f)
+                    lineTo(cx + w * 0.22f, h * 0.72f)
+                    close()
+                }
+                drawPath(
+                    path = domePath,
+                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFA7F3D0)))
                 )
                 drawCircle(
-                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFA7F3D0))),
-                    radius = w * 0.22f,
-                    center = Offset(w * 0.52f, h * 0.48f)
-                )
-                drawCircle(
-                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFD1FAE5))),
-                    radius = w * 0.16f,
-                    center = Offset(w * 0.67f, h * 0.58f)
-                )
-                drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFA7F3D0))),
-                    topLeft = Offset(w * 0.22f, h * 0.52f),
-                    size = Size(w * 0.58f, h * 0.22f),
-                    cornerRadius = CornerRadius(18.dp.toPx(), 18.dp.toPx())
-                )
-                // Golden sync badge on cloud
-                drawCircle(
-                    brush = Brush.linearGradient(listOf(Color(0xFFFBBF24), Color(0xFFD97706))),
-                    radius = w * 0.11f,
-                    center = Offset(w * 0.68f, h * 0.68f)
-                )
-                drawCircle(
-                    color = Color.White,
-                    radius = w * 0.045f,
-                    center = Offset(w * 0.68f, h * 0.68f)
+                    color = Color(0xFFFBBF24),
+                    radius = w * 0.055f,
+                    center = Offset(cx, h * 0.26f)
                 )
             }
 
