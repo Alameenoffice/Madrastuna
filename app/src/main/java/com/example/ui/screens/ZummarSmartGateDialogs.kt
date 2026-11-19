@@ -1249,20 +1249,6 @@ fun ZummarAccountAuthDialog(
                     }
 
                     if (!isRegisterTab) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = ZummarSurfaceBg,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "حسابات جاهزة للتجربة الفورية:\n• المطور والإدارة العليا: admin / كلمة المرور: 1234\n• مسؤول الكهرباء: elec / 1234 • مسؤول الماء: water / 1234",
-                                fontFamily = ZummarTajawalFont,
-                                fontSize = 11.sp,
-                                color = ZummarEmerald,
-                                modifier = Modifier.padding(10.dp)
-                            )
-                        }
-
                         OutlinedTextField(
                             value = usernameOrPhone,
                             onValueChange = { usernameOrPhone = it },
@@ -1293,7 +1279,7 @@ fun ZummarAccountAuthDialog(
                                 if (match != null) {
                                     onLoginSuccess(match)
                                 } else {
-                                    errorMsg = "بيانات الدخول غير صحيحة؛ يمكنك استخدام admin وكلمة المرور 1234 أو إنشاء حساب جديد."
+                                    errorMsg = "بيانات الدخول غير صحيحة، يرجى التحقق من اسم المستخدم وكلمة المرور."
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = ZummarEmerald),
@@ -1361,14 +1347,17 @@ fun ZummarAccountAuthDialog(
                             }
                         }
 
-                        if (selectedRole == ZummarRole.HEALTH_PROVIDER || selectedRole == ZummarRole.MERCHANT) {
+                        if (selectedRole == ZummarRole.HEALTH_PROVIDER || selectedRole == ZummarRole.MERCHANT || selectedRole == ZummarRole.GENERATOR_OWNER) {
                             OutlinedTextField(
                                 value = specialtyOrShopTitle,
                                 onValueChange = { specialtyOrShopTitle = it },
                                 label = {
                                     Text(
-                                        if (selectedRole == ZummarRole.HEALTH_PROVIDER) "اسم الصيدلية / العيادة والاختصاص"
-                                        else "اسم المحل التجاري ونوع البضائع",
+                                        when (selectedRole) {
+                                            ZummarRole.HEALTH_PROVIDER -> "اسم الصيدلية / العيادة والاختصاص"
+                                            ZummarRole.GENERATOR_OWNER -> "اسم المولدة الأهلية وسعر الأمبير"
+                                            else -> "اسم المحل التجاري ونوع البضائع"
+                                        },
                                         fontFamily = ZummarTajawalFont
                                     )
                                 },
@@ -1380,7 +1369,9 @@ fun ZummarAccountAuthDialog(
                         Button(
                             onClick = {
                                 if (fullName.isNotBlank() && usernameOrPhone.isNotBlank() && password.isNotBlank()) {
-                                    val needsApproval = selectedRole == ZummarRole.HEALTH_PROVIDER || selectedRole == ZummarRole.MERCHANT
+                                    val needsApproval = selectedRole == ZummarRole.HEALTH_PROVIDER ||
+                                        selectedRole == ZummarRole.MERCHANT ||
+                                        selectedRole == ZummarRole.GENERATOR_OWNER
                                     val newAcc = ZummarUserAccount(
                                         fullName = fullName.trim(),
                                         usernameOrPhone = usernameOrPhone.trim(),
@@ -1390,10 +1381,15 @@ fun ZummarAccountAuthDialog(
                                         specialtyOrCategory = specialtyOrShopTitle
                                     )
                                     val autoMarker = if (needsApproval) {
+                                        val markerType = when (selectedRole) {
+                                            ZummarRole.HEALTH_PROVIDER -> ZummarMarkerType.PHARMACY
+                                            ZummarRole.GENERATOR_OWNER -> ZummarMarkerType.GENERATOR
+                                            else -> ZummarMarkerType.SHOP
+                                        }
                                         ZummarLandmarkMarker(
                                             title = specialtyOrShopTitle.ifBlank { fullName.trim() },
                                             subtitleOrOwner = fullName.trim(),
-                                            type = if (selectedRole == ZummarRole.HEALTH_PROVIDER) ZummarMarkerType.PHARMACY else ZummarMarkerType.SHOP,
+                                            type = markerType,
                                             mapX = (30..70).random() / 100f,
                                             mapY = (30..70).random() / 100f,
                                             phoneOrUsername = usernameOrPhone.trim(),

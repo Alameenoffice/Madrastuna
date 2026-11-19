@@ -20,6 +20,11 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
+    <queries>
+        <package android:name="com.example.madrasati" />
+        <package android:name="com.madrasati.smart" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

@@ -840,46 +840,56 @@ fun ZummarBazaarSection(
     onAddProductToShop: (ZummarLandmarkMarker) -> Unit,
     onMessageShop: (ZummarLandmarkMarker) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = ZummarNavy,
-            border = BorderStroke(1.5.dp, ZummarAmberGold),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ZummarCustomIcon(ZummarVectorIconType.BAZAAR_STORE, ZummarAmberGold, Modifier.size(28.dp))
-                Column {
-                    Text(
-                        text = "سوق زمار الشامل والواجهات التجارية المفتوحة",
-                        fontFamily = ZummarTajawalFont,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 16.sp,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "تصفح محلات ناحية زمار وبضائعها وأسعارها بالدينار العراقي وتواصل مع التاجر مباشرة",
-                        fontFamily = ZummarTajawalFont,
-                        fontSize = 12.sp,
-                        color = ZummarAmberGold
-                    )
-                }
-            }
+    var searchQuery by remember { mutableStateOf("") }
+    var previewStoreOpen by remember { mutableStateOf(true) }
+
+    val filteredShops = remember(shops, searchQuery) {
+        if (searchQuery.isBlank()) shops
+        else shops.filter {
+            it.title.contains(searchQuery, ignoreCase = true) ||
+                it.subtitleOrOwner.contains(searchQuery, ignoreCase = true)
         }
+    }
+    val filteredProducts = remember(products, searchQuery) {
+        if (searchQuery.isBlank()) products
+        else products.filter {
+            it.productName.contains(searchQuery, ignoreCase = true) ||
+                it.shopName.contains(searchQuery, ignoreCase = true) ||
+                it.description.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        InteractiveOpeningStorefrontCanvas(
+            shopName = "سوق زمار الشامل",
+            isOpen = previewStoreOpen,
+            modifier = Modifier.clickable { previewStoreOpen = !previewStoreOpen }
+        )
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = {
+                Text(
+                    text = "ابحث عن محل تجاري أو بضاعة أو سعر في سوق زمار...",
+                    fontFamily = ZummarTajawalFont,
+                    fontSize = 12.sp
+                )
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp)
+        )
 
         Text(
-            text = "المحلات والمتاجر المعتمدة في سوق زمار (${shops.size}):",
+            text = "المحلات والمتاجر المعتمدة في سوق زمار (${filteredShops.size}):",
             fontFamily = ZummarTajawalFont,
             fontWeight = FontWeight.ExtraBold,
             fontSize = 15.sp,
             color = ZummarNavy
         )
 
-        shops.forEach { shop ->
+        filteredShops.forEach { shop ->
             Surface(
                 shape = RoundedCornerShape(18.dp),
                 color = ZummarCardWhite,
@@ -954,14 +964,14 @@ fun ZummarBazaarSection(
         }
 
         Text(
-            text = "أحدث البضائع والعروض المنشورة في سوق زمار (${products.size}):",
+            text = "أحدث البضائع والعروض المنشورة في سوق زمار (${filteredProducts.size}):",
             fontFamily = ZummarTajawalFont,
             fontWeight = FontWeight.ExtraBold,
             fontSize = 15.sp,
             color = ZummarNavy
         )
 
-        products.forEach { prod ->
+        filteredProducts.forEach { prod ->
             val decodedImg = remember(prod.imageBase64) {
                 ZummarRepository.decodeBase64ToImageBitmap(prod.imageBase64)
             }

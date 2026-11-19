@@ -74,6 +74,7 @@ enum class ZummarRole(val arabicTitle: String, val badgeDesc: String) {
     CITIZEN("مواطن", "التصفح، حجز المواعيد، ومراسلة الصيدليات والتجار"),
     HEALTH_PROVIDER("صيدلية / عيادة طبيب / مختبر", "تثبيت الموقع على الخريطة واستقبال المراجعين"),
     MERCHANT("تاجر / صاحب محل", "تثبيت المحل ونشر البضائع والأسعار في سوق زمار"),
+    GENERATOR_OWNER("صاحب مولدة أهلية", "تثبيت موقع المولدة وتحديث ساعات التشغيل وسعر الأمبير"),
     ELECTRICITY_OFFICIAL("مسؤول دائرة الكهرباء", "رسم أحياء زمار والتحكم بالكهرباء والأعطال"),
     WATER_OFFICIAL("مسؤول دائرة الماء", "رسم قواطع ضخ الماء والتحكم بالفتح والصيانة"),
     SUPREME_ADMIN("المطور والإدارة العليا لبوابة زمار", "صلاحية كاملة لاعتماد الطلبات وإدارة كافة الأقسام")
@@ -507,7 +508,7 @@ fun ZummarCustomIcon(
 }
 
 // ==========================================
-// 1. البوابة المعمارية المزدوجة المتحركة التي تنفتح بانسيابية
+// 1. البوابة المعمارية المهيبة لناحية زمار (4 طبقات فنية + إضاءة ليلية/نهارية + أمواج دجلة)
 // ==========================================
 @Composable
 fun InteractiveOpeningSmartGateCanvas(
@@ -515,162 +516,323 @@ fun InteractiveOpeningSmartGateCanvas(
     onToggleGate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isNightIllumination by remember { mutableStateOf(true) }
     val openFraction by animateFloatAsState(
-        targetValue = if (isGateOpen) 1f else 0.18f,
-        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        targetValue = if (isGateOpen) 1f else 0.08f,
+        animationSpec = tween(durationMillis = 1350, easing = FastOutSlowInEasing),
         label = "zummar_gate_open_fraction"
     )
-    val infiniteTransition = rememberInfiniteTransition(label = "zummar_gate_glow")
-    val lightPulse by infiniteTransition.animateFloat(
-        initialValue = 0.75f,
-        targetValue = 1.15f,
+    val infiniteTransition = rememberInfiniteTransition(label = "zummar_gate_masterpiece")
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
+            animation = tween(3600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "tigris_wave_phase"
+    )
+    val lightPulse by infiniteTransition.animateFloat(
+        initialValue = 0.82f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "zummar_light_pulse"
     )
 
+    val skyColors = if (isNightIllumination) {
+        listOf(Color(0xFF041411), Color(0xFF06372A), Color(0xFF064E3B))
+    } else {
+        listOf(Color(0xFF064E3B), Color(0xFF047857), Color(0xFF0D9488))
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(26.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(ZummarNavy, Color(0xFF072F29), ZummarEmerald)
-                )
-            )
-            .border(1.5.dp, ZummarAmberGold.copy(alpha = 0.65f), RoundedCornerShape(26.dp))
-            .clickable { onToggleGate() }
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .background(Brush.verticalGradient(colors = skyColors))
+            .border(1.8.dp, ZummarAmberGold.copy(alpha = 0.8f), RoundedCornerShape(26.dp))
+            .padding(horizontal = 14.dp, vertical = 14.dp)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
+            // شريط أزرار التفاعل المباشر مع صرح بوابة زمار
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.32f),
+                    border = BorderStroke(1.dp, ZummarAmberGold.copy(alpha = 0.6f)),
+                    modifier = Modifier.clickable { isNightIllumination = !isNightIllumination }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        ZummarCustomIcon(ZummarVectorIconType.GOV_DOME, ZummarAmberGold, Modifier.size(14.dp))
+                        Text(
+                            text = if (isNightIllumination) "إضاءة ليلية ذهبية" else "إشراقة نهار دجلة",
+                            fontFamily = ZummarTajawalFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = Color.White
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = ZummarAmberGold.copy(alpha = 0.22f),
+                    border = BorderStroke(1.dp, ZummarAmberGold),
+                    modifier = Modifier.clickable { onToggleGate() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        ZummarCustomIcon(ZummarVectorIconType.RESET_VIEW, ZummarAmberGold, Modifier.size(14.dp))
+                        Text(
+                            text = if (isGateOpen) "إعادة حركة فتح البوابة" else "فتح مصراعي البوابة",
+                            fontFamily = ZummarTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.sp,
+                            color = ZummarAmberGold
+                        )
+                    }
+                }
+            }
+
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(148.dp)
+                    .height(186.dp)
+                    .clickable { onToggleGate() }
             ) {
                 val w = size.width
                 val h = size.height
                 val cx = w * 0.5f
+                val horizonY = h * 0.72f
 
-                // الهالة النورانية خلف مصراعي البوابة المعمارية
+                // الطبقة 1: الهالة النورانية الذهبية خلف القوس + شبكة الأرضية المنظورية
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            ZummarAmberGold.copy(alpha = 0.48f * openFraction * lightPulse.coerceAtMost(1f)),
+                            ZummarAmberGold.copy(alpha = (0.45f + 0.25f * openFraction) * lightPulse.coerceAtMost(1.1f)),
                             ZummarSkyCyan.copy(alpha = 0.22f * openFraction),
                             Color.Transparent
                         ),
-                        center = Offset(cx, h * 0.56f),
-                        radius = w * 0.42f * lightPulse
+                        center = Offset(cx, h * 0.48f),
+                        radius = w * 0.46f * lightPulse
                     ),
-                    center = Offset(cx, h * 0.56f),
-                    radius = w * 0.42f * lightPulse
+                    center = Offset(cx, h * 0.48f),
+                    radius = w * 0.46f * lightPulse
                 )
 
-                // نهر دجلة وأفق زمار خلف البوابة المفتوحة
-                val horizonWave = Path().apply {
-                    moveTo(w * 0.22f, h * 0.78f)
-                    cubicTo(w * 0.38f, h * 0.68f, w * 0.62f, h * 0.86f, w * 0.78f, h * 0.74f)
+                // خطوط المنظور المعماري على أرضية البوابة
+                for (i in -4..4) {
+                    val topX = cx + i * (w * 0.045f)
+                    val botX = cx + i * (w * 0.12f)
+                    drawLine(
+                        color = ZummarAmberGold.copy(alpha = 0.16f),
+                        start = Offset(topX, horizonY),
+                        end = Offset(botX, h),
+                        strokeWidth = 1.2.dp.toPx()
+                    )
                 }
-                drawPath(
-                    path = horizonWave,
-                    color = ZummarSkyCyan.copy(alpha = 0.65f * openFraction),
-                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+
+                // الطبقة 2: 4 طبقات متداخلة لأمواج نهر دجلة وسد الموصل مع انعكاس الأنوار
+                for (layer in 0..3) {
+                    val baseWaveY = horizonY + layer * (h * 0.055f)
+                    val amp = (3.5f + layer * 1.4f).dp.toPx()
+                    val wavePath = Path().apply {
+                        moveTo(w * 0.06f, baseWaveY)
+                        val segments = 6
+                        val segW = (w * 0.88f) / segments
+                        for (s in 0 until segments) {
+                            val sx = w * 0.06f + s * segW
+                            val ex = sx + segW
+                            val phaseShift = wavePhase + layer * 0.9f + s * 0.7f
+                            val cy1 = baseWaveY + sin(phaseShift) * amp
+                            val cy2 = baseWaveY - cos(phaseShift) * amp
+                            cubicTo(sx + segW * 0.35f, cy1, sx + segW * 0.68f, cy2, ex, baseWaveY)
+                        }
+                    }
+                    drawPath(
+                        path = wavePath,
+                        color = if (layer % 2 == 0) ZummarSkyCyan.copy(alpha = 0.45f + layer * 0.08f)
+                        else ZummarCyanLight.copy(alpha = 0.38f + layer * 0.08f),
+                        style = Stroke(width = (2.2f + layer * 0.4f).dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+
+                // الطبقة 3: البرجان الجانبيان المعماريان بتاجين ذهبيين والقوس الملكي متعدد الطبقات
+                val leftTowerX = w * 0.11f
+                val rightTowerX = w * 0.77f
+                val towerW = w * 0.12f
+                val towerTopY = h * 0.16f
+                val towerBottomY = h * 0.92f
+
+                val towerBrush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF042F24), Color(0xFF0A5C44), Color(0xFF042F24))
                 )
 
-                // القوس المعماري الإسلامي/الحضاري لبوابة زمار
+                listOf(leftTowerX, rightTowerX).forEach { tx ->
+                    // جسم البرج المعماري
+                    drawRoundRect(
+                        brush = towerBrush,
+                        topLeft = Offset(tx, towerTopY),
+                        size = Size(towerW, towerBottomY - towerTopY),
+                        cornerRadius = CornerRadius(8f, 8f)
+                    )
+                    drawRoundRect(
+                        color = ZummarAmberGold,
+                        topLeft = Offset(tx, towerTopY),
+                        size = Size(towerW, towerBottomY - towerTopY),
+                        cornerRadius = CornerRadius(8f, 8f),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                    // التاج الذهبي أعلى البرج (Golden Crown)
+                    val crownPath = Path().apply {
+                        moveTo(tx - w * 0.01f, towerTopY)
+                        lineTo(tx + towerW * 0.2f, towerTopY - h * 0.08f)
+                        lineTo(tx + towerW * 0.5f, towerTopY - h * 0.03f)
+                        lineTo(tx + towerW * 0.8f, towerTopY - h * 0.08f)
+                        lineTo(tx + towerW + w * 0.01f, towerTopY)
+                        close()
+                    }
+                    drawPath(crownPath, color = ZummarAmberGold)
+
+                    // نوافذ البرج المضيئة
+                    for (winRow in 0..2) {
+                        val wy = towerTopY + h * (0.12f + winRow * 0.19f)
+                        drawRoundRect(
+                            color = if (isNightIllumination) ZummarAmberGold.copy(alpha = 0.85f) else ZummarCyanLight.copy(alpha = 0.75f),
+                            topLeft = Offset(tx + towerW * 0.32f, wy),
+                            size = Size(towerW * 0.36f, h * 0.11f),
+                            cornerRadius = CornerRadius(6f, 6f)
+                        )
+                    }
+                }
+
+                // القوس الملكي المعماري المتدرج بين البرجين (Outer Arch + Inner Arch + Keystone)
+                val archLeft = leftTowerX + towerW
+                val archRight = rightTowerX
                 val archOuter = Path().apply {
-                    moveTo(w * 0.14f, h * 0.94f)
-                    lineTo(w * 0.14f, h * 0.36f)
-                    cubicTo(w * 0.14f, h * 0.12f, w * 0.36f, h * 0.06f, cx, h * 0.04f)
-                    cubicTo(w * 0.64f, h * 0.06f, w * 0.86f, h * 0.12f, w * 0.86f, h * 0.36f)
-                    lineTo(w * 0.86f, h * 0.94f)
+                    moveTo(archLeft, towerBottomY)
+                    lineTo(archLeft, h * 0.36f)
+                    cubicTo(archLeft, h * 0.10f, cx - w * 0.12f, h * 0.04f, cx, h * 0.02f)
+                    cubicTo(cx + w * 0.12f, h * 0.04f, archRight, h * 0.10f, archRight, h * 0.36f)
+                    lineTo(archRight, towerBottomY)
                 }
                 drawPath(
                     path = archOuter,
-                    color = ZummarAmberGold,
-                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
+                    brush = Brush.linearGradient(
+                        colors = listOf(ZummarAmberGold, Color(0xFFFFE082), ZummarAmberWarm)
+                    ),
+                    style = Stroke(width = 4.5.dp.toPx(), cap = StrokeCap.Round)
                 )
 
-                // المصراع الأيمن والأيسر للبوابة ينفتحان تدريجياً
-                val leafMaxSpan = w * 0.33f
-                val currentLeafSpan = leafMaxSpan * (1f - openFraction * 0.76f)
+                val archInner = Path().apply {
+                    moveTo(archLeft + w * 0.02f, towerBottomY)
+                    lineTo(archLeft + w * 0.02f, h * 0.38f)
+                    cubicTo(archLeft + w * 0.02f, h * 0.16f, cx - w * 0.10f, h * 0.10f, cx, h * 0.08f)
+                    cubicTo(cx + w * 0.10f, h * 0.10f, archRight - w * 0.02f, h * 0.16f, archRight - w * 0.02f, h * 0.38f)
+                    lineTo(archRight - w * 0.02f, towerBottomY)
+                }
+                drawPath(
+                    path = archInner,
+                    color = ZummarAmberGold.copy(alpha = 0.65f),
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // حجر القمة الذهبي (Keystone) في ذروة القوس الملكي
+                val keystone = Path().apply {
+                    moveTo(cx - w * 0.03f, h * 0.02f)
+                    lineTo(cx + w * 0.03f, h * 0.02f)
+                    lineTo(cx + w * 0.02f, h * 0.11f)
+                    lineTo(cx - w * 0.02f, h * 0.11f)
+                    close()
+                }
+                drawPath(keystone, color = ZummarAmberGold)
+
+                // الطبقة 4: البوابتان الذهبيتان المتحركتان (Double Golden Doors) بالمنظور الهندسي
+                val doorAreaLeft = archLeft + w * 0.025f
+                val doorAreaRight = archRight - w * 0.025f
+                val halfSpan = (doorAreaRight - doorAreaLeft) * 0.5f
+                val currentLeafSpan = halfSpan * (1f - openFraction * 0.78f)
+                val perspectiveLift = openFraction * (h * 0.05f)
 
                 // المصراع الأيسر
                 val leftLeaf = Path().apply {
-                    moveTo(w * 0.16f, h * 0.92f)
-                    lineTo(w * 0.16f, h * 0.38f)
+                    moveTo(doorAreaLeft, towerBottomY)
+                    lineTo(doorAreaLeft, h * 0.36f)
                     cubicTo(
-                        w * 0.16f + currentLeafSpan * 0.35f,
-                        h * 0.20f,
-                        w * 0.16f + currentLeafSpan * 0.75f,
-                        h * 0.16f,
-                        w * 0.16f + currentLeafSpan,
-                        h * 0.24f
+                        doorAreaLeft + currentLeafSpan * 0.4f,
+                        h * 0.22f - perspectiveLift,
+                        doorAreaLeft + currentLeafSpan * 0.8f,
+                        h * 0.18f - perspectiveLift,
+                        doorAreaLeft + currentLeafSpan,
+                        h * 0.24f - perspectiveLift
                     )
-                    lineTo(w * 0.16f + currentLeafSpan, h * 0.92f)
+                    lineTo(doorAreaLeft + currentLeafSpan, towerBottomY - perspectiveLift)
                     close()
                 }
                 drawPath(
                     path = leftLeaf,
                     brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFF043927), Color(0xFF0A6847))
+                        colors = listOf(Color(0xFF043927), Color(0xFF0A6847), Color(0xFF064E3B))
                     )
                 )
-                drawPath(
-                    path = leftLeaf,
-                    color = ZummarAmberGold,
-                    style = Stroke(width = 2.dp.toPx())
-                )
+                drawPath(leftLeaf, color = ZummarAmberGold, style = Stroke(width = 2.2.dp.toPx()))
 
                 // المصراع الأيمن
                 val rightLeaf = Path().apply {
-                    moveTo(w * 0.84f, h * 0.92f)
-                    lineTo(w * 0.84f, h * 0.38f)
+                    moveTo(doorAreaRight, towerBottomY)
+                    lineTo(doorAreaRight, h * 0.36f)
                     cubicTo(
-                        w * 0.84f - currentLeafSpan * 0.35f,
-                        h * 0.20f,
-                        w * 0.84f - currentLeafSpan * 0.75f,
-                        h * 0.16f,
-                        w * 0.84f - currentLeafSpan,
-                        h * 0.24f
+                        doorAreaRight - currentLeafSpan * 0.4f,
+                        h * 0.22f - perspectiveLift,
+                        doorAreaRight - currentLeafSpan * 0.8f,
+                        h * 0.18f - perspectiveLift,
+                        doorAreaRight - currentLeafSpan,
+                        h * 0.24f - perspectiveLift
                     )
-                    lineTo(w * 0.84f - currentLeafSpan, h * 0.92f)
+                    lineTo(doorAreaRight - currentLeafSpan, towerBottomY - perspectiveLift)
                     close()
                 }
                 drawPath(
                     path = rightLeaf,
                     brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFF0A6847), Color(0xFF043927))
+                        colors = listOf(Color(0xFF064E3B), Color(0xFF0A6847), Color(0xFF043927))
                     )
                 )
-                drawPath(
-                    path = rightLeaf,
-                    color = ZummarAmberGold,
-                    style = Stroke(width = 2.dp.toPx())
-                )
+                drawPath(rightLeaf, color = ZummarAmberGold, style = Stroke(width = 2.2.dp.toPx()))
 
-                // مقابض ذهبية مزخرفة على مصراعي البوابة
+                // حلقات ومقابض البوابة الذهبية المزدوجة
                 drawCircle(
                     color = ZummarAmberGold,
-                    radius = 4.5.dp.toPx(),
-                    center = Offset(w * 0.16f + currentLeafSpan * 0.78f, h * 0.58f)
+                    radius = 5.dp.toPx(),
+                    center = Offset(doorAreaLeft + currentLeafSpan * 0.76f, h * 0.58f - perspectiveLift * 0.5f)
                 )
                 drawCircle(
                     color = ZummarAmberGold,
-                    radius = 4.5.dp.toPx(),
-                    center = Offset(w * 0.84f - currentLeafSpan * 0.78f, h * 0.58f)
+                    radius = 5.dp.toPx(),
+                    center = Offset(doorAreaRight - currentLeafSpan * 0.76f, h * 0.58f - perspectiveLift * 0.5f)
                 )
             }
 
             Text(
-                text = "أهلاً بك في بوابة زمار الذكية — نحن هنا لخدمتك وتسهيل حياتك اليومية، اختر وجهتك الخدمية الآن",
+                text = "أهلاً بك في بوابة زمار الذكية — صرح الخدمات الرقمية المتكاملة لأهلنا في ناحية زمار",
                 fontFamily = ZummarTajawalFont,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 14.sp,
@@ -683,7 +845,7 @@ fun InteractiveOpeningSmartGateCanvas(
 }
 
 // ==========================================
-// 2. واجهة المتجر التفاعلية التي تنفتح أبوابها عند النقر على المحل
+// 2. واجهة المتجر التفاعلية ثلاثية العمق التي تنفتح أبوابها عند النقر على المحل
 // ==========================================
 @Composable
 fun InteractiveOpeningStorefrontCanvas(
@@ -693,7 +855,7 @@ fun InteractiveOpeningStorefrontCanvas(
 ) {
     val doorOpenProgress by animateFloatAsState(
         targetValue = if (isOpen) 1f else 0f,
-        animationSpec = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
         label = "storefront_door_progress"
     )
 
@@ -701,55 +863,115 @@ fun InteractiveOpeningStorefrontCanvas(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(ZummarNavy, ZummarEmerald)
+                    colors = listOf(ZummarNavy, Color(0xFF063F30), ZummarEmerald)
                 )
             )
-            .border(1.2.dp, ZummarAmberGold.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
-            .padding(12.dp)
+            .border(1.4.dp, ZummarAmberGold.copy(alpha = 0.75f), RoundedCornerShape(22.dp))
+            .padding(14.dp)
     ) {
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(96.dp)
+                .height(112.dp)
         ) {
             val w = size.width
             val h = size.height
 
-            // المظلة التجارية المزخرفة
-            val awning = Path().apply {
-                moveTo(w * 0.12f, h * 0.34f)
-                lineTo(w * 0.20f, h * 0.10f)
-                lineTo(w * 0.80f, h * 0.10f)
-                lineTo(w * 0.88f, h * 0.34f)
-                cubicTo(w * 0.75f, h * 0.44f, w * 0.62f, h * 0.44f, w * 0.50f, h * 0.34f)
-                cubicTo(w * 0.38f, h * 0.44f, w * 0.25f, h * 0.44f, w * 0.12f, h * 0.34f)
-                close()
-            }
-            drawPath(awning, color = ZummarAmberGold)
-
-            // إضاءة داخل المتجر عند انفتاح الأبواب
+            // إفريز السقف المعماري للمتجر
             drawRoundRect(
-                color = Color(0xFFFFFBEB).copy(alpha = 0.25f + 0.55f * doorOpenProgress),
-                topLeft = Offset(w * 0.22f, h * 0.36f),
-                size = Size(w * 0.56f, h * 0.56f),
+                color = ZummarAmberGold,
+                topLeft = Offset(w * 0.10f, h * 0.04f),
+                size = Size(w * 0.80f, h * 0.08f),
+                cornerRadius = CornerRadius(8f, 8f)
+            )
+
+            // المظلة التجارية المقلمة بأقواس متموجة (Striped Awning)
+            val stripeCount = 6
+            val awningLeft = w * 0.12f
+            val awningWidth = w * 0.76f
+            val stripeW = awningWidth / stripeCount
+            for (i in 0 until stripeCount) {
+                val sx = awningLeft + i * stripeW
+                val stripePath = Path().apply {
+                    moveTo(sx, h * 0.12f)
+                    lineTo(sx + stripeW, h * 0.12f)
+                    lineTo(sx + stripeW, h * 0.34f)
+                    cubicTo(
+                        sx + stripeW * 0.75f, h * 0.42f,
+                        sx + stripeW * 0.25f, h * 0.42f,
+                        sx, h * 0.34f
+                    )
+                    close()
+                }
+                drawPath(
+                    path = stripePath,
+                    color = if (i % 2 == 0) ZummarAmberGold else Color(0xFF047857)
+                )
+            }
+
+            // عمق المتجر الداخلي ورفوف العرض المضاءة
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFFFF8E1).copy(alpha = 0.35f + 0.55f * doorOpenProgress),
+                        Color(0xFFFFECB3).copy(alpha = 0.25f + 0.45f * doorOpenProgress)
+                    )
+                ),
+                topLeft = Offset(w * 0.18f, h * 0.36f),
+                size = Size(w * 0.64f, h * 0.58f),
                 cornerRadius = CornerRadius(10f, 10f)
             )
 
-            val doorWidth = (w * 0.28f) * (1f - 0.72f * doorOpenProgress)
-            // باب المتجر الأيسر
-            drawRect(
-                color = Color(0xFF065F46),
-                topLeft = Offset(w * 0.22f, h * 0.36f),
-                size = Size(doorWidth, h * 0.56f)
+            // رفوف البضائع داخل المتجر
+            for (shelfIdx in 1..2) {
+                val sy = h * (0.48f + shelfIdx * 0.16f)
+                drawLine(
+                    color = ZummarAmberWarm.copy(alpha = 0.55f * doorOpenProgress),
+                    start = Offset(w * 0.24f, sy),
+                    end = Offset(w * 0.76f, sy),
+                    strokeWidth = 2.5.dp.toPx()
+                )
+            }
+
+            // الأبواب الزجاجية المزدوجة التي تنفتح للجانبين
+            val maxLeafW = w * 0.31f
+            val currentLeafW = maxLeafW * (1f - 0.76f * doorOpenProgress)
+
+            // الباب الأيسر
+            drawRoundRect(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF064E3B), Color(0xFF0D9488))
+                ),
+                topLeft = Offset(w * 0.18f, h * 0.36f),
+                size = Size(currentLeafW, h * 0.58f),
+                cornerRadius = CornerRadius(6f, 6f)
             )
-            // باب المتجر الأيمن
-            drawRect(
-                color = Color(0xFF065F46),
-                topLeft = Offset(w * 0.78f - doorWidth, h * 0.36f),
-                size = Size(doorWidth, h * 0.56f)
+            drawRoundRect(
+                color = ZummarAmberGold,
+                topLeft = Offset(w * 0.18f, h * 0.36f),
+                size = Size(currentLeafW, h * 0.58f),
+                cornerRadius = CornerRadius(6f, 6f),
+                style = Stroke(width = 1.8.dp.toPx())
+            )
+
+            // الباب الأيمن
+            drawRoundRect(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF0D9488), Color(0xFF064E3B))
+                ),
+                topLeft = Offset(w * 0.82f - currentLeafW, h * 0.36f),
+                size = Size(currentLeafW, h * 0.58f),
+                cornerRadius = CornerRadius(6f, 6f)
+            )
+            drawRoundRect(
+                color = ZummarAmberGold,
+                topLeft = Offset(w * 0.82f - currentLeafW, h * 0.36f),
+                size = Size(currentLeafW, h * 0.58f),
+                cornerRadius = CornerRadius(6f, 6f),
+                style = Stroke(width = 1.8.dp.toPx())
             )
         }
         Spacer(modifier = Modifier.height(6.dp))
@@ -759,6 +981,184 @@ fun InteractiveOpeningStorefrontCanvas(
             fontWeight = FontWeight.ExtraBold,
             fontSize = 14.sp,
             color = ZummarAmberGold
+        )
+    }
+}
+
+// ==========================================
+// 2-B. اللوحات الفنية الهندسية المرسومة للقطاعات الأربعة (بدون إيموجي نصي)
+// ==========================================
+@Composable
+fun ZummarElectricitySectorArtCanvas(modifier: Modifier = Modifier.size(64.dp)) {
+    val infinite = rememberInfiniteTransition(label = "elec_sector_art")
+    val pulse by infinite.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "elec_pulse"
+    )
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+        val cy = h * 0.5f
+
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(ZummarAmberGold.copy(alpha = 0.42f), Color.Transparent),
+                center = Offset(cx, cy),
+                radius = w * 0.48f * pulse
+            ),
+            radius = w * 0.48f * pulse,
+            center = Offset(cx, cy)
+        )
+
+        // برج الطاقة الشبكي
+        val tower = Path().apply {
+            moveTo(cx, h * 0.10f)
+            lineTo(w * 0.74f, h * 0.88f)
+            lineTo(w * 0.26f, h * 0.88f)
+            close()
+        }
+        drawPath(tower, color = ZummarAmberGold.copy(alpha = 0.18f))
+        drawPath(tower, color = ZummarAmberWarm, style = Stroke(width = 2.2.dp.toPx(), join = StrokeJoin.Round))
+        drawLine(ZummarAmberWarm, Offset(w * 0.22f, h * 0.34f), Offset(w * 0.78f, h * 0.34f), strokeWidth = 2.2.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(ZummarAmberWarm, Offset(w * 0.28f, h * 0.54f), Offset(w * 0.72f, h * 0.54f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+
+        // صاعقة الطاقة الذهبية وسط البرج
+        val bolt = Path().apply {
+            moveTo(cx + w * 0.06f, h * 0.18f)
+            lineTo(cx - w * 0.12f, h * 0.50f)
+            lineTo(cx + w * 0.02f, h * 0.50f)
+            lineTo(cx - w * 0.06f, h * 0.82f)
+            lineTo(cx + w * 0.14f, h * 0.46f)
+            lineTo(cx, h * 0.46f)
+            close()
+        }
+        drawPath(bolt, brush = Brush.verticalGradient(listOf( Color(0xFFFFF59D), ZummarAmberGold, ZummarAmberWarm)))
+    }
+}
+
+@Composable
+fun ZummarWaterSectorArtCanvas(modifier: Modifier = Modifier.size(64.dp)) {
+    val infinite = rememberInfiniteTransition(label = "water_sector_art")
+    val waveShift by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart),
+        label = "water_shift"
+    )
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val dropPath = Path().apply {
+            moveTo(w * 0.5f, h * 0.08f)
+            cubicTo(w * 0.86f, h * 0.46f, w * 0.84f, h * 0.86f, w * 0.5f, h * 0.92f)
+            cubicTo(w * 0.16f, h * 0.86f, w * 0.14f, h * 0.46f, w * 0.5f, h * 0.08f)
+            close()
+        }
+        drawPath(
+            path = dropPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(ZummarCyanLight, ZummarSkyCyan, Color(0xFF0284C7))
+            )
+        )
+        clipPath(dropPath) {
+            val wave = Path().apply {
+                val baseY = h * 0.62f
+                moveTo(0f, baseY)
+                cubicTo(
+                    w * 0.33f, baseY + sin(waveShift) * (h * 0.09f),
+                    w * 0.66f, baseY - cos(waveShift) * (h * 0.09f),
+                    w, baseY
+                )
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(wave, color = Color(0xFF0369A1).copy(alpha = 0.65f))
+        }
+        // لمعة بلورية داخل قطرة الماء
+        val highlight = Path().apply {
+            moveTo(w * 0.36f, h * 0.30f)
+            cubicTo(w * 0.28f, h * 0.46f, w * 0.28f, h * 0.62f, w * 0.38f, h * 0.72f)
+        }
+        drawPath(highlight, color = Color.White.copy(alpha = 0.75f), style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round))
+    }
+}
+
+@Composable
+fun ZummarHealthEcgSectorArtCanvas(modifier: Modifier = Modifier.size(64.dp)) {
+    val infinite = rememberInfiniteTransition(label = "health_sector_art")
+    val radarScale by infinite.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "health_radar"
+    )
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawCircle(
+            color = ZummarEmeraldLight.copy(alpha = 0.22f),
+            radius = w * 0.46f * radarScale,
+            center = Offset(w * 0.5f, h * 0.5f)
+        )
+        val shield = Path().apply {
+            moveTo(w * 0.5f, h * 0.08f)
+            cubicTo(w * 0.84f, h * 0.14f, w * 0.88f, h * 0.26f, w * 0.86f, h * 0.54f)
+            cubicTo(w * 0.82f, h * 0.76f, w * 0.64f, h * 0.88f, w * 0.5f, h * 0.94f)
+            cubicTo(w * 0.36f, h * 0.88f, w * 0.18f, h * 0.76f, w * 0.14f, h * 0.54f)
+            cubicTo(w * 0.12f, h * 0.26f, w * 0.16f, h * 0.14f, w * 0.5f, h * 0.08f)
+            close()
+        }
+        drawPath(
+            path = shield,
+            brush = Brush.verticalGradient(listOf(ZummarEmeraldLight, ZummarEmerald))
+        )
+        drawPath(shield, color = ZummarAmberGold, style = Stroke(width = 2.dp.toPx()))
+
+        // تخطيط نبض القلب الحي (ECG)
+        val ecg = Path().apply {
+            moveTo(w * 0.22f, h * 0.52f)
+            lineTo(w * 0.36f, h * 0.52f)
+            lineTo(w * 0.43f, h * 0.30f)
+            lineTo(w * 0.51f, h * 0.72f)
+            lineTo(w * 0.58f, h * 0.42f)
+            lineTo(w * 0.64f, h * 0.52f)
+            lineTo(w * 0.78f, h * 0.52f)
+        }
+        drawPath(ecg, color = Color.White, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+}
+
+@Composable
+fun ZummarMarketStoreSectorArtCanvas(modifier: Modifier = Modifier.size(64.dp)) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        // واجهة متجر مصغرة بمظلة ذهبية/زمردية وأبواب مفتوحة
+        drawRoundRect(
+            brush = Brush.verticalGradient(listOf(ZummarNavy, ZummarEmerald)),
+            topLeft = Offset(w * 0.14f, h * 0.32f),
+            size = Size(w * 0.72f, h * 0.58f),
+            cornerRadius = CornerRadius(10f, 10f)
+        )
+        val awning = Path().apply {
+            moveTo(w * 0.08f, h * 0.36f)
+            lineTo(w * 0.18f, h * 0.14f)
+            lineTo(w * 0.82f, h * 0.14f)
+            lineTo(w * 0.92f, h * 0.36f)
+            cubicTo(w * 0.76f, h * 0.46f, w * 0.62f, h * 0.46f, w * 0.50f, h * 0.36f)
+            cubicTo(w * 0.38f, h * 0.46f, w * 0.24f, h * 0.46f, w * 0.08f, h * 0.36f)
+            close()
+        }
+        drawPath(awning, brush = Brush.horizontalGradient(listOf(ZummarAmberGold, ZummarAmberWarm, ZummarAmberGold)))
+        drawRoundRect(
+            color = Color(0xFFFFF8E1),
+            topLeft = Offset(w * 0.32f, h * 0.46f),
+            size = Size(w * 0.36f, h * 0.44f),
+            cornerRadius = CornerRadius(6f, 6f)
         )
     }
 }
@@ -979,9 +1379,9 @@ fun ZummarCalendarDatePickerDialog(
 // 5. مستودع البيانات الدائم (SharedPreferences + Firebase REST Sync)
 // ==========================================
 object ZummarRepository {
-    private const val PREFS_NAME = "zummar_smart_gate_storage_v1"
-    private const val KEY_STATE_JSON = "zummar_full_state_json"
-    private const val FIREBASE_URL = "https://madrasati-app-d51dd-default-rtdb.firebaseio.com/zummar_smart_gate.json"
+    private const val PREFS_NAME = "zummar_smart_gate_storage_v2_clean"
+    private const val KEY_STATE_JSON = "zummar_full_state_json_v2"
+    private const val FIREBASE_URL = "https://madrasati-app-d51dd-default-rtdb.firebaseio.com/zummar_smart_gate_v2_clean.json"
 
     fun encodeUriToBase64(context: Context, uri: Uri): String {
         return try {
@@ -1046,195 +1446,11 @@ object ZummarRepository {
         )
     )
 
-    fun defaultZones(): List<ZummarNeighborhoodZone> = listOf(
-        ZummarNeighborhoodZone(
-            id = "zone-center",
-            name = "مركز زمار التجاري",
-            points = listOf(
-                ZummarPoint(0.36f, 0.34f),
-                ZummarPoint(0.58f, 0.32f),
-                ZummarPoint(0.60f, 0.52f),
-                ZummarPoint(0.35f, 0.54f)
-            ),
-            powerStatus = PowerStatus.NATIONAL_ON,
-            waterStatus = WaterStatus.PUMPING_ON,
-            waterOpenTime = "06:00 صباحاً - 02:00 ظهراً",
-            waterDurationHours = "8 ساعات"
-        ),
-        ZummarNeighborhoodZone(
-            id = "zone-shuhada",
-            name = "حي الشهداء",
-            points = listOf(
-                ZummarPoint(0.12f, 0.22f),
-                ZummarPoint(0.33f, 0.22f),
-                ZummarPoint(0.33f, 0.46f),
-                ZummarPoint(0.10f, 0.44f)
-            ),
-            powerStatus = PowerStatus.GENERATOR_ON,
-            waterStatus = WaterStatus.PUMPING_ON,
-            waterOpenTime = "08:00 صباحاً - 04:00 عصراً",
-            waterDurationHours = "8 ساعات"
-        ),
-        ZummarNeighborhoodZone(
-            id = "zone-muallimeen",
-            name = "حي المعلمين",
-            points = listOf(
-                ZummarPoint(0.62f, 0.24f),
-                ZummarPoint(0.88f, 0.26f),
-                ZummarPoint(0.86f, 0.50f),
-                ZummarPoint(0.63f, 0.48f)
-            ),
-            powerStatus = PowerStatus.MAINTENANCE,
-            faultReason = "صيانة محولة الشبكة الرئيسية وتبديل القابلوات",
-            expectedRestoreDate = "2026-11-17",
-            expectedRestoreTime = "05:30 مساءً",
-            outageDurationHours = "3 ساعات",
-            waterStatus = WaterStatus.PUMPING_OFF,
-            waterOpenTime = "05:00 عصراً - 11:00 ليلاً",
-            waterDurationHours = "6 ساعات"
-        ),
-        ZummarNeighborhoodZone(
-            id = "zone-ziraee",
-            name = "الحي الزراعي وعين حلوة",
-            points = listOf(
-                ZummarPoint(0.20f, 0.58f),
-                ZummarPoint(0.74f, 0.58f),
-                ZummarPoint(0.78f, 0.84f),
-                ZummarPoint(0.18f, 0.82f)
-            ),
-            powerStatus = PowerStatus.NATIONAL_ON,
-            waterStatus = WaterStatus.PUMPING_ON,
-            waterOpenTime = "07:00 صباحاً - 03:00 عصراً",
-            waterDurationHours = "8 ساعات"
-        )
-    )
+    fun defaultZones(): List<ZummarNeighborhoodZone> = emptyList()
 
-    fun defaultMarkers(): List<ZummarLandmarkMarker> = listOf(
-        ZummarLandmarkMarker(
-            id = "marker-pharm-1",
-            title = "صيدلية زمار المركزية الخافرة",
-            subtitleOrOwner = "د. أحمد الزماري — خافرة 24 ساعة",
-            type = ZummarMarkerType.PHARMACY,
-            mapX = 0.46f,
-            mapY = 0.42f,
-            workingHours = "مفتوحة 24 ساعة (خافرة اليوم)",
-            phoneOrUsername = "07701234567",
-            isApproved = true,
-            isOnDuty = true,
-            specialty = "الأدوية المزمنة والطوارئ والمستلزمات الطبية"
-        ),
-        ZummarLandmarkMarker(
-            id = "marker-pharm-2",
-            title = "صيدلية النور الحديث",
-            subtitleOrOwner = "د. سارة الموصلي",
-            type = ZummarMarkerType.PHARMACY,
-            mapX = 0.24f,
-            mapY = 0.34f,
-            workingHours = "08:00 ص - 11:00 م",
-            phoneOrUsername = "07501122334",
-            isApproved = true,
-            isOnDuty = true,
-            specialty = "صرف الوصفات الطبية وأدوية الأطفال"
-        ),
-        ZummarLandmarkMarker(
-            id = "marker-clinic-1",
-            title = "عيادة د. عمر الجبوري التخصصية",
-            subtitleOrOwner = "اختصاص باطنية وقلبية وأمراض مزمنة",
-            type = ZummarMarkerType.CLINIC,
-            mapX = 0.52f,
-            mapY = 0.38f,
-            workingHours = "04:00 عصراً - 09:00 مساءً",
-            phoneOrUsername = "07719988776",
-            isApproved = true,
-            specialty = "باطنية وقلبية وتخطيط القلب"
-        ),
-        ZummarLandmarkMarker(
-            id = "marker-lab-1",
-            title = "مختبر دجلة للتحليلات المرضية",
-            subtitleOrOwner = "تحليلات شاملة وفحوصات هرمونية",
-            type = ZummarMarkerType.LAB,
-            mapX = 0.40f,
-            mapY = 0.48f,
-            workingHours = "07:30 ص - 09:00 م",
-            phoneOrUsername = "07723344556",
-            isApproved = true,
-            specialty = "فحوصات الدم الشاملة والفيتامينات"
-        ),
-        ZummarLandmarkMarker(
-            id = "marker-shop-1",
-            title = "أسواق ومجمع بركة زمار التجاري",
-            subtitleOrOwner = "الحاج محمود — مواد غذائية ومنزلية",
-            type = ZummarMarkerType.SHOP,
-            mapX = 0.48f,
-            mapY = 0.66f,
-            workingHours = "07:00 ص - 11:30 م",
-            phoneOrUsername = "07705566778",
-            isApproved = true,
-            specialty = "مواد غذائية بالجملة والمفرد"
-        ),
-        ZummarLandmarkMarker(
-            id = "marker-shop-2",
-            title = "معرض زمار للأجهزة الكهربائية والطاقة",
-            subtitleOrOwner = "مؤسسة الفراتين للتجارة",
-            type = ZummarMarkerType.SHOP,
-            mapX = 0.68f,
-            mapY = 0.64f,
-            workingHours = "09:00 ص - 09:30 م",
-            phoneOrUsername = "07514433221",
-            isApproved = true,
-            specialty = "أجهزة منزلية ومنظومات طاقة شمسية"
-        ),
-        ZummarLandmarkMarker(
-            id = "marker-gen-1",
-            title = "مولدة حي الشهداء النموذجية",
-            subtitleOrOwner = "إدارة أبو مصطفى",
-            type = ZummarMarkerType.GENERATOR,
-            mapX = 0.22f,
-            mapY = 0.42f,
-            workingHours = "التشغيل التناوبي الذهبي 24 ساعة",
-            phoneOrUsername = "07708899001",
-            isApproved = true,
-            amperePriceIqd = "12,000 د.ع للأمبير"
-        ),
-        ZummarLandmarkMarker(
-            id = "marker-gov-1",
-            title = "مديرية ناحية زمار والبلدية",
-            subtitleOrOwner = "المجمع الحكومي الرسمي — مركز زمار",
-            type = ZummarMarkerType.GOV_OFFICE,
-            mapX = 0.56f,
-            mapY = 0.46f,
-            workingHours = "08:00 ص - 02:30 ظهراً",
-            phoneOrUsername = "الاستعلامات الحكومية",
-            isApproved = true
-        )
-    )
+    fun defaultMarkers(): List<ZummarLandmarkMarker> = emptyList()
 
-    fun defaultProducts(): List<ZummarProduct> = listOf(
-        ZummarProduct(
-            id = "prod-1",
-            shopMarkerId = "marker-shop-1",
-            shopName = "أسواق ومجمع بركة زمار التجاري",
-            productName = "كيس رز عنبر درجة أولى (25 كغم)",
-            priceIqd = "42,000 د.ع",
-            description = "رز عنبر عراقي فاخر مفحوص ومكفول مع توصيل مجاني داخل أحياء زمار."
-        ),
-        ZummarProduct(
-            id = "prod-2",
-            shopMarkerId = "marker-shop-1",
-            shopName = "أسواق ومجمع بركة زمار التجاري",
-            productName = "زيت طعام نباتي نقي (صندوق 4 عبوات)",
-            priceIqd = "28,500 د.ع",
-            description = "عرض خاص للعوائل في ناحية زمار."
-        ),
-        ZummarProduct(
-            id = "prod-3",
-            shopMarkerId = "marker-shop-2",
-            shopName = "معرض زمار للأجهزة الكهربائية والطاقة",
-            productName = "عاكسة شحن ذكية مع بطارية ليثيوم منزلية",
-            priceIqd = "385,000 د.ع",
-            description = "تشغيل الإنارة والشاشات والراوتر طوال فترة انقطاع الكهرباء مع ضمان سنة."
-        )
-    )
+    fun defaultProducts(): List<ZummarProduct> = emptyList()
 
     fun saveFullState(
         context: Context,
