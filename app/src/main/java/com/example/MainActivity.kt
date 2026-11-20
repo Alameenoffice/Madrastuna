@@ -904,6 +904,7 @@ fun AuthenticatedMainPlatform(
     var showNotificationsSheet by remember { mutableStateOf(false) }
     var showCanteenPosDialogFromDrawer by remember { mutableStateOf(false) }
     var showStudentWalletDialogFromDrawer by remember { mutableStateOf(false) }
+    var showReadingOasisOverlay by remember { mutableStateOf(false) }
     val canManageCanteen = remember(currentUser) {
         viewModel.canUserManageCanteen(currentUser)
     }
@@ -987,6 +988,29 @@ fun AuthenticatedMainPlatform(
                 add(AppSection.REPORTS_CHAT to Icons.Filled.Forum)
             }
         }
+    }
+
+    if (showReadingOasisOverlay) {
+        val activeReadingStudent = if (currentUser?.role == UserRole.PARENT) {
+            selectedParentChild
+        } else {
+            loggedInStudentRecord
+        }
+        val readingSchoolCode = schoolConfig.schoolId.ifBlank { "default_school" }
+        val readingStudentId = activeReadingStudent?.id?.ifBlank { currentUser?.id ?: "guest_student" }
+            ?: currentUser?.id?.ifBlank { "guest_student" }
+            ?: "guest_student"
+        val readingStudentName = activeReadingStudent?.studentName?.ifBlank { currentUser?.fullName ?: "بطل القراءة" }
+            ?: currentUser?.fullName?.ifBlank { "بطل القراءة" }
+            ?: "بطل القراءة"
+
+        com.example.reading.ReadingOasisScreen(
+            schoolCode = readingSchoolCode,
+            studentId = readingStudentId,
+            studentName = readingStudentName,
+            onClose = { showReadingOasisOverlay = false }
+        )
+        return
     }
 
     ModalNavigationDrawer(
@@ -1222,6 +1246,18 @@ fun AuthenticatedMainPlatform(
                                                 }
                                             )
                                         }
+                                        LuxuryDrawerMenuItem(
+                                            title = "واحة القراءة الذكية",
+                                            subtitle = "تعلّم القراءة والكتابة بالصوت والصورة (الطريقة المقطعية)",
+                                            icon = Icons.Filled.MenuBook,
+                                            selected = showReadingOasisOverlay,
+                                            isDarkMode = isDarkMode,
+                                            testTag = "drawer_reading_oasis_button",
+                                            onClick = {
+                                                coroutineScope.launch { drawerState.close() }
+                                                showReadingOasisOverlay = true
+                                            }
+                                        )
                                         LuxuryDrawerMenuItem(
                                             title = "طلبات الإجازة الإلكترونية",
                                             subtitle = if (pendingLeaveRequestsCount > 0) {
@@ -2052,6 +2088,9 @@ fun AuthenticatedMainPlatform(
                                 onOpenNotificationsDialog = {
                                     showNotificationsSheet = true
                                     viewModel.markAllNotificationsRead()
+                                },
+                                onOpenReadingOasis = {
+                                    showReadingOasisOverlay = true
                                 }
                             )
                             AppSection.LIVE_OPERATIONS_RADAR -> LiveOperationsRadarScreen(viewModel = viewModel)

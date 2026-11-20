@@ -65,7 +65,8 @@ import com.example.viewmodel.SchoolViewModel
 @Composable
 fun DashboardScreen(
     viewModel: SchoolViewModel,
-    onOpenNotificationsDialog: () -> Unit
+    onOpenNotificationsDialog: () -> Unit,
+    onOpenReadingOasis: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
@@ -137,6 +138,7 @@ fun DashboardScreen(
     var dashboardBehaviorVisibleCount by remember(selectedParentChildId) { mutableStateOf(3) }
     var showCanteenPosDialog by remember { mutableStateOf(false) }
     var walletPassStudent by remember { mutableStateOf<StudentRecord?>(null) }
+    var showLocalReadingOasis by remember { mutableStateOf(false) }
     val canManageCanteen = remember(currentUser) { viewModel.canUserManageCanteen(currentUser) }
 
     // Scoped data based on logged-in user role (and active child for Parent)
@@ -147,6 +149,16 @@ fun DashboardScreen(
         if (isParentOrStudent) {
             scopedStudents.firstOrNull() ?: students.firstOrNull { it.id == currentUser?.linkedStudentId }
         } else null
+    }
+
+    if (showLocalReadingOasis) {
+        com.example.reading.ReadingOasisScreen(
+            schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
+            studentId = myStudent?.id?.ifBlank { currentUser?.id ?: "guest_student" } ?: currentUser?.id ?: "guest_student",
+            studentName = myStudent?.studentName?.ifBlank { currentUser?.fullName ?: "بطل القراءة" } ?: currentUser?.fullName ?: "بطل القراءة",
+            onClose = { showLocalReadingOasis = false }
+        )
+        return
     }
 
     val scopedNotifications = remember(notifications, currentUser, students) {
@@ -637,6 +649,23 @@ fun DashboardScreen(
                             .padding(bottom = 10.dp)
                     )
                 }
+
+                // بطاقة الدخول المبهجة إلى "واحة القراءة الذكية" لولي الأمر والطالب
+                com.example.reading.ReadingOasisHomeEntryCard(
+                    schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
+                    studentId = myStudent.id,
+                    studentName = myStudent.studentName,
+                    onOpenOasis = {
+                        if (onOpenReadingOasis != null) {
+                            onOpenReadingOasis()
+                        } else {
+                            showLocalReadingOasis = true
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                )
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
