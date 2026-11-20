@@ -904,8 +904,33 @@ fun AuthenticatedMainPlatform(
     var showNotificationsSheet by remember { mutableStateOf(false) }
     var showCanteenPosDialogFromDrawer by remember { mutableStateOf(false) }
     var showStudentWalletDialogFromDrawer by remember { mutableStateOf(false) }
+    var showReadingOasisScreen by remember { mutableStateOf(false) }
     val canManageCanteen = remember(currentUser) {
         viewModel.canUserManageCanteen(currentUser)
+    }
+
+    val readingTargetStudent = if (currentUser?.role == UserRole.PARENT) {
+        selectedParentChild
+    } else {
+        loggedInStudentRecord
+    }
+    val readingSchoolCode = schoolConfig.schoolId.ifBlank { "default_school" }
+    val readingStudentId = readingTargetStudent?.id?.ifBlank { null }
+        ?: currentUser?.username?.ifBlank { null }
+        ?: currentUser?.id?.ifBlank { null }
+        ?: "guest_student"
+    val readingStudentName = readingTargetStudent?.studentName?.ifBlank { null }
+        ?: currentUser?.fullName?.ifBlank { null }
+        ?: "بطل القراءة"
+
+    if (showReadingOasisScreen) {
+        com.example.reading.ReadingOasisScreen(
+            schoolCode = readingSchoolCode,
+            studentId = readingStudentId,
+            studentName = readingStudentName,
+            onBackClick = { showReadingOasisScreen = false }
+        )
+        return
     }
 
     LaunchedEffect(featureSettings, activeSection, schoolConfig.schoolType) {
@@ -928,7 +953,7 @@ fun AuthenticatedMainPlatform(
     val unreadCount = remember(notifications) { notifications.count { !it.isRead } }
 
     // BackHandler to return to Dashboard from any secondary section
-    BackHandler(enabled = activeSection != AppSection.DASHBOARD) {
+    BackHandler(enabled = activeSection != AppSection.DASHBOARD && !showReadingOasisScreen) {
         viewModel.navigateToSection(AppSection.DASHBOARD)
     }
 
@@ -1222,6 +1247,19 @@ fun AuthenticatedMainPlatform(
                                                 }
                                             )
                                         }
+                                        LuxuryDrawerMenuItem(
+                                            title = "واحة القراءة الذكية",
+                                            subtitle = "تعلّم القراءة والكتابة بالصوت والصورة (الطريقة المقطعية)",
+                                            icon = Icons.Filled.MenuBook,
+                                            selected = showReadingOasisScreen,
+                                            isDarkMode = isDarkMode,
+                                            statusDotColor = Color(0xFFFFC83D),
+                                            testTag = "drawer_reading_oasis_button",
+                                            onClick = {
+                                                coroutineScope.launch { drawerState.close() }
+                                                showReadingOasisScreen = true
+                                            }
+                                        )
                                         LuxuryDrawerMenuItem(
                                             title = "طلبات الإجازة الإلكترونية",
                                             subtitle = if (pendingLeaveRequestsCount > 0) {
@@ -2052,6 +2090,9 @@ fun AuthenticatedMainPlatform(
                                 onOpenNotificationsDialog = {
                                     showNotificationsSheet = true
                                     viewModel.markAllNotificationsRead()
+                                },
+                                onOpenReadingOasis = {
+                                    showReadingOasisScreen = true
                                 }
                             )
                             AppSection.LIVE_OPERATIONS_RADAR -> LiveOperationsRadarScreen(viewModel = viewModel)

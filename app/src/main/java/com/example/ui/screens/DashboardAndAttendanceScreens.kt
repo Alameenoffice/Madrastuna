@@ -65,7 +65,8 @@ import com.example.viewmodel.SchoolViewModel
 @Composable
 fun DashboardScreen(
     viewModel: SchoolViewModel,
-    onOpenNotificationsDialog: () -> Unit
+    onOpenNotificationsDialog: () -> Unit,
+    onOpenReadingOasis: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val schoolConfig by viewModel.schoolConfig.collectAsState()
@@ -361,6 +362,27 @@ fun DashboardScreen(
                             .zIndex(1f)
                     )
                 }
+            }
+        }
+
+        // بطاقة دخول «واحة القراءة الذكية» لولي الأمر والطالب
+        if (isParentOrStudent) {
+            item(key = "parent_student_reading_oasis_card") {
+                val readingSchoolCode = schoolConfig.schoolId.ifBlank { "default_school" }
+                val readingStudentId = myStudent?.id?.ifBlank { null }
+                    ?: currentUser?.username?.ifBlank { null }
+                    ?: currentUser?.id?.ifBlank { null }
+                    ?: "guest_student"
+                val readingStudentName = myStudent?.studentName?.ifBlank { null }
+                    ?: currentUser?.fullName?.ifBlank { null }
+                    ?: "بطل القراءة"
+                com.example.reading.ReadingOasisHomeEntryCard(
+                    schoolCode = readingSchoolCode,
+                    studentId = readingStudentId,
+                    studentName = readingStudentName,
+                    onOpenReadingOasis = onOpenReadingOasis,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
