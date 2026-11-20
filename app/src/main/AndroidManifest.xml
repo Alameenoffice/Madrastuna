@@ -7,7 +7,6 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <uses-permission
@@ -21,17 +20,12 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
-    <queries>
-        <package android:name="com.example.madrasati" />
-        <package android:name="com.madrasati.smart" />
-    </queries>
-
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="بوابة زمار الذكية"
+        android:label="مدرستي الذكية"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
@@ -54,7 +48,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
-            android:label="بوابة زمار الذكية"
+            android:label="مدرستي الذكية"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -68,7 +62,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_ramadan"
             android:roundIcon="@drawable/ic_launcher_ramadan"
-            android:label="بوابة زمار الذكية"
+            android:label="مدرستي الذكية"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -82,7 +76,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_newyear"
             android:roundIcon="@drawable/ic_launcher_newyear"
-            android:label="بوابة زمار الذكية"
+            android:label="مدرستي الذكية"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -96,7 +90,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_honor"
             android:roundIcon="@drawable/ic_launcher_honor"
-            android:label="بوابة زمار الذكية"
+            android:label="مدرستي الذكية"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
