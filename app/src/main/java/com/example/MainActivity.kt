@@ -165,7 +165,7 @@ class MainActivity : ComponentActivity() {
                 darkTheme = isDarkMode,
                 isFeminineTheme = false
             ) {
-                MadrasatiRootApp(viewModel = schoolViewModel)
+                com.example.ui.screens.ZummarSmartGateApp(schoolViewModel = schoolViewModel)
             }
         }
     }
