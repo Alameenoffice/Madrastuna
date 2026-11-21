@@ -23,6 +23,10 @@ enum class QiraatiStoryArtKey {
     USRATY_KITCHEN_HELP,
     USRATY_FAMILY_READING,
     USRATY_HELPING_GRANDMA,
+    MADRASATI_SCHOOL_FLAG,
+    MADRASATI_GATE_ARRIVAL,
+    MADRASATI_YARD_LINEUP,
+    MADRASATI_CLASSROOM_LESSON,
     UPCOMING_SCHOOL,
     UPCOMING_CITY_VILLAGE,
     UPCOMING_HEALTH,
@@ -34,7 +38,7 @@ enum class QiraatiStoryArtKey {
  * مفاتيح الرسوم التوضيحية المصوّرة لكلمات الأنشطة التعليمية.
  */
 enum class QiraatiWordArtKey {
-    // كلمات حرف الباء
+    // كلمات الوحدة الأولى (ب، م، د، ف)
     COW,
     ORANGE,
     CARPET,
@@ -48,8 +52,6 @@ enum class QiraatiWordArtKey {
     DRUM,
     CHEESE,
     LION_CUB,
-
-    // كلمات حرف الميم
     MAMA,
     BANANA,
     SCISSORS,
@@ -64,8 +66,6 @@ enum class QiraatiWordArtKey {
     SCALE,
     SAND,
     ANT,
-
-    // كلمات حرف الدال
     DALLAH,
     BEAR,
     DIRHAM,
@@ -80,8 +80,6 @@ enum class QiraatiWordArtKey {
     HOUSES,
     FULL_MOON,
     HOOPOE,
-
-    // كلمات حرف الفاء
     CHEETAH,
     OVEN,
     CUP,
@@ -93,6 +91,65 @@ enum class QiraatiWordArtKey {
     FROG,
     PARTY,
     CHILD,
+
+    // كلمات الوحدة الثانية (ر، س، ن، ت، ة، تنوين الضم)
+    FOOT,
+    CARROT,
+    MONKEY,
+    SHARPENER,
+    SHEEP,
+    BED,
+    WHISTLE,
+    BOAT,
+    RICE,
+    FEATHER,
+    BRUSH,
+    POND,
+    BASKET,
+    TURTLE,
+    CURTAIN,
+    NAIL,
+    CLOCK,
+    LAPTOP,
+    CROCODILE,
+    BLACKBOARD,
+    SUGAR,
+    SQUIRREL,
+    MARKET,
+    RULER,
+    DRESS,
+    EAGLE,
+    DOTS,
+    STARS,
+    HORSE,
+    FIRE,
+    SOLDIERS,
+    TIGERS,
+    GIRL,
+    HAZELNUT,
+    SICKLE,
+    DATES,
+    APPLE,
+    SPIDER,
+    JACKET,
+    CROWN,
+    BERRY,
+    FIG,
+    STAMP,
+    MUSEUM,
+    SEEDLINGS,
+    ERASER,
+    BACKPACK,
+    SCHOOL,
+    SCHOOLGIRL,
+    BOOK,
+    MEAT,
+    BOARD,
+    KNIGHT,
+    FISH,
+    ROSE,
+    SHIP,
+    PAINTING,
 
     // مفتاح عام قابل لإعادة الاستخدام في الوحدات القادمة
     GENERIC_WORD
@@ -142,10 +199,19 @@ data class UnitStorySection(
     val interactiveStoryLines: List<String>,
     val iSpeakQuestions: List<String>
 ) {
-    /** جميع المشاهد مرتّبة بدءاً من مشهد الاستماع الرئيسي ثم مشاهد المحادثة. */
     val allScenes: List<QiraatiStoryScene>
         get() = listOf(listeningScene) + conversationScenes
 }
+
+/**
+ * نشيد الوحدة الختامي (مثل: نشيد مَدْرَسَتِي في الوحدة الثانية).
+ */
+data class QiraatiUnitChant(
+    val id: String,
+    val title: String,
+    val verses: List<String>,
+    val subtitle: String = "استمع للنشيد وردّده بصوت جميل مع أصدقائك"
+)
 
 /**
  * نشاط 1: كلمة مصوّرة مع تحديد مواضع الحرف المستهدف لتلوينه باللون الأحمر أثناء العرض.
@@ -160,7 +226,7 @@ data class QiraatiIntroWord(
 )
 
 /**
- * نشاط 2: زوج المد القصير مقابل المد الطويل (فتحة/ألف، ضمة/واو، كسرة/ياء).
+ * نشاط 2: زوج المد القصير مقابل المد الطويل (أو زوج حركات التاء المربوطة داخل التفاحات).
  */
 data class QiraatiVowelPair(
     val shortSyllable: String,
@@ -206,25 +272,52 @@ data class QiraatiAnalysisItem(
 )
 
 /**
- * فرع واحد ضمن لعبة قطع البازل المتشابكة (القطعة المتفرعة + الكلمة الناتجة).
+ * عنصر لعبة "أضع دائرة حول الكلمات التي تحوي المهارة المستهدفة (ة ، ـة)".
+ */
+data class QiraatiCircleFilterWord(
+    val word: String,
+    val containsTarget: Boolean,
+    val artKey: QiraatiWordArtKey = QiraatiWordArtKey.GENERIC_WORD,
+    val spokenText: String = word
+)
+
+/**
+ * عنصر لعبة اختيار الشكل المناسب (ة أم ـة) لإكمال الكلمة ونطقها.
+ */
+data class QiraatiSuffixChoiceItem(
+    val wordStem: String,
+    val options: List<String> = listOf("ة", "ـة"),
+    val correctOption: String,
+    val completedWord: String,
+    val artKey: QiraatiWordArtKey = QiraatiWordArtKey.GENERIC_WORD,
+    val spokenText: String = completedWord
+)
+
+/**
+ * فرع واحد ضمن لعبة قطع البازل المتشابكة:
+ * يدعم بسلاسة دمج قطعتين (basePiece + attachedPiece) أو 3 قطع مقطعية (pieces).
  */
 data class QiraatiPuzzleBranch(
     val attachedPiece: String,
     val resultWord: String,
-    val spokenText: String = resultWord
-)
+    val spokenText: String = resultWord,
+    val pieces: List<String> = emptyList()
+) {
+    fun resolvedPieces(basePiece: String): List<String> =
+        if (pieces.size >= 2) pieces else listOf(basePiece, attachedPiece)
+}
 
 /**
- * نشاط 6: لعبة قطع البازل المتشابكة (القطعة الأساسية + القطع المتفرعة + الكلمات الناتجة).
+ * نشاط 6: لعبة قطع البازل المتشابكة (يدعم 2 أو 3 قطع مقطعية مع الكلمة الناتجة).
  */
 data class QiraatiPuzzleItem(
     val basePiece: String,
     val branches: List<QiraatiPuzzleBranch>,
-    val promptHint: String = "اربط القطعة الأساسية مع القطعة المناسبة لتكوين الكلمة"
+    val promptHint: String = "اربط قطع البازل معاً لتكوين الكلمة"
 )
 
 /**
- * درس حرف متكامل وفق تسلسل أنشطة كتاب "قراءتي الجديدة — الصف الأول الابتدائي" العراقي الرسمي.
+ * درس حرف أو مهارة متكامل وفق تسلسل أنشطة كتاب "قراءتي الجديدة — الصف الأول الابتدائي" العراقي الرسمي.
  */
 data class QiraatiLetterLesson(
     val id: String,
@@ -243,12 +336,15 @@ data class QiraatiLetterLesson(
     val puzzleItems: List<QiraatiPuzzleItem>,
     val readAloudWords: List<String>,
     val tracingLetter: String,
-    val tracingForms: List<String> = cloudForms
+    val tracingForms: List<String> = cloudForms,
+    val circleFilterWords: List<QiraatiCircleFilterWord> = emptyList(),
+    val suffixChoiceItems: List<QiraatiSuffixChoiceItem> = emptyList(),
+    val isAppleVowelsStyle: Boolean = false,
+    val tanweenListenWords: List<QiraatiIntroWord> = emptyList()
 )
 
 /**
  * نموذج الوحدة الدراسية القابل للتوسّع في كتاب "قراءتي الجديدة — الصف الأول الابتدائي".
- * يمكن إضافة أي وحدة جديدة (الثانية، الثالثة...) بملف بيانات واحد ينتج كائن QiraatiUnit.
  */
 data class QiraatiUnit(
     val id: String,
@@ -265,7 +361,8 @@ data class QiraatiUnit(
     val comingSoonLabel: String? = null,
     val plannedLetters: List<String> = letterLessons.map { it.targetLetter },
     val coverArtKey: QiraatiStoryArtKey = storySection?.listeningScene?.artKey
-        ?: QiraatiStoryArtKey.USRATY_FAMILY_HOME
+        ?: QiraatiStoryArtKey.USRATY_FAMILY_HOME,
+    val unitChant: QiraatiUnitChant? = null
 )
 
 /**
@@ -279,9 +376,19 @@ fun Char.isArabicDiacritic(): Boolean {
 /**
  * تحديد جميع مواضع ظهور الحرف المستهدف داخل الكلمة مع ضمّ حركات التشكيل التابعة له مباشرة
  * لضمان تلوين الحرف وحركته باللون الأحمر بدقة تامة.
+ * يدعم أيضاً إبراز علامة التشكيل نفسها (مثل تنوين الضم 'ٌ' مع الحرف الحامل لها).
  */
 fun findArabicLetterRanges(word: String, targetChar: Char): List<QiraatiHighlightRange> {
     val ranges = mutableListOf<QiraatiHighlightRange>()
+    if (targetChar.isArabicDiacritic()) {
+        word.forEachIndexed { idx, ch ->
+            if (ch == targetChar) {
+                val start = (idx - 1).coerceAtLeast(0)
+                ranges.add(QiraatiHighlightRange(startInclusive = start, endExclusive = idx + 1))
+            }
+        }
+        return ranges
+    }
     var index = 0
     while (index < word.length) {
         if (word[index] == targetChar) {
@@ -303,16 +410,16 @@ fun findArabicLetterRanges(word: String, targetChar: Char): List<QiraatiHighligh
  */
 fun findSegmentRanges(word: String, segment: String): List<QiraatiHighlightRange> {
     if (segment.isEmpty()) return emptyList()
-    val exactIndex = word.indexOf(segment)
+    val cleanInputSegment = segment.replace("ـ", "")
+    val exactIndex = word.indexOf(cleanInputSegment)
     if (exactIndex >= 0) {
-        var end = exactIndex + segment.length
+        var end = exactIndex + cleanInputSegment.length
         while (end < word.length && word[end].isArabicDiacritic()) {
             end++
         }
         return listOf(QiraatiHighlightRange(startInclusive = exactIndex, endExclusive = end))
     }
-    // مطابقة احتياطية بتجاهل اختلاف التشكيل إن وُجد مع الحفاظ على فهارس الكلمة الأصلية
-    val cleanSegment = segment.filterNot { it.isArabicDiacritic() }
+    val cleanSegment = cleanInputSegment.filterNot { it.isArabicDiacritic() }
     if (cleanSegment.isEmpty()) return emptyList()
 
     val baseCharPositions = mutableListOf<Int>()

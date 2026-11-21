@@ -16,27 +16,6 @@ object NewQiraatiRepository {
 
     private val upcomingUnitsCatalog: List<QiraatiUnit> = listOf(
         QiraatiUnit(
-            id = "unit_2_madrasati",
-            unitNumber = 2,
-            unitBadge = "الوحدة الثانية",
-            title = "الوحدة الثانية: مدرستي",
-            shortTitle = "مدرستي",
-            description = "قريباً — رحلة مشوّقة داخل الصف وساحة المدرسة مع مجموعة جديدة من الحروف والمقاطع",
-            themeColor = Color(0xFF0EA5E9),
-            theme = QiraatiUnitTheme(
-                primaryColor = Color(0xFF0EA5E9),
-                shadowColor = Color(0xFF0369A1),
-                softSurfaceColor = Color(0xFFF0F9FF),
-                badgeColor = Color(0xFF38BDF8)
-            ),
-            storySection = null,
-            letterLessons = emptyList(),
-            isAvailable = false,
-            comingSoonLabel = "قريباً",
-            plannedLetters = listOf("ن", "ر", "ل", "س"),
-            coverArtKey = QiraatiStoryArtKey.UPCOMING_SCHOOL
-        ),
-        QiraatiUnit(
             id = "unit_3_madinati",
             unitNumber = 3,
             unitBadge = "الوحدة الثالثة",
@@ -54,7 +33,7 @@ object NewQiraatiRepository {
             letterLessons = emptyList(),
             isAvailable = false,
             comingSoonLabel = "قريباً",
-            plannedLetters = listOf("ق", "ت", "ز", "ك"),
+            plannedLetters = listOf("ق", "ز", "ك", "ل"),
             coverArtKey = QiraatiStoryArtKey.UPCOMING_CITY_VILLAGE
         ),
         QiraatiUnit(
@@ -123,10 +102,11 @@ object NewQiraatiRepository {
     )
 
     /**
-     * جميع وحدات خريطة كتاب "قراءتي الجديدة" (المتوفرة حالياً + الوحدات القادمة).
+     * جميع وحدات خريطة كتاب "قراءتي الجديدة" (الوحدة الأولى والثانية متوفرتان + الوحدات القادمة).
      */
     val allUnits: List<QiraatiUnit> = listOf(
-        Unit1UsratyData.unit
+        Unit1UsratyData.unit,
+        Unit2MadrasatiData.unit
     ) + upcomingUnitsCatalog
 
     /** الوحدات المتوفرة والجاهزة للتعلّم حالياً. */

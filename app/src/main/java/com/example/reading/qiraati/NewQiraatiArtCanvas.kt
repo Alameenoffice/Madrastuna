@@ -343,6 +343,7 @@ fun ReadingBlueBirdCanvas(
  */
 enum class PuzzleInterlockSide {
     LEFT_TAB,
+    MIDDLE_TAB_AND_SOCKET,
     RIGHT_SOCKET,
     BOTH_CONNECTED
 }
@@ -399,7 +400,9 @@ fun JigsawPuzzlePieceCanvas(
                     quadraticBezierTo(right, t, right, t + r)
 
                     // الحافة اليمنى: تجويف داخلي مطابق لاستقبال اللسان
-                    if (interlockSide == PuzzleInterlockSide.RIGHT_SOCKET) {
+                    if (interlockSide == PuzzleInterlockSide.RIGHT_SOCKET ||
+                        interlockSide == PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
+                    ) {
                         lineTo(right, my - knobSize * 0.65f)
                         cubicTo(
                             right - knobSize * 1.35f, my - knobSize * 1.15f,
@@ -413,7 +416,9 @@ fun JigsawPuzzlePieceCanvas(
                     quadraticBezierTo(left, b, left, b - r)
 
                     // الحافة اليسرى: لسان بارز للخارج يتعشّق داخل التجويف
-                    if (interlockSide == PuzzleInterlockSide.LEFT_TAB) {
+                    if (interlockSide == PuzzleInterlockSide.LEFT_TAB ||
+                        interlockSide == PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
+                    ) {
                         lineTo(left, my + knobSize * 0.65f)
                         cubicTo(
                             left - knobSize * 1.35f, my + knobSize * 1.15f,
@@ -809,6 +814,253 @@ fun VowelWaveIndicatorCanvas(
 }
 
 /**
+ * تفاحة التاء المربوطة التفاعلية (نشاط حركات ة ، ـة في الوحدة الثانية):
+ * تفاحة حمراء لامعة مرسومة بمنحنيات ناعمة مع ورقة خضراء وساق بنية وتمايل لطيف.
+ */
+@Composable
+fun AppleVowelCanvas(
+    primaryForm: String,
+    secondaryForm: String,
+    vowelLabel: String,
+    isActive: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val infinite = rememberInfiniteTransition(label = "apple_vowel_anim")
+    val swayDeg by infinite.animateFloat(
+        initialValue = -3.2f,
+        targetValue = 3.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (isActive) 650 else 2100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "apple_sway"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isActive) 1.07f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "apple_scale"
+    )
+
+    Box(
+        modifier = modifier.graphicsLayer {
+            rotationZ = swayDeg
+            scaleX = scale
+            scaleY = scale
+        },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val cx = w * 0.50f
+
+            // هالة مضيئة حول التفاحة عند التفعيل
+            if (isActive) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(ReadingColors.SunYellow.copy(alpha = 0.55f), Color.Transparent),
+                        center = Offset(cx, h * 0.56f),
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = Offset(cx, h * 0.56f)
+                )
+            }
+
+            // الساق البنية المقوّسة
+            val stem = Path().apply {
+                moveTo(cx, h * 0.28f)
+                quadraticBezierTo(cx - w * 0.04f, h * 0.14f, cx + w * 0.05f, h * 0.08f)
+            }
+            drawPath(stem, color = Color(0xFF78350F), style = Stroke(width = 7f, cap = StrokeCap.Round))
+
+            // ورقة التفاحة الخضراء المرسومة بمنحنيات ناعمة
+            val leaf = Path().apply {
+                moveTo(cx + w * 0.02f, h * 0.22f)
+                cubicTo(cx + w * 0.24f, h * 0.05f, cx + w * 0.36f, h * 0.24f, cx + w * 0.04f, h * 0.27f)
+                close()
+            }
+            drawPath(
+                leaf,
+                brush = Brush.linearGradient(listOf(Color(0xFF4ADE80), Color(0xFF16A34A)))
+            )
+
+            // جسم التفاحة الحمراء اللامعة بمنحنيات ناعمة
+            val applePath = Path().apply {
+                moveTo(cx, h * 0.30f)
+                cubicTo(w * 0.72f, h * 0.16f, w * 0.94f, h * 0.42f, w * 0.84f, h * 0.70f)
+                cubicTo(w * 0.76f, h * 0.92f, w * 0.58f, h * 0.94f, cx, h * 0.87f)
+                cubicTo(w * 0.42f, h * 0.94f, w * 0.24f, h * 0.92f, w * 0.16f, h * 0.70f)
+                cubicTo(w * 0.06f, h * 0.42f, w * 0.28f, h * 0.16f, cx, h * 0.30f)
+                close()
+            }
+            drawPath(
+                applePath,
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xFFFCA5A5), Color(0xFFEF4444), Color(0xFFB91C1C)),
+                    center = Offset(w * 0.36f, h * 0.44f),
+                    radius = w * 0.56f
+                )
+            )
+            drawPath(
+                applePath,
+                color = if (isActive) ReadingColors.SunYellow else Color.White.copy(alpha = 0.75f),
+                style = Stroke(width = if (isActive) 5f else 3f, join = StrokeJoin.Round)
+            )
+
+            // لمعة زجاجية ناعمة أعلى يسار التفاحة
+            val shine = Path().apply {
+                moveTo(w * 0.26f, h * 0.46f)
+                quadraticBezierTo(w * 0.24f, h * 0.35f, w * 0.36f, h * 0.32f)
+            }
+            drawPath(shine, color = Color.White.copy(alpha = 0.65f), style = Stroke(width = 6f, cap = StrokeCap.Round))
+        }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(top = 24.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = primaryForm,
+                    fontFamily = ReadingTajawalFont,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 27.sp,
+                    lineHeight = 36.sp,
+                    color = Color.White
+                )
+                Text(
+                    text = secondaryForm,
+                    fontFamily = ReadingTajawalFont,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 27.sp,
+                    lineHeight = 36.sp,
+                    color = ReadingColors.SunYellow
+                )
+            }
+            Text(
+                text = vowelLabel,
+                fontFamily = ReadingTajawalFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                color = Color.White.copy(alpha = 0.94f)
+            )
+        }
+    }
+}
+
+/**
+ * نوتات موسيقية ملونة ونجوم متلألئة عائمة لنشيد الوحدة ("نشيد مَدْرَسَتِي").
+ */
+@Composable
+fun ChantMusicalCanvas(
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val infinite = rememberInfiniteTransition(label = "chant_music_anim")
+    val floatPhase by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (isPlaying) 1400 else 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "music_phase"
+    )
+    val twinkle by infinite.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (isPlaying) 600 else 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "music_twinkle"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        fun drawMusicNote(nx: Float, ny: Float, r: Float, color: Color, beamed: Boolean) {
+            // رأس النوتة المائل
+            drawOval(color = color, topLeft = Offset(nx - r, ny - r * 0.72f), size = Size(r * 2f, r * 1.45f))
+            // ساق النوتة
+            drawLine(color, Offset(nx + r * 0.85f, ny), Offset(nx + r * 0.85f, ny - r * 3.4f), r * 0.42f, StrokeCap.Round)
+            if (beamed) {
+                val nx2 = nx + r * 2.5f
+                val ny2 = ny - r * 0.45f
+                drawOval(color = color, topLeft = Offset(nx2 - r, ny2 - r * 0.72f), size = Size(r * 2f, r * 1.45f))
+                drawLine(color, Offset(nx2 + r * 0.85f, ny2), Offset(nx2 + r * 0.85f, ny2 - r * 3.4f), r * 0.42f, StrokeCap.Round)
+                drawLine(
+                    color,
+                    Offset(nx + r * 0.85f, ny - r * 3.2f),
+                    Offset(nx2 + r * 0.85f, ny2 - r * 3.2f),
+                    r * 0.62f,
+                    StrokeCap.Round
+                )
+            } else {
+                val flag = Path().apply {
+                    moveTo(nx + r * 0.85f, ny - r * 3.3f)
+                    cubicTo(nx + r * 2.4f, ny - r * 2.8f, nx + r * 2.3f, ny - r * 1.4f, nx + r * 1.5f, ny - r * 1.0f)
+                }
+                drawPath(flag, color = color, style = Stroke(width = r * 0.48f, cap = StrokeCap.Round))
+            }
+        }
+
+        fun drawTwinkleStar(sx: Float, sy: Float, r: Float, color: Color) {
+            val star = Path().apply {
+                for (i in 0 until 8) {
+                    val rad = if (i % 2 == 0) r else r * 0.40f
+                    val a = i * (PI / 4.0) - PI / 2.0
+                    val x = sx + (rad * cos(a)).toFloat()
+                    val y = sy + (rad * sin(a)).toFloat()
+                    if (i == 0) moveTo(x, y) else lineTo(x, y)
+                }
+                close()
+            }
+            drawPath(star, color = color)
+        }
+
+        val amp = if (isPlaying) h * 0.14f else h * 0.06f
+        val noteR = (minOf(w, h) * 0.085f).coerceIn(5.5f, 11f)
+
+        drawMusicNote(
+            nx = w * 0.16f,
+            ny = h * 0.68f + sin(floatPhase) * amp,
+            r = noteR,
+            color = Color(0xFFEC4899),
+            beamed = true
+        )
+        drawMusicNote(
+            nx = w * 0.50f,
+            ny = h * 0.60f + sin(floatPhase + 1.8f) * amp,
+            r = noteR * 1.08f,
+            color = Color(0xFF0EA5E9),
+            beamed = false
+        )
+        drawMusicNote(
+            nx = w * 0.78f,
+            ny = h * 0.70f + sin(floatPhase + 3.4f) * amp,
+            r = noteR * 0.96f,
+            color = Color(0xFF22C55E),
+            beamed = true
+        )
+
+        drawTwinkleStar(w * 0.34f, h * 0.28f - sin(floatPhase) * amp * 0.4f, noteR * 1.1f * twinkle, ReadingColors.SunYellow)
+        drawTwinkleStar(w * 0.67f, h * 0.24f + sin(floatPhase + 1.2f) * amp * 0.4f, noteR * 0.95f * twinkle, ReadingColors.CoralOrange)
+        drawTwinkleStar(w * 0.90f, h * 0.36f, noteR * 0.75f * twinkle, ReadingColors.SunYellow)
+    }
+}
+
+/**
  * أيقونة كتاب قراءتي الجديدة المبهجة لبطاقة الدخول وترويسة المكتبة.
  */
 @Composable
@@ -1051,6 +1303,111 @@ fun QiraatiStorySceneCanvas(
                 drawWarmHeart(Offset(w * 0.51f, h * 0.30f + sway * 2.5f), w * 0.038f, Color(0xFFE11D48))
             }
 
+            QiraatiStoryArtKey.MADRASATI_SCHOOL_FLAG -> {
+                // مبنى المدرسة العراقية الجميل مع سارية وعلم العراق يرفرف وتلاميذ مبتسمون
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFF7DD3FC), Color(0xFFE0F2FE), Color(0xFFDCFCE7))
+                    )
+                )
+                drawCircle(ReadingColors.SunYellow, w * 0.075f, Offset(w * 0.14f, h * 0.19f))
+                // غيمة لطيفة متحركة
+                val gx = w * 0.74f + sway * 9f
+                drawCircle(Color.White.copy(alpha = 0.92f), w * 0.048f, Offset(gx, h * 0.16f))
+                drawCircle(Color.White.copy(alpha = 0.92f), w * 0.062f, Offset(gx + w * 0.055f, h * 0.14f))
+                drawCircle(Color.White.copy(alpha = 0.92f), w * 0.045f, Offset(gx + w * 0.11f, h * 0.17f))
+
+                // ساحة المدرسة الخضراء
+                val yard = Path().apply {
+                    moveTo(0f, h * 0.74f)
+                    cubicTo(w * 0.35f, h * 0.66f, w * 0.70f, h * 0.76f, w, h * 0.69f)
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(yard, brush = Brush.verticalGradient(listOf(Color(0xFF84CC16), Color(0xFF22C55E))))
+
+                // مبنى المدرسة المشرق
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFFFBEB), Color(0xFFFEF3C7))),
+                    topLeft = Offset(w * 0.18f, h * 0.34f),
+                    size = Size(w * 0.52f, h * 0.42f),
+                    cornerRadius = CornerRadius(14f, 14f)
+                )
+                drawRoundRect(
+                    brush = Brush.linearGradient(listOf(Color(0xFF22C55E), Color(0xFF15803D))),
+                    topLeft = Offset(w * 0.15f, h * 0.28f),
+                    size = Size(w * 0.58f, h * 0.10f),
+                    cornerRadius = CornerRadius(12f, 12f)
+                )
+                // نوافذ وباب المدرسة
+                drawRoundRect(Color(0xFF38BDF8), Offset(w * 0.24f, h * 0.46f), Size(w * 0.10f, h * 0.12f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFF38BDF8), Offset(w * 0.54f, h * 0.46f), Size(w * 0.10f, h * 0.12f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFFD97706), Offset(w * 0.39f, h * 0.50f), Size(w * 0.10f, h * 0.26f), CornerRadius(10f, 10f))
+
+                // سارية وعلم العراق يرفرف بوضوح
+                drawIraqiFlag(poleX = w * 0.79f, topY = h * 0.16f, bottomY = h * 0.76f, sway = sway)
+
+                // تلميذ وتلميذة يبتسمان أمام المدرسة
+                drawCartoonPerson(w * 0.28f, h * 0.68f, scale = 0.78f, shirtColor = Color(0xFF0284C7))
+                drawCartoonPerson(w * 0.60f, h * 0.68f, scale = 0.76f, shirtColor = Color(0xFFEC4899))
+            }
+
+            QiraatiStoryArtKey.MADRASATI_GATE_ARRIVAL -> {
+                // بوابة المدرسة الصباحية والأطفال يصلون بنشاط مع حقائبهم المدرسية
+                drawRect(brush = Brush.verticalGradient(listOf(Color(0xFFBAE6FD), Color(0xFFECFCCB))))
+                drawCircle(ReadingColors.SunYellow, w * 0.08f, Offset(w * 0.84f, h * 0.20f))
+                // ممر المدرسة
+                drawRoundRect(Color(0xFFFDE68A), Offset(0f, h * 0.70f), Size(w, h * 0.30f), CornerRadius(0f, 0f))
+                // قوس بوابة المدرسة
+                val gate = Path().apply {
+                    moveTo(w * 0.22f, h * 0.74f)
+                    lineTo(w * 0.22f, h * 0.34f)
+                    cubicTo(w * 0.22f, h * 0.12f, w * 0.78f, h * 0.12f, w * 0.78f, h * 0.34f)
+                    lineTo(w * 0.78f, h * 0.74f)
+                }
+                drawPath(gate, color = Color(0xFF0284C7), style = Stroke(width = 14f, cap = StrokeCap.Round))
+                // معلمة ترحب بالتلاميذ مع حقائبهم
+                drawCartoonPerson(w * 0.34f, h * 0.56f, scale = 0.96f, shirtColor = Color(0xFF16A34A))
+                drawCartoonPerson(w * 0.54f, h * 0.64f, scale = 0.76f, shirtColor = Color(0xFFFF7A59))
+                drawCartoonPerson(w * 0.68f, h * 0.65f, scale = 0.74f, shirtColor = Color(0xFF8B5CF6))
+                // حقيبة ملونة على ظهر التلميذ
+                drawRoundRect(Color(0xFFEF4444), Offset(w * 0.73f, h * 0.66f), Size(w * 0.07f, h * 0.12f), CornerRadius(6f, 6f))
+            }
+
+            QiraatiStoryArtKey.MADRASATI_YARD_LINEUP -> {
+                // ساحة المدرسة والاصطفاف الصباحي وتحيّة العلم العراقي
+                drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF7DD3FC), Color(0xFFFEF9C3))))
+                drawRect(Color(0xFF86EFAC), Offset(0f, h * 0.66f), Size(w, h * 0.34f))
+                // سارية وعلم العراق في وسط الساحة
+                drawIraqiFlag(poleX = w * 0.50f, topY = h * 0.12f, bottomY = h * 0.68f, sway = sway)
+                // صفّ منتظم من التلاميذ يحيّون العلم
+                drawCartoonPerson(w * 0.22f, h * 0.64f, scale = 0.76f, shirtColor = Color(0xFF0284C7))
+                drawCartoonPerson(w * 0.36f, h * 0.66f, scale = 0.74f, shirtColor = Color(0xFFEC4899))
+                drawCartoonPerson(w * 0.64f, h * 0.66f, scale = 0.74f, shirtColor = Color(0xFF22C55E))
+                drawCartoonPerson(w * 0.78f, h * 0.64f, scale = 0.76f, shirtColor = Color(0xFFF59E0B))
+            }
+
+            QiraatiStoryArtKey.MADRASATI_CLASSROOM_LESSON -> {
+                // غرفة الصف المشرقة: سبورة خضراء، معلمة، ورحلات التلاميذ وكتب مفتوحة
+                drawRect(brush = Brush.verticalGradient(listOf(Color(0xFFFEFCE8), Color(0xFFECFCCB))))
+                // السبورة الصفية الخضراء
+                drawRoundRect(Color(0xFF15803D), Offset(w * 0.20f, h * 0.14f), Size(w * 0.60f, h * 0.38f), CornerRadius(14f, 14f))
+                drawRoundRect(Color(0xFFB45309), Offset(w * 0.20f, h * 0.14f), Size(w * 0.60f, h * 0.38f), CornerRadius(14f, 14f), style = Stroke(6f))
+                // خطوط طبشورية على السبورة
+                drawLine(Color.White, Offset(w * 0.30f, h * 0.28f), Offset(w * 0.68f, h * 0.28f), 4.5f, StrokeCap.Round)
+                drawLine(ReadingColors.SunYellow, Offset(w * 0.36f, h * 0.39f), Offset(w * 0.62f, h * 0.39f), 4.5f, StrokeCap.Round)
+                // المعلمة والتلاميذ أمام الرحلات
+                drawCartoonPerson(w * 0.16f, h * 0.46f, scale = 0.90f, shirtColor = Color(0xFF0EA5E9))
+                drawRoundRect(Color(0xFFD97706), Offset(w * 0.32f, h * 0.72f), Size(w * 0.22f, h * 0.18f), CornerRadius(10f, 10f))
+                drawRoundRect(Color(0xFFD97706), Offset(w * 0.60f, h * 0.72f), Size(w * 0.22f, h * 0.18f), CornerRadius(10f, 10f))
+                drawCartoonPerson(w * 0.43f, h * 0.60f, scale = 0.72f, shirtColor = Color(0xFFFF7A59))
+                drawCartoonPerson(w * 0.71f, h * 0.60f, scale = 0.72f, shirtColor = Color(0xFF8B5CF6))
+                // كتب مفتوحة على الرحلات
+                drawRoundRect(Color.White, Offset(w * 0.37f, h * 0.68f), Size(w * 0.12f, h * 0.06f), CornerRadius(4f, 4f))
+                drawRoundRect(Color.White, Offset(w * 0.65f, h * 0.68f), Size(w * 0.12f, h * 0.06f), CornerRadius(4f, 4f))
+            }
+
             else -> {
                 // غلاف مشوّق للوحدات القادمة
                 drawRect(
@@ -1063,6 +1420,37 @@ fun QiraatiStorySceneCanvas(
             }
         }
     }
+}
+
+private fun DrawScope.drawIraqiFlag(poleX: Float, topY: Float, bottomY: Float, sway: Float) {
+    // السارية الذهبية
+    drawLine(Color(0xFF64748B), Offset(poleX, topY), Offset(poleX, bottomY), 5.5f, StrokeCap.Round)
+    drawCircle(ReadingColors.SunYellow, 6.5f, Offset(poleX, topY))
+
+    val fw = size.width * 0.22f
+    val fh = size.height * 0.26f
+    val stripeH = fh / 3f
+    val wave = sway * 5.5f
+
+    fun stripePath(y0: Float): Path = Path().apply {
+        moveTo(poleX, y0)
+        cubicTo(poleX + fw * 0.35f, y0 - wave, poleX + fw * 0.68f, y0 + wave, poleX + fw, y0 - wave * 0.5f)
+        lineTo(poleX + fw, y0 + stripeH - wave * 0.5f)
+        cubicTo(poleX + fw * 0.68f, y0 + stripeH + wave, poleX + fw * 0.35f, y0 + stripeH - wave, poleX, y0 + stripeH)
+        close()
+    }
+
+    // الأشرطة الثلاثة: أحمر، أبيض، أسود + شارة خضراء وسط الأبيض
+    drawPath(stripePath(topY + 4f), color = Color(0xFFDC2626))
+    drawPath(stripePath(topY + 4f + stripeH), color = Color.White)
+    drawPath(stripePath(topY + 4f + stripeH * 2f), color = Color(0xFF0F172A))
+    drawLine(
+        color = Color(0xFF15803D),
+        start = Offset(poleX + fw * 0.26f, topY + 4f + stripeH * 1.5f - wave * 0.2f),
+        end = Offset(poleX + fw * 0.74f, topY + 4f + stripeH * 1.5f + wave * 0.2f),
+        strokeWidth = 4.5f,
+        cap = StrokeCap.Round
+    )
 }
 
 private fun DrawScope.drawCartoonPerson(
@@ -1693,6 +2081,544 @@ fun QiraatiWordArtCanvas(
 
             QiraatiWordArtKey.CHILD -> {
                 drawCartoonPerson(cx, h * 0.38f, scale = 1.25f, shirtColor = ReadingColors.SkyBlue)
+            }
+
+            // ================================================================
+            // رسوم كلمات الوحدة الثانية (مدرستي): ر، س، ن، ت، ة، ـٌ
+            // ================================================================
+            QiraatiWordArtKey.FOOT -> {
+                val foot = Path().apply {
+                    moveTo(w * 0.30f, h * 0.22f)
+                    lineTo(w * 0.50f, h * 0.22f)
+                    lineTo(w * 0.52f, h * 0.58f)
+                    cubicTo(w * 0.78f, h * 0.58f, w * 0.86f, h * 0.78f, w * 0.76f, h * 0.82f)
+                    lineTo(w * 0.26f, h * 0.82f)
+                    quadraticBezierTo(w * 0.22f, h * 0.64f, w * 0.30f, h * 0.58f)
+                    close()
+                }
+                drawPath(foot, color = Color(0xFF0EA5E9))
+                drawRoundRect(Color.White, Offset(w * 0.24f, h * 0.76f), Size(w * 0.56f, h * 0.09f), CornerRadius(6f, 6f))
+            }
+
+            QiraatiWordArtKey.CARROT -> {
+                val carrot = Path().apply {
+                    moveTo(w * 0.32f, h * 0.30f)
+                    lineTo(w * 0.68f, h * 0.30f)
+                    cubicTo(w * 0.64f, h * 0.58f, w * 0.56f, h * 0.86f, cx, h * 0.88f)
+                    cubicTo(w * 0.44f, h * 0.86f, w * 0.36f, h * 0.58f, w * 0.32f, h * 0.30f)
+                    close()
+                }
+                drawPath(carrot, brush = Brush.verticalGradient(listOf(Color(0xFFFB923C), Color(0xFFEA580C))))
+                drawLine(ReadingColors.MeadowGreen, Offset(cx, h * 0.30f), Offset(w * 0.38f, h * 0.12f), 5.5f, StrokeCap.Round)
+                drawLine(ReadingColors.MeadowGreen, Offset(cx, h * 0.30f), Offset(cx, h * 0.10f), 5.5f, StrokeCap.Round)
+                drawLine(ReadingColors.MeadowGreen, Offset(cx, h * 0.30f), Offset(w * 0.62f, h * 0.12f), 5.5f, StrokeCap.Round)
+            }
+
+            QiraatiWordArtKey.MONKEY -> {
+                drawCircle(Color(0xFF92400E), w * 0.13f, Offset(w * 0.20f, h * 0.48f))
+                drawCircle(Color(0xFF92400E), w * 0.13f, Offset(w * 0.80f, h * 0.48f))
+                drawCircle(Color(0xFFB45309), w * 0.30f, Offset(cx, h * 0.52f))
+                drawOval(Color(0xFFFDE68A), Offset(w * 0.30f, h * 0.48f), Size(w * 0.40f, h * 0.30f))
+                drawCircle(ReadingColors.InkDark, 4f, Offset(w * 0.41f, h * 0.44f))
+                drawCircle(ReadingColors.InkDark, 4f, Offset(w * 0.59f, h * 0.44f))
+                val mSmile = Path().apply {
+                    moveTo(w * 0.39f, h * 0.64f)
+                    quadraticBezierTo(cx, h * 0.74f, w * 0.61f, h * 0.64f)
+                }
+                drawPath(mSmile, color = Color(0xFF78350F), style = Stroke(3.5f, cap = StrokeCap.Round))
+            }
+
+            QiraatiWordArtKey.SHARPENER -> {
+                drawRoundRect(
+                    brush = Brush.linearGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7))),
+                    topLeft = Offset(w * 0.18f, h * 0.26f),
+                    size = Size(w * 0.64f, h * 0.50f),
+                    cornerRadius = CornerRadius(14f, 14f)
+                )
+                drawRoundRect(Color(0xFFE2E8F0), Offset(w * 0.34f, h * 0.36f), Size(w * 0.34f, h * 0.30f), CornerRadius(6f, 6f))
+                drawCircle(Color(0xFF475569), w * 0.055f, Offset(w * 0.56f, h * 0.51f))
+            }
+
+            QiraatiWordArtKey.SHEEP -> {
+                drawCircle(Color(0xFFF8FAFC), w * 0.17f, Offset(w * 0.32f, h * 0.48f))
+                drawCircle(Color(0xFFF8FAFC), w * 0.20f, Offset(w * 0.50f, h * 0.42f))
+                drawCircle(Color(0xFFF8FAFC), w * 0.17f, Offset(w * 0.68f, h * 0.48f))
+                drawCircle(Color(0xFFF8FAFC), w * 0.17f, Offset(w * 0.42f, h * 0.62f))
+                drawCircle(Color(0xFFF8FAFC), w * 0.17f, Offset(w * 0.58f, h * 0.62f))
+                drawOval(Color(0xFF334155), Offset(w * 0.66f, h * 0.42f), Size(w * 0.22f, h * 0.26f))
+                drawCircle(Color.White, 3.5f, Offset(w * 0.78f, h * 0.50f))
+            }
+
+            QiraatiWordArtKey.BED -> {
+                drawRoundRect(Color(0xFFB45309), Offset(w * 0.14f, h * 0.34f), Size(w * 0.10f, h * 0.46f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFFB45309), Offset(w * 0.76f, h * 0.48f), Size(w * 0.10f, h * 0.32f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFF38BDF8), Offset(w * 0.22f, h * 0.52f), Size(w * 0.56f, h * 0.20f), CornerRadius(10f, 10f))
+                drawRoundRect(Color.White, Offset(w * 0.25f, h * 0.44f), Size(w * 0.20f, h * 0.12f), CornerRadius(8f, 8f))
+            }
+
+            QiraatiWordArtKey.WHISTLE -> {
+                drawCircle(Color(0xFF0EA5E9), w * 0.22f, Offset(w * 0.38f, h * 0.58f))
+                drawRoundRect(Color(0xFF0284C7), Offset(w * 0.48f, h * 0.42f), Size(w * 0.38f, h * 0.18f), CornerRadius(8f, 8f))
+                drawCircle(ReadingColors.SunYellow, w * 0.08f, Offset(w * 0.38f, h * 0.58f))
+            }
+
+            QiraatiWordArtKey.BOAT, QiraatiWordArtKey.SHIP -> {
+                val hull = Path().apply {
+                    moveTo(w * 0.14f, h * 0.62f)
+                    lineTo(w * 0.86f, h * 0.62f)
+                    lineTo(w * 0.74f, h * 0.82f)
+                    lineTo(w * 0.26f, h * 0.82f)
+                    close()
+                }
+                drawPath(hull, brush = Brush.linearGradient(listOf(Color(0xFFD97706), Color(0xFF92400E))))
+                drawLine(Color(0xFF78350F), Offset(cx, h * 0.20f), Offset(cx, h * 0.62f), 5f, StrokeCap.Round)
+                val sail = Path().apply {
+                    moveTo(cx, h * 0.22f)
+                    quadraticBezierTo(w * 0.76f, h * 0.36f, w * 0.74f, h * 0.56f)
+                    lineTo(cx, h * 0.56f)
+                    close()
+                }
+                drawPath(sail, color = Color(0xFF38BDF8))
+            }
+
+            QiraatiWordArtKey.RICE -> {
+                drawArc(Color(0xFF0EA5E9), 0f, 180f, true, Offset(w * 0.16f, h * 0.42f), Size(w * 0.68f, h * 0.42f))
+                drawOval(Color.White, Offset(w * 0.22f, h * 0.36f), Size(w * 0.56f, h * 0.28f))
+                drawOval(Color(0xFFF1F5F9), Offset(w * 0.30f, h * 0.30f), Size(w * 0.40f, h * 0.20f))
+            }
+
+            QiraatiWordArtKey.FEATHER -> {
+                val feather = Path().apply {
+                    moveTo(w * 0.22f, h * 0.82f)
+                    cubicTo(w * 0.34f, h * 0.32f, w * 0.62f, h * 0.14f, w * 0.82f, h * 0.18f)
+                    cubicTo(w * 0.76f, h * 0.48f, w * 0.54f, h * 0.72f, w * 0.22f, h * 0.82f)
+                    close()
+                }
+                drawPath(feather, brush = Brush.linearGradient(listOf(Color(0xFF38BDF8), Color(0xFF8B5CF6))))
+                drawLine(Color.White, Offset(w * 0.20f, h * 0.84f), Offset(w * 0.76f, h * 0.24f), 3.5f, StrokeCap.Round)
+            }
+
+            QiraatiWordArtKey.BRUSH -> {
+                drawLine(Color(0xFFD97706), Offset(w * 0.22f, h * 0.82f), Offset(w * 0.64f, h * 0.40f), 10f, StrokeCap.Round)
+                val bristles = Path().apply {
+                    moveTo(w * 0.60f, h * 0.36f)
+                    cubicTo(w * 0.76f, h * 0.16f, w * 0.88f, h * 0.24f, w * 0.70f, h * 0.46f)
+                    close()
+                }
+                drawPath(bristles, color = ReadingColors.CoralOrange)
+            }
+
+            QiraatiWordArtKey.POND -> {
+                drawOval(
+                    brush = Brush.radialGradient(listOf(Color(0xFF7DD3FC), Color(0xFF0284C7))),
+                    topLeft = Offset(w * 0.10f, h * 0.42f),
+                    size = Size(w * 0.80f, h * 0.40f)
+                )
+                drawCircle(ReadingColors.MeadowGreen, w * 0.10f, Offset(w * 0.34f, h * 0.58f))
+                drawCircle(Color(0xFFEC4899), w * 0.06f, Offset(w * 0.34f, h * 0.56f))
+            }
+
+            QiraatiWordArtKey.BASKET -> {
+                drawArc(Color(0xFFD97706), 0f, 180f, true, Offset(w * 0.16f, h * 0.38f), Size(w * 0.68f, h * 0.48f))
+                val handle = Path().apply {
+                    moveTo(w * 0.24f, h * 0.56f)
+                    cubicTo(w * 0.28f, h * 0.16f, w * 0.72f, h * 0.16f, w * 0.76f, h * 0.56f)
+                }
+                drawPath(handle, color = Color(0xFF92400E), style = Stroke(6f, cap = StrokeCap.Round))
+            }
+
+            QiraatiWordArtKey.TURTLE -> {
+                drawArc(Color(0xFF16A34A), 180f, 180f, true, Offset(w * 0.18f, h * 0.32f), Size(w * 0.58f, h * 0.48f))
+                drawCircle(Color(0xFF4ADE80), w * 0.12f, Offset(w * 0.80f, h * 0.54f))
+                drawCircle(ReadingColors.InkDark, 3.5f, Offset(w * 0.83f, h * 0.52f))
+                drawRoundRect(Color(0xFF4ADE80), Offset(w * 0.24f, h * 0.64f), Size(w * 0.12f, h * 0.14f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFF4ADE80), Offset(w * 0.58f, h * 0.64f), Size(w * 0.12f, h * 0.14f), CornerRadius(6f, 6f))
+            }
+
+            QiraatiWordArtKey.CURTAIN -> {
+                drawLine(Color(0xFF78350F), Offset(w * 0.12f, h * 0.20f), Offset(w * 0.88f, h * 0.20f), 6f, StrokeCap.Round)
+                val leftDrape = Path().apply {
+                    moveTo(w * 0.18f, h * 0.22f)
+                    lineTo(w * 0.48f, h * 0.22f)
+                    quadraticBezierTo(w * 0.36f, h * 0.54f, w * 0.22f, h * 0.82f)
+                    lineTo(w * 0.18f, h * 0.82f)
+                    close()
+                }
+                val rightDrape = Path().apply {
+                    moveTo(w * 0.82f, h * 0.22f)
+                    lineTo(w * 0.52f, h * 0.22f)
+                    quadraticBezierTo(w * 0.64f, h * 0.54f, w * 0.78f, h * 0.82f)
+                    lineTo(w * 0.82f, h * 0.82f)
+                    close()
+                }
+                drawPath(leftDrape, color = Color(0xFFEC4899))
+                drawPath(rightDrape, color = Color(0xFFEC4899))
+            }
+
+            QiraatiWordArtKey.NAIL -> {
+                drawRoundRect(Color(0xFF64748B), Offset(w * 0.28f, h * 0.18f), Size(w * 0.44f, h * 0.12f), CornerRadius(6f, 6f))
+                drawLine(Color(0xFF94A3B8), Offset(cx, h * 0.30f), Offset(cx, h * 0.84f), 10f, StrokeCap.Round)
+            }
+
+            QiraatiWordArtKey.CLOCK -> {
+                drawCircle(Color(0xFF0EA5E9), w * 0.36f, Offset(cx, cy))
+                drawCircle(Color.White, w * 0.29f, Offset(cx, cy))
+                drawLine(ReadingColors.InkDark, Offset(cx, cy), Offset(cx, h * 0.30f), 5f, StrokeCap.Round)
+                drawLine(ReadingColors.CoralOrange, Offset(cx, cy), Offset(w * 0.66f, cy), 4.5f, StrokeCap.Round)
+                drawCircle(ReadingColors.InkDark, 4f, Offset(cx, cy))
+            }
+
+            QiraatiWordArtKey.LAPTOP -> {
+                drawRoundRect(Color(0xFF334155), Offset(w * 0.20f, h * 0.22f), Size(w * 0.60f, h * 0.42f), CornerRadius(10f, 10f))
+                drawRoundRect(Color(0xFF7DD3FC), Offset(w * 0.26f, h * 0.28f), Size(w * 0.48f, h * 0.30f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFF94A3B8), Offset(w * 0.12f, h * 0.66f), Size(w * 0.76f, h * 0.12f), CornerRadius(6f, 6f))
+            }
+
+            QiraatiWordArtKey.CROCODILE -> {
+                drawRoundRect(Color(0xFF22C55E), Offset(w * 0.14f, h * 0.46f), Size(w * 0.72f, h * 0.26f), CornerRadius(16f, 16f))
+                drawCircle(Color(0xFF16A34A), w * 0.10f, Offset(w * 0.64f, h * 0.42f))
+                drawCircle(Color.White, w * 0.055f, Offset(w * 0.64f, h * 0.42f))
+                drawCircle(ReadingColors.InkDark, 3f, Offset(w * 0.65f, h * 0.42f))
+                drawLine(Color.White, Offset(w * 0.58f, h * 0.64f), Offset(w * 0.82f, h * 0.64f), 4f, StrokeCap.Round)
+            }
+
+            QiraatiWordArtKey.BLACKBOARD, QiraatiWordArtKey.BOARD -> {
+                drawRoundRect(Color(0xFF15803D), Offset(w * 0.14f, h * 0.20f), Size(w * 0.72f, h * 0.56f), CornerRadius(12f, 12f))
+                drawRoundRect(Color(0xFFD97706), Offset(w * 0.14f, h * 0.20f), Size(w * 0.72f, h * 0.56f), CornerRadius(12f, 12f), style = Stroke(6f))
+                drawLine(Color.White, Offset(w * 0.26f, h * 0.40f), Offset(w * 0.70f, h * 0.40f), 4.5f, StrokeCap.Round)
+                drawLine(ReadingColors.SunYellow, Offset(w * 0.30f, h * 0.56f), Offset(w * 0.62f, h * 0.56f), 4.5f, StrokeCap.Round)
+            }
+
+            QiraatiWordArtKey.SUGAR -> {
+                drawRoundRect(Color(0xFFF8FAFC), Offset(w * 0.20f, h * 0.46f), Size(w * 0.28f, h * 0.28f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFFE0F2FE), Offset(w * 0.50f, h * 0.46f), Size(w * 0.28f, h * 0.28f), CornerRadius(6f, 6f))
+                drawRoundRect(Color.White, Offset(w * 0.35f, h * 0.22f), Size(w * 0.28f, h * 0.28f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFFCBD5E1), Offset(w * 0.35f, h * 0.22f), Size(w * 0.28f, h * 0.28f), CornerRadius(6f, 6f), style = Stroke(3f))
+            }
+
+            QiraatiWordArtKey.SQUIRREL -> {
+                val tail = Path().apply {
+                    moveTo(w * 0.40f, h * 0.68f)
+                    cubicTo(w * 0.10f, h * 0.66f, w * 0.10f, h * 0.20f, w * 0.36f, h * 0.24f)
+                    cubicTo(w * 0.48f, h * 0.28f, w * 0.44f, h * 0.52f, w * 0.46f, h * 0.68f)
+                    close()
+                }
+                drawPath(tail, color = Color(0xFFD97706))
+                drawOval(Color(0xFFB45309), Offset(w * 0.44f, h * 0.42f), Size(w * 0.30f, h * 0.36f))
+                drawCircle(Color(0xFFD97706), w * 0.14f, Offset(w * 0.64f, h * 0.38f))
+                drawCircle(ReadingColors.InkDark, 3.5f, Offset(w * 0.68f, h * 0.36f))
+            }
+
+            QiraatiWordArtKey.MARKET -> {
+                drawRoundRect(Color(0xFFFEF3C7), Offset(w * 0.18f, h * 0.42f), Size(w * 0.64f, h * 0.42f), CornerRadius(10f, 10f))
+                drawRoundRect(Color(0xFFEF4444), Offset(w * 0.14f, h * 0.24f), Size(w * 0.72f, h * 0.20f), CornerRadius(10f, 10f))
+                drawRoundRect(Color.White, Offset(w * 0.28f, h * 0.24f), Size(w * 0.14f, h * 0.20f), CornerRadius(4f, 4f))
+                drawRoundRect(Color.White, Offset(w * 0.56f, h * 0.24f), Size(w * 0.14f, h * 0.20f), CornerRadius(4f, 4f))
+            }
+
+            QiraatiWordArtKey.RULER -> {
+                rotate(degrees = -25f, pivot = Offset(cx, cy)) {
+                    drawRoundRect(ReadingColors.SunYellow, Offset(w * 0.12f, h * 0.36f), Size(w * 0.76f, h * 0.28f), CornerRadius(8f, 8f))
+                    for (i in 0..5) {
+                        val x = w * (0.20f + i * 0.12f)
+                        drawLine(Color(0xFF92400E), Offset(x, h * 0.36f), Offset(x, h * 0.48f), 3.5f, StrokeCap.Round)
+                    }
+                }
+            }
+
+            QiraatiWordArtKey.DRESS -> {
+                val gown = Path().apply {
+                    moveTo(w * 0.38f, h * 0.20f)
+                    lineTo(w * 0.62f, h * 0.20f)
+                    lineTo(w * 0.58f, h * 0.44f)
+                    lineTo(w * 0.80f, h * 0.84f)
+                    lineTo(w * 0.20f, h * 0.84f)
+                    lineTo(w * 0.42f, h * 0.44f)
+                    close()
+                }
+                drawPath(gown, brush = Brush.verticalGradient(listOf(Color(0xFFF472B6), Color(0xFFEC4899))))
+                drawLine(ReadingColors.SunYellow, Offset(w * 0.40f, h * 0.44f), Offset(w * 0.60f, h * 0.44f), 6f, StrokeCap.Round)
+            }
+
+            QiraatiWordArtKey.EAGLE -> {
+                val wings = Path().apply {
+                    moveTo(w * 0.10f, h * 0.42f)
+                    quadraticBezierTo(w * 0.32f, h * 0.22f, cx, h * 0.46f)
+                    quadraticBezierTo(w * 0.68f, h * 0.22f, w * 0.90f, h * 0.42f)
+                    lineTo(w * 0.72f, h * 0.62f)
+                    lineTo(cx, h * 0.54f)
+                    lineTo(w * 0.28f, h * 0.62f)
+                    close()
+                }
+                drawPath(wings, color = Color(0xFF78350F))
+                drawCircle(Color.White, w * 0.11f, Offset(cx, h * 0.36f))
+                drawCircle(ReadingColors.SunYellow, w * 0.055f, Offset(cx, h * 0.42f))
+            }
+
+            QiraatiWordArtKey.DOTS -> {
+                drawCircle(ReadingColors.CoralOrange, w * 0.13f, Offset(w * 0.32f, h * 0.38f))
+                drawCircle(ReadingColors.SkyBlue, w * 0.13f, Offset(w * 0.68f, h * 0.38f))
+                drawCircle(ReadingColors.MeadowGreen, w * 0.13f, Offset(cx, h * 0.68f))
+            }
+
+            QiraatiWordArtKey.STARS -> {
+                fun miniStar(sx: Float, sy: Float, r: Float, col: Color) {
+                    val s = Path().apply {
+                        for (i in 0 until 10) {
+                            val rad = if (i % 2 == 0) r else r * 0.44f
+                            val a = i * (PI / 5.0) - PI / 2.0
+                            val x = sx + (rad * cos(a)).toFloat()
+                            val y = sy + (rad * sin(a)).toFloat()
+                            if (i == 0) moveTo(x, y) else lineTo(x, y)
+                        }
+                        close()
+                    }
+                    drawPath(s, color = col)
+                }
+                miniStar(w * 0.34f, h * 0.42f, w * 0.20f, ReadingColors.SunYellow)
+                miniStar(w * 0.68f, h * 0.36f, w * 0.15f, ReadingColors.CoralOrange)
+                miniStar(w * 0.56f, h * 0.70f, w * 0.16f, Color(0xFF38BDF8))
+            }
+
+            QiraatiWordArtKey.HORSE -> {
+                drawRoundRect(Color(0xFFB45309), Offset(w * 0.20f, h * 0.44f), Size(w * 0.48f, h * 0.28f), CornerRadius(14f, 14f))
+                drawRoundRect(Color(0xFF92400E), Offset(w * 0.56f, h * 0.24f), Size(w * 0.24f, h * 0.28f), CornerRadius(12f, 12f))
+                drawLine(Color(0xFF78350F), Offset(w * 0.28f, h * 0.70f), Offset(w * 0.28f, h * 0.86f), 7f, StrokeCap.Round)
+                drawLine(Color(0xFF78350F), Offset(w * 0.60f, h * 0.70f), Offset(w * 0.60f, h * 0.86f), 7f, StrokeCap.Round)
+                drawCircle(Color.White, 3.5f, Offset(w * 0.70f, h * 0.34f))
+            }
+
+            QiraatiWordArtKey.FIRE -> {
+                val outerFlame = Path().apply {
+                    moveTo(cx, h * 0.14f)
+                    cubicTo(w * 0.82f, h * 0.44f, w * 0.82f, h * 0.84f, cx, h * 0.86f)
+                    cubicTo(w * 0.18f, h * 0.84f, w * 0.18f, h * 0.44f, cx, h * 0.14f)
+                    close()
+                }
+                drawPath(outerFlame, brush = Brush.verticalGradient(listOf(ReadingColors.SunYellow, Color(0xFFEF4444))))
+                drawCircle(Color(0xFFFEF08A), w * 0.15f, Offset(cx, h * 0.66f))
+            }
+
+            QiraatiWordArtKey.SOLDIERS -> {
+                drawCartoonPerson(w * 0.34f, h * 0.42f, scale = 0.86f, shirtColor = Color(0xFF15803D))
+                drawCartoonPerson(w * 0.66f, h * 0.42f, scale = 0.86f, shirtColor = Color(0xFF16A34A))
+            }
+
+            QiraatiWordArtKey.TIGERS -> {
+                drawCircle(Color(0xFFF97316), w * 0.32f, Offset(cx, h * 0.54f))
+                drawCircle(Color(0xFFEA580C), w * 0.10f, Offset(w * 0.26f, h * 0.28f))
+                drawCircle(Color(0xFFEA580C), w * 0.10f, Offset(w * 0.74f, h * 0.28f))
+                drawLine(ReadingColors.InkDark, Offset(w * 0.42f, h * 0.26f), Offset(w * 0.42f, h * 0.38f), 4f, StrokeCap.Round)
+                drawLine(ReadingColors.InkDark, Offset(cx, h * 0.24f), Offset(cx, h * 0.38f), 4f, StrokeCap.Round)
+                drawLine(ReadingColors.InkDark, Offset(w * 0.58f, h * 0.26f), Offset(w * 0.58f, h * 0.38f), 4f, StrokeCap.Round)
+                drawCircle(ReadingColors.InkDark, 4f, Offset(w * 0.40f, h * 0.50f))
+                drawCircle(ReadingColors.InkDark, 4f, Offset(w * 0.60f, h * 0.50f))
+            }
+
+            QiraatiWordArtKey.GIRL, QiraatiWordArtKey.SCHOOLGIRL -> {
+                drawCartoonPerson(cx, h * 0.40f, scale = 1.15f, shirtColor = Color(0xFFEC4899))
+                drawCircle(ReadingColors.SunYellow, w * 0.08f, Offset(w * 0.30f, h * 0.28f))
+                drawCircle(ReadingColors.SunYellow, w * 0.08f, Offset(w * 0.70f, h * 0.28f))
+            }
+
+            QiraatiWordArtKey.HAZELNUT -> {
+                val nut = Path().apply {
+                    moveTo(cx, h * 0.84f)
+                    cubicTo(w * 0.18f, h * 0.72f, w * 0.20f, h * 0.34f, cx, h * 0.26f)
+                    cubicTo(w * 0.80f, h * 0.34f, w * 0.82f, h * 0.72f, cx, h * 0.84f)
+                    close()
+                }
+                drawPath(nut, brush = Brush.radialGradient(listOf(Color(0xFFD97706), Color(0xFF78350F))))
+                drawArc(Color(0xFFFDE68A), 180f, 180f, true, Offset(w * 0.24f, h * 0.20f), Size(w * 0.52f, h * 0.30f))
+            }
+
+            QiraatiWordArtKey.SICKLE -> {
+                drawLine(Color(0xFF92400E), Offset(w * 0.26f, h * 0.82f), Offset(w * 0.44f, h * 0.56f), 11f, StrokeCap.Round)
+                val blade = Path().apply {
+                    moveTo(w * 0.44f, h * 0.56f)
+                    cubicTo(w * 0.24f, h * 0.22f, w * 0.72f, h * 0.10f, w * 0.82f, h * 0.44f)
+                }
+                drawPath(blade, color = Color(0xFF64748B), style = Stroke(10f, cap = StrokeCap.Round))
+            }
+
+            QiraatiWordArtKey.DATES -> {
+                drawOval(Color(0xFF92400E), Offset(w * 0.18f, h * 0.40f), Size(w * 0.32f, h * 0.40f))
+                drawOval(Color(0xFFB45309), Offset(w * 0.48f, h * 0.36f), Size(w * 0.32f, h * 0.40f))
+                drawOval(Color(0xFF78350F), Offset(w * 0.34f, h * 0.22f), Size(w * 0.32f, h * 0.38f))
+            }
+
+            QiraatiWordArtKey.APPLE -> {
+                val apple = Path().apply {
+                    moveTo(cx, h * 0.32f)
+                    cubicTo(w * 0.76f, h * 0.18f, w * 0.90f, h * 0.48f, w * 0.80f, h * 0.74f)
+                    cubicTo(w * 0.72f, h * 0.90f, w * 0.56f, h * 0.90f, cx, h * 0.84f)
+                    cubicTo(w * 0.44f, h * 0.90f, w * 0.28f, h * 0.90f, w * 0.20f, h * 0.74f)
+                    cubicTo(w * 0.10f, h * 0.48f, w * 0.24f, h * 0.18f, cx, h * 0.32f)
+                    close()
+                }
+                drawPath(apple, brush = Brush.radialGradient(listOf(Color(0xFFFCA5A5), Color(0xFFEF4444), Color(0xFFB91C1C))))
+                drawLine(Color(0xFF78350F), Offset(cx, h * 0.32f), Offset(cx, h * 0.14f), 5f, StrokeCap.Round)
+                drawOval(ReadingColors.MeadowGreen, Offset(cx + 2f, h * 0.16f), Size(w * 0.20f, h * 0.11f))
+            }
+
+            QiraatiWordArtKey.SPIDER -> {
+                drawCircle(Color(0xFF334155), w * 0.18f, Offset(cx, h * 0.52f))
+                for (side in listOf(-1f, 1f)) {
+                    for (i in 0..2) {
+                        val yOff = h * (0.40f + i * 0.12f)
+                        drawLine(Color(0xFF334155), Offset(cx + side * w * 0.14f, yOff), Offset(cx + side * w * 0.38f, yOff - 6f + i * 8f), 4f, StrokeCap.Round)
+                    }
+                }
+                drawCircle(Color.White, 3.5f, Offset(w * 0.44f, h * 0.48f))
+                drawCircle(Color.White, 3.5f, Offset(w * 0.56f, h * 0.48f))
+            }
+
+            QiraatiWordArtKey.JACKET -> {
+                drawRoundRect(Color(0xFF0EA5E9), Offset(w * 0.26f, h * 0.22f), Size(w * 0.48f, h * 0.62f), CornerRadius(12f, 12f))
+                drawRoundRect(Color(0xFF0284C7), Offset(w * 0.12f, h * 0.26f), Size(w * 0.18f, h * 0.44f), CornerRadius(10f, 10f))
+                drawRoundRect(Color(0xFF0284C7), Offset(w * 0.70f, h * 0.26f), Size(w * 0.18f, h * 0.44f), CornerRadius(10f, 10f))
+                drawLine(ReadingColors.SunYellow, Offset(cx, h * 0.24f), Offset(cx, h * 0.82f), 4.5f, StrokeCap.Round)
+            }
+
+            QiraatiWordArtKey.CROWN -> {
+                val crown = Path().apply {
+                    moveTo(w * 0.16f, h * 0.76f)
+                    lineTo(w * 0.12f, h * 0.34f)
+                    lineTo(w * 0.34f, h * 0.52f)
+                    lineTo(cx, h * 0.22f)
+                    lineTo(w * 0.66f, h * 0.52f)
+                    lineTo(w * 0.88f, h * 0.34f)
+                    lineTo(w * 0.84f, h * 0.76f)
+                    close()
+                }
+                drawPath(crown, brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), ReadingColors.SunYellow, Color(0xFFD97706))))
+                drawCircle(Color(0xFFEF4444), w * 0.055f, Offset(cx, h * 0.62f))
+            }
+
+            QiraatiWordArtKey.BERRY -> {
+                val pts = listOf(
+                    Offset(w * 0.38f, h * 0.42f), Offset(w * 0.62f, h * 0.42f),
+                    Offset(w * 0.34f, h * 0.58f), Offset(cx, h * 0.54f), Offset(w * 0.66f, h * 0.58f),
+                    Offset(w * 0.44f, h * 0.72f), Offset(w * 0.56f, h * 0.72f)
+                )
+                pts.forEach { drawCircle(Color(0xFF7E22CE), w * 0.11f, it) }
+                drawOval(ReadingColors.MeadowGreen, Offset(w * 0.36f, h * 0.20f), Size(w * 0.28f, h * 0.14f))
+            }
+
+            QiraatiWordArtKey.FIG -> {
+                val fig = Path().apply {
+                    moveTo(cx, h * 0.18f)
+                    cubicTo(w * 0.74f, h * 0.34f, w * 0.84f, h * 0.78f, cx, h * 0.84f)
+                    cubicTo(w * 0.16f, h * 0.78f, w * 0.26f, h * 0.34f, cx, h * 0.18f)
+                    close()
+                }
+                drawPath(fig, brush = Brush.verticalGradient(listOf(Color(0xFFA855F7), Color(0xFF6B21A8))))
+            }
+
+            QiraatiWordArtKey.STAMP -> {
+                drawCircle(Color(0xFFB45309), w * 0.14f, Offset(cx, h * 0.28f))
+                drawRoundRect(Color(0xFF92400E), Offset(w * 0.42f, h * 0.36f), Size(w * 0.16f, h * 0.24f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFF0EA5E9), Offset(w * 0.18f, h * 0.58f), Size(w * 0.64f, h * 0.22f), CornerRadius(10f, 10f))
+            }
+
+            QiraatiWordArtKey.MUSEUM -> {
+                val ped = Path().apply {
+                    moveTo(w * 0.12f, h * 0.36f)
+                    lineTo(cx, h * 0.16f)
+                    lineTo(w * 0.88f, h * 0.36f)
+                    close()
+                }
+                drawPath(ped, color = Color(0xFFD97706))
+                for (i in 0..2) {
+                    val x = w * (0.24f + i * 0.22f)
+                    drawRoundRect(Color(0xFFFDE68A), Offset(x, h * 0.38f), Size(w * 0.10f, h * 0.36f), CornerRadius(4f, 4f))
+                }
+                drawRoundRect(Color(0xFFB45309), Offset(w * 0.14f, h * 0.74f), Size(w * 0.72f, h * 0.10f), CornerRadius(4f, 4f))
+            }
+
+            QiraatiWordArtKey.SEEDLINGS -> {
+                drawArc(Color(0xFFB45309), 0f, 180f, true, Offset(w * 0.16f, h * 0.60f), Size(w * 0.68f, h * 0.30f))
+                drawLine(ReadingColors.MeadowGreen, Offset(cx, h * 0.68f), Offset(cx, h * 0.32f), 6f, StrokeCap.Round)
+                drawOval(Color(0xFF4ADE80), Offset(w * 0.24f, h * 0.26f), Size(w * 0.26f, h * 0.16f))
+                drawOval(Color(0xFF22C55E), Offset(w * 0.50f, h * 0.26f), Size(w * 0.26f, h * 0.16f))
+            }
+
+            QiraatiWordArtKey.ERASER -> {
+                rotate(degrees = -22f, pivot = Offset(cx, cy)) {
+                    drawRoundRect(Color(0xFFEC4899), Offset(w * 0.16f, h * 0.34f), Size(w * 0.44f, h * 0.32f), CornerRadius(10f, 10f))
+                    drawRoundRect(Color(0xFF38BDF8), Offset(w * 0.54f, h * 0.34f), Size(w * 0.30f, h * 0.32f), CornerRadius(10f, 10f))
+                }
+            }
+
+            QiraatiWordArtKey.BACKPACK -> {
+                drawRoundRect(Color(0xFFEF4444), Offset(w * 0.20f, h * 0.24f), Size(w * 0.60f, h * 0.62f), CornerRadius(20f, 20f))
+                drawRoundRect(ReadingColors.SunYellow, Offset(w * 0.28f, h * 0.54f), Size(w * 0.44f, h * 0.24f), CornerRadius(12f, 12f))
+                drawArc(Color(0xFFB91C1C), 180f, 180f, false, Offset(w * 0.34f, h * 0.12f), Size(w * 0.32f, h * 0.20f), style = Stroke(6f))
+            }
+
+            QiraatiWordArtKey.SCHOOL -> {
+                drawRoundRect(Color(0xFFFEF3C7), Offset(w * 0.16f, h * 0.38f), Size(w * 0.68f, h * 0.46f), CornerRadius(10f, 10f))
+                drawRoundRect(Color(0xFF22C55E), Offset(w * 0.12f, h * 0.30f), Size(w * 0.76f, h * 0.12f), CornerRadius(8f, 8f))
+                drawRoundRect(Color(0xFFD97706), Offset(w * 0.42f, h * 0.56f), Size(w * 0.16f, h * 0.28f), CornerRadius(6f, 6f))
+                drawCircle(Color(0xFF38BDF8), w * 0.065f, Offset(w * 0.28f, h * 0.56f))
+                drawCircle(Color(0xFF38BDF8), w * 0.065f, Offset(w * 0.72f, h * 0.56f))
+            }
+
+            QiraatiWordArtKey.BOOK -> {
+                drawRoundRect(Color(0xFF0EA5E9), Offset(w * 0.16f, h * 0.24f), Size(w * 0.68f, h * 0.56f), CornerRadius(12f, 12f))
+                drawRoundRect(Color.White, Offset(w * 0.22f, h * 0.30f), Size(w * 0.26f, h * 0.44f), CornerRadius(6f, 6f))
+                drawRoundRect(Color(0xFFFFFBEB), Offset(w * 0.52f, h * 0.30f), Size(w * 0.26f, h * 0.44f), CornerRadius(6f, 6f))
+            }
+
+            QiraatiWordArtKey.MEAT -> {
+                drawOval(Color(0xFFDC2626), Offset(w * 0.14f, h * 0.26f), Size(w * 0.68f, h * 0.50f))
+                drawOval(Color(0xFFFCA5A5), Offset(w * 0.22f, h * 0.34f), Size(w * 0.50f, h * 0.34f))
+                drawCircle(Color.White, w * 0.10f, Offset(w * 0.40f, h * 0.50f))
+            }
+
+            QiraatiWordArtKey.KNIGHT -> {
+                drawCartoonPerson(cx, h * 0.42f, scale = 1.05f, shirtColor = Color(0xFF0284C7))
+                val helmet = Path().apply {
+                    moveTo(w * 0.32f, h * 0.32f)
+                    quadraticBezierTo(cx, h * 0.10f, w * 0.68f, h * 0.32f)
+                    close()
+                }
+                drawPath(helmet, color = ReadingColors.SunYellow)
+            }
+
+            QiraatiWordArtKey.FISH -> {
+                drawOval(Color(0xFF0EA5E9), Offset(w * 0.26f, h * 0.30f), Size(w * 0.56f, h * 0.40f))
+                val tail = Path().apply {
+                    moveTo(w * 0.30f, cy)
+                    lineTo(w * 0.12f, h * 0.28f)
+                    lineTo(w * 0.12f, h * 0.72f)
+                    close()
+                }
+                drawPath(tail, color = ReadingColors.SunYellow)
+                drawCircle(Color.White, w * 0.06f, Offset(w * 0.68f, h * 0.46f))
+                drawCircle(ReadingColors.InkDark, 3.5f, Offset(w * 0.69f, h * 0.46f))
+            }
+
+            QiraatiWordArtKey.ROSE -> {
+                drawCircle(Color(0xFFE11D48), w * 0.22f, Offset(cx, h * 0.38f))
+                drawCircle(Color(0xFFFB7185), w * 0.14f, Offset(cx, h * 0.38f))
+                drawCircle(Color(0xFFBE123C), w * 0.07f, Offset(cx, h * 0.38f))
+                drawLine(ReadingColors.MeadowGreen, Offset(cx, h * 0.58f), Offset(cx, h * 0.88f), 6.5f, StrokeCap.Round)
+                drawOval(Color(0xFF4ADE80), Offset(cx + 4f, h * 0.66f), Size(w * 0.22f, h * 0.12f))
+            }
+
+            QiraatiWordArtKey.PAINTING -> {
+                drawRoundRect(Color(0xFFB45309), Offset(w * 0.14f, h * 0.20f), Size(w * 0.72f, h * 0.58f), CornerRadius(12f, 12f))
+                drawRoundRect(Color(0xFFBAE6FD), Offset(w * 0.22f, h * 0.28f), Size(w * 0.56f, h * 0.42f), CornerRadius(6f, 6f))
+                val hill = Path().apply {
+                    moveTo(w * 0.22f, h * 0.70f)
+                    lineTo(w * 0.44f, h * 0.46f)
+                    lineTo(w * 0.62f, h * 0.60f)
+                    lineTo(w * 0.78f, h * 0.70f)
+                    close()
+                }
+                drawPath(hill, color = ReadingColors.MeadowGreen)
+                drawCircle(ReadingColors.SunYellow, w * 0.065f, Offset(w * 0.64f, h * 0.38f))
             }
 
             QiraatiWordArtKey.GENERIC_WORD -> {
