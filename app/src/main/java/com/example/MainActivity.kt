@@ -1008,6 +1008,7 @@ fun AuthenticatedMainPlatform(
             schoolCode = readingSchoolCode,
             studentId = readingStudentId,
             studentName = readingStudentName,
+            studentGrade = activeReadingStudent?.gradeClass.orEmpty(),
             onClose = { showReadingOasisOverlay = false }
         )
         return

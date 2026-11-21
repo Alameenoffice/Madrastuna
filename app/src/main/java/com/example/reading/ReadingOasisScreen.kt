@@ -12,13 +12,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,7 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -45,20 +44,31 @@ import androidx.compose.ui.unit.sp
 
 /**
  * الشاشة الرئيسية المنسّقة لقسم "واحة القراءة الذكية":
- * تدير التنقل السلس بين خريطة الجزر وشاشة الدرس التفاعلي،
- * مع دعم كامل لزر الرجوع وتنظيف تلقائي لمحرك النطق والصوت عند المغادرة.
+ * تقرأ صف الطالب المسجل من قاعدة البيانات لتحديد المستوى القرائي الأنسب تلقائياً،
+ * وتتيح التبديل بين المستويات الثلاثة مع دعم كامل لزر الرجوع وتنظيف محرك الصوت.
  */
 @Composable
 fun ReadingOasisScreen(
     schoolCode: String,
     studentId: String,
     studentName: String,
+    studentGrade: String = "",
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val effectiveSchoolCode = schoolCode.ifBlank { "default_school" }
     val effectiveStudentId = studentId.ifBlank { "guest_student" }
     val effectiveStudentName = studentName.ifBlank { "بطل القراءة" }
+
+    val defaultStudentLevel = remember(studentGrade) {
+        ReadingCurriculum.detectLevelFromGrade(studentGrade)
+    }
+    val studentGradeLabel = remember(studentGrade, defaultStudentLevel) {
+        ReadingCurriculum.formatGradeDisplay(studentGrade, defaultStudentLevel)
+    }
+
+    var activeLevel by remember(defaultStudentLevel) { mutableStateOf(defaultStudentLevel) }
+    var activeLesson by remember { mutableStateOf<ReadingLesson?>(null) }
 
     val engine = remember(effectiveSchoolCode, effectiveStudentId, effectiveStudentName) {
         ReadingAudioAndProgressEngine(
@@ -77,7 +87,6 @@ fun ReadingOasisScreen(
 
     val progress by engine.progress.collectAsState()
     val isSpeaking by engine.isSpeaking.collectAsState()
-    var activeLesson by remember { mutableStateOf<ReadingLesson?>(null) }
 
     BackHandler {
         if (activeLesson != null) {
@@ -88,43 +97,55 @@ fun ReadingOasisScreen(
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(ReadingColors.SkyBackground)
-        ) {
-            AnimatedContent(
-                targetState = activeLesson,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "reading_oasis_nav"
-            ) { currentLesson ->
-                if (currentLesson == null) {
-                    ReadingMapScreen(
-                        studentName = effectiveStudentName,
-                        progress = progress,
-                        isSpeaking = isSpeaking,
-                        onSelectLesson = { chosen ->
-                            engine.playTapPop()
-                            activeLesson = chosen
-                            engine.speak("درس ${chosen.title}، ${chosen.letterNameSpoken}")
-                        },
-                        onGreetTap = {
-                            engine.playTapPop()
-                            engine.speak("مرحباً يا $effectiveStudentName! أهلاً بك في واحة القراءة الذكية، هيا نلعب ونتعلّم الحروف معاً")
-                        },
-                        onBack = {
-                            engine.playTapPop()
-                            onClose()
-                        }
-                    )
-                } else {
-                    ReadingLessonScreen(
-                        lesson = currentLesson,
-                        progress = progress,
-                        isSpeaking = isSpeaking,
-                        engine = engine,
-                        onBackToMap = { activeLesson = null }
-                    )
+        ProvideTextStyle(value = TextStyle(fontFamily = ReadingTajawalFont)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(ReadingColors.SkyBackground)
+            ) {
+                AnimatedContent(
+                    targetState = activeLesson,
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "reading_oasis_nav"
+                ) { currentLesson ->
+                    if (currentLesson == null) {
+                        ReadingMapScreen(
+                            studentName = effectiveStudentName,
+                            studentGradeLabel = studentGradeLabel,
+                            activeLevel = activeLevel,
+                            defaultStudentLevel = defaultStudentLevel,
+                            progress = progress,
+                            isSpeaking = isSpeaking,
+                            onSelectLevel = { chosenLevel ->
+                                engine.playTapPop()
+                                activeLevel = chosenLevel
+                                engine.speak("${chosenLevel.title}: ${chosenLevel.subtitle}")
+                            },
+                            onSelectLesson = { chosen ->
+                                engine.playTapPop()
+                                activeLesson = chosen
+                                engine.speak("درس ${chosen.title}، ${chosen.letterNameSpoken}")
+                            },
+                            onGreetTap = {
+                                engine.playTapPop()
+                                engine.speak(
+                                    "مرحباً يا $effectiveStudentName! أهلاً بك في واحة القراءة الذكية، أنت الآن في ${activeLevel.title}، هيا نلعب ونتعلّم معاً"
+                                )
+                            },
+                            onBack = {
+                                engine.playTapPop()
+                                onClose()
+                            }
+                        )
+                    } else {
+                        ReadingLessonScreen(
+                            lesson = currentLesson,
+                            progress = progress,
+                            isSpeaking = isSpeaking,
+                            engine = engine,
+                            onBackToMap = { activeLesson = null }
+                        )
+                    }
                 }
             }
         }
@@ -133,13 +154,14 @@ fun ReadingOasisScreen(
 
 /**
  * بطاقة دخول طفولية مبهجة تُعرض في الشاشة الرئيسية لولي الأمر والطالب،
- * وتبرز شخصية فصيح وعدد النجوم المكتسبة في واحة القراءة الذكية.
+ * وتبرز شخصية فصيح والمستوى القرائي وعدد النجوم المكتسبة في واحة القراءة الذكية.
  */
 @Composable
 fun ReadingOasisHomeEntryCard(
     schoolCode: String,
     studentId: String,
     studentName: String,
+    studentGrade: String = "",
     onOpenOasis: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -150,6 +172,9 @@ fun ReadingOasisHomeEntryCard(
             schoolCode = schoolCode.ifBlank { "default_school" },
             studentId = studentId.ifBlank { "guest_student" }
         )
+    }
+    val detectedLevel = remember(studentGrade) {
+        ReadingCurriculum.detectLevelFromGrade(studentGrade)
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -192,21 +217,16 @@ fun ReadingOasisHomeEntryCard(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "واحة القراءة الذكية",
-                                fontFamily = FontFamily.SansSerif,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp,
-                                color = Color.White
-                            )
-                        }
                         Text(
-                            text = "تعلّم القراءة والكتابة بالصوت والصورة (الطريقة المقطعية) مع فصيح",
-                            fontFamily = FontFamily.SansSerif,
+                            text = "واحة القراءة الذكية",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 18.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "${detectedLevel.title} (${detectedLevel.subtitle}) — تعلّم القراءة والكتابة مع فصيح",
+                            fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.5.sp,
                             color = Color.White.copy(alpha = 0.94f),
@@ -229,7 +249,7 @@ fun ReadingOasisHomeEntryCard(
                                     PlayfulStarIcon(filled = true, modifier = Modifier.size(16.dp))
                                     Text(
                                         text = "$earnedStars نجمة",
-                                        fontFamily = FontFamily.SansSerif,
+                                        fontFamily = ReadingTajawalFont,
                                         fontWeight = FontWeight.ExtraBold,
                                         fontSize = 12.sp,
                                         color = ReadingColors.InkDark
@@ -243,7 +263,7 @@ fun ReadingOasisHomeEntryCard(
                             ) {
                                 Text(
                                     text = "ابدأ المغامرة",
-                                    fontFamily = FontFamily.SansSerif,
+                                    fontFamily = ReadingTajawalFont,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 12.sp,
                                     color = Color.White,

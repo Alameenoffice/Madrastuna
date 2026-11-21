@@ -1,8 +1,16 @@
 package com.example.reading
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Path as AndroidPath
+import android.graphics.Rect
+import android.graphics.Typeface
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -34,6 +42,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -69,23 +78,29 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
+import com.example.R
+import java.io.File
+import kotlin.math.min
 import kotlinx.coroutines.delay
 
 /**
- * شاشة الدرس التفاعلي ذات الركائز الأربع:
- * 1) تعلّم (قطار المقاطع والنطق)
- * 2) ركّب (لعبة تجميع الكلمة)
- * 3) اكتب (سبورة القلم السحري)
- * 4) تحدّي (مغامرة النجوم)
+ * شاشة الدرس التفاعلي المتكيفة مع المستويات القرائية الثلاثة بخط تجوال (Tajawal):
+ * 1) تعلّم (المقاطع / التشكيل / القواعد + قطار الكلمات والجمل + فقرة القراءة)
+ * 2) ركّب (تركيب الكلمات للمستوى الأول، وتركيب الجمل والتراكيب للمستويين الثاني والثالث)
+ * 3) اكتب (سبورة القلم السحري بتحقق هندسي حقيقي عبر Bitmap 160x160 للحرف أو الكلمة الكاملة)
+ * 4) تحدّي (مغامرة النجوم والإملاء وفهم المقروء + قراءة صوتية اختيارية)
  */
 @Composable
 fun ReadingLessonScreen(
@@ -133,7 +148,6 @@ fun ReadingLessonScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            // الشريط العلوي الطفولي للدرس
             ReadingLessonTopBar(
                 lesson = lesson,
                 totalStars = progress.totalStars,
@@ -144,7 +158,6 @@ fun ReadingLessonScreen(
                 }
             )
 
-            // أزرار التبويبات الأربعة الملونة البارزة
             ReadingLessonTabsBar(
                 activeTab = activeTab,
                 onSelectTab = { newTab ->
@@ -153,7 +166,6 @@ fun ReadingLessonScreen(
                 }
             )
 
-            // محتوى التبويب النشط
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -176,11 +188,11 @@ fun ReadingLessonScreen(
                             isSpeaking = isSpeaking,
                             isCelebrating = showCelebration,
                             engine = engine,
-                            onWordCompleted = { fullWord ->
+                            onWordCompleted = { fullText ->
                                 triggerVictory(
                                     pillarKey = "assemble",
-                                    spokenPraise = "أحسنت يا بطل! $fullWord",
-                                    banner = "أحسنت يا بطل! ركّبت كلمة ($fullWord)"
+                                    spokenPraise = "أحسنت يا بطل! $fullText",
+                                    banner = "أحسنت يا بطل! أتممت التركيب بنجاح"
                                 )
                             }
                         )
@@ -189,10 +201,11 @@ fun ReadingLessonScreen(
                             lesson = lesson,
                             isSpeaking = isSpeaking,
                             engine = engine,
-                            onWritingFinished = { letter ->
+                            onWritingFinished = { writtenTarget ->
+                                val label = if (writtenTarget.length <= 2) "حرف $writtenTarget" else "كلمة $writtenTarget"
                                 triggerVictory(
                                     pillarKey = "write",
-                                    spokenPraise = "رائع يا بطل! خطك جميل جداً في كتابة حرف $letter",
+                                    spokenPraise = "رائع يا بطل! خطك جميل جداً في كتابة $label",
                                     banner = "رائع يا بطل! ربحت نجمة الكتابة"
                                 )
                             }
@@ -216,7 +229,6 @@ fun ReadingLessonScreen(
             }
         }
 
-        // طبقة الاحتفال المتناثرة فوق الشاشة عند الفوز
         if (showCelebration) {
             KidsCelebrationCanvas(
                 visible = true,
@@ -240,7 +252,7 @@ fun ReadingLessonScreen(
                         PlayfulCrownIcon(modifier = Modifier.size(28.dp))
                         Text(
                             text = celebrationBannerText,
-                            fontFamily = FontFamily.SansSerif,
+                            fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 16.sp,
                             color = ReadingColors.InkDark
@@ -282,21 +294,22 @@ private fun ReadingLessonTopBar(
                 PlayfulBackArrowIcon(tint = Color.White, modifier = Modifier.size(18.dp))
                 Text(
                     text = "الخريطة",
-                    fontFamily = FontFamily.SansSerif,
+                    fontFamily = ReadingTajawalFont,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 14.sp,
-                    color = Color.White
+                    color = Color.White,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
 
-        // عنوان الدرس والنجوم الثلاث الخاصة به
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "درس: ${lesson.title}",
-                fontFamily = FontFamily.SansSerif,
+                text = lesson.title,
+                fontFamily = ReadingTajawalFont,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 19.sp,
+                fontSize = 18.sp,
                 color = ReadingColors.InkDark
             )
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -306,7 +319,6 @@ private fun ReadingLessonTopBar(
             }
         }
 
-        // عداد مجموع النجوم
         Surface(
             shape = RoundedCornerShape(50),
             color = Color.White,
@@ -320,7 +332,7 @@ private fun ReadingLessonTopBar(
                 PlayfulStarIcon(filled = true, modifier = Modifier.size(22.dp))
                 Text(
                     text = "$totalStars",
-                    fontFamily = FontFamily.SansSerif,
+                    fontFamily = ReadingTajawalFont,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 16.sp,
                     color = ReadingColors.InkDark
@@ -360,26 +372,31 @@ private fun ReadingLessonTabsBar(
                 shadowColor = shadow,
                 cornerRadius = 18.dp,
                 lipDepth = if (selected) 5.dp else 4.dp,
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
-                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(76.dp),
                 testTagValue = "reading_tab_${tab.name.lowercase()}"
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                    verticalArrangement = Arrangement.Center
                 ) {
                     PlayfulTabIcon(
                         tab = tab,
                         tint = contentTint,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(24.dp)
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = label,
-                        fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 13.sp,
+                        fontFamily = ReadingTajawalFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
                         color = if (selected) Color.White else ReadingColors.InkDark,
-                        maxLines = 1
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -388,7 +405,7 @@ private fun ReadingLessonTabsBar(
 }
 
 // ============================================================================
-// التبويب 1: تعلّم (بطاقة الحرف العملاق + مقاطع الحرف + قطار المقاطع والنطق)
+// التبويب 1: تعلّم
 // ============================================================================
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -438,7 +455,7 @@ private fun LearnSyllablesTab(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // بطاقة الحرف الجديد العملاق (92sp) وبجانبه فصيح مع دوائر الموجات الصوتية
+        // بطاقة محور الدرس العملاقة وبجانبها فصيح مع موجات صوتية
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = Color.White,
@@ -465,7 +482,6 @@ private fun LearnSyllablesTab(
                     modifier = Modifier.size(144.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    // موجات صوتية نابضة عند الضغط على الحرف
                     if (letterRippleTick > 0 || isSpeaking) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val r = size.minDimension * 0.42f * pulseScale
@@ -493,14 +509,30 @@ private fun LearnSyllablesTab(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = lesson.letter,
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = if (lesson.letter.length > 2) 54.sp else 92.sp,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            if (lesson.level != ReadingLevel.LEVEL_1) {
+                                LessonMiniIllustrationCanvas(
+                                    artType = lesson.artType,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                            }
+                            Text(
+                                text = lesson.letter,
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = when {
+                                    lesson.level != ReadingLevel.LEVEL_1 -> 28.sp
+                                    lesson.letter.length > 2 -> 52.sp
+                                    else -> 90.sp
+                                },
+                                color = Color.White,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
 
@@ -517,8 +549,12 @@ private fun LearnSyllablesTab(
                         isSpeaking = isSpeaking || letterRippleTick > 0
                     )
                     Text(
-                        text = "اضغط على الحرف لتسمعه",
-                        fontFamily = FontFamily.SansSerif,
+                        text = if (lesson.level == ReadingLevel.LEVEL_1) {
+                            "اضغط على الحرف لتسمعه"
+                        } else {
+                            "اضغط لتسمع شرح الدرس"
+                        },
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp,
                         color = ReadingColors.InkDark,
@@ -539,8 +575,8 @@ private fun LearnSyllablesTab(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "استمع للحرف",
-                                fontFamily = FontFamily.SansSerif,
+                                text = "استمع الآن",
+                                fontFamily = ReadingTajawalFont,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
                                 color = lesson.islandColor
@@ -551,11 +587,11 @@ private fun LearnSyllablesTab(
             }
         }
 
-        // أزرار المقاطع الملونة القافزة
+        // بطاقات المقاطع / الأمثلة المشكّلة بمساحة واسعة (minWidth = 76.dp, height = 76.dp)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                text = "مقاطع الحرف — اضغط على كل مقطع لتسمعه",
-                fontFamily = FontFamily.SansSerif,
+                text = lesson.level.learnCardsHeading,
+                fontFamily = ReadingTajawalFont,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 17.sp,
                 color = ReadingColors.InkDark
@@ -567,6 +603,7 @@ private fun LearnSyllablesTab(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 lesson.syllables.forEachIndexed { idx, syl ->
+                    val isLongExample = syl.text.length > 3
                     PlayfulBouncyButton(
                         onClick = {
                             engine.playTapPop()
@@ -576,26 +613,36 @@ private fun LearnSyllablesTab(
                         shadowColor = syl.shadowColor,
                         cornerRadius = 22.dp,
                         lipDepth = 5.dp,
-                        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
+                        contentPadding = PaddingValues(
+                            horizontal = if (isLongExample) 14.dp else 4.dp,
+                            vertical = 4.dp
+                        ),
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 76.dp, minHeight = 76.dp)
+                            .height(76.dp),
                         testTagValue = "reading_syllable_btn_$idx"
                     ) {
                         Text(
                             text = syl.text,
-                            fontFamily = FontFamily.SansSerif,
+                            fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 30.sp,
-                            color = Color.White
+                            fontSize = if (isLongExample) 22.sp else 28.sp,
+                            lineHeight = 40.sp,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
             }
         }
 
-        // قطار المقاطع لكل كلمة في الدرس
+        // قطار المقاطع / الكلمات والجمل
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = "قطار المقاطع",
-                fontFamily = FontFamily.SansSerif,
+                text = lesson.level.trainHeading,
+                fontFamily = ReadingTajawalFont,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 18.sp,
                 color = ReadingColors.InkDark
@@ -629,8 +676,9 @@ private fun LearnSyllablesTab(
             }
         }
 
-        // جملة الدرس إن وُجدت
+        // جملة الدرس أو الفقرة القصصية/العلمية المشكّلة
         if (!lesson.sentence.isNullOrBlank()) {
+            val isParagraph = lesson.sentence.length > 36
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = Color(0xFFFFFBEB),
@@ -639,55 +687,62 @@ private fun LearnSyllablesTab(
                     .fillMaxWidth()
                     .border(2.dp, ReadingColors.SunYellow, RoundedCornerShape(24.dp))
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Text(
-                            text = "جملة الدرس",
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            text = lesson.level.sentenceHeading,
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp,
                             color = ReadingColors.SunShadow
                         )
-                        Text(
-                            text = lesson.sentence,
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 28.sp,
-                            color = ReadingColors.InkDark
-                        )
-                    }
-                    PlayfulBouncyButton(
-                        onClick = {
-                            engine.playTapPop()
-                            engine.speak(lesson.sentenceSpoken ?: lesson.sentence)
-                        },
-                        backgroundColor = ReadingColors.SunYellow,
-                        shadowColor = ReadingColors.SunShadow,
-                        cornerRadius = 18.dp,
-                        lipDepth = 4.dp,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        testTagValue = "reading_sentence_play_btn"
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        PlayfulBouncyButton(
+                            onClick = {
+                                engine.playTapPop()
+                                engine.speak(lesson.sentenceSpoken ?: lesson.sentence)
+                            },
+                            backgroundColor = ReadingColors.SunYellow,
+                            shadowColor = ReadingColors.SunShadow,
+                            cornerRadius = 18.dp,
+                            lipDepth = 4.dp,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            testTagValue = "reading_sentence_play_btn"
                         ) {
-                            PlayfulSpeakerIcon(tint = ReadingColors.InkDark, modifier = Modifier.size(20.dp))
-                            Text(
-                                text = "اقرأ",
-                                fontFamily = FontFamily.SansSerif,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 15.sp,
-                                color = ReadingColors.InkDark
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                PlayfulSpeakerIcon(tint = ReadingColors.InkDark, modifier = Modifier.size(20.dp))
+                                Text(
+                                    text = "استمع للقراءة",
+                                    fontFamily = ReadingTajawalFont,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.sp,
+                                    color = ReadingColors.InkDark,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
+
+                    Text(
+                        text = lesson.sentence,
+                        fontFamily = ReadingTajawalFont,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = if (isParagraph) 20.sp else 28.sp,
+                        lineHeight = if (isParagraph) 34.sp else 40.sp,
+                        color = ReadingColors.InkDark
+                    )
                 }
             }
         }
@@ -705,7 +760,7 @@ private fun SyllableTrainWordCard(
     onPlaySegmented: () -> Unit
 ) {
     val wholeScale by animateFloatAsState(
-        targetValue = if (isWholeWordHighlighted) 1.14f else 1f,
+        targetValue = if (isWholeWordHighlighted) 1.08f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "whole_word_scale"
     )
@@ -722,7 +777,6 @@ private fun SyllableTrainWordCard(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // صف القطار: القاطرة + عربات المقاطع المترابطة
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -742,7 +796,7 @@ private fun SyllableTrainWordCard(
                         label = "train_car_jump_$idx"
                     )
                     val carScale by animateFloatAsState(
-                        targetValue = if (isLit) 1.12f else 1f,
+                        targetValue = if (isLit) 1.10f else 1f,
                         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
                         label = "train_car_scale_$idx"
                     )
@@ -760,6 +814,7 @@ private fun SyllableTrainWordCard(
                     ) {
                         Box(
                             modifier = Modifier
+                                .defaultMinSize(minWidth = 64.dp, minHeight = 56.dp)
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(if (isLit) ReadingColors.SunYellow else syl.color)
                                 .border(
@@ -767,18 +822,18 @@ private fun SyllableTrainWordCard(
                                     color = if (isLit) ReadingColors.CoralOrange else Color.Transparent,
                                     shape = RoundedCornerShape(18.dp)
                                 )
-                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = syl.text,
-                                fontFamily = FontFamily.SansSerif,
+                                fontFamily = ReadingTajawalFont,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 26.sp,
+                                fontSize = if (syl.text.length > 4) 20.sp else 26.sp,
+                                lineHeight = 36.sp,
                                 color = if (isLit) ReadingColors.InkDark else Color.White
                             )
                         }
-                        // عجلتا العربة الصغيرتان
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.padding(top = 2.dp)
@@ -811,7 +866,6 @@ private fun SyllableTrainWordCard(
                 }
             }
 
-            // السطر السفلي: الكلمة كاملة + زر اسمع بالتقطيع
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -820,18 +874,22 @@ private fun SyllableTrainWordCard(
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = if (isWholeWordHighlighted) ReadingColors.SunYellow else ReadingColors.SkyBackground,
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = wholeScale
-                        scaleY = wholeScale
-                    }
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .padding(end = 8.dp)
+                        .graphicsLayer {
+                            scaleX = wholeScale
+                            scaleY = wholeScale
+                        }
                 ) {
                     Text(
                         text = word.fullWord,
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 30.sp,
+                        fontSize = if (word.fullWord.length > 10) 20.sp else 28.sp,
+                        lineHeight = 34.sp,
                         color = ReadingColors.InkDark,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
                 }
 
@@ -841,7 +899,7 @@ private fun SyllableTrainWordCard(
                     shadowColor = ReadingColors.MeadowShadow,
                     cornerRadius = 18.dp,
                     lipDepth = 4.dp,
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     testTagValue = "reading_play_segmented_${word.fullWord}"
                 ) {
                     Row(
@@ -855,10 +913,12 @@ private fun SyllableTrainWordCard(
                         )
                         Text(
                             text = "اسمع بالتقطيع",
-                            fontFamily = FontFamily.SansSerif,
+                            fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.sp,
-                            color = Color.White
+                            fontSize = 13.5.sp,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -868,7 +928,7 @@ private fun SyllableTrainWordCard(
 }
 
 // ============================================================================
-// التبويب 2: ركّب (لعبة تجميع الكلمة من المقاطع)
+// التبويب 2: ركّب (تركيب الكلمات للمستوى الأول، وتركيب الجمل للمستويين الثاني والثالث)
 // ============================================================================
 private data class AssembleTile(
     val uid: Int,
@@ -886,23 +946,25 @@ private fun AssembleWordTab(
 ) {
     var wordIndex by remember(lesson.id) { mutableIntStateOf(0) }
     val currentWord = lesson.words[wordIndex % lesson.words.size]
+    val isSentenceLevel = lesson.level != ReadingLevel.LEVEL_1
 
     val availableTiles = remember(lesson.id, wordIndex) {
         val required = currentWord.syllables.mapIndexed { idx, syl -> AssembleTile(idx, syl) }
         val distractors = lesson.syllables
             .filter { cand -> currentWord.syllables.none { it.text == cand.text } }
-            .take(2)
+            .take(if (isSentenceLevel) 1 else 2)
             .mapIndexed { idx, syl -> AssembleTile(100 + idx, syl) }
         (required + distractors).shuffled()
     }
 
     var placedTiles by remember(lesson.id, wordIndex) { mutableStateOf<List<AssembleTile>>(emptyList()) }
-    var feedbackMessage by remember(lesson.id, wordIndex) { mutableStateOf("اضغط على المقاطع بالترتيب لتكوين الكلمة") }
+    var feedbackMessage by remember(lesson.id, wordIndex) { mutableStateOf(lesson.level.assemblePrompt) }
     var isWordSolved by remember(lesson.id, wordIndex) { mutableStateOf(false) }
 
     LaunchedEffect(lesson.id, wordIndex) {
         delay(260L)
-        engine.speak("ركّب كلمة ${currentWord.spokenWord}")
+        val promptPrefix = if (isSentenceLevel) "ركّب الجملة: " else "ركّب كلمة: "
+        engine.speak("$promptPrefix${currentWord.spokenWord}")
     }
 
     Column(
@@ -913,13 +975,12 @@ private fun AssembleWordTab(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // شريط اختيار الكلمة إذا كان في الدرس أكثر من كلمة
         if (lesson.words.size > 1) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
-                lesson.words.forEachIndexed { idx, w ->
+                lesson.words.forEachIndexed { idx, _ ->
                     val selected = idx == wordIndex
                     PlayfulBouncyButton(
                         onClick = {
@@ -933,8 +994,8 @@ private fun AssembleWordTab(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = "كلمة ${idx + 1}",
-                            fontFamily = FontFamily.SansSerif,
+                            text = if (isSentenceLevel) "جملة ${idx + 1}" else "كلمة ${idx + 1}",
+                            fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 14.sp,
                             color = if (selected) Color.White else ReadingColors.InkDark
@@ -944,7 +1005,6 @@ private fun AssembleWordTab(
             }
         }
 
-        // بطاقة فصيح وسماع الكلمة المطلوبة
         Surface(
             shape = RoundedCornerShape(26.dp),
             color = Color.White,
@@ -969,7 +1029,7 @@ private fun AssembleWordTab(
                 ) {
                     Text(
                         text = feedbackMessage,
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                         color = if (isWordSolved) ReadingColors.MeadowShadow else ReadingColors.InkDark
@@ -992,8 +1052,8 @@ private fun AssembleWordTab(
                         ) {
                             PlayfulSpeakerIcon(tint = Color.White, modifier = Modifier.size(18.dp))
                             Text(
-                                text = "اسمع الكلمة",
-                                fontFamily = FontFamily.SansSerif,
+                                text = if (isSentenceLevel) "اسمع الجملة" else "اسمع الكلمة",
+                                fontFamily = ReadingTajawalFont,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 14.sp,
                                 color = Color.White
@@ -1004,7 +1064,6 @@ private fun AssembleWordTab(
             }
         }
 
-        // مربعات التجميع الملونة (الهدف)
         Surface(
             shape = RoundedCornerShape(26.dp),
             color = if (isWordSolved) Color(0xFFDCFCE7) else Color.White,
@@ -1027,28 +1086,30 @@ private fun AssembleWordTab(
                 if (isWordSolved) {
                     Text(
                         text = currentWord.fullWord,
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 54.sp,
-                        color = ReadingColors.MeadowShadow
+                        fontSize = if (currentWord.fullWord.length > 12) 28.sp else 48.sp,
+                        lineHeight = 44.sp,
+                        color = ReadingColors.MeadowShadow,
+                        textAlign = TextAlign.Center
                     )
                     Text(
                         text = "أحسنت يا بطل!",
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 20.sp,
                         color = ReadingColors.CoralOrange
                     )
                 } else {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         currentWord.syllables.forEachIndexed { slotIdx, expectedSyl ->
                             val placed = placedTiles.getOrNull(slotIdx)
                             Box(
                                 modifier = Modifier
-                                    .size(width = 86.dp, height = 74.dp)
+                                    .defaultMinSize(minWidth = if (isSentenceLevel) 92.dp else 84.dp, minHeight = 72.dp)
                                     .clip(RoundedCornerShape(20.dp))
                                     .background(
                                         if (placed != null) placed.syllable.color else ReadingColors.SkyBackground
@@ -1057,14 +1118,16 @@ private fun AssembleWordTab(
                                         width = 3.dp,
                                         color = if (placed != null) placed.syllable.shadowColor else expectedSyl.color.copy(alpha = 0.55f),
                                         shape = RoundedCornerShape(20.dp)
-                                    ),
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = placed?.syllable?.text ?: "؟",
-                                    fontFamily = FontFamily.SansSerif,
+                                    fontFamily = ReadingTajawalFont,
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 32.sp,
+                                    fontSize = if (isSentenceLevel) 22.sp else 30.sp,
+                                    lineHeight = 36.sp,
                                     color = if (placed != null) Color.White else ReadingColors.InkSoft.copy(alpha = 0.45f)
                                 )
                             }
@@ -1074,7 +1137,6 @@ private fun AssembleWordTab(
             }
         }
 
-        // بطاقات المقاطع المبعثرة الكبيرة أسفل اللوحة
         if (!isWordSolved) {
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -1083,6 +1145,7 @@ private fun AssembleWordTab(
             ) {
                 availableTiles.forEach { tile ->
                     val alreadyUsed = placedTiles.any { it.uid == tile.uid }
+                    val isLongTile = tile.syllable.text.length > 3
                     PlayfulBouncyButton(
                         onClick = {
                             if (alreadyUsed || isWordSolved) return@PlayfulBouncyButton
@@ -1095,14 +1158,14 @@ private fun AssembleWordTab(
                                 engine.speak(tile.syllable.spokenText)
                                 if (nextList.size == currentWord.syllables.size) {
                                     isWordSolved = true
-                                    feedbackMessage = "أحسنت يا بطل! ركّبت كلمة ${currentWord.fullWord}"
+                                    feedbackMessage = "أحسنت يا بطل! ${currentWord.fullWord}"
                                     onWordCompleted(currentWord.fullWord)
                                 } else {
-                                    feedbackMessage = "رائع! اختر المقطع التالي"
+                                    feedbackMessage = "رائع! اختر الجزء التالي"
                                 }
                             } else {
                                 engine.playGentleTryAgain()
-                                feedbackMessage = "حاول مرة أخرى يا بطل، اسمع الكلمة جيداً"
+                                feedbackMessage = "حاول مرة أخرى يا بطل، اسمع جيداً"
                             }
                         },
                         backgroundColor = tile.syllable.color,
@@ -1110,21 +1173,29 @@ private fun AssembleWordTab(
                         enabled = !alreadyUsed,
                         cornerRadius = 22.dp,
                         lipDepth = 5.dp,
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
+                        contentPadding = PaddingValues(
+                            horizontal = if (isLongTile) 16.dp else 4.dp,
+                            vertical = 4.dp
+                        ),
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 78.dp, minHeight = 76.dp)
+                            .height(76.dp),
                         testTagValue = "reading_assemble_tile_${tile.uid}"
                     ) {
                         Text(
                             text = tile.syllable.text,
-                            fontFamily = FontFamily.SansSerif,
+                            fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 32.sp,
-                            color = Color.White
+                            fontSize = if (isLongTile) 22.sp else 28.sp,
+                            lineHeight = 40.sp,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
             }
         } else {
-            // زر الانتقال للكلمة التالية أو إعادة اللعب
             PlayfulBouncyButton(
                 onClick = {
                     engine.playTapPop()
@@ -1133,7 +1204,7 @@ private fun AssembleWordTab(
                     } else {
                         placedTiles = emptyList()
                         isWordSolved = false
-                        feedbackMessage = "هيا نركّب الكلمة من جديد!"
+                        feedbackMessage = "هيا نلعب من جديد!"
                         engine.speak(currentWord.spokenWord)
                     }
                 },
@@ -1145,8 +1216,12 @@ private fun AssembleWordTab(
                 testTagValue = "reading_assemble_next_btn"
             ) {
                 Text(
-                    text = if (wordIndex + 1 < lesson.words.size) "الكلمة التالية" else "العب مرة أخرى",
-                    fontFamily = FontFamily.SansSerif,
+                    text = if (wordIndex + 1 < lesson.words.size) {
+                        if (isSentenceLevel) "الجملة التالية" else "الكلمة التالية"
+                    } else {
+                        "العب مرة أخرى"
+                    },
+                    fontFamily = ReadingTajawalFont,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 18.sp,
                     color = Color.White
@@ -1159,12 +1234,235 @@ private fun AssembleWordTab(
 }
 
 // ============================================================================
-// التبويب 3: اكتب (سبورة القلم السحري)
+// التبويب 3: اكتب (سبورة القلم السحري + تقييم هندسي حقيقي عبر Bitmap 160x160)
 // ============================================================================
 private data class DrawnStroke(
     val color: Color,
     val points: List<Offset>
 )
+
+private data class TracingEvaluationResult(
+    val passed: Boolean,
+    val coverageRatio: Float,
+    val inBoundsPrecisionRatio: Float
+)
+
+private data class GuideTextLayout(
+    val textSizePx: Float,
+    val drawX: Float,
+    val drawY: Float,
+    val bounds: Rect
+)
+
+/**
+ * تحميل خط Tajawal كـ Typeface أصلي لرسم الحرف أو الكلمة الإرشادية على السبورة وقناع التحقق بنفس المحاذاة تماماً.
+ */
+private fun resolveTajawalTypeface(context: Context): Typeface {
+    val cachedBold = File(context.filesDir, "Tajawal-ExtraBold.ttf")
+        .takeIf { it.exists() && it.length() > 10_000L }
+        ?: File(context.filesDir, "Tajawal-Bold.ttf")
+            .takeIf { it.exists() && it.length() > 10_000L }
+    if (cachedBold != null) {
+        runCatching { return Typeface.createFromFile(cachedBold) }
+    }
+    return runCatching {
+        val base = ResourcesCompat.getFont(context, R.font.tajawal)
+        if (base != null) Typeface.create(base, Typeface.BOLD) else Typeface.DEFAULT_BOLD
+    }.getOrDefault(Typeface.DEFAULT_BOLD)
+}
+
+/**
+ * حساب حجم وتوسيط الحرف المفرد أو الكلمة الكاملة بدقة متطابقة بين السبورة وقناع التقييم 160x160.
+ */
+private fun computeGuideTextLayout(
+    targetText: String,
+    boardWidth: Float,
+    boardHeight: Float,
+    typeface: Typeface
+): GuideTextLayout {
+    val minBoardDim = min(boardWidth, boardHeight)
+    var candidateSize = minBoardDim * if (targetText.length <= 2) 0.62f else 0.38f
+    val measurePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        this.typeface = typeface
+        textSize = candidateSize
+        textAlign = AndroidPaint.Align.LEFT
+    }
+    val bounds = Rect()
+    measurePaint.getTextBounds(targetText, 0, targetText.length, bounds)
+
+    val maxAllowedW = boardWidth * 0.82f
+    val maxAllowedH = boardHeight * 0.72f
+    if (bounds.width() > maxAllowedW && bounds.width() > 0) {
+        candidateSize *= (maxAllowedW / bounds.width().toFloat())
+    }
+    if (bounds.height() > maxAllowedH && bounds.height() > 0) {
+        candidateSize *= (maxAllowedH / bounds.height().toFloat())
+    }
+
+    measurePaint.textSize = candidateSize
+    measurePaint.getTextBounds(targetText, 0, targetText.length, bounds)
+
+    val drawX = boardWidth * 0.5f - bounds.exactCenterX()
+    val drawY = boardHeight * 0.5f - bounds.exactCenterY()
+    return GuideTextLayout(
+        textSizePx = candidateSize,
+        drawX = drawX,
+        drawY = drawY,
+        bounds = bounds
+    )
+}
+
+/**
+ * دالة التقييم الهندسي الحقيقي لكتابة الطفل باستخدام Bitmap بحجم 160x160 في الذاكرة:
+ * - تحسب نسبة التغطية (coverage >= 52%) من جسم الحرف أو الكلمة الإرشادية.
+ * - تحسب نسبة الدقة داخل الحدود (precision >= 58%) لمنع نجاح الخربشة العشوائية أو الرسم خارج الحرف.
+ */
+private fun evaluateLetterTracingWithBitmap(
+    targetText: String,
+    strokes: List<DrawnStroke>,
+    boardSize: IntSize,
+    typeface: Typeface
+): TracingEvaluationResult {
+    if (strokes.isEmpty() || boardSize.width <= 0 || boardSize.height <= 0) {
+        return TracingEvaluationResult(passed = false, coverageRatio = 0f, inBoundsPrecisionRatio = 0f)
+    }
+
+    val maskSize = 160
+    val scaleX = maskSize.toFloat() / boardSize.width.toFloat()
+    val scaleY = maskSize.toFloat() / boardSize.height.toFloat()
+    val minBoardDim = min(boardSize.width, boardSize.height).toFloat()
+
+    val layout = computeGuideTextLayout(
+        targetText = targetText,
+        boardWidth = boardSize.width.toFloat(),
+        boardHeight = boardSize.height.toFloat(),
+        typeface = typeface
+    )
+
+    val guideExactBitmap = Bitmap.createBitmap(maskSize, maskSize, Bitmap.Config.ARGB_8888)
+    val guideToleranceBitmap = Bitmap.createBitmap(maskSize, maskSize, Bitmap.Config.ARGB_8888)
+    val userCoverageBitmap = Bitmap.createBitmap(maskSize, maskSize, Bitmap.Config.ARGB_8888)
+    val userCoreBitmap = Bitmap.createBitmap(maskSize, maskSize, Bitmap.Config.ARGB_8888)
+
+    return try {
+        val guideCanvas = AndroidCanvas(guideExactBitmap)
+        guideCanvas.save()
+        guideCanvas.scale(scaleX, scaleY)
+        val guidePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            this.typeface = typeface
+            textSize = layout.textSizePx
+            color = AndroidColor.WHITE
+            style = AndroidPaint.Style.FILL
+        }
+        guideCanvas.drawText(targetText, layout.drawX, layout.drawY, guidePaint)
+        guideCanvas.restore()
+
+        val toleranceCanvas = AndroidCanvas(guideToleranceBitmap)
+        toleranceCanvas.save()
+        toleranceCanvas.scale(scaleX, scaleY)
+        val tolerancePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            this.typeface = typeface
+            textSize = layout.textSizePx
+            color = AndroidColor.WHITE
+            style = AndroidPaint.Style.FILL_AND_STROKE
+            strokeWidth = minBoardDim * if (targetText.length <= 2) 0.14f else 0.12f
+            strokeJoin = AndroidPaint.Join.ROUND
+            strokeCap = AndroidPaint.Cap.ROUND
+        }
+        toleranceCanvas.drawText(targetText, layout.drawX, layout.drawY, tolerancePaint)
+        toleranceCanvas.restore()
+
+        fun renderUserStrokes(targetBitmap: Bitmap, strokeWidthPx: Float) {
+            val canvas = AndroidCanvas(targetBitmap)
+            val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                color = AndroidColor.WHITE
+                style = AndroidPaint.Style.STROKE
+                strokeWidth = strokeWidthPx
+                strokeCap = AndroidPaint.Cap.ROUND
+                strokeJoin = AndroidPaint.Join.ROUND
+            }
+            val dotPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                color = AndroidColor.WHITE
+                style = AndroidPaint.Style.FILL
+            }
+            strokes.forEach { stroke ->
+                val pts = stroke.points
+                if (pts.isEmpty()) return@forEach
+                if (pts.size == 1) {
+                    canvas.drawCircle(pts[0].x * scaleX, pts[0].y * scaleY, strokeWidthPx * 0.5f, dotPaint)
+                } else {
+                    val path = AndroidPath().apply {
+                        moveTo(pts[0].x * scaleX, pts[0].y * scaleY)
+                        for (i in 1 until pts.size) {
+                            val prevX = pts[i - 1].x * scaleX
+                            val prevY = pts[i - 1].y * scaleY
+                            val currX = pts[i].x * scaleX
+                            val currY = pts[i].y * scaleY
+                            quadTo(prevX, prevY, (prevX + currX) * 0.5f, (prevY + currY) * 0.5f)
+                        }
+                        lineTo(pts.last().x * scaleX, pts.last().y * scaleY)
+                    }
+                    canvas.drawPath(path, paint)
+                }
+            }
+        }
+
+        val coverageStroke = if (targetText.length <= 2) 19f else 15f
+        val coreStroke = if (targetText.length <= 2) 10f else 8f
+        renderUserStrokes(userCoverageBitmap, strokeWidthPx = coverageStroke)
+        renderUserStrokes(userCoreBitmap, strokeWidthPx = coreStroke)
+
+        val totalPixels = maskSize * maskSize
+        val guidePixelsArr = IntArray(totalPixels)
+        val tolPixelsArr = IntArray(totalPixels)
+        val userCovArr = IntArray(totalPixels)
+        val userCoreArr = IntArray(totalPixels)
+
+        guideExactBitmap.getPixels(guidePixelsArr, 0, maskSize, 0, 0, maskSize, maskSize)
+        guideToleranceBitmap.getPixels(tolPixelsArr, 0, maskSize, 0, 0, maskSize, maskSize)
+        userCoverageBitmap.getPixels(userCovArr, 0, maskSize, 0, 0, maskSize, maskSize)
+        userCoreBitmap.getPixels(userCoreArr, 0, maskSize, 0, 0, maskSize, maskSize)
+
+        var guideCount = 0
+        var coveredGuideCount = 0
+        var userCoreCount = 0
+        var inBoundsUserCount = 0
+
+        for (i in 0 until totalPixels) {
+            val isGuide = (guidePixelsArr[i] ushr 24) > 80
+            val isTol = (tolPixelsArr[i] ushr 24) > 80
+            val isUserCov = (userCovArr[i] ushr 24) > 80
+            val isUserCore = (userCoreArr[i] ushr 24) > 80
+
+            if (isGuide) {
+                guideCount++
+                if (isUserCov) coveredGuideCount++
+            }
+            if (isUserCore) {
+                userCoreCount++
+                if (isTol) inBoundsUserCount++
+            }
+        }
+
+        if (guideCount < 30 || userCoreCount < 45) {
+            TracingEvaluationResult(passed = false, coverageRatio = 0f, inBoundsPrecisionRatio = 0f)
+        } else {
+            val coverage = coveredGuideCount.toFloat() / guideCount.toFloat()
+            val precision = inBoundsUserCount.toFloat() / userCoreCount.toFloat()
+            val passed = coverage >= 0.52f && precision >= 0.58f
+            TracingEvaluationResult(
+                passed = passed,
+                coverageRatio = coverage,
+                inBoundsPrecisionRatio = precision
+            )
+        }
+    } finally {
+        guideExactBitmap.recycle()
+        guideToleranceBitmap.recycle()
+        userCoverageBitmap.recycle()
+        userCoreBitmap.recycle()
+    }
+}
 
 @Composable
 private fun MagicWritingBoardTab(
@@ -1173,9 +1471,12 @@ private fun MagicWritingBoardTab(
     engine: ReadingAudioAndProgressEngine,
     onWritingFinished: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val tajawalTypeface = remember(context) { resolveTajawalTypeface(context) }
+
     var selectedLetterIdx by remember(lesson.id) { mutableIntStateOf(0) }
-    val activeLetter = lesson.traceLetters[selectedLetterIdx % lesson.traceLetters.size]
-    val startPoint = lesson.traceStartPoints[activeLetter] ?: TraceStartPoint(0.58f, 0.34f)
+    val activeTarget = lesson.traceLetters[selectedLetterIdx % lesson.traceLetters.size]
+    val explicitStartPoint = lesson.traceStartPoints[activeTarget]
 
     val crayonColors = remember {
         listOf(
@@ -1189,13 +1490,27 @@ private fun MagicWritingBoardTab(
     val completedStrokes = remember(lesson.id, selectedLetterIdx) { mutableStateListOf<DrawnStroke>() }
     val activePoints = remember(lesson.id, selectedLetterIdx) { mutableStateListOf<Offset>() }
     var lastFingerOffset by remember(lesson.id, selectedLetterIdx) { mutableStateOf<Offset?>(null) }
+    var boardPixelSize by remember { mutableStateOf(IntSize.Zero) }
+
+    var guidanceMessage by remember(lesson.id, selectedLetterIdx) {
+        mutableStateOf("${lesson.level.writePromptPrefix} ($activeTarget)")
+    }
+    var isWarningFeedback by remember(lesson.id, selectedLetterIdx) { mutableStateOf(false) }
+    var startDotFlashActive by remember(lesson.id, selectedLetterIdx) { mutableStateOf(false) }
+
+    LaunchedEffect(startDotFlashActive) {
+        if (startDotFlashActive) {
+            delay(1700L)
+            startDotFlashActive = false
+        }
+    }
 
     val pulseTransition = rememberInfiniteTransition(label = "start_dot_pulse")
     val startDotRadius by pulseTransition.animateFloat(
         initialValue = 10f,
-        targetValue = 18f,
+        targetValue = 19f,
         animationSpec = infiniteRepeatable(
-            animation = tween(750, easing = FastOutSlowInEasing),
+            animation = tween(if (startDotFlashActive) 260 else 750, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "dot_radius"
@@ -1206,28 +1521,27 @@ private fun MagicWritingBoardTab(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // اختيار الحرف إذا كان الدرس يضم حرفين مثل (ن، ي)
         if (lesson.traceLetters.size > 1) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                lesson.traceLetters.forEachIndexed { idx, ch ->
+                lesson.traceLetters.forEachIndexed { idx, target ->
                     val selected = idx == selectedLetterIdx
                     PlayfulBouncyButton(
                         onClick = {
                             engine.playTapPop()
                             selectedLetterIdx = idx
-                            engine.speak("حرف $ch")
+                            engine.speak(target)
                         },
                         backgroundColor = if (selected) ReadingColors.BerryPurple else Color.White,
                         shadowColor = if (selected) ReadingColors.BerryShadow else Color(0xFFCBD5E1),
                         cornerRadius = 16.dp,
                         lipDepth = 4.dp,
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "اكتب حرف: $ch",
-                            fontFamily = FontFamily.SansSerif,
+                            text = "اكتب: $target",
+                            fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 15.sp,
                             color = if (selected) Color.White else ReadingColors.InkDark
@@ -1235,28 +1549,43 @@ private fun MagicWritingBoardTab(
                     }
                 }
             }
-        } else {
+        }
+
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = if (isWarningFeedback) Color(0xFFFFF1E6) else Color.White.copy(alpha = 0.92f),
+            shadowElevation = 2.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.8.dp,
+                    color = if (isWarningFeedback) ReadingColors.CoralOrange else ReadingColors.SkyBlue.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(18.dp)
+                )
+        ) {
             Text(
-                text = "ابدأ من النقطة الخضراء وتتبّع حرف ($activeLetter) بإصبعك",
-                fontFamily = FontFamily.SansSerif,
+                text = guidanceMessage,
+                fontFamily = ReadingTajawalFont,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 15.sp,
-                color = ReadingColors.InkDark,
-                textAlign = TextAlign.Center
+                fontSize = 14.sp,
+                color = if (isWarningFeedback) ReadingColors.CoralShadow else ReadingColors.InkDark,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
         }
 
-        // سبورة الدفتر المدرسي المخططة بأسطر واضحة وإطار كرتوني
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .onSizeChanged { boardPixelSize = it }
                 .clip(RoundedCornerShape(28.dp))
                 .background(ReadingColors.NotebookPaper)
                 .border(5.dp, ReadingColors.SunYellow, RoundedCornerShape(28.dp))
-                .pointerInput(selectedColor, activeLetter) {
+                .pointerInput(selectedColor, activeTarget) {
                     detectDragGestures(
                         onDragStart = { offset ->
+                            isWarningFeedback = false
                             activePoints.clear()
                             activePoints.add(offset)
                             lastFingerOffset = offset
@@ -1285,10 +1614,10 @@ private fun MagicWritingBoardTab(
                 }
                 .testTag("reading_magic_writing_canvas")
         ) {
-            // أسطر الدفتر المدرسي + نقطة البداية الخضراء النابضة
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
+
                 val lineYs = listOf(0.24f, 0.44f, 0.64f, 0.82f)
                 lineYs.forEachIndexed { idx, frac ->
                     drawLine(
@@ -1298,47 +1627,57 @@ private fun MagicWritingBoardTab(
                         strokeWidth = if (idx == 2) 4f else 2.5f
                     )
                 }
-            }
 
-            // الحرف الإرشادي المفرّغ/الشفاف للتتبع (alpha = 0.22f)
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = activeLetter,
-                    fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 210.sp,
-                    color = ReadingColors.InkDark.copy(alpha = 0.22f),
-                    textAlign = TextAlign.Center
+                val guideLayout = computeGuideTextLayout(
+                    targetText = activeTarget,
+                    boardWidth = w,
+                    boardHeight = h,
+                    typeface = tajawalTypeface
                 )
-            }
 
-            // طبقة الرسم العريض الناعم + النقطة الخضراء النابضة + شرارات النجوم خلف الإصبع
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val dotPos = Offset(size.width * startPoint.xFraction, size.height * startPoint.yFraction)
-                // هالة النقطة الخضراء النابضة
+                val guidePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                    typeface = tajawalTypeface
+                    textSize = guideLayout.textSizePx
+                    color = AndroidColor.argb(56, 30, 41, 59)
+                    style = AndroidPaint.Style.FILL
+                    textAlign = AndroidPaint.Align.LEFT
+                }
+                drawContext.canvas.nativeCanvas.drawText(
+                    activeTarget,
+                    guideLayout.drawX,
+                    guideLayout.drawY,
+                    guidePaint
+                )
+
+                // نقطة البداية الخضراء النابضة (مخصصة للحرف أو تلقائية لبداية الكلمة العربية من اليمين)
+                val dotPos = if (explicitStartPoint != null) {
+                    Offset(w * explicitStartPoint.xFraction, h * explicitStartPoint.yFraction)
+                } else {
+                    val rightEdgeX = (guideLayout.drawX + guideLayout.bounds.right - guideLayout.bounds.width() * 0.08f)
+                        .coerceIn(w * 0.15f, w * 0.88f)
+                    Offset(rightEdgeX, h * 0.46f)
+                }
                 drawCircle(
-                    color = ReadingColors.MeadowGreen.copy(alpha = 0.28f),
-                    radius = startDotRadius * 1.65f,
+                    color = if (startDotFlashActive) {
+                        ReadingColors.SunYellow.copy(alpha = 0.55f)
+                    } else {
+                        ReadingColors.MeadowGreen.copy(alpha = 0.28f)
+                    },
+                    radius = if (startDotFlashActive) startDotRadius * 2.15f else startDotRadius * 1.65f,
                     center = dotPos
                 )
                 drawCircle(
                     color = ReadingColors.MeadowGreen,
-                    radius = 12f,
+                    radius = if (startDotFlashActive) 15f else 12f,
                     center = dotPos
                 )
-                drawCircle(
-                    color = Color.White,
-                    radius = 4.5f,
-                    center = dotPos
-                )
+                drawCircle(color = Color.White, radius = 4.5f, center = dotPos)
 
+                val drawStrokeWidth = if (activeTarget.length <= 2) 28f else 20f
                 fun drawSmoothStroke(strokeColor: Color, pts: List<Offset>) {
                     if (pts.isEmpty()) return
                     if (pts.size == 1) {
-                        drawCircle(color = strokeColor, radius = 14f, center = pts.first())
+                        drawCircle(color = strokeColor, radius = drawStrokeWidth * 0.5f, center = pts.first())
                         return
                     }
                     val path = Path().apply {
@@ -1356,7 +1695,7 @@ private fun MagicWritingBoardTab(
                         path = path,
                         color = strokeColor,
                         style = Stroke(
-                            width = 28f,
+                            width = drawStrokeWidth,
                             cap = StrokeCap.Round,
                             join = StrokeJoin.Round
                         )
@@ -1368,7 +1707,6 @@ private fun MagicWritingBoardTab(
                 }
                 drawSmoothStroke(selectedColor, activePoints)
 
-                // شرارات نجوم خفيفة تتبع حركة إصبع الطفل أثناء الكتابة
                 lastFingerOffset?.let { tip ->
                     val offsets = listOf(
                         Offset(tip.x - 24f, tip.y - 22f),
@@ -1386,7 +1724,6 @@ private fun MagicWritingBoardTab(
             }
         }
 
-        // اختيار الألوان الأربعة الزاهية (أقلام التلوين)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1411,15 +1748,11 @@ private fun MagicWritingBoardTab(
                         .testTag("reading_crayon_color_$idx"),
                     contentAlignment = Alignment.Center
                 ) {
-                    PlayfulCrayonIcon(
-                        crayonColor = crayonColor,
-                        modifier = Modifier.size(32.dp)
-                    )
+                    PlayfulCrayonIcon(crayonColor = crayonColor, modifier = Modifier.size(32.dp))
                 }
             }
         }
 
-        // أزرار التحكم: مسح | اسمع | أنهيت الكتابة
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1429,12 +1762,14 @@ private fun MagicWritingBoardTab(
                     engine.playTapPop()
                     completedStrokes.clear()
                     activePoints.clear()
+                    isWarningFeedback = false
+                    guidanceMessage = "${lesson.level.writePromptPrefix} ($activeTarget)"
                 },
                 backgroundColor = ReadingColors.CandyPink,
                 shadowColor = ReadingColors.CandyShadow,
                 cornerRadius = 18.dp,
                 lipDepth = 4.dp,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                 modifier = Modifier.weight(1f),
                 testTagValue = "reading_write_clear_btn"
             ) {
@@ -1445,10 +1780,12 @@ private fun MagicWritingBoardTab(
                     PlayfulEraserIcon(tint = Color.White, modifier = Modifier.size(18.dp))
                     Text(
                         text = "مسح",
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -1456,13 +1793,13 @@ private fun MagicWritingBoardTab(
             PlayfulBouncyButton(
                 onClick = {
                     engine.playTapPop()
-                    engine.speak("حرف $activeLetter")
+                    engine.speak(if (activeTarget.length <= 2) "حرف $activeTarget" else activeTarget)
                 },
                 backgroundColor = ReadingColors.SkyBlue,
                 shadowColor = ReadingColors.SkyBlueShadow,
                 cornerRadius = 18.dp,
                 lipDepth = 4.dp,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                 modifier = Modifier.weight(1f),
                 testTagValue = "reading_write_hear_btn"
             ) {
@@ -1473,10 +1810,12 @@ private fun MagicWritingBoardTab(
                     PlayfulSpeakerIcon(isSpeaking = isSpeaking, tint = Color.White, modifier = Modifier.size(18.dp))
                     Text(
                         text = "اسمع",
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -1485,17 +1824,40 @@ private fun MagicWritingBoardTab(
                 onClick = {
                     if (completedStrokes.isEmpty()) {
                         engine.playGentleTryAgain()
-                        engine.speak("ارسم الحرف بإصبعك أولاً يا بطل")
+                        isWarningFeedback = true
+                        startDotFlashActive = true
+                        guidanceMessage = "حاول تتبّع الحرف الرمادي بدقة يا بطل!"
+                        engine.speak("ابدأ من النقطة الخضراء وتتبّع الكتابة بإصبعك يا بطل")
                     } else {
-                        onWritingFinished(activeLetter)
+                        val result = evaluateLetterTracingWithBitmap(
+                            targetText = activeTarget,
+                            strokes = completedStrokes.toList(),
+                            boardSize = boardPixelSize,
+                            typeface = tajawalTypeface
+                        )
+                        if (result.passed) {
+                            isWarningFeedback = false
+                            guidanceMessage = "ممتاز يا بطل! كتبت ($activeTarget) بدقة رائعة"
+                            onWritingFinished(activeTarget)
+                        } else {
+                            engine.playGentleTryAgain()
+                            isWarningFeedback = true
+                            startDotFlashActive = true
+                            guidanceMessage = if (result.inBoundsPrecisionRatio < 0.58f) {
+                                "حاول تتبّع الحرف الرمادي بدقة يا بطل! ابقَ فوق الخط الرمادي"
+                            } else {
+                                "حاول تتبّع الحرف الرمادي بدقة يا بطل! أكمل بقية الكتابة"
+                            }
+                            engine.speak("حاول تتبّع الحرف الرمادي بدقة يا بطل!")
+                        }
                     }
                 },
                 backgroundColor = ReadingColors.MeadowGreen,
                 shadowColor = ReadingColors.MeadowShadow,
                 cornerRadius = 18.dp,
                 lipDepth = 4.dp,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                modifier = Modifier.weight(1.35f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                modifier = Modifier.weight(1.45f),
                 testTagValue = "reading_write_done_btn"
             ) {
                 Row(
@@ -1505,11 +1867,12 @@ private fun MagicWritingBoardTab(
                     PlayfulCheckIcon(tint = Color.White, modifier = Modifier.size(18.dp))
                     Text(
                         text = "أنهيت الكتابة",
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 13.sp,
                         color = Color.White,
-                        maxLines = 1
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -1518,7 +1881,7 @@ private fun MagicWritingBoardTab(
 }
 
 // ============================================================================
-// التبويب 4: تحدّي (مغامرة النجوم بالبالونات + قراءة صوتية اختيارية آمنة)
+// التبويب 4: تحدّي (مغامرة النجوم والإملاء وفهم المقروء + قراءة صوتية اختيارية)
 // ============================================================================
 @Composable
 private fun StarChallengeTab(
@@ -1537,7 +1900,6 @@ private fun StarChallengeTab(
     var solvedCurrent by remember(lesson.id, questionIndex) { mutableStateOf(false) }
     var isListeningVoice by remember { mutableStateOf(false) }
 
-    // SpeechRecognizer اختياري وآمن تماماً
     var speechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
 
     DisposableEffect(Unit) {
@@ -1562,7 +1924,7 @@ private fun StarChallengeTab(
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     isListeningVoice = true
-                    challengeStatus = "تحدث الآن واقرأ الكلمة بصوتك الجميل..."
+                    challengeStatus = "تحدث الآن واقرأ الإجابة بصوتك الجميل..."
                 }
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
@@ -1580,11 +1942,11 @@ private fun StarChallengeTab(
                     val normalizedTarget = normalizeArabicForMatch(question.correctOption)
                     val matched = spokenList.any { candidate ->
                         val normCand = normalizeArabicForMatch(candidate)
-                        normCand.contains(normalizedTarget) || normalizedTarget.contains(normCand) && normCand.isNotEmpty()
+                        normCand.contains(normalizedTarget) || (normalizedTarget.contains(normCand) && normCand.isNotEmpty())
                     }
                     if (matched) {
                         solvedCurrent = true
-                        challengeStatus = "أبدعت يا بطل! قرأت (${question.correctOption}) بصوتك بشكل صحيح"
+                        challengeStatus = "أبدعت يا بطل! نطقت (${question.correctOption}) بشكل سليم"
                         onChallengeWon(question.correctOption)
                     } else {
                         engine.playGentleTryAgain()
@@ -1620,7 +1982,11 @@ private fun StarChallengeTab(
 
     LaunchedEffect(lesson.id, questionIndex) {
         delay(280L)
-        engine.speak(question.spokenTarget)
+        if (lesson.level == ReadingLevel.LEVEL_1) {
+            engine.speak(question.spokenTarget)
+        } else {
+            engine.speak(question.promptLabel)
+        }
     }
 
     val balloonColors = remember {
@@ -1639,7 +2005,6 @@ private fun StarChallengeTab(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // بطاقة فصيح والسؤال الصوتي
         Surface(
             shape = RoundedCornerShape(26.dp),
             color = Color.White,
@@ -1664,14 +2029,14 @@ private fun StarChallengeTab(
                 ) {
                     Text(
                         text = "سؤال ${questionIndex + 1} من ${lesson.challenges.size}",
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = ReadingColors.BerryPurple
                     )
                     Text(
                         text = challengeStatus,
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                         color = ReadingColors.InkDark
@@ -1679,7 +2044,9 @@ private fun StarChallengeTab(
                     PlayfulBouncyButton(
                         onClick = {
                             engine.playTapPop()
-                            engine.speak(question.spokenTarget)
+                            engine.speak(
+                                if (lesson.level == ReadingLevel.LEVEL_1) question.spokenTarget else question.promptLabel
+                            )
                         },
                         backgroundColor = ReadingColors.SunYellow,
                         shadowColor = ReadingColors.SunShadow,
@@ -1698,8 +2065,8 @@ private fun StarChallengeTab(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "اسمع المطلوب",
-                                fontFamily = FontFamily.SansSerif,
+                                text = "اسمع السؤال",
+                                fontFamily = ReadingTajawalFont,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 14.sp,
                                 color = ReadingColors.InkDark
@@ -1710,7 +2077,6 @@ private fun StarChallengeTab(
             }
         }
 
-        // البالونات الملونة الثلاثة للاختيار
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1737,30 +2103,36 @@ private fun StarChallengeTab(
                                 onChallengeWon(optionText)
                             } else {
                                 engine.playGentleTryAgain()
-                                engine.speak("حاول مرة أخرى، اسمع جيداً: ${question.spokenTarget}")
+                                engine.speak("حاول مرة أخرى يا بطل")
                                 challengeStatus = "حاول مرة أخرى يا بطل!"
                             }
                         },
                         backgroundColor = effectiveBg,
                         shadowColor = effectiveShadow,
-                        cornerRadius = 46.dp,
+                        cornerRadius = 38.dp,
                         lipDepth = 6.dp,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 22.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(116.dp),
+                            .height(122.dp),
                         testTagValue = "reading_challenge_balloon_$idx"
                     ) {
                         Text(
                             text = optionText,
-                            fontFamily = FontFamily.SansSerif,
+                            fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = if (optionText.length >= 4) 24.sp else 32.sp,
+                            fontSize = when {
+                                optionText.length >= 12 -> 15.sp
+                                optionText.length >= 7 -> 18.sp
+                                optionText.length >= 4 -> 22.sp
+                                else -> 30.sp
+                            },
+                            lineHeight = if (optionText.length >= 7) 24.sp else 36.sp,
                             color = if (solvedCurrent && isCorrectChoice) ReadingColors.InkDark else Color.White,
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
+                            maxLines = 2
                         )
                     }
-                    // خيط البالون المتموج المرسوم بـ Canvas
                     Canvas(modifier = Modifier.size(width = 24.dp, height = 34.dp)) {
                         val stringPath = Path().apply {
                             moveTo(size.width * 0.5f, 0f)
@@ -1776,7 +2148,6 @@ private fun StarChallengeTab(
             }
         }
 
-        // زر اختياري: اقرأها بصوتك (مع فحص إذن RECORD_AUDIO بأمان)
         PlayfulBouncyButton(
             onClick = {
                 engine.playTapPop()
@@ -1809,7 +2180,7 @@ private fun StarChallengeTab(
                 )
                 Text(
                     text = if (isListeningVoice) "أستمع إليك الآن..." else "اقرأها بصوتك",
-                    fontFamily = FontFamily.SansSerif,
+                    fontFamily = ReadingTajawalFont,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 17.sp,
                     color = Color.White
@@ -1817,7 +2188,6 @@ private fun StarChallengeTab(
             }
         }
 
-        // زر التحدي التالي بعد الفوز
         if (solvedCurrent) {
             PlayfulBouncyButton(
                 onClick = {
@@ -1833,7 +2203,7 @@ private fun StarChallengeTab(
             ) {
                 Text(
                     text = if (questionIndex + 1 < lesson.challenges.size) "التحدي التالي" else "تحدّي جديد",
-                    fontFamily = FontFamily.SansSerif,
+                    fontFamily = ReadingTajawalFont,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 18.sp,
                     color = Color.White

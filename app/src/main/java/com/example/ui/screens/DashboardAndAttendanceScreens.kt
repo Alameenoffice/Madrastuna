@@ -156,6 +156,7 @@ fun DashboardScreen(
             schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
             studentId = myStudent?.id?.ifBlank { currentUser?.id ?: "guest_student" } ?: currentUser?.id ?: "guest_student",
             studentName = myStudent?.studentName?.ifBlank { currentUser?.fullName ?: "بطل القراءة" } ?: currentUser?.fullName ?: "بطل القراءة",
+            studentGrade = myStudent?.gradeClass.orEmpty(),
             onClose = { showLocalReadingOasis = false }
         )
         return
@@ -655,6 +656,7 @@ fun DashboardScreen(
                     schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
                     studentId = myStudent.id,
                     studentName = myStudent.studentName,
+                    studentGrade = myStudent.gradeClass,
                     onOpenOasis = {
                         if (onOpenReadingOasis != null) {
                             onOpenReadingOasis()

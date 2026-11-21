@@ -58,7 +58,8 @@ enum class ReadingLessonTab {
 }
 
 /**
- * زر طفولي بارز بزوايا دائرية واسعة وحافة ظل سفلية صلبة مع ارتداد نابضي عند الضغط.
+ * زر طفولي بارز بزوايا دائرية واسعة وحافة ظل سفلية صلبة مع ارتداد نابضي عند الضغط
+ * وقياس طبيعي للمحتوى بدون أي قص للنصوص أو التشكيل.
  */
 @Composable
 fun PlayfulBouncyButton(
@@ -69,7 +70,7 @@ fun PlayfulBouncyButton(
     cornerRadius: Dp = 22.dp,
     lipDepth: Dp = 5.dp,
     enabled: Boolean = true,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
     testTagValue: String? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -99,7 +100,7 @@ fun PlayfulBouncyButton(
 
     Box(
         modifier = modifier
-            .defaultMinSize(minWidth = 48.dp, minHeight = 52.dp)
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -111,9 +112,10 @@ fun PlayfulBouncyButton(
                 enabled = enabled,
                 role = Role.Button,
                 onClick = onClick
-            )
+            ),
+        contentAlignment = Alignment.Center,
+        propagateMinConstraints = true
     ) {
-        // الحافة السفلية الصلبة التي تعطي الإحساس البارز الملموس
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -121,43 +123,29 @@ fun PlayfulBouncyButton(
                 .clip(shape)
                 .background(effectiveShadow)
         )
-        // سطح الزر العلوي القابل للانضغاط
         Box(
             modifier = Modifier
-                .matchParentSize()
                 .padding(bottom = lipDepth)
                 .offset(y = pressOffset)
                 .clip(shape)
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            effectiveBg.copy(alpha = 0.96f),
+                            effectiveBg.copy(alpha = 0.98f),
                             effectiveBg
                         )
                     )
                 )
-        ) {
-            // لمعة خفيفة ناعمة أعلى الزر
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .fillMaxSize(fraction = 0.25f)
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding),
-                contentAlignment = Alignment.Center,
-                content = content
-            )
-        }
+                .padding(contentPadding),
+            contentAlignment = Alignment.Center,
+            content = content
+        )
     }
 }
 
 /**
  * الشخصية التعليمية المحبوبة "فصيح" — بومة قارئة سماوية وذهبية مرسومة بالكامل على Canvas
- * برموش تطرف وأجنحة ترفرف بلطف وقفزة احتفالية عند التشجيع.
+ * بهالة توهج دافئة، طبقات تظليل ناعمة، رموش تطرف، أجنحة ترفرف بلطف، وقفزة احتفالية.
  */
 @Composable
 fun ReadingMascotCanvas(
@@ -168,8 +156,8 @@ fun ReadingMascotCanvas(
     val infinite = rememberInfiniteTransition(label = "fasih_mascot_anim")
 
     val floatOffset by infinite.animateFloat(
-        initialValue = -4f,
-        targetValue = 4f,
+        initialValue = -4.5f,
+        targetValue = 4.5f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -178,16 +166,26 @@ fun ReadingMascotCanvas(
     )
 
     val wingFlap by infinite.animateFloat(
-        initialValue = -10f,
-        targetValue = 14f,
+        initialValue = -11f,
+        targetValue = 15f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = if (isCelebrating) 320 else 1200,
+                durationMillis = if (isCelebrating) 300 else 1150,
                 easing = FastOutSlowInEasing
             ),
             repeatMode = RepeatMode.Reverse
         ),
         label = "mascot_wing"
+    )
+
+    val haloPulse by infinite.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "mascot_halo"
     )
 
     val blinkPhase by infinite.animateFloat(
@@ -219,154 +217,181 @@ fun ReadingMascotCanvas(
         val w = size.width
         val h = size.height
         val cx = w * 0.5f
-        val cy = h * 0.55f
+
+        // هالة توهج دافئة ناعمة خلف فصيح
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFFFF3A1).copy(alpha = 0.45f),
+                    Color(0xFF7DD3FC).copy(alpha = 0.24f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, h * 0.48f),
+                radius = w * 0.50f * haloPulse
+            ),
+            radius = w * 0.50f * haloPulse,
+            center = Offset(cx, h * 0.48f)
+        )
 
         // ظل ناعم أسفل البومة
         drawOval(
-            color = Color(0xFF0284C7).copy(alpha = 0.14f),
-            topLeft = Offset(w * 0.24f, h * 0.89f),
-            size = Size(w * 0.52f, h * 0.09f)
+            color = Color(0xFF0284C7).copy(alpha = 0.16f),
+            topLeft = Offset(w * 0.22f, h * 0.89f),
+            size = Size(w * 0.56f, h * 0.09f)
         )
 
-        // الجناح الأيسر
+        // الجناح الأيسر المجسّم بطبقة لمعان
         rotate(degrees = -wingFlap, pivot = Offset(w * 0.26f, h * 0.52f)) {
             val leftWing = Path().apply {
-                moveTo(w * 0.26f, h * 0.44f)
-                cubicTo(w * 0.04f, h * 0.46f, w * 0.05f, h * 0.72f, w * 0.24f, h * 0.75f)
-                quadraticBezierTo(w * 0.30f, h * 0.62f, w * 0.26f, h * 0.44f)
+                moveTo(w * 0.26f, h * 0.43f)
+                cubicTo(w * 0.03f, h * 0.46f, w * 0.04f, h * 0.74f, w * 0.24f, h * 0.76f)
+                quadraticBezierTo(w * 0.31f, h * 0.62f, w * 0.26f, h * 0.43f)
                 close()
             }
             drawPath(
                 path = leftWing,
                 brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFF0EA5E9), Color(0xFF0284C7)),
-                    start = Offset(0f, h * 0.42f),
-                    end = Offset(w * 0.3f, h * 0.78f)
+                    colors = listOf(Color(0xFF38BDF8), Color(0xFF0284C7), Color(0xFF0369A1)),
+                    start = Offset(0f, h * 0.40f),
+                    end = Offset(w * 0.30f, h * 0.78f)
                 )
+            )
+            drawPath(
+                path = leftWing,
+                color = Color(0xFFBAE6FD).copy(alpha = 0.55f),
+                style = Stroke(width = w * 0.015f)
             )
         }
 
-        // الجناح الأيمن
+        // الجناح الأيمن المجسّم بطبقة لمعان
         rotate(degrees = wingFlap, pivot = Offset(w * 0.74f, h * 0.52f)) {
             val rightWing = Path().apply {
-                moveTo(w * 0.74f, h * 0.44f)
-                cubicTo(w * 0.96f, h * 0.46f, w * 0.95f, h * 0.72f, w * 0.76f, h * 0.75f)
-                quadraticBezierTo(w * 0.70f, h * 0.62f, w * 0.74f, h * 0.44f)
+                moveTo(w * 0.74f, h * 0.43f)
+                cubicTo(w * 0.97f, h * 0.46f, w * 0.96f, h * 0.74f, w * 0.76f, h * 0.76f)
+                quadraticBezierTo(w * 0.69f, h * 0.62f, w * 0.74f, h * 0.43f)
                 close()
             }
             drawPath(
                 path = rightWing,
                 brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFF0EA5E9), Color(0xFF0284C7)),
-                    start = Offset(w, h * 0.42f),
-                    end = Offset(w * 0.7f, h * 0.78f)
+                    colors = listOf(Color(0xFF38BDF8), Color(0xFF0284C7), Color(0xFF0369A1)),
+                    start = Offset(w, h * 0.40f),
+                    end = Offset(w * 0.70f, h * 0.78f)
                 )
+            )
+            drawPath(
+                path = rightWing,
+                color = Color(0xFFBAE6FD).copy(alpha = 0.55f),
+                style = Stroke(width = w * 0.015f)
             )
         }
 
-        // القدمان الذهبيتان
-        drawOval(
-            color = Color(0xFFF59E0B),
-            topLeft = Offset(w * 0.34f, h * 0.80f),
-            size = Size(w * 0.13f, h * 0.085f)
-        )
-        drawOval(
-            color = Color(0xFFF59E0B),
-            topLeft = Offset(w * 0.53f, h * 0.80f),
-            size = Size(w * 0.13f, h * 0.085f)
-        )
+        // القدمان الذهبيتان بتدرج دافئ
+        val footBrush = Brush.verticalGradient(listOf(Color(0xFFFDE047), Color(0xFFF59E0B)))
+        drawOval(brush = footBrush, topLeft = Offset(w * 0.33f, h * 0.80f), size = Size(w * 0.14f, h * 0.09f))
+        drawOval(brush = footBrush, topLeft = Offset(w * 0.53f, h * 0.80f), size = Size(w * 0.14f, h * 0.09f))
 
-        // الجسم السماوي الممتلئ
+        // الجسم السماوي الممتلئ بتدرج إشعاعي ولمعة علوية
         val bodyPath = Path().apply {
             moveTo(cx, h * 0.14f)
-            cubicTo(w * 0.82f, h * 0.14f, w * 0.84f, h * 0.84f, cx, h * 0.84f)
-            cubicTo(w * 0.16f, h * 0.84f, w * 0.18f, h * 0.14f, cx, h * 0.14f)
+            cubicTo(w * 0.83f, h * 0.14f, w * 0.85f, h * 0.85f, cx, h * 0.85f)
+            cubicTo(w * 0.15f, h * 0.85f, w * 0.17f, h * 0.14f, cx, h * 0.14f)
             close()
         }
         drawPath(
             path = bodyPath,
             brush = Brush.radialGradient(
-                colors = listOf(Color(0xFF7DD3FC), Color(0xFF38BDF8), Color(0xFF0284C7)),
-                center = Offset(cx, h * 0.36f),
-                radius = w * 0.55f
+                colors = listOf(Color(0xFFBAE6FD), Color(0xFF38BDF8), Color(0xFF0284C7), Color(0xFF0369A1)),
+                center = Offset(cx, h * 0.34f),
+                radius = w * 0.56f
             )
         )
+        drawPath(
+            path = bodyPath,
+            color = Color(0xFFE0F2FE).copy(alpha = 0.45f),
+            style = Stroke(width = w * 0.014f)
+        )
 
-        // خصلتا الأذن الذهبيتان اللطيفتان
+        // خصلتا الأذن الذهبيتان
+        val tuftBrush = Brush.linearGradient(listOf(Color(0xFFFFF3A1), ReadingColors.SunYellow, Color(0xFFD97706)))
         val leftTuft = Path().apply {
-            moveTo(w * 0.25f, h * 0.26f)
-            quadraticBezierTo(w * 0.16f, h * 0.10f, w * 0.34f, h * 0.17f)
+            moveTo(w * 0.24f, h * 0.26f)
+            quadraticBezierTo(w * 0.15f, h * 0.09f, w * 0.34f, h * 0.17f)
             close()
         }
         val rightTuft = Path().apply {
-            moveTo(w * 0.75f, h * 0.26f)
-            quadraticBezierTo(w * 0.84f, h * 0.10f, w * 0.66f, h * 0.17f)
+            moveTo(w * 0.76f, h * 0.26f)
+            quadraticBezierTo(w * 0.85f, h * 0.09f, w * 0.66f, h * 0.17f)
             close()
         }
-        drawPath(leftTuft, color = ReadingColors.SunYellow)
-        drawPath(rightTuft, color = ReadingColors.SunYellow)
+        drawPath(leftTuft, brush = tuftBrush)
+        drawPath(rightTuft, brush = tuftBrush)
 
-        // تاج صغير ذهبي على رأس فصيح
+        // التاج الملكي الصغير فوق رأس فصيح
         val crownPath = Path().apply {
-            moveTo(w * 0.39f, h * 0.17f)
-            lineTo(w * 0.42f, h * 0.06f)
-            lineTo(cx, h * 0.12f)
-            lineTo(w * 0.58f, h * 0.06f)
-            lineTo(w * 0.61f, h * 0.17f)
+            moveTo(w * 0.38f, h * 0.17f)
+            lineTo(w * 0.41f, h * 0.05f)
+            lineTo(cx, h * 0.11f)
+            lineTo(w * 0.59f, h * 0.05f)
+            lineTo(w * 0.62f, h * 0.17f)
             close()
         }
         drawPath(
             path = crownPath,
             brush = Brush.linearGradient(
-                colors = listOf(Color(0xFFFFE066), ReadingColors.SunYellow, Color(0xFFF59E0B))
+                colors = listOf(Color(0xFFFFF3A1), ReadingColors.SunYellow, Color(0xFFD97706))
             )
         )
+        drawCircle(color = ReadingColors.CoralOrange, radius = w * 0.024f, center = Offset(cx, h * 0.135f))
 
-        // البطن الكريمي الدافئ
+        // البطن الكريمي الناعم
         drawOval(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFFFFFBEB), Color(0xFFFEF3C7))
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFFFFFFFF), Color(0xFFFFFBEB), Color(0xFFFDE68A)),
+                center = Offset(cx, h * 0.60f),
+                radius = w * 0.26f
             ),
-            topLeft = Offset(w * 0.29f, h * 0.52f),
-            size = Size(w * 0.42f, h * 0.29f)
+            topLeft = Offset(w * 0.28f, h * 0.51f),
+            size = Size(w * 0.44f, h * 0.30f)
         )
 
-        // ريش صغير لطيف على البطن
         val featherStroke = Stroke(width = w * 0.022f, cap = StrokeCap.Round)
         for (row in 0..1) {
-            val fy = h * (0.62f + row * 0.08f)
+            val fy = h * (0.61f + row * 0.08f)
             val cols = if (row == 0) listOf(0.41f, 0.50f, 0.59f) else listOf(0.45f, 0.55f)
             cols.forEach { fxFrac ->
                 val feather = Path().apply {
                     moveTo(w * (fxFrac - 0.03f), fy)
-                    quadraticBezierTo(w * fxFrac, fy + h * 0.032f, w * (fxFrac + 0.03f), fy)
+                    quadraticBezierTo(w * fxFrac, fy + h * 0.034f, w * (fxFrac + 0.03f), fy)
                 }
-                drawPath(feather, color = Color(0xFFF59E0B).copy(alpha = 0.45f), style = featherStroke)
+                drawPath(feather, color = Color(0xFFF59E0B).copy(alpha = 0.48f), style = featherStroke)
             }
         }
 
-        // هالتان بيضاوان حول العينين
-        val eyeRadius = w * 0.145f
+        // هالتا العينين مع إطار ذهبي ناعم
+        val eyeRadius = w * 0.148f
         val leftEyeCenter = Offset(w * 0.37f, h * 0.39f)
         val rightEyeCenter = Offset(w * 0.63f, h * 0.39f)
-        drawCircle(color = Color.White, radius = eyeRadius, center = leftEyeCenter)
-        drawCircle(color = Color.White, radius = eyeRadius, center = rightEyeCenter)
-        drawCircle(
-            color = ReadingColors.SunYellow,
-            radius = eyeRadius,
-            center = leftEyeCenter,
-            style = Stroke(width = w * 0.022f)
-        )
-        drawCircle(
-            color = ReadingColors.SunYellow,
-            radius = eyeRadius,
-            center = rightEyeCenter,
-            style = Stroke(width = w * 0.022f)
-        )
+        listOf(leftEyeCenter, rightEyeCenter).forEach { c ->
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White, Color(0xFFF1F5F9)),
+                    center = Offset(c.x - eyeRadius * 0.2f, c.y - eyeRadius * 0.2f),
+                    radius = eyeRadius * 1.2f
+                ),
+                radius = eyeRadius,
+                center = c
+            )
+            drawCircle(
+                color = ReadingColors.SunYellow,
+                radius = eyeRadius,
+                center = c,
+                style = Stroke(width = w * 0.024f)
+            )
+        }
 
-        // العينان (تطرفان أو تبتسمان عند الاحتفال)
         if (isBlinking || isCelebrating) {
-            val smileEyeStroke = Stroke(width = w * 0.032f, cap = StrokeCap.Round)
+            val smileEyeStroke = Stroke(width = w * 0.034f, cap = StrokeCap.Round)
             listOf(leftEyeCenter, rightEyeCenter).forEach { center ->
                 val arc = Path().apply {
                     moveTo(center.x - eyeRadius * 0.55f, center.y + eyeRadius * 0.05f)
@@ -385,70 +410,70 @@ fun ReadingMascotCanvas(
                 drawCircle(color = ReadingColors.InkDark, radius = pupilRadius, center = center)
                 drawCircle(
                     color = Color.White,
-                    radius = pupilRadius * 0.34f,
-                    center = Offset(center.x - pupilRadius * 0.30f, center.y - pupilRadius * 0.30f)
+                    radius = pupilRadius * 0.35f,
+                    center = Offset(center.x - pupilRadius * 0.28f, center.y - pupilRadius * 0.28f)
                 )
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = Color(0xFFBAE6FD).copy(alpha = 0.8f),
                     radius = pupilRadius * 0.16f,
-                    center = Offset(center.x + pupilRadius * 0.25f, center.y + pupilRadius * 0.24f)
+                    center = Offset(center.x + pupilRadius * 0.24f, center.y + pupilRadius * 0.24f)
                 )
             }
         }
 
-        // الخدان الورديان
+        // الخدان الورديان المتوردان
         drawOval(
-            color = ReadingColors.CandyPink.copy(alpha = 0.32f),
-            topLeft = Offset(w * 0.22f, h * 0.48f),
-            size = Size(w * 0.11f, h * 0.06f)
+            color = ReadingColors.CandyPink.copy(alpha = 0.34f),
+            topLeft = Offset(w * 0.21f, h * 0.48f),
+            size = Size(w * 0.12f, h * 0.065f)
         )
         drawOval(
-            color = ReadingColors.CandyPink.copy(alpha = 0.32f),
+            color = ReadingColors.CandyPink.copy(alpha = 0.34f),
             topLeft = Offset(w * 0.67f, h * 0.48f),
-            size = Size(w * 0.11f, h * 0.06f)
+            size = Size(w * 0.12f, h * 0.065f)
         )
 
-        // المنقار الذهبي المبتسم
-        val beakOpen = if (isSpeaking || isCelebrating) h * 0.024f else 0f
+        // المنقار الذهبي اللامع
+        val beakOpen = if (isSpeaking || isCelebrating) h * 0.025f else 0f
         val beakPath = Path().apply {
             moveTo(cx, h * 0.44f)
-            lineTo(w * 0.56f, h * 0.50f)
-            lineTo(cx, h * 0.57f + beakOpen)
-            lineTo(w * 0.44f, h * 0.50f)
+            lineTo(w * 0.565f, h * 0.50f)
+            lineTo(cx, h * 0.575f + beakOpen)
+            lineTo(w * 0.435f, h * 0.50f)
             close()
         }
         drawPath(
             path = beakPath,
             brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFFFFD166), Color(0xFFF59E0B))
+                colors = listOf(Color(0xFFFFF3A1), Color(0xFFFBBF24), Color(0xFFD97706))
             )
         )
 
-        // كتاب صغير مفتوح يحمله فصيح
+        // كتاب القراءة المفتوح بلمعة ذهبية
         val bookY = h * 0.72f
         val leftPage = Path().apply {
             moveTo(cx, bookY)
-            quadraticBezierTo(w * 0.38f, bookY - h * 0.04f, w * 0.30f, bookY + h * 0.01f)
-            lineTo(w * 0.32f, bookY + h * 0.11f)
-            quadraticBezierTo(w * 0.40f, bookY + h * 0.07f, cx, bookY + h * 0.10f)
+            quadraticBezierTo(w * 0.38f, bookY - h * 0.045f, w * 0.29f, bookY + h * 0.01f)
+            lineTo(w * 0.31f, bookY + h * 0.12f)
+            quadraticBezierTo(w * 0.40f, bookY + h * 0.075f, cx, bookY + h * 0.11f)
             close()
         }
         val rightPage = Path().apply {
             moveTo(cx, bookY)
-            quadraticBezierTo(w * 0.62f, bookY - h * 0.04f, w * 0.70f, bookY + h * 0.01f)
-            lineTo(w * 0.68f, bookY + h * 0.11f)
-            quadraticBezierTo(w * 0.60f, bookY + h * 0.07f, cx, bookY + h * 0.10f)
+            quadraticBezierTo(w * 0.62f, bookY - h * 0.045f, w * 0.71f, bookY + h * 0.01f)
+            lineTo(w * 0.69f, bookY + h * 0.12f)
+            quadraticBezierTo(w * 0.60f, bookY + h * 0.075f, cx, bookY + h * 0.11f)
             close()
         }
-        drawPath(leftPage, color = Color.White)
-        drawPath(rightPage, color = Color(0xFFF8FAFC))
+        drawPath(leftPage, brush = Brush.linearGradient(listOf(Color.White, Color(0xFFFEF3C7))))
+        drawPath(rightPage, brush = Brush.linearGradient(listOf(Color(0xFFFFFBEB), Color(0xFFFDE68A))))
         drawPath(leftPage, color = ReadingColors.CoralOrange, style = Stroke(width = w * 0.018f))
         drawPath(rightPage, color = ReadingColors.CoralOrange, style = Stroke(width = w * 0.018f))
     }
 }
 
 /**
- * نجمة ذهبية منحنية مرسومة على Canvas (مملوءة أو فارغة).
+ * نجمة ذهبية منحنية مجسّمة الإحساس مرسومة على Canvas.
  */
 @Composable
 fun PlayfulStarIcon(
@@ -465,7 +490,7 @@ fun PlayfulStarIcon(
     }
 }
 
-private fun DrawScope.drawCurvedStar(
+internal fun DrawScope.drawCurvedStar(
     center: Offset,
     outerRadius: Float,
     innerRadius: Float,
@@ -486,25 +511,22 @@ private fun DrawScope.drawCurvedStar(
         drawPath(
             path = path,
             brush = Brush.radialGradient(
-                colors = listOf(Color(0xFFFFEE88), ReadingColors.StarGold, Color(0xFFF59E0B)),
-                center = Offset(center.x - outerRadius * 0.2f, center.y - outerRadius * 0.2f),
-                radius = outerRadius * 1.4f
+                colors = listOf(Color(0xFFFFF7B2), ReadingColors.StarGold, Color(0xFFD97706)),
+                center = Offset(center.x - outerRadius * 0.22f, center.y - outerRadius * 0.22f),
+                radius = outerRadius * 1.45f
             )
         )
         drawPath(
             path = path,
-            color = Color(0xFFD97706),
-            style = Stroke(width = outerRadius * 0.14f, join = StrokeJoin.Round)
+            color = Color(0xFFB45309),
+            style = Stroke(width = outerRadius * 0.13f, join = StrokeJoin.Round)
         )
     } else {
-        drawPath(
-            path = path,
-            color = Color(0xFFE2E8F0)
-        )
+        drawPath(path = path, color = Color(0xFFE2E8F0))
         drawPath(
             path = path,
             color = Color(0xFF94A3B8),
-            style = Stroke(width = outerRadius * 0.13f, join = StrokeJoin.Round)
+            style = Stroke(width = outerRadius * 0.12f, join = StrokeJoin.Round)
         )
     }
 }
@@ -550,21 +572,13 @@ fun PlayfulSpeakerIcon(
             moveTo(w * 0.67f, h * 0.33f)
             quadraticBezierTo(w * 0.78f, h * 0.50f, w * 0.67f, h * 0.67f)
         }
-        drawPath(
-            wave1,
-            color = tint.copy(alpha = alpha1),
-            style = Stroke(width = strokeW, cap = StrokeCap.Round)
-        )
+        drawPath(wave1, color = tint.copy(alpha = alpha1), style = Stroke(width = strokeW, cap = StrokeCap.Round))
 
         val wave2 = Path().apply {
             moveTo(w * 0.79f, h * 0.22f)
             quadraticBezierTo(w * 0.94f, h * 0.50f, w * 0.79f, h * 0.78f)
         }
-        drawPath(
-            wave2,
-            color = tint.copy(alpha = alpha2),
-            style = Stroke(width = strokeW, cap = StrokeCap.Round)
-        )
+        drawPath(wave2, color = tint.copy(alpha = alpha2), style = Stroke(width = strokeW, cap = StrokeCap.Round))
     }
 }
 
@@ -580,32 +594,19 @@ fun PlayfulCrayonIcon(
         val w = size.width
         val h = size.height
         rotate(degrees = -32f, pivot = Offset(w * 0.5f, h * 0.5f)) {
-            // جسم القلم
             drawRoundRect(
                 color = crayonColor,
                 topLeft = Offset(w * 0.34f, h * 0.26f),
                 size = Size(w * 0.32f, h * 0.60f),
                 cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
             )
-            // شريط الورق الأبيض
             drawRect(
-                color = Color.White.copy(alpha = 0.82f),
+                color = Color.White.copy(alpha = 0.84f),
                 topLeft = Offset(w * 0.34f, h * 0.42f),
                 size = Size(w * 0.32f, h * 0.24f)
             )
-            drawLine(
-                color = crayonColor,
-                start = Offset(w * 0.34f, h * 0.48f),
-                end = Offset(w * 0.66f, h * 0.48f),
-                strokeWidth = h * 0.04f
-            )
-            drawLine(
-                color = crayonColor,
-                start = Offset(w * 0.34f, h * 0.60f),
-                end = Offset(w * 0.66f, h * 0.60f),
-                strokeWidth = h * 0.04f
-            )
-            // رأس القلم المدبب
+            drawLine(crayonColor, Offset(w * 0.34f, h * 0.48f), Offset(w * 0.66f, h * 0.48f), h * 0.04f)
+            drawLine(crayonColor, Offset(w * 0.34f, h * 0.60f), Offset(w * 0.66f, h * 0.60f), h * 0.04f)
             val tip = Path().apply {
                 moveTo(w * 0.36f, h * 0.26f)
                 lineTo(w * 0.50f, h * 0.06f)
@@ -618,7 +619,7 @@ fun PlayfulCrayonIcon(
 }
 
 /**
- * تاج البطل الذهبي المرسوم على Canvas.
+ * تاج البطل الذهبي المتوهج المرسوم على Canvas.
  */
 @Composable
 fun PlayfulCrownIcon(
@@ -631,7 +632,7 @@ fun PlayfulCrownIcon(
             moveTo(w * 0.12f, h * 0.78f)
             lineTo(w * 0.08f, h * 0.30f)
             lineTo(w * 0.33f, h * 0.50f)
-            lineTo(w * 0.50f, h * 0.18f)
+            lineTo(w * 0.50f, h * 0.16f)
             lineTo(w * 0.67f, h * 0.50f)
             lineTo(w * 0.92f, h * 0.30f)
             lineTo(w * 0.88f, h * 0.78f)
@@ -640,22 +641,18 @@ fun PlayfulCrownIcon(
         drawPath(
             crown,
             brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFFFFEC80), ReadingColors.SunYellow, Color(0xFFF59E0B))
+                colors = listOf(Color(0xFFFFF3A1), ReadingColors.SunYellow, Color(0xFFD97706))
             )
         )
-        drawPath(
-            crown,
-            color = Color(0xFFD97706),
-            style = Stroke(width = w * 0.055f, join = StrokeJoin.Round)
-        )
-        drawCircle(color = ReadingColors.CoralOrange, radius = w * 0.065f, center = Offset(w * 0.50f, h * 0.62f))
-        drawCircle(color = ReadingColors.SkyBlue, radius = w * 0.05f, center = Offset(w * 0.30f, h * 0.64f))
-        drawCircle(color = ReadingColors.MeadowGreen, radius = w * 0.05f, center = Offset(w * 0.70f, h * 0.64f))
+        drawPath(crown, color = Color(0xFFB45309), style = Stroke(width = w * 0.055f, join = StrokeJoin.Round))
+        drawCircle(color = ReadingColors.CoralOrange, radius = w * 0.068f, center = Offset(w * 0.50f, h * 0.62f))
+        drawCircle(color = ReadingColors.SkyBlue, radius = w * 0.052f, center = Offset(w * 0.30f, h * 0.64f))
+        drawCircle(color = ReadingColors.MeadowGreen, radius = w * 0.052f, center = Offset(w * 0.70f, h * 0.64f))
     }
 }
 
 /**
- * سهم رجوع ناعم دائري متوافق مع الواجهة العربية (يشير لليمين).
+ * سهم رجوع ناعم دائري متوافق مع الواجهة العربية.
  */
 @Composable
 fun PlayfulBackArrowIcon(
@@ -677,9 +674,6 @@ fun PlayfulBackArrowIcon(
     }
 }
 
-/**
- * أيقونة ميكروفون لطيفة للتحدي الصوتي الاختياري.
- */
 @Composable
 fun PlayfulMicIcon(
     isListening: Boolean = false,
@@ -691,11 +685,7 @@ fun PlayfulMicIcon(
         val h = size.height
         val strokeW = w * 0.095f
         if (isListening) {
-            drawCircle(
-                color = tint.copy(alpha = 0.24f),
-                radius = w * 0.46f,
-                center = Offset(w * 0.5f, h * 0.45f)
-            )
+            drawCircle(color = tint.copy(alpha = 0.24f), radius = w * 0.46f, center = Offset(w * 0.5f, h * 0.45f))
         }
         drawRoundRect(
             color = tint,
@@ -708,26 +698,11 @@ fun PlayfulMicIcon(
             cubicTo(w * 0.24f, h * 0.74f, w * 0.76f, h * 0.74f, w * 0.76f, h * 0.44f)
         }
         drawPath(holder, color = tint, style = Stroke(width = strokeW, cap = StrokeCap.Round))
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.50f, h * 0.68f),
-            end = Offset(w * 0.50f, h * 0.86f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.34f, h * 0.86f),
-            end = Offset(w * 0.66f, h * 0.86f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
+        drawLine(tint, Offset(w * 0.50f, h * 0.68f), Offset(w * 0.50f, h * 0.86f), strokeW, cap = StrokeCap.Round)
+        drawLine(tint, Offset(w * 0.34f, h * 0.86f), Offset(w * 0.66f, h * 0.86f), strokeW, cap = StrokeCap.Round)
     }
 }
 
-/**
- * أيقونة ممحاة مدرسية لطيفة.
- */
 @Composable
 fun PlayfulEraserIcon(
     tint: Color = Color.White,
@@ -749,19 +724,10 @@ fun PlayfulEraserIcon(
                 size = Size(w * 0.28f, h * 0.42f)
             )
         }
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.18f, h * 0.84f),
-            end = Offset(w * 0.84f, h * 0.84f),
-            strokeWidth = h * 0.09f,
-            cap = StrokeCap.Round
-        )
+        drawLine(tint, Offset(w * 0.18f, h * 0.84f), Offset(w * 0.84f, h * 0.84f), h * 0.09f, cap = StrokeCap.Round)
     }
 }
 
-/**
- * علامة صح ناعمة دائرية.
- */
 @Composable
 fun PlayfulCheckIcon(
     tint: Color = Color.White,
@@ -775,11 +741,7 @@ fun PlayfulCheckIcon(
             lineTo(w * 0.42f, h * 0.76f)
             lineTo(w * 0.84f, h * 0.26f)
         }
-        drawPath(
-            path = path,
-            color = tint,
-            style = Stroke(width = w * 0.15f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
+        drawPath(path, color = tint, style = Stroke(width = w * 0.15f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
@@ -844,49 +806,63 @@ fun PlayfulTabIcon(
 }
 
 /**
- * قاطرة صغيرة ملونة مرسومة بـ Canvas تتقدم "قطار المقاطع".
+ * قاطرة ملونة متحركة البخار مرسومة على Canvas تتقدم "قطار المقاطع".
  */
 @Composable
 fun PlayfulTrainEngineCanvas(
     modifier: Modifier = Modifier
 ) {
+    val infinite = rememberInfiniteTransition(label = "train_steam")
+    val puff by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "steam_puff"
+    )
+
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
 
-        // بخار أبيض لطيف
-        drawCircle(color = Color.White.copy(alpha = 0.92f), radius = w * 0.08f, center = Offset(w * 0.76f, h * 0.16f))
-        drawCircle(color = Color.White.copy(alpha = 0.72f), radius = w * 0.06f, center = Offset(w * 0.86f, h * 0.09f))
+        // بخار أبيض متصاعد ناعم
+        drawCircle(
+            color = Color.White.copy(alpha = (1f - puff * 0.6f).coerceIn(0.2f, 0.95f)),
+            radius = w * (0.07f + puff * 0.03f),
+            center = Offset(w * (0.75f + puff * 0.06f), h * (0.19f - puff * 0.10f))
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = (0.8f - puff * 0.6f).coerceIn(0.15f, 0.8f)),
+            radius = w * 0.06f,
+            center = Offset(w * (0.85f + puff * 0.04f), h * (0.10f - puff * 0.05f))
+        )
 
-        // مدخنة القطار
         drawRoundRect(
-            color = ReadingColors.CoralOrange,
+            brush = Brush.verticalGradient(listOf(ReadingColors.CoralOrange, ReadingColors.CoralShadow)),
             topLeft = Offset(w * 0.66f, h * 0.22f),
             size = Size(w * 0.16f, h * 0.26f),
             cornerRadius = CornerRadius(w * 0.04f, w * 0.04f)
         )
-        // كابينة السائق
         drawRoundRect(
-            color = ReadingColors.BerryPurple,
+            brush = Brush.verticalGradient(listOf(Color(0xFFA78BFA), ReadingColors.BerryPurple, ReadingColors.BerryShadow)),
             topLeft = Offset(w * 0.14f, h * 0.20f),
             size = Size(w * 0.36f, h * 0.52f),
             cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
         )
-        // نافذة الكابينة
         drawRoundRect(
-            color = Color(0xFFE0F2FE),
+            brush = Brush.linearGradient(listOf(Color(0xFFE0F2FE), Color(0xFF7DD3FC))),
             topLeft = Offset(w * 0.20f, h * 0.28f),
             size = Size(w * 0.22f, h * 0.20f),
             cornerRadius = CornerRadius(w * 0.05f, w * 0.05f)
         )
-        // جسم القاطرة الأمامي
         drawRoundRect(
-            color = ReadingColors.SunYellow,
+            brush = Brush.verticalGradient(listOf(Color(0xFFFFE57F), ReadingColors.SunYellow, Color(0xFFD97706))),
             topLeft = Offset(w * 0.44f, h * 0.42f),
             size = Size(w * 0.44f, h * 0.32f),
             cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
         )
-        // مقدمة القطار
         val nose = Path().apply {
             moveTo(w * 0.86f, h * 0.54f)
             lineTo(w * 0.96f, h * 0.74f)
@@ -895,7 +871,6 @@ fun PlayfulTrainEngineCanvas(
         }
         drawPath(nose, color = ReadingColors.CoralOrange)
 
-        // عجلات القطار
         listOf(0.28f, 0.56f, 0.78f).forEach { cxFrac ->
             drawCircle(color = ReadingColors.InkDark, radius = h * 0.14f, center = Offset(w * cxFrac, h * 0.80f))
             drawCircle(color = Color.White, radius = h * 0.06f, center = Offset(w * cxFrac, h * 0.80f))
@@ -904,107 +879,237 @@ fun PlayfulTrainEngineCanvas(
 }
 
 /**
- * رسوم مصغرة معبرة لكل درس مرسومة بالكامل بـ Canvas (بيت، باب، شمس، بوق، بطة، إلخ).
+ * رسوم فنية مجسّمة الإحساس ومتحركة لكل جزيرة درس مرسومة بالكامل بـ Compose Canvas
+ * باستخدام منحنيات ناعمة وطبقات تظليل ولمعان وحركة حية مستمرة.
  */
 @Composable
 fun LessonMiniIllustrationCanvas(
     artType: LessonArtType,
     modifier: Modifier = Modifier
 ) {
+    val infinite = rememberInfiniteTransition(label = "lesson_art_${artType.name}")
+
+    val phase by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "art_phase"
+    )
+    val sway by infinite.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "art_sway"
+    )
+    val spin by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 9000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "art_spin"
+    )
+
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
+
         when (artType) {
+            // 1) طفل مبتسم متورد الخدين بخصلة متحركة ونجوم لطيفة
             LessonArtType.DADA -> {
-                // وجه طفل مبتسم لطيف
-                drawCircle(color = Color(0xFFFFE4C4), radius = w * 0.36f, center = Offset(w * 0.5f, h * 0.54f))
-                // خصلة شعر
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFFF1E0), Color(0xFFFFDAB9), Color(0xFFF4B68A)),
+                        center = Offset(w * 0.44f, h * 0.46f),
+                        radius = w * 0.44f
+                    ),
+                    radius = w * 0.36f,
+                    center = Offset(w * 0.50f, h * 0.55f)
+                )
+                // خصلة شعر متمايلة بلطف
                 val curl = Path().apply {
-                    moveTo(w * 0.48f, h * 0.18f)
-                    cubicTo(w * 0.38f, h * 0.06f, w * 0.62f, h * 0.06f, w * 0.54f, h * 0.20f)
+                    moveTo(w * 0.47f, h * 0.21f)
+                    cubicTo(
+                        w * (0.35f + sway * 0.04f), h * 0.05f,
+                        w * (0.65f + sway * 0.04f), h * 0.06f,
+                        w * 0.54f, h * 0.21f
+                    )
                 }
-                drawPath(curl, color = Color(0xFF92400E), style = Stroke(width = w * 0.07f, cap = StrokeCap.Round))
-                // عينان وخدان
-                drawCircle(color = ReadingColors.InkDark, radius = w * 0.05f, center = Offset(w * 0.38f, h * 0.48f))
-                drawCircle(color = ReadingColors.InkDark, radius = w * 0.05f, center = Offset(w * 0.62f, h * 0.48f))
-                drawCircle(color = ReadingColors.CandyPink.copy(alpha = 0.4f), radius = w * 0.07f, center = Offset(w * 0.28f, h * 0.58f))
-                drawCircle(color = ReadingColors.CandyPink.copy(alpha = 0.4f), radius = w * 0.07f, center = Offset(w * 0.72f, h * 0.58f))
+                drawPath(curl, color = Color(0xFF78350F), style = Stroke(width = w * 0.075f, cap = StrokeCap.Round))
+
+                // عينان لامعتان وخدان ورديان
+                listOf(0.38f, 0.62f).forEach { ex ->
+                    drawCircle(color = ReadingColors.InkDark, radius = w * 0.055f, center = Offset(w * ex, h * 0.49f))
+                    drawCircle(color = Color.White, radius = w * 0.02f, center = Offset(w * (ex - 0.015f), h * 0.47f))
+                }
+                drawOval(
+                    color = ReadingColors.CandyPink.copy(alpha = 0.42f),
+                    topLeft = Offset(w * 0.21f, h * 0.55f),
+                    size = Size(w * 0.14f, h * 0.09f)
+                )
+                drawOval(
+                    color = ReadingColors.CandyPink.copy(alpha = 0.42f),
+                    topLeft = Offset(w * 0.65f, h * 0.55f),
+                    size = Size(w * 0.14f, h * 0.09f)
+                )
                 val smile = Path().apply {
-                    moveTo(w * 0.38f, h * 0.64f)
-                    quadraticBezierTo(w * 0.50f, h * 0.76f, w * 0.62f, h * 0.64f)
+                    moveTo(w * 0.37f, h * 0.64f)
+                    quadraticBezierTo(w * 0.50f, h * 0.78f, w * 0.63f, h * 0.64f)
                 }
-                drawPath(smile, color = ReadingColors.CoralOrange, style = Stroke(width = w * 0.06f, cap = StrokeCap.Round))
+                drawPath(smile, color = ReadingColors.CoralOrange, style = Stroke(width = w * 0.065f, cap = StrokeCap.Round))
             }
 
+            // 2) بيت ثلاثي الطبقات بدخان متحرك متصاعد من المدخنة ونافذة مضيئة
             LessonArtType.DAR -> {
-                // بيت لطيف دافئ
-                val roof = Path().apply {
-                    moveTo(w * 0.12f, h * 0.48f)
-                    lineTo(w * 0.50f, h * 0.14f)
-                    lineTo(w * 0.88f, h * 0.48f)
+                // مدخنة البيت ودخان متحرك متصاعد
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFB45309), Color(0xFF78350F))),
+                    topLeft = Offset(w * 0.65f, h * 0.16f),
+                    size = Size(w * 0.13f, h * 0.24f),
+                    cornerRadius = CornerRadius(w * 0.03f, w * 0.03f)
+                )
+                val smokeY1 = h * (0.14f - phase * 0.10f)
+                val smokeY2 = h * (0.10f - ((phase + 0.5f) % 1f) * 0.10f)
+                drawCircle(
+                    color = Color.White.copy(alpha = (1f - phase) * 0.85f),
+                    radius = w * (0.06f + phase * 0.04f),
+                    center = Offset(w * (0.72f + sway * 0.04f), smokeY1)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = (1f - ((phase + 0.5f) % 1f)) * 0.75f),
+                    radius = w * 0.055f,
+                    center = Offset(w * (0.76f - sway * 0.03f), smokeY2)
+                )
+
+                // جدار جانبي مظلل (الطبقة الثانية لإعطاء العمق)
+                val sideWall = Path().apply {
+                    moveTo(w * 0.72f, h * 0.45f)
+                    lineTo(w * 0.86f, h * 0.49f)
+                    lineTo(w * 0.86f, h * 0.86f)
+                    lineTo(w * 0.72f, h * 0.88f)
                     close()
                 }
-                drawPath(roof, color = ReadingColors.CoralOrange)
+                drawPath(sideWall, brush = Brush.verticalGradient(listOf(Color(0xFFFDE68A), Color(0xFFD97706))))
+
+                // الواجهة الأمامية الدافئة
                 drawRoundRect(
-                    color = Color(0xFFFFFBEB),
-                    topLeft = Offset(w * 0.20f, h * 0.46f),
-                    size = Size(w * 0.60f, h * 0.40f),
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFFEF3C7))),
+                    topLeft = Offset(w * 0.16f, h * 0.44f),
+                    size = Size(w * 0.58f, h * 0.44f),
                     cornerRadius = CornerRadius(w * 0.06f, w * 0.06f)
                 )
-                drawRoundRect(
-                    color = Color(0xFFD97706),
-                    topLeft = Offset(w * 0.42f, h * 0.60f),
-                    size = Size(w * 0.16f, h * 0.26f),
-                    cornerRadius = CornerRadius(w * 0.06f, w * 0.06f)
+
+                // السقف المنحني ذو الطبقتين
+                val roof = Path().apply {
+                    moveTo(w * 0.08f, h * 0.48f)
+                    quadraticBezierTo(w * 0.45f, h * 0.12f, w * 0.50f, h * 0.14f)
+                    quadraticBezierTo(w * 0.68f, h * 0.24f, w * 0.90f, h * 0.49f)
+                    close()
+                }
+                drawPath(
+                    roof,
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFFFF9A76), ReadingColors.CoralOrange, Color(0xFFB91C1C)),
+                        start = Offset(w * 0.1f, h * 0.15f),
+                        end = Offset(w * 0.9f, h * 0.50f)
+                    )
                 )
-                drawCircle(color = ReadingColors.SkyBlue, radius = w * 0.07f, center = Offset(w * 0.30f, h * 0.60f))
-                drawCircle(color = ReadingColors.SkyBlue, radius = w * 0.07f, center = Offset(w * 0.70f, h * 0.60f))
+
+                // باب مقوّس ونافذة متوهجة
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color(0xFFD97706), Color(0xFF92400E))),
+                    topLeft = Offset(w * 0.38f, h * 0.60f),
+                    size = Size(w * 0.17f, h * 0.28f),
+                    cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(Color(0xFFFFF7B2), Color(0xFF38BDF8))),
+                    radius = w * 0.075f,
+                    center = Offset(w * 0.27f, h * 0.61f)
+                )
             }
 
+            // 3) بيتان متجاوران (دور) بعمق لوني وشجرة صغيرة متمايلة
             LessonArtType.DOOR -> {
-                // بيتان متجاوران (دور)
-                listOf(0.08f to ReadingColors.CoralOrange, 0.50f to ReadingColors.BerryPurple).forEach { (startX, roofColor) ->
+                val houseConfigs = listOf(
+                    Triple(0.06f, Color(0xFFFF7A59), Color(0xFFB91C1C)),
+                    Triple(0.48f, Color(0xFFA78BFA), Color(0xFF5B21B6))
+                )
+                houseConfigs.forEach { (startX, topRoof, botRoof) ->
                     val r = Path().apply {
-                        moveTo(w * startX, h * 0.52f)
-                        lineTo(w * (startX + 0.21f), h * 0.24f)
-                        lineTo(w * (startX + 0.42f), h * 0.52f)
+                        moveTo(w * startX, h * 0.50f)
+                        quadraticBezierTo(w * (startX + 0.22f), h * 0.18f, w * (startX + 0.44f), h * 0.50f)
                         close()
                     }
-                    drawPath(r, color = roofColor)
+                    drawPath(r, brush = Brush.verticalGradient(listOf(topRoof, botRoof)))
                     drawRoundRect(
-                        color = Color(0xFFFFFBEB),
-                        topLeft = Offset(w * (startX + 0.05f), h * 0.50f),
-                        size = Size(w * 0.32f, h * 0.34f),
-                        cornerRadius = CornerRadius(w * 0.04f, w * 0.04f)
+                        brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFFEF3C7))),
+                        topLeft = Offset(w * (startX + 0.05f), h * 0.48f),
+                        size = Size(w * 0.34f, h * 0.36f),
+                        cornerRadius = CornerRadius(w * 0.05f, w * 0.05f)
                     )
                     drawRoundRect(
                         color = ReadingColors.SunYellow,
-                        topLeft = Offset(w * (startX + 0.15f), h * 0.62f),
-                        size = Size(w * 0.12f, h * 0.22f),
-                        cornerRadius = CornerRadius(w * 0.04f, w * 0.04f)
+                        topLeft = Offset(w * (startX + 0.16f), h * 0.61f),
+                        size = Size(w * 0.12f, h * 0.23f),
+                        cornerRadius = CornerRadius(w * 0.05f, w * 0.05f)
                     )
                 }
+                // شجرة صغيرة متمايلة بين البيتين
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(Color(0xFF86EFAC), ReadingColors.MeadowGreen)),
+                    radius = w * 0.10f,
+                    center = Offset(w * (0.48f + sway * 0.02f), h * 0.72f)
+                )
             }
 
+            // 4) باب خشبي مزخرف بمقبض ذهبي لامع متوهج
             LessonArtType.BABA -> {
-                // باب ملون مقوس
+                // إطار القوس الخارجي الذهبي
                 drawRoundRect(
-                    color = ReadingColors.SunYellow,
-                    topLeft = Offset(w * 0.22f, h * 0.14f),
-                    size = Size(w * 0.56f, h * 0.74f),
-                    cornerRadius = CornerRadius(w * 0.26f, w * 0.26f)
+                    brush = Brush.linearGradient(listOf(Color(0xFFFFF3A1), ReadingColors.SunYellow, Color(0xFFB45309))),
+                    topLeft = Offset(w * 0.18f, h * 0.10f),
+                    size = Size(w * 0.64f, h * 0.80f),
+                    cornerRadius = CornerRadius(w * 0.32f, w * 0.32f)
                 )
+                // جسم الباب الخشبي المزخرف
                 drawRoundRect(
-                    color = Color(0xFFB45309),
-                    topLeft = Offset(w * 0.29f, h * 0.21f),
-                    size = Size(w * 0.42f, h * 0.67f),
-                    cornerRadius = CornerRadius(w * 0.20f, w * 0.20f)
+                    brush = Brush.verticalGradient(listOf(Color(0xFFD97706), Color(0xFF92400E), Color(0xFF78350F))),
+                    topLeft = Offset(w * 0.25f, h * 0.17f),
+                    size = Size(w * 0.50f, h * 0.73f),
+                    cornerRadius = CornerRadius(w * 0.25f, w * 0.25f)
                 )
-                drawCircle(color = ReadingColors.SunYellow, radius = w * 0.06f, center = Offset(w * 0.60f, h * 0.58f))
+                // زخرفة قوس داخلي محفور
+                drawRoundRect(
+                    color = Color(0xFFFDE68A).copy(alpha = 0.55f),
+                    topLeft = Offset(w * 0.32f, h * 0.25f),
+                    size = Size(w * 0.36f, h * 0.54f),
+                    cornerRadius = CornerRadius(w * 0.18f, w * 0.18f),
+                    style = Stroke(width = w * 0.025f)
+                )
+                // مقبض ذهبي لامع مع وميض حي
+                val knobCenter = Offset(w * 0.62f, h * 0.58f)
+                drawCircle(
+                    color = Color(0xFFFFF3A1).copy(alpha = 0.35f + 0.25f * ((sway + 1f) * 0.5f)),
+                    radius = w * 0.105f,
+                    center = knobCenter
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(Color.White, ReadingColors.SunYellow, Color(0xFFB45309))),
+                    radius = w * 0.062f,
+                    center = knobCenter
+                )
             }
 
+            // 5) زهرة مبهجة متعددة الطبقات متمايلة برقة
             LessonArtType.MAMA -> {
-                // زهرة مبهجة مع قلب دافئ
                 val petalColors = listOf(
                     ReadingColors.CandyPink,
                     ReadingColors.CoralOrange,
@@ -1013,100 +1118,255 @@ fun LessonMiniIllustrationCanvas(
                     ReadingColors.SkyBlue,
                     ReadingColors.MeadowGreen
                 )
-                for (i in 0 until 6) {
-                    val angle = i * PI / 3.0
-                    val px = w * 0.50f + (w * 0.24f * cos(angle)).toFloat()
-                    val py = h * 0.46f + (h * 0.24f * sin(angle)).toFloat()
-                    drawCircle(color = petalColors[i], radius = w * 0.15f, center = Offset(px, py))
-                }
-                drawCircle(color = Color.White, radius = w * 0.15f, center = Offset(w * 0.50f, h * 0.46f))
-                drawCircle(color = ReadingColors.SunYellow, radius = w * 0.10f, center = Offset(w * 0.50f, h * 0.46f))
                 drawLine(
-                    color = ReadingColors.MeadowGreen,
-                    start = Offset(w * 0.50f, h * 0.68f),
-                    end = Offset(w * 0.50f, h * 0.90f),
+                    color = ReadingColors.MeadowShadow,
+                    start = Offset(w * 0.50f, h * 0.64f),
+                    end = Offset(w * 0.50f, h * 0.92f),
                     strokeWidth = w * 0.08f,
                     cap = StrokeCap.Round
                 )
+                rotate(degrees = sway * 6f, pivot = Offset(w * 0.50f, h * 0.44f)) {
+                    for (i in 0 until 6) {
+                        val angle = i * PI / 3.0
+                        val px = w * 0.50f + (w * 0.23f * cos(angle)).toFloat()
+                        val py = h * 0.44f + (h * 0.23f * sin(angle)).toFloat()
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Color.White.copy(alpha = 0.55f), petalColors[i]),
+                                center = Offset(px - w * 0.04f, py - h * 0.04f),
+                                radius = w * 0.18f
+                            ),
+                            radius = w * 0.155f,
+                            center = Offset(px, py)
+                        )
+                    }
+                    drawCircle(
+                        brush = Brush.radialGradient(listOf(Color(0xFFFFF7B2), ReadingColors.SunYellow, Color(0xFFD97706))),
+                        radius = w * 0.15f,
+                        center = Offset(w * 0.50f, h * 0.44f)
+                    )
+                }
             }
 
+            // 6) شمس/مصباح متوهج بأشعة دوّارة وهالة إشعاعية
             LessonArtType.NOOR -> {
-                // شمس مشرقة ساطعة
                 val center = Offset(w * 0.50f, h * 0.50f)
-                for (i in 0 until 8) {
-                    val angle = i * PI / 4.0
-                    val sx = center.x + (w * 0.30f * cos(angle)).toFloat()
-                    val sy = center.y + (h * 0.30f * sin(angle)).toFloat()
-                    val ex = center.x + (w * 0.44f * cos(angle)).toFloat()
-                    val ey = center.y + (h * 0.44f * sin(angle)).toFloat()
-                    drawLine(
-                        color = ReadingColors.CoralOrange,
-                        start = Offset(sx, sy),
-                        end = Offset(ex, ey),
-                        strokeWidth = w * 0.075f,
-                        cap = StrokeCap.Round
-                    )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFFF7B2).copy(alpha = 0.72f), Color(0xFFFFC83D).copy(alpha = 0.25f), Color.Transparent),
+                        center = center,
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = center
+                )
+                rotate(degrees = spin, pivot = center) {
+                    for (i in 0 until 10) {
+                        val angle = i * (2.0 * PI / 10.0)
+                        val sx = center.x + (w * 0.28f * cos(angle)).toFloat()
+                        val sy = center.y + (h * 0.28f * sin(angle)).toFloat()
+                        val ex = center.x + (w * 0.45f * cos(angle)).toFloat()
+                        val ey = center.y + (h * 0.45f * sin(angle)).toFloat()
+                        drawLine(
+                            brush = Brush.linearGradient(listOf(Color(0xFFFFF3A1), ReadingColors.CoralOrange)),
+                            start = Offset(sx, sy),
+                            end = Offset(ex, ey),
+                            strokeWidth = w * 0.07f,
+                            cap = StrokeCap.Round
+                        )
+                    }
                 }
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFFFFF3A1), ReadingColors.SunYellow, Color(0xFFF59E0B))
+                        colors = listOf(Color(0xFFFFFFFF), Color(0xFFFFF3A1), ReadingColors.SunYellow, Color(0xFFD97706)),
+                        center = Offset(center.x - w * 0.06f, center.y - h * 0.06f),
+                        radius = w * 0.30f
                     ),
                     radius = w * 0.25f,
                     center = center
                 )
             }
 
+            // 7) بوق ذهبي لامع بنوتات موسيقية عائمة ومتحركة
             LessonArtType.BOOQ -> {
-                // بوق ذهبي لامع
                 val horn = Path().apply {
-                    moveTo(w * 0.14f, h * 0.54f)
-                    lineTo(w * 0.58f, h * 0.40f)
-                    quadraticBezierTo(w * 0.78f, h * 0.30f, w * 0.84f, h * 0.18f)
-                    lineTo(w * 0.88f, h * 0.74f)
-                    quadraticBezierTo(w * 0.72f, h * 0.60f, w * 0.56f, h * 0.56f)
-                    lineTo(w * 0.14f, h * 0.62f)
+                    moveTo(w * 0.10f, h * 0.56f)
+                    cubicTo(w * 0.36f, h * 0.50f, w * 0.58f, h * 0.40f, w * 0.80f, h * 0.20f)
+                    lineTo(w * 0.88f, h * 0.76f)
+                    cubicTo(w * 0.64f, h * 0.60f, w * 0.40f, h * 0.58f, w * 0.12f, h * 0.64f)
                     close()
                 }
                 drawPath(
                     horn,
                     brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFFFFEC80), ReadingColors.SunYellow, Color(0xFFD97706))
+                        colors = listOf(Color(0xFFFFF7B2), ReadingColors.SunYellow, Color(0xFFD97706), Color(0xFF92400E)),
+                        start = Offset(w * 0.15f, h * 0.25f),
+                        end = Offset(w * 0.85f, h * 0.75f)
                     )
                 )
-                drawCircle(color = ReadingColors.CoralOrange, radius = w * 0.06f, center = Offset(w * 0.44f, h * 0.34f))
-                drawCircle(color = ReadingColors.SkyBlue, radius = w * 0.05f, center = Offset(w * 0.56f, h * 0.26f))
+                // فوهة البوق المجسّمة
+                drawOval(
+                    brush = Brush.radialGradient(listOf(Color(0xFF78350F), Color(0xFFB45309))),
+                    topLeft = Offset(w * 0.76f, h * 0.24f),
+                    size = Size(w * 0.14f, h * 0.48f)
+                )
+                // نوتتان موسيقيتان عائمتان للأعلى
+                val note1Y = h * (0.32f - phase * 0.18f)
+                val note2Y = h * (0.28f - ((phase + 0.5f) % 1f) * 0.18f)
+                val alpha1 = (1f - phase).coerceIn(0.2f, 1f)
+                val alpha2 = (1f - ((phase + 0.5f) % 1f)).coerceIn(0.2f, 1f)
+
+                drawCircle(ReadingColors.CoralOrange.copy(alpha = alpha1), w * 0.055f, Offset(w * 0.36f, note1Y))
+                drawLine(ReadingColors.CoralOrange.copy(alpha = alpha1), Offset(w * 0.41f, note1Y), Offset(w * 0.41f, note1Y - h * 0.14f), w * 0.035f, cap = StrokeCap.Round)
+
+                drawCircle(ReadingColors.SkyBlue.copy(alpha = alpha2), w * 0.05f, Offset(w * 0.54f, note2Y))
+                drawLine(ReadingColors.SkyBlue.copy(alpha = alpha2), Offset(w * 0.59f, note2Y), Offset(w * 0.59f, note2Y - h * 0.13f), w * 0.035f, cap = StrokeCap.Round)
             }
 
+            // 8) وزّة لطيفة تطفو بحركة ناعمة على أمواج منحنية
             LessonArtType.WAZ -> {
-                // بطة/وزة بيضاء جميلة تسبح على الماء
+                val bobY = sway * h * 0.035f
+                // أمواج منحنية متحركة
+                val wave1 = Path().apply {
+                    moveTo(w * 0.06f, h * 0.78f)
+                    cubicTo(w * 0.28f, h * (0.68f + sway * 0.03f), w * 0.54f, h * (0.86f - sway * 0.03f), w * 0.94f, h * 0.75f)
+                }
+                drawPath(wave1, color = Color(0xFF7DD3FC), style = Stroke(width = w * 0.085f, cap = StrokeCap.Round))
+
+                // جسم الوزة الأبيض اللامع
                 drawOval(
-                    color = ReadingColors.SkyBlue.copy(alpha = 0.45f),
-                    topLeft = Offset(w * 0.10f, h * 0.68f),
-                    size = Size(w * 0.80f, h * 0.20f)
-                )
-                // جسم البطة
-                drawOval(
-                    color = Color.White,
-                    topLeft = Offset(w * 0.20f, h * 0.46f),
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White, Color(0xFFF1F5F9), Color(0xFFCBD5E1)),
+                        center = Offset(w * 0.42f, h * 0.54f + bobY),
+                        radius = w * 0.34f
+                    ),
+                    topLeft = Offset(w * 0.18f, h * 0.45f + bobY),
                     size = Size(w * 0.54f, h * 0.32f)
                 )
-                // رقبة ورأس البطة
-                drawCircle(color = Color.White, radius = w * 0.16f, center = Offset(w * 0.66f, h * 0.36f))
-                // المنقار البرتقالي
+                // عنق ورأس الوزة
+                val neck = Path().apply {
+                    moveTo(w * 0.56f, h * 0.52f + bobY)
+                    quadraticBezierTo(w * 0.64f, h * 0.40f + bobY, w * 0.66f, h * 0.34f + bobY)
+                }
+                drawPath(neck, color = Color.White, style = Stroke(width = w * 0.15f, cap = StrokeCap.Round))
+                drawCircle(color = Color.White, radius = w * 0.145f, center = Offset(w * 0.66f, h * 0.33f + bobY))
                 val beak = Path().apply {
-                    moveTo(w * 0.78f, h * 0.34f)
-                    lineTo(w * 0.94f, h * 0.40f)
-                    lineTo(w * 0.78f, h * 0.44f)
+                    moveTo(w * 0.77f, h * 0.30f + bobY)
+                    lineTo(w * 0.94f, h * 0.37f + bobY)
+                    lineTo(w * 0.77f, h * 0.41f + bobY)
                     close()
                 }
-                drawPath(beak, color = ReadingColors.CoralOrange)
-                drawCircle(color = ReadingColors.InkDark, radius = w * 0.04f, center = Offset(w * 0.70f, h * 0.33f))
-                // جناح صغير
+                drawPath(beak, brush = Brush.linearGradient(listOf(ReadingColors.SunYellow, ReadingColors.CoralOrange)))
+                drawCircle(ReadingColors.InkDark, w * 0.036f, Offset(w * 0.70f, h * 0.30f + bobY))
                 val wing = Path().apply {
-                    moveTo(w * 0.32f, h * 0.56f)
-                    quadraticBezierTo(w * 0.48f, h * 0.72f, w * 0.60f, h * 0.58f)
+                    moveTo(w * 0.30f, h * 0.56f + bobY)
+                    cubicTo(w * 0.42f, h * 0.70f + bobY, w * 0.54f, h * 0.68f + bobY, w * 0.60f, h * 0.57f + bobY)
                 }
-                drawPath(wing, color = Color(0xFFCBD5E1), style = Stroke(width = w * 0.055f, cap = StrokeCap.Round))
+                drawPath(wing, color = Color(0xFF94A3B8).copy(alpha = 0.7f), style = Stroke(width = w * 0.05f, cap = StrokeCap.Round))
+            }
+
+            // 9) كتاب مفتوح تتطاير منه نجوم ذهبية لامعة
+            LessonArtType.OPEN_BOOK_STARS -> {
+                val leftPage = Path().apply {
+                    moveTo(w * 0.50f, h * 0.50f)
+                    cubicTo(w * 0.36f, h * 0.42f, w * 0.18f, h * 0.44f, w * 0.10f, h * 0.52f)
+                    lineTo(w * 0.14f, h * 0.84f)
+                    cubicTo(w * 0.26f, h * 0.76f, w * 0.40f, h * 0.78f, w * 0.50f, h * 0.86f)
+                    close()
+                }
+                val rightPage = Path().apply {
+                    moveTo(w * 0.50f, h * 0.50f)
+                    cubicTo(w * 0.64f, h * 0.42f, w * 0.82f, h * 0.44f, w * 0.90f, h * 0.52f)
+                    lineTo(w * 0.86f, h * 0.84f)
+                    cubicTo(w * 0.74f, h * 0.76f, w * 0.60f, h * 0.78f, w * 0.50f, h * 0.86f)
+                    close()
+                }
+                drawPath(leftPage, brush = Brush.linearGradient(listOf(Color.White, Color(0xFFFEF3C7))))
+                drawPath(rightPage, brush = Brush.linearGradient(listOf(Color(0xFFFFFBEB), Color(0xFFFDE68A))))
+                drawPath(leftPage, color = ReadingColors.SunShadow, style = Stroke(width = w * 0.032f, join = StrokeJoin.Round))
+                drawPath(rightPage, color = ReadingColors.SunShadow, style = Stroke(width = w * 0.032f, join = StrokeJoin.Round))
+
+                // ثلاث نجوم تتطاير للأعلى من صفحات الكتاب
+                val s1Y = h * (0.40f - phase * 0.24f)
+                val s2Y = h * (0.36f - ((phase + 0.35f) % 1f) * 0.22f)
+                val s3Y = h * (0.42f - ((phase + 0.7f) % 1f) * 0.22f)
+                drawCurvedStar(Offset(w * 0.34f, s1Y), w * 0.09f, w * 0.045f, filled = true)
+                drawCurvedStar(Offset(w * 0.52f, s2Y), w * 0.11f, w * 0.055f, filled = true)
+                drawCurvedStar(Offset(w * 0.70f, s3Y), w * 0.08f, w * 0.04f, filled = true)
+            }
+
+            // 10) ريشة قلم مضيئة ترسم خطاً متوهجاً
+            LessonArtType.GLOWING_QUILL -> {
+                // خط كتابة مضيء أسفل الريشة
+                val inkSwirl = Path().apply {
+                    moveTo(w * 0.16f, h * 0.82f)
+                    cubicTo(w * 0.34f, h * 0.70f, w * 0.56f, h * 0.90f, w * 0.82f, h * 0.78f)
+                }
+                drawPath(
+                    inkSwirl,
+                    brush = Brush.horizontalGradient(listOf(Color(0xFFFFF3A1), ReadingColors.SunYellow, ReadingColors.CoralOrange)),
+                    style = Stroke(width = w * 0.075f, cap = StrokeCap.Round)
+                )
+                rotate(degrees = sway * 7f, pivot = Offset(w * 0.32f, h * 0.74f)) {
+                    val feather = Path().apply {
+                        moveTo(w * 0.30f, h * 0.74f)
+                        cubicTo(w * 0.34f, h * 0.32f, w * 0.60f, h * 0.10f, w * 0.86f, h * 0.14f)
+                        cubicTo(w * 0.84f, h * 0.44f, w * 0.58f, h * 0.64f, w * 0.30f, h * 0.74f)
+                        close()
+                    }
+                    drawPath(
+                        feather,
+                        brush = Brush.linearGradient(
+                            colors = listOf(Color(0xFFFFF3A1), Color(0xFF38BDF8), ReadingColors.BerryPurple),
+                            start = Offset(w * 0.85f, h * 0.12f),
+                            end = Offset(w * 0.28f, h * 0.74f)
+                        )
+                    )
+                    // عمود الريشة المضيء
+                    drawLine(
+                        color = Color.White,
+                        start = Offset(w * 0.28f, h * 0.76f),
+                        end = Offset(w * 0.78f, h * 0.22f),
+                        strokeWidth = w * 0.045f,
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+
+            // 11) منظار استكشاف ذهبي وأزرق مع عدسة لامعة ونجوم متلألئة
+            LessonArtType.TELESCOPE -> {
+                rotate(degrees = -26f + sway * 4f, pivot = Offset(w * 0.50f, h * 0.54f)) {
+                    // الأنبوب الخلفي
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(listOf(Color(0xFFFFF3A1), ReadingColors.SunYellow, Color(0xFFB45309))),
+                        topLeft = Offset(w * 0.12f, h * 0.44f),
+                        size = Size(w * 0.30f, h * 0.18f),
+                        cornerRadius = CornerRadius(w * 0.06f, w * 0.06f)
+                    )
+                    // الأنبوب الأوسط الملكي
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(listOf(Color(0xFF60A5FA), Color(0xFF2563EB), Color(0xFF1E3A8A))),
+                        topLeft = Offset(w * 0.36f, h * 0.40f),
+                        size = Size(w * 0.30f, h * 0.26f),
+                        cornerRadius = CornerRadius(w * 0.06f, w * 0.06f)
+                    )
+                    // الأنبوب الأمامي الذهبي الواسع
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(listOf(Color(0xFFFFF3A1), ReadingColors.SunYellow, Color(0xFFD97706))),
+                        topLeft = Offset(w * 0.62f, h * 0.35f),
+                        size = Size(w * 0.24f, h * 0.36f),
+                        cornerRadius = CornerRadius(w * 0.07f, w * 0.07f)
+                    )
+                    // العدسة الأمامية المتلألئة
+                    drawOval(
+                        brush = Brush.radialGradient(listOf(Color.White, Color(0xFFBAE6FD), Color(0xFF0284C7))),
+                        topLeft = Offset(w * 0.80f, h * 0.37f),
+                        size = Size(w * 0.11f, h * 0.32f)
+                    )
+                }
+                // نجوم استكشاف صغيرة متلألئة
+                drawCurvedStar(Offset(w * 0.80f, h * 0.20f), w * (0.08f + 0.02f * sway), w * 0.04f, filled = true)
+                drawCircle(Color.White.copy(alpha = 0.85f), w * 0.035f, Offset(w * 0.22f, h * 0.24f))
             }
         }
     }
@@ -1147,7 +1407,6 @@ fun KidsCelebrationCanvas(
         val w = size.width
         val h = size.height
 
-        // بالونات صغيرة متصاعدة للأعلى
         for (i in 0 until 7) {
             val baseX = w * (0.12f + i * 0.125f)
             val sway = sin((progress * 2f * PI + i).toDouble()).toFloat() * 18f
@@ -1174,7 +1433,6 @@ fun KidsCelebrationCanvas(
             )
         }
 
-        // شرارات ونجوم ذهبية متناثرة
         for (j in 0 until 14) {
             val angle = (j * 2.0 * PI / 14.0) + progress * 1.8
             val dist = (0.15f + (progress * 0.72f + j * 0.07f) % 0.65f) * size.minDimension * 0.55f
