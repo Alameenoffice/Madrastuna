@@ -1,18 +1,23 @@
-name: Generate Reading Audio (Fusha Child Voice)
+name: Generate Reading Audio (Clean Teacher Voice)
 
 on:
   workflow_dispatch:
     inputs:
-      pitch:
-        description: 'نبرة الصوت الطفولية (مثلاً +22Hz أو +26Hz لصوت أصغر)'
-        required: true
-        default: '+22Hz'
+      voice:
+        description: 'اختر صوت آنسة الصف'
+        type: choice
+        default: 'ar-SA-ZariyahNeural'
+        options:
+          - 'ar-SA-ZariyahNeural'
+          - 'ar-JO-SanaNeural'
+          - 'ar-EG-SalmaNeural'
+          - 'ar-IQ-RanaNeural'
       rate:
-        description: 'سرعة القراءة (مثلاً -8% واضحة جداً للأطفال)'
+        description: 'سرعة القراءة (-8% واضحة وهادئة جداً للصف الأول)'
         required: true
         default: '-8%'
       force_regenerate:
-        description: 'إعادة توليد كل الأصوات من الصفر (فعّلها فقط إذا غيّرت النبرة لاحقاً)'
+        description: 'إعادة توليد كل الأصوات من الصفر'
         type: boolean
         default: false
 
@@ -35,10 +40,10 @@ jobs:
       - name: Install edge-tts
         run: pip install --upgrade edge-tts
 
-      - name: Extract Arabic texts and generate MP3 voice pack
+      - name: Extract Arabic texts and generate clean Teacher MP3 pack
         env:
-          TTS_VOICE: 'ar-SA-ZariyahNeural'
-          TTS_PITCH: ${{ github.event.inputs.pitch || '+22Hz' }}
+          TTS_VOICE: ${{ github.event.inputs.voice || 'ar-SA-ZariyahNeural' }}
+          TTS_PITCH: '+0Hz'
           TTS_RATE: ${{ github.event.inputs.rate || '-8%' }}
           FORCE_REGEN: ${{ github.event.inputs.force_regenerate || 'false' }}
         run: |
@@ -47,6 +52,7 @@ jobs:
           import hashlib
           import os
           import re
+          import shutil
           from pathlib import Path
           import edge_tts
 
@@ -54,54 +60,154 @@ jobs:
           PITCH = os.environ["TTS_PITCH"]
           RATE = os.environ["TTS_RATE"]
           FORCE = os.environ["FORCE_REGEN"].lower() == "true"
+          ENGINE_VER = "v3-clean-madd-and-letters"
 
           main_dir = Path("app/src/main")
           if not main_dir.exists():
               manifests = list(Path(".").rglob("AndroidManifest.xml"))
-              if manifests:
-                  main_dir = manifests[0].parent
-              else:
-                  main_dir = Path("app/src/main")
+              main_dir = manifests[0].parent if manifests else Path("app/src/main")
 
           out_dir = main_dir / "assets" / "reading_audio"
           out_dir.mkdir(parents=True, exist_ok=True)
-          print(f"Output directory: {out_dir}")
+          custom_dir = Path("custom_reading_audio")
 
-          kt_files = []
-          for p in Path(".").rglob("*.kt"):
-              parts = [part.lower() for part in p.parts]
-              if "reading" in parts or "qiraati" in parts:
-                  kt_files.append(p)
+          # كشف أي تغيير في الصوت أو إصدار التنظيف لإعادة توليد كل الأصوات القديمة بنظافة
+          sig_file = out_dir / ".voice_signature"
+          current_sig = f"{ENGINE_VER}|{VOICE}|{PITCH}|{RATE}"
+          if not sig_file.exists() or sig_file.read_text(encoding="utf-8").strip() != current_sig:
+              print(f"Voice engine updated ({current_sig}) -> regenerating all MP3 files.")
+              FORCE = True
 
+          # أسماء الحروف المنفردة العارية لمنع هلوسة المحرك (مثل د -> ا، ق -> خي)
+          LETTER_NAMES = {
+              "ا": "أَلِف", "أ": "أَلِف", "إ": "أَلِف", "آ": "أَلِف مَدّ", "ى": "أَلِف مَقْصُورَة",
+              "ب": "بَاء", "ت": "تَاء", "ة": "تَاءٌ مَرْبُوطَة", "ث": "ثَاء",
+              "ج": "جِيم", "ح": "حَاء", "خ": "خَاء",
+              "د": "دَال", "ذ": "ذَال", "ر": "رَاء", "ز": "زَاي",
+              "س": "سِين", "ش": "شِين", "ص": "صَاد", "ض": "ضَاد",
+              "ط": "طَاء", "ظ": "ظَاء", "ع": "عَيْن", "غ": "غَيْن",
+              "ف": "فَاء", "ق": "قَاف", "ك": "كَاف", "ل": "لَام",
+              "م": "مِيم", "ن": "نُون", "ه": "هَاء", "و": "وَاو", "ي": "يَاء",
+              "لا": "لَام أَلِف",
+          }
+
+          # تصحيحات صوتية مخصّصة لأي كلمة أو مقطع يحتاج ضبطاً إضافياً (يمكنك الإضافة إليها لاحقاً)
+          PHONETIC_OVERRIDES = {
+              "بوق": "بُوقٌ",
+              "بُوْقُ": "بُوقٌ",
+              "بُوقُ": "بُوقٌ",
+              "دور": "دُورٌ",
+              "دُوْرُ": "دُورٌ",
+              "دار": "دَارٌ",
+              "دَارُ": "دَارٌ",
+              "نور": "نُورٌ",
+              "نُوْرُ": "نُورٌ",
+              "وز": "وَزٌّ",
+              "قُوْ": "قُو",
+              "قِيْ": "قِي",
+              "مِيْ": "مِي",
+              "بُوْ": "بُو",
+              "بِيْ": "بِي",
+              "رُوْ": "رُو",
+              "رِيْ": "رِي",
+              "دُوْ": "دُو",
+              "دِيْ": "دِي",
+              "نُوْ": "نُو",
+              "نِيْ": "نِي",
+              "سُوْ": "سُو",
+              "سِيْ": "سِي",
+              "تُوْ": "تُو",
+              "تِيْ": "تِي",
+              "فُوْ": "فُو",
+              "فِيْ": "فِي",
+              "لُوْ": "لُو",
+              "لِيْ": "لِي",
+              "طُوْ": "طُو",
+              "طِيْ": "طِي",
+              "عُوْ": "عُو",
+              "عِيْ": "عِي",
+              "حُوْ": "حُو",
+              "حِيْ": "حِي",
+              "شُوْ": "شُو",
+              "شِيْ": "شِي",
+              "زُوْ": "زُو",
+              "زِيْ": "زِي",
+              "وُوْ": "وُو",
+              "وِيْ": "وِي",
+              "يُوْ": "يُو",
+              "يِيْ": "يِي",
+          }
+
+          kt_files = [
+              p for p in Path(".").rglob("*.kt")
+              if any(part.lower() in ("reading", "qiraati") for part in p.parts)
+          ]
           print(f"Found {len(kt_files)} Kotlin files in reading/qiraati.")
 
           texts = {
-              "أحسنت يا بطل!",
-              "ممتاز، أنت رائع!",
-              "يا لك من قارئ ذكي!",
-              "بطل حقيقي!",
-              "حاول مرة أخرى يا بطل!",
-              "أنت قريب، جرّب مجدداً!",
+              "ممتاز يا بطل!", "ممتاز يا بطل",
+              "أحسنت يا بطل!", "أحسنت يا بطل",
+              "ممتاز، أنت رائع!", "رائع جداً!",
+              "أنت بطل القراءة!", "يا لك من قارئ ذكي!", "بطل حقيقي!",
+              "حاول مرة أخرى يا بطل!", "أنت قريب، جرّب مجدداً!",
+              "ركّب كلمة", "ركب كلمة", "أركب كلمة",
+              "استمع إلى الكلمة", "استمع إلى صوت حرف",
+              "اختر الحرف الصحيح", "اختر المقطع الصحيح",
           }
 
           arabic_re = re.compile(r"[\u0600-\u06FF]")
           string_literal_re = re.compile(r'"((?:[^"\\]|\\.)*)"')
           char_literal_re = re.compile(r"'([\u0600-\u06FF])'")
+          punct_split_re = re.compile(r"[،,:!.؟|•\n]+")
 
           def normalize_key(text: str) -> str:
               return re.sub(r"\s+", " ", text.strip())
 
-          def clean_for_speech(text: str) -> str:
-              spoken = text.replace("\u0640", "")
-              spoken = re.sub(r"\.{2,}", " ", spoken)
-              spoken = spoken.replace("•", "، ")
-              spoken = spoken.replace("|", "، ")
-              spoken = re.sub(r"\s+", " ", spoken).strip()
-              return spoken
-
           def md5_filename(normalized_text: str) -> str:
               digest = hashlib.md5(normalized_text.encode("utf-8")).hexdigest()[:12]
               return f"{digest}.mp3"
+
+          def clean_for_speech(text: str) -> str:
+              # 1. إزالة التطويل (ـ) والنقاط المتكررة
+              spoken = text.replace("\u0640", "")
+              spoken = re.sub(r"\.{2,}", " ", spoken)
+              spoken = spoken.replace("•", "، ").replace("|", "، ")
+              spoken = re.sub(r"\s+", " ", spoken).strip()
+
+              # 2. التحقق من قاموس التصحيحات المخصصة أولاً
+              if text in PHONETIC_OVERRIDES:
+                  return PHONETIC_OVERRIDES[text]
+              if spoken in PHONETIC_OVERRIDES:
+                  return PHONETIC_OVERRIDES[spoken]
+
+              # 3. إذا كان حرفاً واحداً عارياً بدون تشكيل -> نطق اسمه الفصيح الواضح
+              if spoken in LETTER_NAMES:
+                  return LETTER_NAMES[spoken]
+
+              # 4. إزالة السكون من حروف المد العراقي (ُوْ -> ُو ، ِيْ -> ِي ، اْ -> ا)
+              #    مع الإبقاء على سكون اللين بعد الفتحة (مَوْز، بَيْض، قَوْس) كما هو
+              spoken = re.sub(r"\u064F\u0648\u0652", "\u064F\u0648", spoken)
+              spoken = re.sub(r"\u0650\u064A\u0652", "\u0650\u064A", spoken)
+              spoken = re.sub(r"\u0627\u0652", "\u0627", spoken)
+
+              # 5. معالجة التاء المربوطة والحروف المنفصلة بين فواصل مثل "ق ، قـ ، ـقـ"
+              if "،" in spoken:
+                  parts = [p.strip() for p in spoken.split("،") if p.strip()]
+                  if parts and all(p in LETTER_NAMES for p in parts):
+                      # إذا كانت مجرد أشكال لنفس الحرف مثل (س ، سـ) نكتفي باسم الحرف مرة واحدة
+                      unique_names = list(dict.fromkeys(LETTER_NAMES[p] for p in parts))
+                      return "، ".join(unique_names)
+
+              return spoken
+
+          def add_text_and_parts(raw_text: str):
+              norm = normalize_key(raw_text)
+              if 1 <= len(norm) <= 300 and arabic_re.search(norm):
+                  texts.add(norm)
+                  for seg in punct_split_re.split(norm):
+                      s_norm = normalize_key(seg)
+                      if 1 <= len(s_norm) <= 200 and arabic_re.search(s_norm):
+                          texts.add(s_norm)
 
           for kt_file in kt_files:
               content = kt_file.read_text(encoding="utf-8", errors="ignore")
@@ -110,26 +216,40 @@ jobs:
 
               for match in string_literal_re.finditer(content):
                   raw = match.group(1)
-                  if "$" in raw or "\\n" in raw:
-                      continue
-                  raw = raw.replace('\\"', '"').replace("\\'", "'")
+                  raw = raw.replace('\\"', '"').replace("\\'", "'").replace("\\n", "\n")
                   if not arabic_re.search(raw):
                       continue
-                  norm = normalize_key(raw)
-                  if 1 <= len(norm) <= 280:
-                      texts.add(norm)
+                  if "$" in raw:
+                      cleaned = re.sub(r"\$\{[^}]+\}|\$[A-Za-z_][A-Za-z0-9_]*", "\n", raw)
+                      for part in cleaned.split("\n"):
+                          add_text_and_parts(part)
+                  else:
+                      add_text_and_parts(raw)
 
               for match in char_literal_re.finditer(content):
                   texts.add(normalize_key(match.group(1)))
 
           print(f"Total unique Arabic items extracted: {len(texts)}")
 
+          # كتابة فهرس مقروء يربط كل ملف MP3 بالنص العربي لتسهيل أي تعديل بشري مستقبلاً
+          index_lines = []
+          for t in sorted(texts):
+              index_lines.append(f"{md5_filename(t)} | {t}  -->  {clean_for_speech(t)}")
+          Path("reading_audio_index.txt").write_text("\n".join(index_lines), encoding="utf-8")
+
           sem = asyncio.Semaphore(4)
-          stats = {"created": 0, "skipped": 0, "failed": 0}
+          stats = {"created": 0, "custom": 0, "skipped": 0, "failed": 0}
 
           async def generate_one(norm_text: str):
               fname = md5_filename(norm_text)
               target = out_dir / fname
+
+              # الأولوية المطلقة للتسجيلات البشرية إن وُجدت في مجلد custom_reading_audio/
+              custom_file = custom_dir / fname
+              if custom_file.exists() and custom_file.stat().st_size > 100:
+                  shutil.copy2(custom_file, target)
+                  stats["custom"] += 1
+                  return
 
               if target.exists() and target.stat().st_size > 200 and not FORCE:
                   stats["skipped"] += 1
@@ -165,7 +285,8 @@ jobs:
               await asyncio.gather(*tasks)
 
           asyncio.run(main())
-          print(f"Done! Created: {stats['created']}, Skipped: {stats['skipped']}, Failed: {stats['failed']}")
+          sig_file.write_text(current_sig, encoding="utf-8")
+          print(f"Done! Created: {stats['created']}, Custom: {stats['custom']}, Skipped: {stats['skipped']}, Failed: {stats['failed']}")
           EOF
 
       - name: Commit and push generated audio files
@@ -174,8 +295,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           if git diff --staged --quiet; then
-            echo "No new audio files to commit."
+            echo "No audio changes to commit."
           else
-            git commit -m "Add generated child-friendly Arabic MP3 voice pack for Reading Oasis"
+            git commit -m "Fix Arabic vowel sukun and isolated letters in Teacher MP3 voice pack"
             git push
           fi
