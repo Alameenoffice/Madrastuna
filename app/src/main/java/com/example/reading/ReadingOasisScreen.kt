@@ -41,11 +41,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.reading.qiraati.NewQiraatiNavHost
+
+private sealed interface OasisViewMode {
+    data object Map : OasisViewMode
+    data object NewQiraatiBook : OasisViewMode
+    data class Lesson(val lesson: ReadingLesson) : OasisViewMode
+}
 
 /**
  * الشاشة الرئيسية المنسّقة لقسم "واحة القراءة الذكية":
  * تقرأ صف الطالب المسجل من قاعدة البيانات لتحديد المستوى القرائي الأنسب تلقائياً،
- * وتتيح التبديل بين المستويات الثلاثة مع دعم كامل لزر الرجوع وتنظيف محرك الصوت.
+ * وتتيح الدخول لكتاب قراءتي الجديدة والتبديل بين المستويات الثلاثة مع دعم كامل لزر الرجوع وتنظيف محرك الصوت.
  */
 @Composable
 fun ReadingOasisScreen(
@@ -68,7 +75,7 @@ fun ReadingOasisScreen(
     }
 
     var activeLevel by remember(defaultStudentLevel) { mutableStateOf(defaultStudentLevel) }
-    var activeLesson by remember { mutableStateOf<ReadingLesson?>(null) }
+    var viewMode by remember { mutableStateOf<OasisViewMode>(OasisViewMode.Map) }
 
     val engine = remember(effectiveSchoolCode, effectiveStudentId, effectiveStudentName) {
         ReadingAudioAndProgressEngine(
@@ -88,11 +95,11 @@ fun ReadingOasisScreen(
     val progress by engine.progress.collectAsState()
     val isSpeaking by engine.isSpeaking.collectAsState()
 
-    BackHandler {
-        if (activeLesson != null) {
-            activeLesson = null
-        } else {
-            onClose()
+    BackHandler(enabled = viewMode !is OasisViewMode.NewQiraatiBook) {
+        when (viewMode) {
+            is OasisViewMode.Lesson -> viewMode = OasisViewMode.Map
+            OasisViewMode.Map -> onClose()
+            OasisViewMode.NewQiraatiBook -> viewMode = OasisViewMode.Map
         }
     }
 
@@ -104,12 +111,12 @@ fun ReadingOasisScreen(
                     .background(ReadingColors.SkyBackground)
             ) {
                 AnimatedContent(
-                    targetState = activeLesson,
+                    targetState = viewMode,
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
                     label = "reading_oasis_nav"
-                ) { currentLesson ->
-                    if (currentLesson == null) {
-                        ReadingMapScreen(
+                ) { currentMode ->
+                    when (currentMode) {
+                        OasisViewMode.Map -> ReadingMapScreen(
                             studentName = effectiveStudentName,
                             studentGradeLabel = studentGradeLabel,
                             activeLevel = activeLevel,
@@ -123,7 +130,7 @@ fun ReadingOasisScreen(
                             },
                             onSelectLesson = { chosen ->
                                 engine.playTapPop()
-                                activeLesson = chosen
+                                viewMode = OasisViewMode.Lesson(chosen)
                                 engine.speak("درس ${chosen.title}، ${chosen.letterNameSpoken}")
                             },
                             onGreetTap = {
@@ -135,15 +142,28 @@ fun ReadingOasisScreen(
                             onBack = {
                                 engine.playTapPop()
                                 onClose()
+                            },
+                            onOpenNewQiraati = {
+                                engine.playTapPop()
+                                engine.speak("أهلاً بك في كتاب قراءتي الجديدة للصف الأول الابتدائي")
+                                viewMode = OasisViewMode.NewQiraatiBook
                             }
                         )
-                    } else {
-                        ReadingLessonScreen(
-                            lesson = currentLesson,
+
+                        OasisViewMode.NewQiraatiBook -> NewQiraatiNavHost(
+                            studentName = effectiveStudentName,
                             progress = progress,
                             isSpeaking = isSpeaking,
                             engine = engine,
-                            onBackToMap = { activeLesson = null }
+                            onBackToOasis = { viewMode = OasisViewMode.Map }
+                        )
+
+                        is OasisViewMode.Lesson -> ReadingLessonScreen(
+                            lesson = currentMode.lesson,
+                            progress = progress,
+                            isSpeaking = isSpeaking,
+                            engine = engine,
+                            onBackToMap = { viewMode = OasisViewMode.Map }
                         )
                     }
                 }

@@ -54,6 +54,8 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import com.example.reading.qiraati.QiraatiBookIconCanvas
+import com.example.reading.qiraati.ReadingBlueBirdCanvas
 
 /**
  * الشاشة الرئيسية لخريطة مغامرة الحروف في واحة القراءة الذكية
@@ -70,7 +72,8 @@ fun ReadingMapScreen(
     onSelectLevel: (ReadingLevel) -> Unit,
     onSelectLesson: (ReadingLesson) -> Unit,
     onGreetTap: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenNewQiraati: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val lessons = ReadingCurriculum.lessonsForLevel(activeLevel)
@@ -103,7 +106,15 @@ fun ReadingMapScreen(
             onBack = onBack
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // بطاقة الدخول المبهجة لكتاب "قراءتي الجديدة — الصف الأول الابتدائي"
+        NewQiraatiMapEntryBanner(
+            isGradeOnePriority = defaultStudentLevel == ReadingLevel.LEVEL_1,
+            onOpenNewQiraati = onOpenNewQiraati
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         // شريط التبديل الأنيق بين المستويات الثلاثة (الأول/الثاني — الثالث/الرابع — الخامس/السادس)
         ReadingLevelSwitcherBar(
@@ -153,6 +164,128 @@ fun ReadingMapScreen(
         )
 
         Spacer(modifier = Modifier.height(34.dp))
+    }
+}
+
+@Composable
+private fun NewQiraatiMapEntryBanner(
+    isGradeOnePriority: Boolean,
+    onOpenNewQiraati: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(26.dp),
+        color = Color.Transparent,
+        shadowElevation = if (isGradeOnePriority) 9.dp else 6.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .border(
+                width = if (isGradeOnePriority) 3.dp else 2.dp,
+                color = ReadingColors.SunYellow,
+                shape = RoundedCornerShape(26.dp)
+            )
+            .testTag("reading_map_new_qiraati_entry_card")
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFFFF7A59),
+                            Color(0xFFF59E0B),
+                            Color(0xFF0EA5E9)
+                        )
+                    )
+                )
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    QiraatiBookIconCanvas(modifier = Modifier.size(66.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = ReadingColors.SunYellow
+                            ) {
+                                Text(
+                                    text = if (isGradeOnePriority) "موصى به لصفك" else "متاح للمعلم وولي الأمر",
+                                    fontFamily = ReadingTajawalFont,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.sp,
+                                    color = ReadingColors.InkDark,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "كتاب قراءتي الجديدة • الصف الأول الابتدائي",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.5.sp,
+                            lineHeight = 23.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "وحدات الكتاب الرسمي بألعاب البازل والتحليل والمحادثة",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.5.sp,
+                            lineHeight = 18.sp,
+                            color = Color.White.copy(alpha = 0.95f)
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    ReadingBlueBirdCanvas(
+                        bannerText = "أقرأ",
+                        modifier = Modifier.height(52.dp)
+                    )
+
+                    PlayfulBouncyButton(
+                        onClick = onOpenNewQiraati,
+                        backgroundColor = Color.White,
+                        shadowColor = Color(0xFFCBD5E1),
+                        cornerRadius = 18.dp,
+                        lipDepth = 4.dp,
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                        testTagValue = "reading_map_open_new_qiraati_btn"
+                    ) {
+                        Text(
+                            text = "افتح الكتاب",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            color = Color(0xFFD14B2B),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
