@@ -26,17 +26,59 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+
+data class ReadingHeroRankInfo(
+    val level: Int,
+    val title: String,
+    val minStars: Int,
+    val nextLevelStars: Int?
+)
+
+data class ReadingLeaderboardEntry(
+    val rank: Int,
+    val studentId: String,
+    val studentName: String,
+    val grade: String,
+    val totalStars: Int,
+    val completedLessons: Int,
+    val avatarId: String,
+    val level: Int,
+    val heroTitle: String,
+    val nextLevelStars: Int?,
+    val lastUpdated: Long
+)
+
+sealed interface LeaderboardFetchResult {
+    data class Success(val entries: List<ReadingLeaderboardEntry>) : LeaderboardFetchResult
+    data class Error(val message: String) : LeaderboardFetchResult
+}
+
+/**
+ * حساب اللقب والمستوى التلقائي للطالب في واحة القراءة الذكية حسب مجموع نجماته.
+ */
+fun resolveReadingHeroTitle(totalStars: Int): ReadingHeroRankInfo = when {
+    totalStars <= 5 -> ReadingHeroRankInfo(level = 1, title = "مستكشف الحروف", minStars = 0, nextLevelStars = 6)
+    totalStars <= 15 -> ReadingHeroRankInfo(level = 2, title = "نجم المقاطع", minStars = 6, nextLevelStars = 16)
+    totalStars <= 30 -> ReadingHeroRankInfo(level = 3, title = "بطل الكلمات", minStars = 16, nextLevelStars = 31)
+    totalStars <= 50 -> ReadingHeroRankInfo(level = 4, title = "فارس القراءة", minStars = 31, nextLevelStars = 51)
+    else -> ReadingHeroRankInfo(level = 5, title = "أسطورة الواحة", minStars = 51, nextLevelStars = null)
+}
 
 data class ReadingProgressState(
     val lessonStars: Map<String, Int> = emptyMap(),
     val completedPillars: Map<String, Set<String>> = emptyMap(),
     val bonusStars: Int = 0,
+    val avatarId: String = ReadingAvatarCatalog.DEFAULT_AVATAR_ID,
     val updatedAt: Long = 0L
 ) {
     val totalStars: Int
         get() = lessonStars.values.sum() + bonusStars
+
+    val completedLessonsCount: Int
+        get() = lessonStars.count { it.value > 0 }
 
     fun starsForLesson(lessonId: String): Int = (lessonStars[lessonId] ?: 0).coerceIn(0, 3)
 }
@@ -52,7 +94,8 @@ class ReadingAudioAndProgressEngine(
     context: Context,
     private val schoolCode: String,
     private val studentId: String,
-    private val studentName: String
+    private val studentName: String,
+    private val studentGrade: String = ""
 ) {
     private val appContext = context.applicationContext
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -405,12 +448,46 @@ class ReadingAudioAndProgressEngine(
             lessonStars = updatedLessonStars,
             completedPillars = updatedPillarsMap,
             bonusStars = nextBonus,
+            avatarId = current.avatarId,
             updatedAt = System.currentTimeMillis()
         )
         _progress.value = updated
         saveLocalProgress(appContext, schoolCode, studentId, updated)
         syncToCloudInBackground(updated)
     }
+
+    /**
+     * تحديث الشخصية الرمزية الخاصة بواحة القراءة محلياً ومزامنتها سحابياً فوراً
+     * داخل عقدة reading_progress المعزولة دون المساس بملف الطالب الرسمي.
+     */
+    fun saveAndSyncAvatar(
+        schoolCode: String = this.schoolCode,
+        studentId: String = this.studentId,
+        studentName: String = this.studentName,
+        grade: String = this.studentGrade,
+        avatarId: String
+    ) {
+        val validAvatar = ReadingAvatarCatalog.byId(avatarId).id
+        val current = _progress.value
+        val updated = current.copy(
+            avatarId = validAvatar,
+            updatedAt = System.currentTimeMillis()
+        )
+        _progress.value = updated
+        saveLocalProgress(appContext, schoolCode, studentId, updated)
+        engineScope.launch(Dispatchers.IO) {
+            pushProgressToCloudBlocking(
+                state = updated,
+                schoolCode = schoolCode,
+                studentId = studentId,
+                studentName = studentName,
+                studentGrade = grade
+            )
+        }
+    }
+
+    suspend fun fetchGradeLeaderboard(targetGrade: String): LeaderboardFetchResult =
+        Companion.fetchGradeLeaderboard(schoolCode = schoolCode, targetGrade = targetGrade)
 
     private fun syncFromCloudInBackground() {
         engineScope.launch(Dispatchers.IO) {
@@ -440,26 +517,13 @@ class ReadingAudioAndProgressEngine(
 
     private fun syncToCloudInBackground(state: ReadingProgressState) {
         engineScope.launch(Dispatchers.IO) {
-            val endpoint = buildSyncUrl(schoolCode, studentId) ?: return@launch
-            runCatching {
-                val payload = serializeProgressJson(state, schoolCode, studentId, studentName)
-                val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "PUT"
-                    connectTimeout = 5000
-                    readTimeout = 5000
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                }
-                try {
-                    OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
-                        writer.write(payload)
-                        writer.flush()
-                    }
-                    conn.responseCode
-                } finally {
-                    conn.disconnect()
-                }
-            }
+            pushProgressToCloudBlocking(
+                state = state,
+                schoolCode = schoolCode,
+                studentId = studentId,
+                studentName = studentName,
+                studentGrade = studentGrade
+            )
         }
     }
 
@@ -559,6 +623,166 @@ class ReadingAudioAndProgressEngine(
             }.getOrNull()
         }
 
+        private fun buildSchoolLeaderboardUrl(schoolCode: String): String? {
+            return runCatching {
+                val sCode = URLEncoder.encode(sanitizeSegment(schoolCode, "default_school"), "UTF-8")
+                "$BASE_RTDB_URL/schools/$sCode/reading_progress.json"
+            }.getOrNull()
+        }
+
+        private fun pushProgressToCloudBlocking(
+            state: ReadingProgressState,
+            schoolCode: String,
+            studentId: String,
+            studentName: String,
+            studentGrade: String
+        ) {
+            val endpoint = buildSyncUrl(schoolCode, studentId) ?: return
+            runCatching {
+                val payload = serializeProgressJson(
+                    state = state,
+                    schoolCode = schoolCode,
+                    studentId = studentId,
+                    studentName = studentName,
+                    studentGrade = studentGrade
+                )
+                val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "PUT"
+                    connectTimeout = 5500
+                    readTimeout = 5500
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                }
+                try {
+                    OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
+                        writer.write(payload)
+                        writer.flush()
+                    }
+                    conn.responseCode
+                } finally {
+                    conn.disconnect()
+                }
+            }
+        }
+
+        /**
+         * قائمة الصفوف الابتدائية المعتمدة في ساحة أبطال الصف.
+         */
+        val PRIMARY_GRADES_LIST: List<String> = listOf(
+            "الأول الابتدائي",
+            "الثاني الابتدائي",
+            "الثالث الابتدائي",
+            "الرابع الابتدائي",
+            "الخامس الابتدائي",
+            "السادس الابتدائي"
+        )
+
+        /**
+         * تطبيع اسم الصف بمرونة عالية (مثل "الأول" أو "الصف الأول الابتدائي" أو "1" -> "الأول الابتدائي").
+         */
+        fun normalizePrimaryGrade(rawGrade: String): String {
+            val cleaned = rawGrade
+                .replace("الصف", "")
+                .replace("أ", "ا")
+                .replace("إ", "ا")
+                .replace("آ", "ا")
+                .replace("ة", "ه")
+                .trim()
+            return when {
+                cleaned.contains("اول") || cleaned.contains("1") || cleaned.contains("١") -> PRIMARY_GRADES_LIST[0]
+                cleaned.contains("ثاني") || cleaned.contains("2") || cleaned.contains("٢") -> PRIMARY_GRADES_LIST[1]
+                cleaned.contains("ثالث") || cleaned.contains("3") || cleaned.contains("٣") -> PRIMARY_GRADES_LIST[2]
+                cleaned.contains("رابع") || cleaned.contains("4") || cleaned.contains("٤") -> PRIMARY_GRADES_LIST[3]
+                cleaned.contains("خامس") || cleaned.contains("5") || cleaned.contains("٥") -> PRIMARY_GRADES_LIST[4]
+                cleaned.contains("سادس") || cleaned.contains("6") || cleaned.contains("٦") -> PRIMARY_GRADES_LIST[5]
+                else -> PRIMARY_GRADES_LIST[0]
+            }
+        }
+
+        private fun matchesGradeFlexibly(recordGrade: String, targetGrade: String): Boolean {
+            if (recordGrade.isBlank()) return false
+            return normalizePrimaryGrade(recordGrade) == normalizePrimaryGrade(targetGrade)
+        }
+
+        /**
+         * جلب لوحة شرف أبطال الصف من العقدة المعزولة schools/{schoolCode}/reading_progress.json
+         * وفلترتها بدقة حسب الصف وترتيب جميع الطلبة تنازلياً مع إسناد التسلسل الحقيقي لكل طالب.
+         */
+        suspend fun fetchGradeLeaderboard(
+            schoolCode: String,
+            targetGrade: String
+        ): LeaderboardFetchResult = withContext(Dispatchers.IO) {
+            val endpoint = buildSchoolLeaderboardUrl(schoolCode)
+                ?: return@withContext LeaderboardFetchResult.Error("تعذّر إعداد رابط ساحة الأبطال")
+
+            runCatching {
+                val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 6000
+                    readTimeout = 6000
+                }
+                try {
+                    val code = conn.responseCode
+                    if (code !in 200..299) {
+                        return@withContext LeaderboardFetchResult.Error("تعذّر الاتصال بساحة الأبطال حالياً")
+                    }
+                    val raw = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    if (raw.isBlank() || raw.trim() == "null") {
+                        return@withContext LeaderboardFetchResult.Success(emptyList())
+                    }
+
+                    val root = JSONObject(raw)
+                    val rawRecords = mutableListOf<ReadingLeaderboardEntry>()
+                    val keys = root.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val item = root.optJSONObject(key) ?: continue
+                        val recGrade = item.optString("grade", "")
+                        if (!matchesGradeFlexibly(recGrade, targetGrade)) continue
+
+                        val parsed = parseProgressJson(item.toString())
+                        val stars = maxOf(item.optInt("totalStars", 0), parsed.totalStars)
+                        val completed = maxOf(item.optInt("completedLessons", 0), parsed.completedLessonsCount)
+                        val name = item.optString("studentName", "").ifBlank { "بطل القراءة" }
+                        val sId = item.optString("studentId", key).ifBlank { key }
+                        val avatarId = ReadingAvatarCatalog.byId(item.optString("avatarId", parsed.avatarId)).id
+                        val lastUp = maxOf(item.optLong("lastUpdated", 0L), item.optLong("updatedAt", 0L))
+                        val rankInfo = resolveReadingHeroTitle(stars)
+
+                        rawRecords.add(
+                            ReadingLeaderboardEntry(
+                                rank = 0,
+                                studentId = sId,
+                                studentName = name,
+                                grade = normalizePrimaryGrade(recGrade),
+                                totalStars = stars,
+                                completedLessons = completed,
+                                avatarId = avatarId,
+                                level = rankInfo.level,
+                                heroTitle = rankInfo.title,
+                                nextLevelStars = rankInfo.nextLevelStars,
+                                lastUpdated = lastUp
+                            )
+                        )
+                    }
+
+                    val sorted = rawRecords
+                        .sortedWith(
+                            compareByDescending<ReadingLeaderboardEntry> { it.totalStars }
+                                .thenByDescending { it.completedLessons }
+                                .thenBy { it.studentName }
+                        )
+                        .mapIndexed { idx, entry -> entry.copy(rank = idx + 1) }
+
+                    LeaderboardFetchResult.Success(sorted)
+                } finally {
+                    conn.disconnect()
+                }
+            }.getOrElse {
+                LeaderboardFetchResult.Error("تحقق من اتصالك بالإنترنت ثم اضغط تحديث لعرض أبطال الصف")
+            }
+        }
+
         fun loadCachedProgress(
             context: Context,
             schoolCode: String,
@@ -585,7 +809,7 @@ class ReadingAudioAndProgressEngine(
         ) {
             runCatching {
                 val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val json = serializeProgressJson(state, schoolCode, studentId, "")
+                val json = serializeProgressJson(state, schoolCode, studentId, "", "")
                 prefs.edit().putString(prefsKey(schoolCode, studentId), json).apply()
             }
         }
@@ -594,7 +818,8 @@ class ReadingAudioAndProgressEngine(
             state: ReadingProgressState,
             schoolCode: String,
             studentId: String,
-            studentName: String
+            studentName: String,
+            studentGrade: String = ""
         ): String {
             val root = JSONObject()
             root.put("schoolCode", schoolCode)
@@ -602,9 +827,15 @@ class ReadingAudioAndProgressEngine(
             if (studentName.isNotBlank()) {
                 root.put("studentName", studentName)
             }
+            if (studentGrade.isNotBlank()) {
+                root.put("grade", normalizePrimaryGrade(studentGrade))
+            }
             root.put("totalStars", state.totalStars)
+            root.put("completedLessons", state.completedLessonsCount)
             root.put("bonusStars", state.bonusStars)
+            root.put("avatarId", ReadingAvatarCatalog.byId(state.avatarId).id)
             root.put("updatedAt", state.updatedAt)
+            root.put("lastUpdated", state.updatedAt)
 
             val starsObj = JSONObject()
             state.lessonStars.forEach { (k, v) -> starsObj.put(k, v) }
@@ -648,11 +879,15 @@ class ReadingAudioAndProgressEngine(
                     }
                 }
             }
+            val parsedAvatar = ReadingAvatarCatalog.byId(
+                root.optString("avatarId", ReadingAvatarCatalog.DEFAULT_AVATAR_ID)
+            ).id
             return ReadingProgressState(
                 lessonStars = starsMap,
                 completedPillars = pillarsMap,
                 bonusStars = root.optInt("bonusStars", 0).coerceAtLeast(0),
-                updatedAt = root.optLong("updatedAt", 0L)
+                avatarId = parsedAvatar,
+                updatedAt = maxOf(root.optLong("lastUpdated", 0L), root.optLong("updatedAt", 0L))
             )
         }
 
@@ -668,10 +903,16 @@ class ReadingAudioAndProgressEngine(
             remote.completedPillars.forEach { (lessonId, set) ->
                 mergedPillars[lessonId] = (mergedPillars[lessonId].orEmpty() + set)
             }
+            val chosenAvatar = if (remote.updatedAt > local.updatedAt && remote.avatarId.isNotBlank()) {
+                remote.avatarId
+            } else {
+                local.avatarId
+            }
             return ReadingProgressState(
                 lessonStars = mergedStars,
                 completedPillars = mergedPillars,
                 bonusStars = maxOf(local.bonusStars, remote.bonusStars),
+                avatarId = ReadingAvatarCatalog.byId(chosenAvatar).id,
                 updatedAt = maxOf(local.updatedAt, remote.updatedAt)
             )
         }

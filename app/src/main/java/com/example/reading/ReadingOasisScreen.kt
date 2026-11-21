@@ -46,13 +46,15 @@ import com.example.reading.qiraati.NewQiraatiNavHost
 private sealed interface OasisViewMode {
     data object Map : OasisViewMode
     data object NewQiraatiBook : OasisViewMode
+    data object Leaderboard : OasisViewMode
     data class Lesson(val lesson: ReadingLesson) : OasisViewMode
 }
 
 /**
  * الشاشة الرئيسية المنسّقة لقسم "واحة القراءة الذكية":
  * تقرأ صف الطالب المسجل من قاعدة البيانات لتحديد المستوى القرائي الأنسب تلقائياً،
- * وتتيح الدخول لكتاب قراءتي الجديدة والتبديل بين المستويات الثلاثة مع دعم كامل لزر الرجوع وتنظيف محرك الصوت.
+ * وتتيح الدخول لكتاب قراءتي الجديدة وساحة أبطال الصف واختيار الشخصية الرمزية
+ * والتبديل بين المستويات الثلاثة مع دعم كامل لزر الرجوع وتنظيف محرك الصوت.
  */
 @Composable
 fun ReadingOasisScreen(
@@ -76,13 +78,16 @@ fun ReadingOasisScreen(
 
     var activeLevel by remember(defaultStudentLevel) { mutableStateOf(defaultStudentLevel) }
     var viewMode by remember { mutableStateOf<OasisViewMode>(OasisViewMode.Map) }
+    var modeBeforeLeaderboard by remember { mutableStateOf<OasisViewMode>(OasisViewMode.Map) }
+    var showAvatarPicker by remember { mutableStateOf(false) }
 
-    val engine = remember(effectiveSchoolCode, effectiveStudentId, effectiveStudentName) {
+    val engine = remember(effectiveSchoolCode, effectiveStudentId, effectiveStudentName, studentGradeLabel) {
         ReadingAudioAndProgressEngine(
             context = context,
             schoolCode = effectiveSchoolCode,
             studentId = effectiveStudentId,
-            studentName = effectiveStudentName
+            studentName = effectiveStudentName,
+            studentGrade = studentGradeLabel
         )
     }
 
@@ -95,11 +100,19 @@ fun ReadingOasisScreen(
     val progress by engine.progress.collectAsState()
     val isSpeaking by engine.isSpeaking.collectAsState()
 
-    BackHandler(enabled = viewMode !is OasisViewMode.NewQiraatiBook) {
-        when (viewMode) {
-            is OasisViewMode.Lesson -> viewMode = OasisViewMode.Map
-            OasisViewMode.Map -> onClose()
-            OasisViewMode.NewQiraatiBook -> viewMode = OasisViewMode.Map
+    fun openLeaderboardFrom(origin: OasisViewMode) {
+        engine.playTapPop()
+        modeBeforeLeaderboard = origin
+        viewMode = OasisViewMode.Leaderboard
+    }
+
+    BackHandler(enabled = showAvatarPicker || viewMode !is OasisViewMode.NewQiraatiBook) {
+        when {
+            showAvatarPicker -> showAvatarPicker = false
+            viewMode is OasisViewMode.Leaderboard -> viewMode = modeBeforeLeaderboard
+            viewMode is OasisViewMode.Lesson -> viewMode = OasisViewMode.Map
+            viewMode is OasisViewMode.Map -> onClose()
+            viewMode is OasisViewMode.NewQiraatiBook -> viewMode = OasisViewMode.Map
         }
     }
 
@@ -147,6 +160,13 @@ fun ReadingOasisScreen(
                                 engine.playTapPop()
                                 engine.speak("أهلاً بك في كتاب قراءتي الجديدة للصف الأول الابتدائي")
                                 viewMode = OasisViewMode.NewQiraatiBook
+                            },
+                            onOpenAvatarPicker = {
+                                engine.playTapPop()
+                                showAvatarPicker = true
+                            },
+                            onOpenLeaderboard = {
+                                openLeaderboardFrom(OasisViewMode.Map)
                             }
                         )
 
@@ -155,7 +175,31 @@ fun ReadingOasisScreen(
                             progress = progress,
                             isSpeaking = isSpeaking,
                             engine = engine,
-                            onBackToOasis = { viewMode = OasisViewMode.Map }
+                            onBackToOasis = { viewMode = OasisViewMode.Map },
+                            onOpenAvatarPicker = {
+                                engine.playTapPop()
+                                showAvatarPicker = true
+                            },
+                            onOpenLeaderboard = {
+                                openLeaderboardFrom(OasisViewMode.NewQiraatiBook)
+                            }
+                        )
+
+                        OasisViewMode.Leaderboard -> ReadingLeaderboardScreen(
+                            schoolCode = effectiveSchoolCode,
+                            currentStudentId = effectiveStudentId,
+                            currentStudentName = effectiveStudentName,
+                            currentStudentGrade = studentGradeLabel,
+                            progress = progress,
+                            engine = engine,
+                            onOpenAvatarPicker = {
+                                engine.playTapPop()
+                                showAvatarPicker = true
+                            },
+                            onBack = {
+                                engine.playTapPop()
+                                viewMode = modeBeforeLeaderboard
+                            }
                         )
 
                         is OasisViewMode.Lesson -> ReadingLessonScreen(
@@ -166,6 +210,28 @@ fun ReadingOasisScreen(
                             onBackToMap = { viewMode = OasisViewMode.Map }
                         )
                     }
+                }
+
+                if (showAvatarPicker) {
+                    ReadingAvatarPickerDialog(
+                        currentAvatarId = progress.avatarId,
+                        onSelectAvatar = { chosenAvatarId ->
+                            val avatar = ReadingAvatarCatalog.byId(chosenAvatarId)
+                            engine.playSuccessChime()
+                            engine.saveAndSyncAvatar(
+                                schoolCode = effectiveSchoolCode,
+                                studentId = effectiveStudentId,
+                                studentName = effectiveStudentName,
+                                grade = studentGradeLabel,
+                                avatarId = avatar.id
+                            )
+                            engine.speak("اختيار رائع يا بطل! شخصيتك الآن هي ${avatar.name}")
+                        },
+                        onDismiss = {
+                            engine.playTapPop()
+                            showAvatarPicker = false
+                        }
+                    )
                 }
             }
         }

@@ -114,7 +114,9 @@ import com.example.reading.PlayfulEraserIcon
 import com.example.reading.PlayfulMicIcon
 import com.example.reading.PlayfulSpeakerIcon
 import com.example.reading.PlayfulStarIcon
+import com.example.reading.PlayfulTrophyIcon
 import com.example.reading.ReadingAudioAndProgressEngine
+import com.example.reading.ReadingAvatarCanvas
 import com.example.reading.ReadingColors
 import com.example.reading.ReadingProgressState
 import com.example.reading.ReadingTajawalFont
@@ -142,7 +144,9 @@ fun NewQiraatiNavHost(
     progress: ReadingProgressState,
     isSpeaking: Boolean,
     engine: ReadingAudioAndProgressEngine,
-    onBackToOasis: () -> Unit
+    onBackToOasis: () -> Unit,
+    onOpenAvatarPicker: () -> Unit = {},
+    onOpenLeaderboard: () -> Unit = {}
 ) {
     var route by remember { mutableStateOf<QiraatiRoute>(QiraatiRoute.UnitsLibrary) }
 
@@ -182,6 +186,8 @@ fun NewQiraatiNavHost(
                         engine.playTapPop()
                         engine.speak("${unit.title} ستتوفر قريباً يا بطل")
                     },
+                    onOpenAvatarPicker = onOpenAvatarPicker,
+                    onOpenLeaderboard = onOpenLeaderboard,
                     onBack = { navigateUp() }
                 )
 
@@ -250,7 +256,9 @@ fun NewQiraatiUnitsScreen(
     progress: ReadingProgressState,
     onOpenUnit: (QiraatiUnit) -> Unit,
     onTapUpcoming: (QiraatiUnit) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenAvatarPicker: () -> Unit = {},
+    onOpenLeaderboard: () -> Unit = {}
 ) {
     val units = NewQiraatiRepository.allUnits
 
@@ -304,25 +312,56 @@ fun NewQiraatiUnitsScreen(
                 }
             }
 
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = Color.White,
-                shadowElevation = 5.dp,
-                modifier = Modifier.testTag("qiraati_units_stars_badge")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                PlayfulBouncyButton(
+                    onClick = onOpenLeaderboard,
+                    backgroundColor = ReadingColors.SunYellow,
+                    shadowColor = ReadingColors.SunShadow,
+                    cornerRadius = 18.dp,
+                    lipDepth = 4.dp,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                    testTagValue = "qiraati_units_leaderboard_btn"
                 ) {
-                    PlayfulStarIcon(filled = true, modifier = Modifier.size(24.dp))
-                    Text(
-                        text = "${progress.totalStars} نجمة",
-                        fontFamily = ReadingTajawalFont,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 15.sp,
-                        color = ReadingColors.InkDark
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        PlayfulTrophyIcon(modifier = Modifier.size(20.dp), animated = true)
+                        Text(
+                            text = "أبطال الصف",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 12.5.sp,
+                            color = ReadingColors.InkDark,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White,
+                    shadowElevation = 5.dp,
+                    modifier = Modifier.testTag("qiraati_units_stars_badge")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        PlayfulStarIcon(filled = true, modifier = Modifier.size(21.dp))
+                        Text(
+                            text = "${progress.totalStars}",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.5.sp,
+                            color = ReadingColors.InkDark
+                        )
+                    }
                 }
             }
         }
@@ -356,7 +395,33 @@ fun NewQiraatiUnitsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    QiraatiBookIconCanvas(modifier = Modifier.size(82.dp))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable { onOpenAvatarPicker() }
+                            .testTag("qiraati_units_avatar_badge")
+                    ) {
+                        ReadingAvatarCanvas(
+                            avatarId = progress.avatarId,
+                            size = 74.dp,
+                            animated = true
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = ReadingColors.SunYellow
+                        ) {
+                            Text(
+                                text = "شخصيتي",
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 10.5.sp,
+                                color = ReadingColors.InkDark,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                     Column(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(4.dp)

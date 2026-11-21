@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -73,7 +74,9 @@ fun ReadingMapScreen(
     onSelectLesson: (ReadingLesson) -> Unit,
     onGreetTap: () -> Unit,
     onBack: () -> Unit,
-    onOpenNewQiraati: () -> Unit = {}
+    onOpenNewQiraati: () -> Unit = {},
+    onOpenAvatarPicker: () -> Unit = {},
+    onOpenLeaderboard: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val lessons = ReadingCurriculum.lessonsForLevel(activeLevel)
@@ -101,8 +104,11 @@ fun ReadingMapScreen(
             studentGradeLabel = studentGradeLabel,
             isShowingStudentDefault = activeLevel == defaultStudentLevel,
             totalStars = progress.totalStars,
+            avatarId = progress.avatarId,
             isSpeaking = isSpeaking,
             onGreetTap = onGreetTap,
+            onOpenAvatarPicker = onOpenAvatarPicker,
+            onOpenLeaderboard = onOpenLeaderboard,
             onBack = onBack
         )
 
@@ -392,8 +398,11 @@ private fun ReadingMapHeroHeader(
     studentGradeLabel: String,
     isShowingStudentDefault: Boolean,
     totalStars: Int,
+    avatarId: String,
     isSpeaking: Boolean,
     onGreetTap: () -> Unit,
+    onOpenAvatarPicker: () -> Unit,
+    onOpenLeaderboard: () -> Unit,
     onBack: () -> Unit
 ) {
     val infinite = rememberInfiniteTransition(label = "map_sky_anim")
@@ -567,25 +576,56 @@ private fun ReadingMapHeroHeader(
                     }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.White,
-                    shadowElevation = 6.dp,
-                    modifier = Modifier.testTag("reading_map_stars_badge")
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    PlayfulBouncyButton(
+                        onClick = onOpenLeaderboard,
+                        backgroundColor = ReadingColors.SunYellow,
+                        shadowColor = ReadingColors.SunShadow,
+                        cornerRadius = 18.dp,
+                        lipDepth = 4.dp,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        testTagValue = "reading_map_leaderboard_btn"
                     ) {
-                        PlayfulStarIcon(filled = true, modifier = Modifier.size(26.dp))
-                        Text(
-                            text = "$totalStars نجمة",
-                            fontFamily = ReadingTajawalFont,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 16.sp,
-                            color = ReadingColors.InkDark
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            PlayfulTrophyIcon(modifier = Modifier.size(22.dp), animated = true)
+                            Text(
+                                text = "أبطال الصف",
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                color = ReadingColors.InkDark,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.testTag("reading_map_stars_badge")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            PlayfulStarIcon(filled = true, modifier = Modifier.size(22.dp))
+                            Text(
+                                text = "$totalStars",
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp,
+                                color = ReadingColors.InkDark
+                            )
+                        }
                     }
                 }
             }
@@ -618,7 +658,7 @@ private fun ReadingMapHeroHeader(
                 }
             }
 
-            // بطاقة ترحيب فصيح بالتلميذ
+            // بطاقة ترحيب شخصية الطالب الرمزية القابلة للنقر لتغيير الشخصية
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -626,11 +666,34 @@ private fun ReadingMapHeroHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                ReadingMascotCanvas(
-                    modifier = Modifier.size(102.dp),
-                    isCelebrating = totalStars > 0 && isSpeaking,
-                    isSpeaking = isSpeaking
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable { onOpenAvatarPicker() }
+                        .testTag("reading_map_avatar_badge")
+                ) {
+                    ReadingAvatarCanvas(
+                        avatarId = avatarId,
+                        size = 86.dp,
+                        animated = true
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = ReadingColors.SunYellow,
+                        shadowElevation = 3.dp
+                    ) {
+                        Text(
+                            text = "غيّر شخصيتي",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 10.5.sp,
+                            color = ReadingColors.InkDark,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp)
+                        )
+                    }
+                }
 
                 Surface(
                     shape = RoundedCornerShape(24.dp),
