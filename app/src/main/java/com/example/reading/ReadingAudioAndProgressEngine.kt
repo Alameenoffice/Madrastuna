@@ -9,13 +9,19 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import java.io.File
+import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,9 +32,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.coroutines.resume
 
 data class ReadingHeroRankInfo(
     val level: Int,
@@ -84,11 +93,14 @@ data class ReadingProgressState(
 }
 
 /**
- * محرك الصوت الطفولي المحسّن:
- * 1) طبقة تشغيل صوت بشري حقيقي عبر MediaPlayer (تبحث في الكاش المحلي و res/raw أولاً).
- * 2) محرك TextToSpeech عربي ينتقي تلقائياً أفضل صوت عربي عالي الجودة من tts.voices
- *    بسرعة طبيعية مريحة (0.86f) ونبرة طفولية مبهجة ودافئة (1.22f).
- * 3) حفظ محلي فوري للنجوم مع مزامنة خلفية خفيفة إلى Firebase RTDB.
+ * محرك الصوت الحقيقي (Real Human/Child MP3 Voice Pack) وحفظ التقدم في واحة القراءة الذكية:
+ * 1) أولوية التشغيل الفوري والآمن عبر android.media.MediaPlayer بالترتيب:
+ *    (أ) الذاكرة المحلية للتطبيق: filesDir/reading_audio/{md5_12}.mp3
+ *    (ب) حزمة الأصول المدمجة للعمل بدون إنترنت: assets/reading_audio/{md5_12}.mp3 (مع فك ضغط تلقائي إلى cacheDir)
+ *    (ج) تحميل اختياري لمرة واحدة في الخلفية عند ضبط remoteVoiceBaseUrl
+ *    (د) بديل احتياطي أخير عبر TextToSpeech فقط عند عدم توفر ملف MP3 مطابق.
+ * 2) نطق مقطعي متزامن بالصوت الحقيقي عبر MediaPlayer.setOnCompletionListener.
+ * 3) حفظ محلي فوري للنجوم والشخصية الرمزية ومزامنة ساحة أبطال الصف مع Firebase RTDB.
  */
 class ReadingAudioAndProgressEngine(
     context: Context,
@@ -102,11 +114,16 @@ class ReadingAudioAndProgressEngine(
 
     private var tts: TextToSpeech? = null
     private var activeMediaPlayer: MediaPlayer? = null
+    private val pendingTtsContinuations = ConcurrentHashMap<String, CancellableContinuation<Unit>>()
+    private val inFlightDownloads = ConcurrentHashMap.newKeySet<String>()
 
     @Volatile
     private var isTtsReady = false
+    @Volatile
+    private var isReleased = false
     private var pendingSpeech: String? = null
     private var segmentJob: Job? = null
+    private var speakingTimeoutJob: Job? = null
 
     private val toneGenerator: ToneGenerator? = runCatching {
         ToneGenerator(AudioManager.STREAM_MUSIC, 78)
@@ -126,11 +143,48 @@ class ReadingAudioAndProgressEngine(
     private fun initTextToSpeech() {
         runCatching {
             tts = TextToSpeech(appContext) { status ->
+                if (isReleased) return@TextToSpeech
                 if (status == TextToSpeech.SUCCESS) {
                     val engine = tts ?: return@TextToSpeech
                     selectBestArabicVoice(engine)
                     engine.setSpeechRate(CHILD_SPEECH_RATE)
                     engine.setPitch(CHILD_SPEECH_PITCH)
+                    engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {}
+                        override fun onDone(utteranceId: String?) {
+                            utteranceId?.let { id ->
+                                pendingTtsContinuations.remove(id)?.let { cont ->
+                                    if (cont.isActive) cont.resume(Unit)
+                                }
+                            }
+                            if (segmentJob?.isActive != true && activeMediaPlayer == null) {
+                                _isSpeaking.value = false
+                            }
+                        }
+
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(utteranceId: String?) {
+                            utteranceId?.let { id ->
+                                pendingTtsContinuations.remove(id)?.let { cont ->
+                                    if (cont.isActive) cont.resume(Unit)
+                                }
+                            }
+                            if (segmentJob?.isActive != true && activeMediaPlayer == null) {
+                                _isSpeaking.value = false
+                            }
+                        }
+
+                        override fun onError(utteranceId: String?, errorCode: Int) {
+                            utteranceId?.let { id ->
+                                pendingTtsContinuations.remove(id)?.let { cont ->
+                                    if (cont.isActive) cont.resume(Unit)
+                                }
+                            }
+                            if (segmentJob?.isActive != true && activeMediaPlayer == null) {
+                                _isSpeaking.value = false
+                            }
+                        }
+                    })
                     isTtsReady = true
                     val queued = pendingSpeech
                     if (!queued.isNullOrBlank()) {
@@ -241,32 +295,102 @@ class ReadingAudioAndProgressEngine(
     }
 
     /**
-     * يشغّل ملف MP3 حقيقي مطابق للمقطع/الكلمة من الكاش المحلي أو res/raw إن وُجد،
-     * وإلا يستخدم محرك TextToSpeech المحسّن فوراً.
+     * توليد اسم الملف الصوتي الموحّد (أول 12 حرفاً صغيراً من بصمة MD5 + ".mp3").
+     */
+    fun audioFileNameForText(text: String): String = Companion.audioFileNameForText(text)
+
+    /**
+     * يشغّل الصوت الحقيقي المطابق للنص من حزمة الـ MP3 بالأولوية:
+     * (أ) filesDir/reading_audio/{fileName}
+     * (ب) assets/reading_audio/{fileName} (مع فك ضغط تلقائي لمرة واحدة في cacheDir/reading_audio/)
+     * (ج) تحميل تلقائي في الخلفية لمرة واحدة (إذا تم ضبط remoteVoiceBaseUrl)
+     * (د) بديل احتياطي أخير عبر TextToSpeech فقط عند عدم توفر ملف MP3 مطابق.
      */
     fun speak(text: String, audioKey: String? = null) {
-        val cleaned = text.trim()
+        if (isReleased) return
+        val cleaned = normalizeTextForAudio(text)
         if (cleaned.isEmpty()) return
+
         segmentJob?.cancel()
+        speakingTimeoutJob?.cancel()
         stopActiveMediaPlayer()
+        runCatching { tts?.stop() }
 
-        val resolvedKey = audioKey?.takeIf { it.isNotBlank() } ?: mapTextToAudioKey(cleaned)
-        if (tryPlayRecordedAudio(resolvedKey)) {
+        val md5FileName = audioFileNameForText(cleaned)
+        val resolvedLegacyKey = audioKey?.takeIf { it.isNotBlank() } ?: mapTextToAudioKey(cleaned)
+
+        if (playMp3Priority(fileName = md5FileName, legacyAudioKey = resolvedLegacyKey)) {
             return
         }
 
-        if (!isTtsReady) {
-            pendingSpeech = cleaned
+        // تحميل اختياري لمرة واحدة في الخلفية ليعمل بدون إنترنت لاحقاً
+        scheduleBackgroundVoiceDownload(md5FileName)
+
+        // بديل احتياطي أخير عبر TextToSpeech فقط عند عدم توفر ملف MP3
+        speakWithTtsFallback(cleaned)
+    }
+
+    /**
+     * نطق عبارات التشجيع الطفولية الحقيقية عشوائياً عبر نفس محرك الـ MP3 (مع البديل الاحتياطي عند الحاجة).
+     */
+    fun playEncouragement(isSuccess: Boolean) {
+        val phrase = if (isSuccess) {
+            SUCCESS_ENCOURAGEMENTS.random()
+        } else {
+            TRY_AGAIN_ENCOURAGEMENTS.random()
+        }
+        speak(phrase)
+    }
+
+    /**
+     * النطق المقطعي المتزامن بالصوت الحقيقي (للكلمات المقطّعة أو أبيات النشيد بيتاً ببيت):
+     * يشغّل المقاطع بالتتابع عبر MediaPlayer.setOnCompletionListener مع مهلة لطيفة 180ms بين كل مقطع وآخر،
+     * ويرسل فهرس المقطع النشط لحظة بدء تشغيل صوته الحقيقي، ثم يشغّل صوت الكلمة الكاملة في النهاية.
+     */
+    fun speakSyllablesSequentially(
+        syllables: List<String>,
+        wholeWord: String? = null,
+        pauseBetweenMs: Long = SYLLABLE_PAUSE_MS,
+        onActiveIndex: (Int) -> Unit = {},
+        onWholeWordActive: (Boolean) -> Unit = {},
+        onFinished: () -> Unit = {}
+    ) {
+        if (isReleased || syllables.isEmpty()) {
+            onFinished()
             return
         }
-        runCatching {
+        segmentJob?.cancel()
+        speakingTimeoutJob?.cancel()
+        stopActiveMediaPlayer()
+        runCatching { tts?.stop() }
+
+        segmentJob = engineScope.launch {
             _isSpeaking.value = true
-            tts?.setSpeechRate(CHILD_SPEECH_RATE)
-            tts?.setPitch(CHILD_SPEECH_PITCH)
-            tts?.speak(cleaned, TextToSpeech.QUEUE_FLUSH, null, "reading_utterance_${System.currentTimeMillis()}")
-            engineScope.launch {
-                val estimatedMs = (cleaned.length * 90L).coerceIn(550L, 2200L)
-                delay(estimatedMs)
+            onWholeWordActive(false)
+            try {
+                syllables.forEachIndexed { index, rawSyllable ->
+                    val cleanedSyllable = normalizeTextForAudio(rawSyllable)
+                    if (cleanedSyllable.isNotEmpty()) {
+                        onActiveIndex(index)
+                        playTextAndAwaitCompletion(cleanedSyllable)
+                        if (index < syllables.lastIndex || !wholeWord.isNullOrBlank()) {
+                            delay(pauseBetweenMs)
+                        }
+                    }
+                }
+                onActiveIndex(-1)
+
+                val cleanedWhole = wholeWord?.let { normalizeTextForAudio(it) }.orEmpty()
+                if (cleanedWhole.isNotEmpty()) {
+                    onWholeWordActive(true)
+                    playTextAndAwaitCompletion(cleanedWhole)
+                    onWholeWordActive(false)
+                }
+                onFinished()
+            } finally {
+                onActiveIndex(-1)
+                onWholeWordActive(false)
+                stopActiveMediaPlayer()
                 _isSpeaking.value = false
             }
         }
@@ -274,7 +398,7 @@ class ReadingAudioAndProgressEngine(
 
     /**
      * نطق متسلسل للمقاطع مع إبلاغ الواجهة برقم المقطع النشط لإضاءته وقفزه بالتزامن مع الصوت،
-     * ثم نطق الكلمة كاملة في النهاية.
+     * ثم نطق الكلمة كاملة في النهاية (متوافق تماماً مع شاشة الدروس الحالية).
      */
     fun speakSegmentedWord(
         word: SegmentedWord,
@@ -282,111 +406,344 @@ class ReadingAudioAndProgressEngine(
         onWholeWordActive: (Boolean) -> Unit = {},
         onFinished: () -> Unit = {}
     ) {
-        segmentJob?.cancel()
-        stopActiveMediaPlayer()
-        segmentJob = engineScope.launch {
-            _isSpeaking.value = true
-            onWholeWordActive(false)
-            word.syllables.forEachIndexed { index, syllable ->
-                onActiveSyllableIndex(index)
-                speakSingleSegmentImmediate(syllable.spokenText)
-                delay(720L)
+        speakSyllablesSequentially(
+            syllables = word.syllables.map { it.spokenText },
+            wholeWord = word.spokenWord,
+            pauseBetweenMs = SYLLABLE_PAUSE_MS,
+            onActiveIndex = onActiveSyllableIndex,
+            onWholeWordActive = onWholeWordActive,
+            onFinished = onFinished
+        )
+    }
+
+    /**
+     * يشغّل نصاً واحداً (MP3 بأولوية كاملة عبر MediaPlayer.setOnCompletionListener، أو TTS كبديل أخير)
+     * وينتظر انتهاء تشغيله الفعلي بدقة قبل المتابعة للمقطع التالي.
+     */
+    private suspend fun playTextAndAwaitCompletion(cleanedText: String) {
+        val md5FileName = audioFileNameForText(cleanedText)
+        val legacyKey = mapTextToAudioKey(cleanedText)
+
+        var startedMp3 = false
+        val completedViaMp3 = withTimeoutOrNull(12_000L) {
+            suspendCancellableCoroutine<Boolean> { cont ->
+                val resumed = AtomicBoolean(false)
+                fun finish(ok: Boolean) {
+                    if (resumed.compareAndSet(false, true) && cont.isActive) {
+                        cont.resume(ok)
+                    }
+                }
+                startedMp3 = playMp3Priority(
+                    fileName = md5FileName,
+                    legacyAudioKey = legacyKey,
+                    keepSpeakingState = true,
+                    onComplete = { finish(true) }
+                )
+                if (!startedMp3) {
+                    finish(false)
+                } else {
+                    cont.invokeOnCancellation {
+                        stopActiveMediaPlayer()
+                    }
+                }
             }
-            onActiveSyllableIndex(-1)
-            onWholeWordActive(true)
-            speakSingleSegmentImmediate(word.spokenWord)
-            delay(900L)
-            onWholeWordActive(false)
-            _isSpeaking.value = false
-            onFinished()
+        }
+
+        if (startedMp3 && completedViaMp3 != null) {
+            return
+        }
+        if (startedMp3) {
+            stopActiveMediaPlayer()
+            return
+        }
+
+        scheduleBackgroundVoiceDownload(md5FileName)
+
+        // بديل احتياطي أخير عبر TextToSpeech في حال عدم وجود ملف MP3
+        if (!isTtsReady || tts == null) {
+            delay((cleanedText.length * 85L).coerceIn(450L, 1400L))
+            return
+        }
+
+        val utteranceId = "seq_tts_${System.nanoTime()}"
+        val estimatedTimeout = (cleanedText.length * 140L + 900L).coerceIn(1400L, 6500L)
+        withTimeoutOrNull(estimatedTimeout) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                pendingTtsContinuations[utteranceId] = cont
+                cont.invokeOnCancellation {
+                    pendingTtsContinuations.remove(utteranceId)
+                    runCatching { tts?.stop() }
+                }
+                val queuedOk = runCatching {
+                    tts?.setSpeechRate(CHILD_SPEECH_RATE)
+                    tts?.setPitch(CHILD_SPEECH_PITCH)
+                    tts?.speak(cleanedText, TextToSpeech.QUEUE_FLUSH, null, utteranceId) == TextToSpeech.SUCCESS
+                }.getOrDefault(false)
+                if (!queuedOk) {
+                    pendingTtsContinuations.remove(utteranceId)
+                    if (cont.isActive) cont.resume(Unit)
+                }
+            }
         }
     }
 
-    private fun speakSingleSegmentImmediate(text: String) {
-        val key = mapTextToAudioKey(text)
-        if (tryPlayRecordedAudio(key)) return
-        if (!isTtsReady) return
+    private fun speakWithTtsFallback(cleanedText: String) {
+        if (!isTtsReady) {
+            pendingSpeech = cleanedText
+            return
+        }
         runCatching {
+            val utteranceId = "reading_utterance_${System.nanoTime()}"
+            _isSpeaking.value = true
             tts?.setSpeechRate(CHILD_SPEECH_RATE)
             tts?.setPitch(CHILD_SPEECH_PITCH)
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "seg_${System.currentTimeMillis()}")
+            tts?.speak(cleanedText, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+            speakingTimeoutJob?.cancel()
+            speakingTimeoutJob = engineScope.launch {
+                val estimatedMs = (cleanedText.length * 95L + 400L).coerceIn(700L, 4500L)
+                delay(estimatedMs)
+                if (activeMediaPlayer == null && segmentJob?.isActive != true) {
+                    _isSpeaking.value = false
+                }
+            }
         }
     }
 
     /**
-     * يبحث عن ملف صوتي MP3 مسجّل في الذاكرة المحلية أو في res/raw ويشغّله عبر MediaPlayer.
+     * يبحث عن ملف الصوت الحقيقي MP3 بالترتيب المعتمد ويشغّله فوراً عبر android.media.MediaPlayer:
+     * (أ) context.filesDir/reading_audio/{fileName}
+     * (ب) assets/reading_audio/{fileName} (openFd أولاً، وإذا كان مضغوطاً يُنسخ لمرة واحدة إلى cacheDir/reading_audio/{fileName})
+     * ثم التحقق التوافقي الاختياري من legacyAudioKey (filesDir / cacheDir / res/raw).
      */
-    private fun tryPlayRecordedAudio(audioKey: String?): Boolean {
-        if (audioKey.isNullOrBlank()) return false
-        return runCatching {
-            // 1) البحث في ذاكرة الكاش/ملفات التطبيق المحلية (reading_audio/<key>.mp3)
-            val candidateFiles = listOf(
-                File(File(appContext.filesDir, AUDIO_CACHE_DIR), "$audioKey.mp3"),
-                File(File(appContext.cacheDir, AUDIO_CACHE_DIR), "$audioKey.mp3")
+    private fun playMp3Priority(
+        fileName: String,
+        legacyAudioKey: String? = null,
+        keepSpeakingState: Boolean = false,
+        onComplete: (() -> Unit)? = null
+    ): Boolean {
+        if (isReleased) return false
+        stopActiveMediaPlayer()
+
+        // (أ) الذاكرة المحلية للتطبيق: context.filesDir/reading_audio/{fileName}
+        val localFilesMp3 = File(File(appContext.filesDir, AUDIO_CACHE_DIR), fileName)
+        if (localFilesMp3.exists() && localFilesMp3.length() > MIN_VALID_MP3_BYTES) {
+            if (startMediaPlayerFromFile(localFilesMp3, keepSpeakingState, onComplete)) {
+                return true
+            }
+        }
+
+        // (ب-1) التحقق أولاً من نسخة مستخرجة مسبقاً في cacheDir/reading_audio/{fileName}
+        val cachedAssetMp3 = File(File(appContext.cacheDir, AUDIO_CACHE_DIR), fileName)
+        if (cachedAssetMp3.exists() && cachedAssetMp3.length() > MIN_VALID_MP3_BYTES) {
+            if (startMediaPlayerFromFile(cachedAssetMp3, keepSpeakingState, onComplete)) {
+                return true
+            }
+        }
+
+        // (ب-2) حزمة الأصول المدمجة: assets/reading_audio/{fileName}
+        val assetPath = "$AUDIO_CACHE_DIR/$fileName"
+        if (tryPlayFromAssets(assetPath, cachedAssetMp3, keepSpeakingState, onComplete)) {
+            return true
+        }
+
+        // توافق إضافي مع مفاتيح الصوت المسماة (في حال توفر ملف باسم مفتاح صريح أو res/raw)
+        if (!legacyAudioKey.isNullOrBlank()) {
+            val legacyCandidates = listOf(
+                File(File(appContext.filesDir, AUDIO_CACHE_DIR), "$legacyAudioKey.mp3"),
+                File(File(appContext.cacheDir, AUDIO_CACHE_DIR), "$legacyAudioKey.mp3")
             )
-            val localFile = candidateFiles.firstOrNull { it.exists() && it.length() > 128L }
-            if (localFile != null) {
-                val player = MediaPlayer().apply {
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                    )
-                    setDataSource(localFile.absolutePath)
-                    setOnCompletionListener { mp ->
-                        _isSpeaking.value = false
-                        runCatching { mp.release() }
-                        if (activeMediaPlayer === mp) activeMediaPlayer = null
-                    }
-                    setOnErrorListener { mp, _, _ ->
-                        _isSpeaking.value = false
-                        runCatching { mp.release() }
-                        if (activeMediaPlayer === mp) activeMediaPlayer = null
-                        true
-                    }
-                    prepare()
-                    start()
-                }
-                activeMediaPlayer = player
-                _isSpeaking.value = true
+            val legacyFile = legacyCandidates.firstOrNull { it.exists() && it.length() > MIN_VALID_MP3_BYTES }
+            if (legacyFile != null && startMediaPlayerFromFile(legacyFile, keepSpeakingState, onComplete)) {
                 return true
             }
 
-            // 2) البحث في res/raw عن مورد صوتي مطابق للاسم (مثلاً raw/reading_da.mp3)
-            val rawResId = appContext.resources.getIdentifier(audioKey, "raw", appContext.packageName)
-            if (rawResId != 0) {
-                val player = MediaPlayer.create(appContext, rawResId)
-                if (player != null) {
-                    player.setOnCompletionListener { mp ->
-                        _isSpeaking.value = false
-                        runCatching { mp.release() }
-                        if (activeMediaPlayer === mp) activeMediaPlayer = null
-                    }
-                    player.setOnErrorListener { mp, _, _ ->
-                        _isSpeaking.value = false
-                        runCatching { mp.release() }
-                        if (activeMediaPlayer === mp) activeMediaPlayer = null
-                        true
-                    }
-                    activeMediaPlayer = player
-                    _isSpeaking.value = true
-                    player.start()
-                    return true
+            val rawResId = appContext.resources.getIdentifier(legacyAudioKey, "raw", appContext.packageName)
+            if (rawResId != 0 && startMediaPlayerFromRawRes(rawResId, keepSpeakingState, onComplete)) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * يجرّب تشغيل الملف مباشرة من assets عبر openFd؛ وإذا كان مضغوطاً ينسخه لمرة واحدة
+     * إلى cacheDir/reading_audio/{fileName} ويشغّله عبر MediaPlayer.setDataSource(file.absolutePath).
+     */
+    private fun tryPlayFromAssets(
+        assetPath: String,
+        cacheTargetFile: File,
+        keepSpeakingState: Boolean,
+        onComplete: (() -> Unit)?
+    ): Boolean {
+        // المحاولة 1: ملف غير مضغوط في assets عبر openFd
+        val playedDirectFd = runCatching {
+            appContext.assets.openFd(assetPath).use { afd ->
+                startMediaPlayerConfigured(keepSpeakingState, onComplete) { mp ->
+                    mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
                 }
             }
-            false
+        }.getOrDefault(false)
+        if (playedDirectFd) return true
+
+        // المحاولة 2: ملف مضغوط في assets -> نسخة تلقائية لمرة واحدة إلى cacheDir/reading_audio/
+        val extractedFile = extractCompressedAssetOnce(assetPath, cacheTargetFile) ?: return false
+        return startMediaPlayerFromFile(extractedFile, keepSpeakingState, onComplete)
+    }
+
+    private fun extractCompressedAssetOnce(assetPath: String, cacheTargetFile: File): File? {
+        return runCatching {
+            appContext.assets.open(assetPath).use { input ->
+                cacheTargetFile.parentFile?.mkdirs()
+                val tmpFile = File(cacheTargetFile.parentFile, "${cacheTargetFile.name}.tmp")
+                FileOutputStream(tmpFile).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                }
+                if (tmpFile.length() > MIN_VALID_MP3_BYTES) {
+                    if (cacheTargetFile.exists()) cacheTargetFile.delete()
+                    if (tmpFile.renameTo(cacheTargetFile)) cacheTargetFile else tmpFile
+                } else {
+                    tmpFile.delete()
+                    null
+                }
+            }
+        }.getOrNull()
+    }
+
+    private fun startMediaPlayerFromFile(
+        file: File,
+        keepSpeakingState: Boolean,
+        onComplete: (() -> Unit)?
+    ): Boolean {
+        return startMediaPlayerConfigured(keepSpeakingState, onComplete) { mp ->
+            mp.setDataSource(file.absolutePath)
+        }
+    }
+
+    private fun startMediaPlayerFromRawRes(
+        rawResId: Int,
+        keepSpeakingState: Boolean,
+        onComplete: (() -> Unit)?
+    ): Boolean {
+        return runCatching {
+            appContext.resources.openRawResourceFd(rawResId)?.use { afd ->
+                startMediaPlayerConfigured(keepSpeakingState, onComplete) { mp ->
+                    mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                }
+            } ?: false
         }.getOrDefault(false)
     }
 
-    private fun stopActiveMediaPlayer() {
-        runCatching {
-            activeMediaPlayer?.let { mp ->
-                if (mp.isPlaying) mp.stop()
-                mp.release()
+    private fun startMediaPlayerConfigured(
+        keepSpeakingState: Boolean,
+        onComplete: (() -> Unit)?,
+        attachDataSource: (MediaPlayer) -> Unit
+    ): Boolean {
+        var player: MediaPlayer? = null
+        return runCatching {
+            val finishedOnce = AtomicBoolean(false)
+            fun releasePlayerAndNotify(mp: MediaPlayer) {
+                if (!keepSpeakingState && activeMediaPlayer === mp) {
+                    _isSpeaking.value = false
+                }
+                if (activeMediaPlayer === mp) {
+                    activeMediaPlayer = null
+                }
+                runCatching { mp.release() }
+                if (finishedOnce.compareAndSet(false, true)) {
+                    onComplete?.invoke()
+                }
+            }
+
+            player = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                attachDataSource(this)
+                setOnCompletionListener { mp -> releasePlayerAndNotify(mp) }
+                setOnErrorListener { mp, _, _ ->
+                    releasePlayerAndNotify(mp)
+                    true
+                }
+                prepare()
+                start()
+            }
+            activeMediaPlayer = player
+            _isSpeaking.value = true
+            true
+        }.getOrElse {
+            runCatching { player?.release() }
+            if (activeMediaPlayer === player) {
+                activeMediaPlayer = null
+            }
+            false
+        }
+    }
+
+    /**
+     * (ج) تحميل تلقائي لمرة واحدة في الخلفية عند تفعيل remoteVoiceBaseUrl:
+     * يحفظ ملف MP3 في filesDir/reading_audio/ ليعمل بدون إنترنت لاحقاً.
+     */
+    private fun scheduleBackgroundVoiceDownload(fileName: String) {
+        val baseUrl = remoteVoiceBaseUrl.trim().trimEnd('/')
+        if (baseUrl.isEmpty() || isReleased || !isNetworkAvailable()) return
+
+        val targetFile = File(File(appContext.filesDir, AUDIO_CACHE_DIR), fileName)
+        if (targetFile.exists() && targetFile.length() > MIN_VALID_MP3_BYTES) return
+        if (!inFlightDownloads.add(fileName)) return
+
+        engineScope.launch(Dispatchers.IO) {
+            try {
+                val endpoint = "$baseUrl/$fileName"
+                val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 5000
+                    readTimeout = 7000
+                }
+                try {
+                    if (conn.responseCode in 200..299) {
+                        targetFile.parentFile?.mkdirs()
+                        val tmpFile = File(targetFile.parentFile, "$fileName.part")
+                        conn.inputStream.use { input ->
+                            FileOutputStream(tmpFile).use { output ->
+                                input.copyTo(output)
+                                output.flush()
+                            }
+                        }
+                        if (tmpFile.length() > MIN_VALID_MP3_BYTES) {
+                            if (targetFile.exists()) targetFile.delete()
+                            tmpFile.renameTo(targetFile)
+                        } else {
+                            tmpFile.delete()
+                        }
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (_: Throwable) {
+                // تجاهل أخطاء الشبكة بهدوء مع بقاء البديل الاحتياطي فعالاً
+            } finally {
+                inFlightDownloads.remove(fileName)
             }
         }
+    }
+
+    private fun stopActiveMediaPlayer() {
+        val mp = activeMediaPlayer
         activeMediaPlayer = null
+        if (mp != null) {
+            runCatching {
+                mp.setOnCompletionListener(null)
+                mp.setOnErrorListener(null)
+                if (mp.isPlaying) mp.stop()
+            }
+            runCatching { mp.reset() }
+            runCatching { mp.release() }
+        }
     }
 
     fun playTapPop() {
@@ -528,25 +885,85 @@ class ReadingAudioAndProgressEngine(
     }
 
     fun release() {
+        isReleased = true
         segmentJob?.cancel()
-        engineScope.cancel()
+        segmentJob = null
+        speakingTimeoutJob?.cancel()
+        speakingTimeoutJob = null
+        pendingTtsContinuations.values.forEach { cont ->
+            runCatching { if (cont.isActive) cont.cancel() }
+        }
+        pendingTtsContinuations.clear()
+        inFlightDownloads.clear()
         stopActiveMediaPlayer()
         runCatching {
+            tts?.setOnUtteranceProgressListener(null)
             tts?.stop()
             tts?.shutdown()
         }
         tts = null
+        isTtsReady = false
+        pendingSpeech = null
+        _isSpeaking.value = false
         runCatching {
             toneGenerator?.release()
         }
+        engineScope.cancel()
     }
 
     companion object {
         private const val CHILD_SPEECH_RATE = 0.86f
         private const val CHILD_SPEECH_PITCH = 1.22f
+        private const val SYLLABLE_PAUSE_MS = 180L
+        private const val MIN_VALID_MP3_BYTES = 128L
         private const val AUDIO_CACHE_DIR = "reading_audio"
         private const val PREFS_NAME = "reading_oasis_progress_prefs"
         private const val BASE_RTDB_URL = "https://madrasati-app-d51dd-default-rtdb.firebaseio.com"
+
+        /**
+         * رابط خادم الحزمة الصوتية الاختياري للتحميل التلقائي لمرة واحدة (فارغ افتراضياً للعمل الكامل دون إنترنت).
+         */
+        const val remoteVoiceBaseUrl: String = ""
+
+        private val WHITESPACE_REGEX = Regex("\\s+")
+
+        private val SUCCESS_ENCOURAGEMENTS: List<String> = listOf(
+            "أحسنت يا بطل!",
+            "ممتاز، أنت رائع!",
+            "يا لك من قارئ ذكي!",
+            "بطل حقيقي!"
+        )
+
+        private val TRY_AGAIN_ENCOURAGEMENTS: List<String> = listOf(
+            "حاول مرة أخرى يا بطل!",
+            "أنت قريب، جرّب مجدداً!"
+        )
+
+        /**
+         * تنظيف النص بالصيغة الحرفية الموحّدة لحساب بصمة الصوت.
+         */
+        private fun normalizeTextForAudio(text: String): String =
+            text.trim().replace(WHITESPACE_REGEX, " ")
+
+        /**
+         * دالة توليد اسم الملف الصوتي الموحّد:
+         * تنظّف النص عبر text.trim().replace(Regex("\\s+"), " ")
+         * وتحسب بصمة MD5 بترميز UTF-8 وتأخذ أول 12 حرفاً صغيراً مع الامتداد ".mp3".
+         */
+        fun audioFileNameForText(text: String): String {
+            val normalized = normalizeTextForAudio(text)
+            val digest = MessageDigest.getInstance("MD5")
+                .digest(normalized.toByteArray(Charsets.UTF_8))
+            val hexBuilder = StringBuilder(digest.size * 2)
+            for (byte in digest) {
+                val unsigned = byte.toInt() and 0xFF
+                hexBuilder.append(HEX_CHARS[unsigned ushr 4])
+                hexBuilder.append(HEX_CHARS[unsigned and 0x0F])
+            }
+            return "${hexBuilder.substring(0, 12)}.mp3"
+        }
+
+        private val HEX_CHARS: CharArray = "0123456789abcdef".toCharArray()
 
         /**
          * خريطة أسماء ملفات MP3 القياسية (res/raw أو reading_audio/) للمقاطع والكلمات العراقية
