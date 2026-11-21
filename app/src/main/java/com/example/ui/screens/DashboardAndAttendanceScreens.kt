@@ -109,6 +109,8 @@ fun DashboardScreen(
     val aiAdvisorInitialTab by viewModel.aiAdvisorInitialTab.collectAsState()
     val isMinistrySuiteOpen by viewModel.isMinistrySuiteOpen.collectAsState()
     val ministrySuiteInitialTab by viewModel.ministrySuiteInitialTab.collectAsState()
+    val platformPresenceSummary by viewModel.platformPresenceSummary.collectAsState()
+    var showPresenceDetailsSheet by remember { mutableStateOf(false) }
 
     if (isAdmin && isAiAdvisorOpen) {
         androidx.activity.compose.BackHandler {
@@ -803,196 +805,25 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Compact Executive AI Strip for the Principal (Gated by featureSettings.isAiAdvisorVisibleOnHome)
-                    if (isAdmin && featureSettings.isAiAdvisorVisibleOnHome) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.openAiSchoolAdvisor(0) }
-                                .testTag("dashboard_open_ai_school_advisor_card"),
-                            shape = RoundedCornerShape(18.dp),
-                            border = BorderStroke(1.5.dp, Color(0xFFFBBF24)),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        Brush.linearGradient(
-                                            colors = listOf(
-                                                Color(0xFF042F24),
-                                                Color(0xFF065F46),
-                                                Color(0xFF059669)
-                                            )
-                                        )
-                                    )
-                                    .padding(horizontal = 16.dp, vertical = 14.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        ExecutiveAnalyticsRadarVectorCanvas(
-                                            modifier = Modifier.size(48.dp)
-                                        )
-                                        Column(
-                                            modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = "المستشار الإداري الذكي ومركز التواصل",
-                                                style = MaterialTheme.typography.titleMedium.copy(
-                                                    fontSize = 15.sp,
-                                                    lineHeight = 21.sp
-                                                ),
-                                                color = Color.White,
-                                                fontWeight = FontWeight.ExtraBold
-                                            )
-                                            Text(
-                                                text = "تحليل بيانات المدرسة الفعلي • 10 تقارير PDF • إشعارات ذكية",
-                                                style = MaterialTheme.typography.bodySmall.copy(
-                                                    fontSize = 12.sp,
-                                                    lineHeight = 18.sp
-                                                ),
-                                                color = Color(0xFFFDE68A),
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = Color(0xFFFBBF24),
-                                            shadowElevation = 2.dp
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Insights,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFF042F24),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Text(
-                                                    text = "فتح المستشار",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = Color(0xFF042F24),
-                                                    fontWeight = FontWeight.ExtraBold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                    // Principal Real-Time Platform Activity Card (النشاط اللحظي للمنصة)
+                    if (isAdmin) {
+                        com.example.ui.components.RealTimePlatformPresenceCard(
+                            summary = platformPresenceSummary,
+                            onRefreshNow = { viewModel.refreshActivePresenceNow(isManual = true) },
+                            onOpenDetailsSheet = {
+                                viewModel.refreshActivePresenceNow(isManual = true)
+                                showPresenceDetailsSheet = true
                             }
-                        }
+                        )
                     }
 
-                    // School Administration & Exam Control Center Banner for Principal
+                    // Balanced Side-by-Side Row: Smart Advisor & Management Center (المستشار الذكي + مركز الإدارة)
                     if (isAdmin) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.openMinistryExecutiveSuite(0) }
-                                .testTag("dashboard_open_ministry_executive_suite_card"),
-                            shape = RoundedCornerShape(18.dp),
-                            border = BorderStroke(1.5.dp, Color(0xFFFBBF24)),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        Brush.linearGradient(
-                                            colors = listOf(
-                                                Color(0xFF042F24),
-                                                Color(0xFF064E3B),
-                                                Color(0xFF0F766E)
-                                            )
-                                        )
-                                    )
-                                    .padding(horizontal = 16.dp, vertical = 14.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        MinistryExecutiveCrestVectorCanvas(
-                                            modifier = Modifier.size(48.dp)
-                                        )
-                                        Column(
-                                            modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = "مركز الإدارة المدرسية واللجنة الامتحانية",
-                                                style = MaterialTheme.typography.titleMedium.copy(
-                                                    fontSize = 15.sp,
-                                                    lineHeight = 21.sp
-                                                ),
-                                                color = Color.White,
-                                                fontWeight = FontWeight.ExtraBold
-                                            )
-                                            Text(
-                                                text = "الكنترول والإعفاء • السجلات والإنذارات • الملاك • الرعاية • الترحيل والجرد",
-                                                style = MaterialTheme.typography.bodySmall.copy(
-                                                    fontSize = 12.sp,
-                                                    lineHeight = 18.sp
-                                                ),
-                                                color = Color(0xFFFDE68A),
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = Color(0xFFFBBF24),
-                                            shadowElevation = 2.dp
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Gavel,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFF042F24),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Text(
-                                                    text = "فتح المركز",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = Color(0xFF042F24),
-                                                    fontWeight = FontWeight.ExtraBold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        com.example.ui.components.PrincipalExecutiveToolsPairRow(
+                            showSmartAdvisor = featureSettings.isAiAdvisorVisibleOnHome,
+                            onOpenSmartAdvisor = { viewModel.openAiSchoolAdvisor(0) },
+                            onOpenManagementCenter = { viewModel.openMinistryExecutiveSuite(0) }
+                        )
                     }
 
                     // 3D Daily Attendance & Gate Summary Banner Card (موجز الدوام وحركة البوابة اليومية)
@@ -1241,8 +1072,8 @@ fun DashboardScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (isAdmin) {
                     SectionWaveQuickCard3D(
-                        title = "مركز الإدارة المدرسية واللجنة الامتحانية",
-                        subtitle = "اللجنة الامتحانية والكنترول، السجلات والإنذارات، إضبارة الملاك، الرعاية، الترحيل والجرد",
+                        title = "مركز الإدارة",
+                        subtitle = "التحليلات والتقارير التنفيذية، اللجان الامتحانية، والسجلات الرسمية",
                         icon = Icons.Filled.Gavel,
                         isBlueAccent = true,
                         onClick = { viewModel.openMinistryExecutiveSuite(0) },
@@ -1252,8 +1083,8 @@ fun DashboardScreen(
                 }
                 if (isAdmin && featureSettings.isAiAdvisorVisibleOnHome) {
                     SectionWaveQuickCard3D(
-                        title = "المستشار الإداري الذكي",
-                        subtitle = "المحادثة التحليلية، التقارير الـ 10 الرسمية + PDF، ومركز الإشعارات الذكية للمدير",
+                        title = "المستشار الذكي",
+                        subtitle = "المحادثة التحليلية، التحليلات الإدارية، ومركز الإشعارات الذكية للمدير",
                         icon = Icons.Filled.Insights,
                         isBlueAccent = false,
                         onClick = { viewModel.openAiSchoolAdvisor(0) },
@@ -1502,6 +1333,14 @@ fun DashboardScreen(
                 }
             },
             onDismiss = { walletPassStudent = null }
+        )
+    }
+
+    if (isAdmin && showPresenceDetailsSheet) {
+        com.example.ui.components.RealTimePresenceBottomSheet(
+            summary = platformPresenceSummary,
+            onRefreshNow = { viewModel.refreshActivePresenceNow(isManual = true) },
+            onDismiss = { showPresenceDetailsSheet = false }
         )
     }
 }

@@ -2311,21 +2311,9 @@ private fun MinistrySuiteExecutiveHeader(
 fun MinistryExecutiveCrestVectorCanvas(
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF065F46),
-        border = BorderStroke(1.5.dp, Color(0xFFFBBF24))
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = Icons.Filled.MenuBook,
-                contentDescription = "وثيقة رسمية",
-                tint = Color(0xFFFDE68A),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-    }
+    com.example.ui.components.ManagementCenterAnimatedEmblemCanvas(
+        modifier = modifier
+    )
 }
 
 // =========================================================================

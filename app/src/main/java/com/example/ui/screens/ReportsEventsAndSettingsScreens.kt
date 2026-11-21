@@ -2127,6 +2127,7 @@ fun SettingsScreen(
     val currentUser by viewModel.currentUser.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val isSideDrawerEnabled by viewModel.isSideDrawerEnabled.collectAsState()
+    val userInterfacePreferences by viewModel.userInterfacePreferences.collectAsState()
     val customSubjects = schoolConfig.subjectConfigs
 
     var schoolName by remember(schoolConfig) { mutableStateOf(schoolConfig.schoolName) }
@@ -2506,6 +2507,13 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            // قسم تخصيص واجهة المنصة (الواجهة التفاعلية والرئيسية)
+            PlatformInterfaceCustomizationCard(
+                isSmartHubDefault = userInterfacePreferences.isSmartHubDefault,
+                onOpenSmartWelcomeHub = { viewModel.openSmartWelcomeHub() },
+                onToggleSmartHubDefault = { enabled -> viewModel.setSmartWelcomeHubAsDefaultHome(enabled) }
+            )
         }
 
         // Category 1: الأمان والدخول السريع (Biometric Fingerprint Login Settings Card)
@@ -2658,6 +2666,12 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            PlatformInterfaceCustomizationCard(
+                isSmartHubDefault = userInterfacePreferences.isSmartHubDefault,
+                onOpenSmartWelcomeHub = { viewModel.openSmartWelcomeHub() },
+                onToggleSmartHubDefault = { enabled -> viewModel.setSmartWelcomeHubAsDefaultHome(enabled) }
+            )
         }
 
         // Category 4: الإشعارات والنسخ الاحتياطي (Private Principal Suggestions Box)

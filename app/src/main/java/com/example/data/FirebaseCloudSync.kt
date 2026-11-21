@@ -950,6 +950,232 @@ object FirebaseCloudSync {
         )
     }
 
+    // =========================================================================
+    // PER-USER CLOUD NOTIFICATION READ STATE:
+    // schools/{schoolCode}/user_notification_state/{userId}.json
+    // =========================================================================
+
+    suspend fun fetchUserNotificationState(
+        schoolId: String,
+        userId: String
+    ): com.example.model.UserNotificationReadState? = withContext(Dispatchers.IO) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return@withContext null
+
+        try {
+            val url =
+                "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSid/user_notification_state/$cleanUid.json"
+            val raw = executeHttpGet(url)?.trim()
+            if (raw.isNullOrBlank() || raw == "null" || !raw.startsWith("{")) {
+                return@withContext null
+            }
+            val obj = JSONObject(raw)
+            val lastSeen = obj.optLong("lastSeenTimestamp", 0L)
+            val updatedAt = obj.optLong("updatedAt", lastSeen)
+            val readIds = linkedSetOf<String>()
+            val idsArr = obj.optJSONArray("readNotificationIds")
+            if (idsArr != null) {
+                for (i in 0 until idsArr.length()) {
+                    val idStr = idsArr.optString(i, "").trim()
+                    if (idStr.isNotEmpty()) readIds.add(idStr)
+                }
+            }
+            com.example.model.UserNotificationReadState(
+                userId = cleanUid,
+                schoolId = cleanSid,
+                lastSeenTimestamp = lastSeen,
+                readNotificationIds = readIds,
+                updatedAt = updatedAt
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun pushUserNotificationStateAsync(
+        schoolId: String,
+        userId: String,
+        state: com.example.model.UserNotificationReadState
+    ) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return
+
+        syncScope.launch {
+            try {
+                val url =
+                    "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSid/user_notification_state/$cleanUid.json"
+                val idsJson = JSONArray()
+                state.readNotificationIds.toList().takeLast(450).forEach { id ->
+                    if (id.isNotBlank()) idsJson.put(id)
+                }
+                val body = JSONObject().apply {
+                    put("userId", cleanUid)
+                    put("schoolId", cleanSid)
+                    put("lastSeenTimestamp", state.lastSeenTimestamp)
+                    put("readNotificationIds", idsJson)
+                    put("updatedAt", System.currentTimeMillis())
+                }.toString()
+                executeHttpWrite(url, "PUT", body)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    // =========================================================================
+    // LIGHTWEIGHT REAL-TIME PRESENCE HEARTBEAT:
+    // schools/{schoolCode}/active_presence/{userId}.json
+    // =========================================================================
+
+    fun pushUserPresenceAsync(
+        schoolId: String,
+        record: com.example.model.ActiveUserPresenceRecord
+    ) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(record.userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return
+
+        syncScope.launch {
+            pushUserPresenceAwait(cleanSid, record.copy(userId = cleanUid))
+        }
+    }
+
+    suspend fun pushUserPresenceAwait(
+        schoolId: String,
+        record: com.example.model.ActiveUserPresenceRecord
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(record.userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return@withContext false
+
+        try {
+            val url =
+                "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSid/active_presence/$cleanUid.json"
+            val body = JSONObject().apply {
+                put("userId", cleanUid)
+                put("name", InputSanitizer.sanitize(record.name, 120))
+                put("role", InputSanitizer.sanitize(record.role, 60))
+                put("isOnline", record.isOnline)
+                put("lastActiveTimestamp", record.lastActiveTimestamp)
+            }.toString()
+            executeHttpWriteWithStatus(url, "PUT", body)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun fetchAllActivePresence(
+        schoolId: String
+    ): List<com.example.model.ActiveUserPresenceRecord>? = withContext(Dispatchers.IO) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        if (cleanSid.isBlank()) return@withContext null
+
+        try {
+            val url = "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSid/active_presence.json"
+            val raw = executeHttpGet(url)?.trim() ?: return@withContext null
+            if (raw == "null" || raw == "{}" || raw == "[]") return@withContext emptyList()
+
+            val result = mutableListOf<com.example.model.ActiveUserPresenceRecord>()
+            if (raw.startsWith("{")) {
+                val root = JSONObject(raw)
+                val keys = root.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val item = root.optJSONObject(key) ?: continue
+                    val uid = item.optString("userId", key).trim().ifBlank { key }
+                    val name = item.optString("name", "").trim()
+                    val role = item.optString("role", "").trim()
+                    val online = item.optBoolean("isOnline", false)
+                    val lastTs = item.optLong("lastActiveTimestamp", 0L)
+                    if (uid.isNotBlank() && lastTs > 0L) {
+                        result.add(
+                            com.example.model.ActiveUserPresenceRecord(
+                                userId = uid,
+                                name = name.ifBlank { "مستخدم المنصة" },
+                                role = role.ifBlank { "مستخدم" },
+                                isOnline = online,
+                                lastActiveTimestamp = lastTs
+                            )
+                        )
+                    }
+                }
+            }
+            result
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    // =========================================================================
+    // PER-USER INTERFACE PREFERENCES (SMART WELCOME HUB & DEFAULT HOME MODE):
+    // schools/{schoolCode}/user_preferences/{userId}.json
+    // =========================================================================
+
+    suspend fun fetchUserInterfacePreferences(
+        schoolId: String,
+        userId: String
+    ): com.example.model.UserInterfacePreferences? = withContext(Dispatchers.IO) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return@withContext null
+
+        try {
+            val url = "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSid/user_preferences/$cleanUid.json"
+            val raw = executeHttpGet(url)?.trim() ?: return@withContext null
+            if (raw == "null" || raw == "{}") return@withContext null
+
+            val obj = JSONObject(raw)
+            val hasSeen = obj.optBoolean("hasSeenWelcomeHub", false)
+            val rawMode = obj.optString("preferredHomeMode", com.example.model.UserInterfacePreferences.HOME_MODE_CLASSIC).trim()
+            val normalizedMode = if (rawMode.equals(com.example.model.UserInterfacePreferences.HOME_MODE_SMART_HUB, ignoreCase = true)) {
+                com.example.model.UserInterfacePreferences.HOME_MODE_SMART_HUB
+            } else {
+                com.example.model.UserInterfacePreferences.HOME_MODE_CLASSIC
+            }
+            val updatedAt = obj.optLong("updatedAt", 0L)
+            com.example.model.UserInterfacePreferences(
+                userId = cleanUid,
+                schoolId = cleanSid,
+                hasSeenWelcomeHub = hasSeen,
+                preferredHomeMode = normalizedMode,
+                updatedAt = updatedAt
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun pushUserInterfacePreferencesAsync(
+        schoolId: String,
+        userId: String,
+        preferences: com.example.model.UserInterfacePreferences
+    ) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return
+
+        syncScope.launch {
+            try {
+                val url = "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSid/user_preferences/$cleanUid.json"
+                val normalizedMode = if (preferences.isSmartHubDefault) {
+                    com.example.model.UserInterfacePreferences.HOME_MODE_SMART_HUB
+                } else {
+                    com.example.model.UserInterfacePreferences.HOME_MODE_CLASSIC
+                }
+                val body = JSONObject().apply {
+                    put("userId", cleanUid)
+                    put("schoolId", cleanSid)
+                    put("hasSeenWelcomeHub", preferences.hasSeenWelcomeHub)
+                    put("preferredHomeMode", normalizedMode)
+                    put("updatedAt", preferences.updatedAt.takeIf { it > 0L } ?: System.currentTimeMillis())
+                }.toString()
+                executeHttpWrite(url, "PUT", body)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     private fun executeHttpGet(urlStr: String): String? {
         var conn: HttpURLConnection? = null
         return try {

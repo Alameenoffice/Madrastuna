@@ -248,7 +248,7 @@ private fun DrawerPrincipalAiAdvisorMenuItem() {
                     overflow = TextOverflow.Ellipsis
                 )
                 androidx.compose.material3.Text(
-                    text = "التحليل التنفيذي والتقارير الـ 10 الرسمية ومركز الإشعارات",
+                    text = "التحليل التنفيذي والتقارير الإدارية ومركز الإشعارات",
                     style = MaterialTheme.typography.labelSmall,
                     color = subtitleColor,
                     maxLines = 1,

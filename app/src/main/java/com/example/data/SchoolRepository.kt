@@ -2029,7 +2029,8 @@ class SchoolRepository(context: Context) {
                         isRead = o.optBoolean("isRead", false),
                         schoolId = itemSid,
                         isUrgent = o.optBoolean("isUrgent", false),
-                        priority = o.optString("priority", "normal")
+                        priority = o.optString("priority", "normal"),
+                        timestampMs = o.optLong("timestampMs", 0L)
                     )
                 )
             }
@@ -2062,11 +2063,74 @@ class SchoolRepository(context: Context) {
                 put("schoolId", schoolId)
                 put("isUrgent", n.isUrgent)
                 put("priority", n.priority)
+                put("timestampMs", n.timestampMs)
             })
         }
         val jsonStr = arr.toString()
         prefs.edit().putString(scopedKey(schoolId, FirebaseConfigConstants.COL_NOTIFICATIONS), jsonStr).apply()
         FirebaseCloudSync.pushSubCollectionAsync(schoolId, FirebaseConfigConstants.COL_NOTIFICATIONS, jsonStr)
+    }
+
+    fun loadUserNotificationState(
+        schoolId: String,
+        userId: String
+    ): UserNotificationReadState {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return UserNotificationReadState()
+        val raw = prefs.getString("user_notif_state_${cleanSid}_$cleanUid", null)
+            ?: return UserNotificationReadState(userId = cleanUid, schoolId = cleanSid)
+        return try {
+            val obj = JSONObject(raw)
+            val ids = linkedSetOf<String>()
+            val arr = obj.optJSONArray("readNotificationIds")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val v = arr.optString(i, "").trim()
+                    if (v.isNotEmpty()) ids.add(v)
+                }
+            }
+            UserNotificationReadState(
+                userId = cleanUid,
+                schoolId = cleanSid,
+                lastSeenTimestamp = obj.optLong("lastSeenTimestamp", 0L),
+                readNotificationIds = ids,
+                updatedAt = obj.optLong("updatedAt", 0L)
+            )
+        } catch (_: Exception) {
+            UserNotificationReadState(userId = cleanUid, schoolId = cleanSid)
+        }
+    }
+
+    fun saveUserNotificationState(
+        schoolId: String,
+        userId: String,
+        state: UserNotificationReadState,
+        pushToCloud: Boolean = true
+    ) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return
+        val cappedIds = state.readNotificationIds.toList().takeLast(450).toSet()
+        val finalState = state.copy(
+            userId = cleanUid,
+            schoolId = cleanSid,
+            readNotificationIds = cappedIds,
+            updatedAt = System.currentTimeMillis()
+        )
+        val idsArr = JSONArray()
+        cappedIds.forEach { idsArr.put(it) }
+        val json = JSONObject().apply {
+            put("userId", cleanUid)
+            put("schoolId", cleanSid)
+            put("lastSeenTimestamp", finalState.lastSeenTimestamp)
+            put("readNotificationIds", idsArr)
+            put("updatedAt", finalState.updatedAt)
+        }.toString()
+        prefs.edit().putString("user_notif_state_${cleanSid}_$cleanUid", json).apply()
+        if (pushToCloud) {
+            FirebaseCloudSync.pushUserNotificationStateAsync(cleanSid, cleanUid, finalState)
+        }
     }
 
     // =========================================================================
@@ -4361,7 +4425,78 @@ class SchoolRepository(context: Context) {
     fun loadOfficialPrimaryCurriculumBooks(): List<com.example.ui.screens.CurriculumBookItem> {
         return com.example.ui.screens.IraqiCurriculumCatalog.defaultPrimaryBooks
     }
+
+    private fun userUiPrefsKey(schoolId: String, userId: String): String {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        return "user_ui_preferences_${cleanSid}_$cleanUid"
+    }
+
+    fun hasLocalUserInterfacePreferences(schoolId: String, userId: String): Boolean {
+        if (schoolId.isBlank() || userId.isBlank()) return false
+        return prefs.contains(userUiPrefsKey(schoolId, userId))
+    }
+
+    fun loadUserInterfacePreferences(schoolId: String, userId: String): UserInterfacePreferences {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return UserInterfacePreferences()
+        val raw = prefs.getString(userUiPrefsKey(cleanSid, cleanUid), null)
+            ?: return UserInterfacePreferences(userId = cleanUid, schoolId = cleanSid)
+        return try {
+            val obj = JSONObject(raw)
+            val rawMode = obj.optString("preferredHomeMode", UserInterfacePreferences.HOME_MODE_CLASSIC).trim()
+            val normalizedMode = if (rawMode.equals(UserInterfacePreferences.HOME_MODE_SMART_HUB, ignoreCase = true)) {
+                UserInterfacePreferences.HOME_MODE_SMART_HUB
+            } else {
+                UserInterfacePreferences.HOME_MODE_CLASSIC
+            }
+            UserInterfacePreferences(
+                userId = cleanUid,
+                schoolId = cleanSid,
+                hasSeenWelcomeHub = obj.optBoolean("hasSeenWelcomeHub", false),
+                preferredHomeMode = normalizedMode,
+                updatedAt = obj.optLong("updatedAt", 0L)
+            )
+        } catch (_: Exception) {
+            UserInterfacePreferences(userId = cleanUid, schoolId = cleanSid)
+        }
+    }
+
+    fun saveUserInterfacePreferences(
+        schoolId: String,
+        userId: String,
+        preferences: UserInterfacePreferences,
+        pushToCloud: Boolean = true
+    ) {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return
+        val normalizedMode = if (preferences.isSmartHubDefault) {
+            UserInterfacePreferences.HOME_MODE_SMART_HUB
+        } else {
+            UserInterfacePreferences.HOME_MODE_CLASSIC
+        }
+        val normalized = preferences.copy(
+            userId = cleanUid,
+            schoolId = cleanSid,
+            preferredHomeMode = normalizedMode,
+            updatedAt = preferences.updatedAt.takeIf { it > 0L } ?: System.currentTimeMillis()
+        )
+        val json = JSONObject().apply {
+            put("userId", normalized.userId)
+            put("schoolId", normalized.schoolId)
+            put("hasSeenWelcomeHub", normalized.hasSeenWelcomeHub)
+            put("preferredHomeMode", normalized.preferredHomeMode)
+            put("updatedAt", normalized.updatedAt)
+        }.toString()
+        prefs.edit().putString(userUiPrefsKey(cleanSid, cleanUid), json).apply()
+        if (pushToCloud) {
+            FirebaseCloudSync.pushUserInterfacePreferencesAsync(cleanSid, cleanUid, normalized)
+        }
+    }
 }
+
 
 
 

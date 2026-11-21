@@ -8,6 +8,7 @@ import com.example.data.SchoolRepository
 import com.example.model.*
 import com.example.util.InputSanitizer
 import com.example.util.SystemNotificationHelper
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -164,6 +165,21 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     private val _isNetworkOnline = MutableStateFlow(checkCurrentNetworkOnline())
     val isNetworkOnline: StateFlow<Boolean> = _isNetworkOnline.asStateFlow()
 
+    private val _isCheckingNetworkNow = MutableStateFlow(false)
+    val isCheckingNetworkNow: StateFlow<Boolean> = _isCheckingNetworkNow.asStateFlow()
+
+    private val _userNotificationReadState = MutableStateFlow(UserNotificationReadState())
+    val userNotificationReadState: StateFlow<UserNotificationReadState> = _userNotificationReadState.asStateFlow()
+
+    private val _platformPresenceSummary = MutableStateFlow(PlatformLivePresenceSummary())
+    val platformPresenceSummary: StateFlow<PlatformLivePresenceSummary> = _platformPresenceSummary.asStateFlow()
+
+    private val _isAppInForeground = MutableStateFlow(true)
+    private var cloudNotifStateHydratedKey: String = ""
+    private val firedSystemNotificationIds = mutableSetOf<String>()
+    private var presenceHeartbeatJob: Job? = null
+    private var adminPresencePollingJob: Job? = null
+
     val isCloudActionProcessing: StateFlow<Boolean> = FirebaseCloudSync.isCloudWriteInFlight
 
     // Security Shield Brute-Force Lockout States
@@ -278,6 +294,159 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _selectedAttendanceSection = MutableStateFlow("")
     val selectedAttendanceSection: StateFlow<String> = _selectedAttendanceSection.asStateFlow()
+
+    // Per-User Smart Welcome Hub & Preferred Home Interface (Local + Cloud user_preferences/{userId}.json)
+    private val _userInterfacePreferences = MutableStateFlow(UserInterfacePreferences())
+    val userInterfacePreferences: StateFlow<UserInterfacePreferences> = _userInterfacePreferences.asStateFlow()
+
+    private val _showSmartWelcomeHub = MutableStateFlow(false)
+    val showSmartWelcomeHub: StateFlow<Boolean> = _showSmartWelcomeHub.asStateFlow()
+
+    private var userUiPrefsHydratedKey: String = ""
+
+    fun openSmartWelcomeHub() {
+        _showSmartWelcomeHub.value = true
+    }
+
+    fun dismissSmartWelcomeHubToClassic() {
+        val sid = _schoolConfig.value.schoolId
+        val user = _currentUser.value
+        if (sid.isNotBlank() && user != null) {
+            val current = _userInterfacePreferences.value.let {
+                if (it.userId == user.id && it.schoolId == sid) it
+                else repo.loadUserInterfacePreferences(sid, user.id)
+            }
+            val updated = current.copy(
+                userId = user.id,
+                schoolId = sid,
+                hasSeenWelcomeHub = true,
+                updatedAt = System.currentTimeMillis()
+            )
+            _userInterfacePreferences.value = updated
+            repo.saveUserInterfacePreferences(sid, user.id, updated, pushToCloud = true)
+        }
+        _showSmartWelcomeHub.value = false
+        _activeSection.value = AppSection.DASHBOARD
+    }
+
+    fun markWelcomeHubSeenAndNavigate(action: () -> Unit) {
+        val sid = _schoolConfig.value.schoolId
+        val user = _currentUser.value
+        if (sid.isNotBlank() && user != null) {
+            val current = _userInterfacePreferences.value.let {
+                if (it.userId == user.id && it.schoolId == sid) it
+                else repo.loadUserInterfacePreferences(sid, user.id)
+            }
+            if (!current.hasSeenWelcomeHub) {
+                val updated = current.copy(
+                    userId = user.id,
+                    schoolId = sid,
+                    hasSeenWelcomeHub = true,
+                    updatedAt = System.currentTimeMillis()
+                )
+                _userInterfacePreferences.value = updated
+                repo.saveUserInterfacePreferences(sid, user.id, updated, pushToCloud = true)
+            }
+        }
+        _showSmartWelcomeHub.value = false
+        action()
+    }
+
+    fun setSmartWelcomeHubAsDefaultHome(enabled: Boolean, showFeedbackToast: Boolean = true) {
+        val sid = _schoolConfig.value.schoolId
+        val user = _currentUser.value ?: return
+        if (sid.isBlank()) return
+        val current = _userInterfacePreferences.value.let {
+            if (it.userId == user.id && it.schoolId == sid) it
+            else repo.loadUserInterfacePreferences(sid, user.id)
+        }
+        val nextMode = if (enabled) {
+            UserInterfacePreferences.HOME_MODE_SMART_HUB
+        } else {
+            UserInterfacePreferences.HOME_MODE_CLASSIC
+        }
+        val updated = current.copy(
+            userId = user.id,
+            schoolId = sid,
+            hasSeenWelcomeHub = true,
+            preferredHomeMode = nextMode,
+            updatedAt = System.currentTimeMillis()
+        )
+        _userInterfacePreferences.value = updated
+        repo.saveUserInterfacePreferences(sid, user.id, updated, pushToCloud = true)
+        if (showFeedbackToast) {
+            showToastAlert(
+                if (enabled) {
+                    "تم تثبيت الواجهة التفاعلية كواجهة بداية لحسابك"
+                } else {
+                    "تم اعتماد الرئيسية كواجهة بداية عند فتح التطبيق"
+                },
+                isSuccess = true
+            )
+        }
+    }
+
+    private fun hydrateUserInterfacePreferencesForSession(schoolId: String, user: UserAccount) {
+        val cleanSid = schoolId.trim()
+        val cleanUid = user.id.trim()
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return
+        val sessionKey = "${cleanSid}_$cleanUid"
+        val hasLocal = repo.hasLocalUserInterfacePreferences(cleanSid, cleanUid)
+        val localPrefs = repo.loadUserInterfacePreferences(cleanSid, cleanUid)
+        _userInterfacePreferences.value = localPrefs
+
+        // Immediately display Smart Hub if user pinned it locally
+        if (hasLocal && localPrefs.isSmartHubDefault) {
+            _showSmartWelcomeHub.value = true
+        }
+
+        viewModelScope.launch {
+            val remotePrefs = FirebaseCloudSync.fetchUserInterfacePreferences(cleanSid, cleanUid)
+            val resolved = when {
+                remotePrefs != null && !hasLocal -> remotePrefs
+                remotePrefs != null && hasLocal -> {
+                    if (remotePrefs.updatedAt >= localPrefs.updatedAt) {
+                        remotePrefs.copy(
+                            hasSeenWelcomeHub = remotePrefs.hasSeenWelcomeHub || localPrefs.hasSeenWelcomeHub
+                        )
+                    } else {
+                        localPrefs.copy(
+                            hasSeenWelcomeHub = remotePrefs.hasSeenWelcomeHub || localPrefs.hasSeenWelcomeHub
+                        )
+                    }
+                }
+                hasLocal -> localPrefs
+                else -> UserInterfacePreferences(
+                    userId = cleanUid,
+                    schoolId = cleanSid,
+                    hasSeenWelcomeHub = false,
+                    preferredHomeMode = UserInterfacePreferences.HOME_MODE_CLASSIC,
+                    updatedAt = 0L
+                )
+            }
+
+            // Ensure session didn't change while fetching
+            if (_currentUser.value?.id != user.id || _schoolConfig.value.schoolId != schoolId) return@launch
+
+            _userInterfacePreferences.value = resolved
+            if (remotePrefs != null || hasLocal) {
+                repo.saveUserInterfacePreferences(
+                    schoolId = cleanSid,
+                    userId = cleanUid,
+                    preferences = resolved,
+                    pushToCloud = remotePrefs == null && hasLocal
+                )
+            }
+
+            val shouldAutoOpenHub = !resolved.hasSeenWelcomeHub || resolved.isSmartHubDefault
+            if (userUiPrefsHydratedKey != sessionKey) {
+                userUiPrefsHydratedKey = sessionKey
+                if (shouldAutoOpenHub) {
+                    _showSmartWelcomeHub.value = true
+                }
+            }
+        }
+    }
 
     fun setSelectedAttendanceDate(dateIso: String) {
         val clean = ArabicTextNormalizer.normalizeDigitsToAscii(dateIso.trim())
@@ -463,14 +632,20 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun refreshConnectivityState(): Boolean {
         val osOnline = checkCurrentNetworkOnline()
         if (!osOnline) {
+            _isCheckingNetworkNow.value = false
             _isNetworkOnline.value = false
             return false
         }
         viewModelScope.launch {
-            val realOnline = FirebaseCloudSync.verifyRealInternet(3000)
-            _isNetworkOnline.value = realOnline
-            if (realOnline) {
-                flushPendingActivityCommentsToCloud()
+            _isCheckingNetworkNow.value = true
+            try {
+                val realOnline = FirebaseCloudSync.verifyRealInternet(3000)
+                _isNetworkOnline.value = realOnline
+                if (realOnline) {
+                    flushPendingActivityCommentsToCloud()
+                }
+            } finally {
+                _isCheckingNetworkNow.value = false
             }
         }
         return osOnline
@@ -539,9 +714,275 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             }
             if (matchedUser != null) {
                 _currentUser.value = matchedUser
+                onUserSessionActivated(currentSchoolId, matchedUser)
             } else {
                 repo.clearSession()
                 _activeSession.value = null
+            }
+        }
+    }
+
+    // =========================================================================
+    // CLOUD NOTIFICATION READ-STATE & STRICT TRANSPORT SUBSCRIPTION FILTER
+    // =========================================================================
+
+    private fun getSubscribedTransportStudentIds(schoolId: String): Set<String> {
+        return _students.value
+            .asSequence()
+            .filter { (it.schoolId.isEmpty() || it.schoolId == schoolId) && it.isBusSubscribed }
+            .map { it.id }
+            .toSet()
+    }
+
+    private fun isNotificationAlreadySeenOrRead(
+        notif: AppNotification,
+        state: UserNotificationReadState
+    ): Boolean {
+        if (notif.id in state.readNotificationIds) return true
+        val lastSeen = state.lastSeenTimestamp
+        if (lastSeen > 0L) {
+            if (notif.timestampMs > 0L && notif.timestampMs <= lastSeen) return true
+            if (notif.timestampMs == 0L) return true
+        }
+        return false
+    }
+
+    private suspend fun ensureUserNotificationStateHydratedSuspend(
+        schoolId: String,
+        userId: String
+    ): UserNotificationReadState {
+        val cleanSid = InputSanitizer.sanitizeSchoolId(schoolId)
+        val cleanUid = InputSanitizer.sanitizeSchoolId(userId)
+        if (cleanSid.isBlank() || cleanUid.isBlank()) return _userNotificationReadState.value
+
+        val key = "$cleanSid|$cleanUid"
+        val localState = repo.loadUserNotificationState(cleanSid, cleanUid)
+        if (cloudNotifStateHydratedKey == key && _userNotificationReadState.value.userId == cleanUid) {
+            return _userNotificationReadState.value
+        }
+
+        val cloudState = FirebaseCloudSync.fetchUserNotificationState(cleanSid, cleanUid)
+        val mergedIds = linkedSetOf<String>().apply {
+            addAll(localState.readNotificationIds)
+            if (cloudState != null) addAll(cloudState.readNotificationIds)
+        }
+        var mergedLastSeen = maxOf(localState.lastSeenTimestamp, cloudState?.lastSeenTimestamp ?: 0L)
+        var shouldPushBack = false
+
+        // On first-ever cloud bootstrap / fresh reinstall when no cloud record exists yet:
+        // seed lastSeenTimestamp to now and mark already-existing historical notifications as seen
+        // so reinstalling the app never floods old notifications as new popups.
+        if (cloudState == null && mergedLastSeen == 0L) {
+            mergedLastSeen = System.currentTimeMillis()
+            _notifications.value
+                .filter { it.schoolId.isEmpty() || it.schoolId == cleanSid }
+                .forEach { mergedIds.add(it.id) }
+            shouldPushBack = true
+        }
+
+        val finalState = UserNotificationReadState(
+            userId = cleanUid,
+            schoolId = cleanSid,
+            lastSeenTimestamp = mergedLastSeen,
+            readNotificationIds = mergedIds,
+            updatedAt = System.currentTimeMillis()
+        )
+        _userNotificationReadState.value = finalState
+        repo.saveUserNotificationState(cleanSid, cleanUid, finalState, pushToCloud = shouldPushBack)
+        cloudNotifStateHydratedKey = key
+        return finalState
+    }
+
+    private fun markNotificationsReadLocallyAndCloud(
+        notificationIds: Collection<String>,
+        updateLastSeen: Boolean = true
+    ) {
+        val sid = _schoolConfig.value.schoolId
+        val user = _currentUser.value ?: return
+        if (sid.isBlank()) return
+        val nowMs = System.currentTimeMillis()
+        val current = _userNotificationReadState.value.let {
+            if (it.userId == user.id && it.schoolId == sid) it else repo.loadUserNotificationState(sid, user.id)
+        }
+        val mergedIds = linkedSetOf<String>().apply {
+            addAll(current.readNotificationIds)
+            addAll(notificationIds.filter { it.isNotBlank() })
+        }
+        val nextLastSeen = if (updateLastSeen) maxOf(current.lastSeenTimestamp, nowMs) else current.lastSeenTimestamp
+        val nextState = UserNotificationReadState(
+            userId = user.id,
+            schoolId = sid,
+            lastSeenTimestamp = nextLastSeen,
+            readNotificationIds = mergedIds,
+            updatedAt = nowMs
+        )
+        _userNotificationReadState.value = nextState
+        repo.saveUserNotificationState(sid, user.id, nextState, pushToCloud = true)
+    }
+
+    // =========================================================================
+    // LIGHTWEIGHT REAL-TIME PRESENCE HEARTBEAT & PRINCIPAL MONITOR
+    // =========================================================================
+
+    private fun resolvePresenceRoleArabic(user: UserAccount): String {
+        if (user.isBusDriverAccount) return "سائق"
+        return when (user.role) {
+            UserRole.ADMIN -> "مدير"
+            UserRole.TEACHER -> "معلم"
+            UserRole.STUDENT -> "طالب"
+            UserRole.PARENT -> "ولي أمر"
+        }
+    }
+
+    private fun buildCurrentPresenceRecord(user: UserAccount, isOnline: Boolean): ActiveUserPresenceRecord {
+        return ActiveUserPresenceRecord(
+            userId = user.id,
+            name = user.fullName.ifBlank { user.username }.ifBlank { "مستخدم المنصة" },
+            role = resolvePresenceRoleArabic(user),
+            isOnline = isOnline,
+            lastActiveTimestamp = System.currentTimeMillis()
+        )
+    }
+
+    private fun onUserSessionActivated(schoolId: String, user: UserAccount) {
+        if (schoolId.isBlank()) return
+        cloudNotifStateHydratedKey = ""
+        userUiPrefsHydratedKey = ""
+        val localState = repo.loadUserNotificationState(schoolId, user.id)
+        _userNotificationReadState.value = localState
+        viewModelScope.launch {
+            ensureUserNotificationStateHydratedSuspend(schoolId, user.id)
+        }
+        hydrateUserInterfacePreferencesForSession(schoolId, user)
+        if (_isAppInForeground.value) {
+            startPresenceHeartbeatForActiveSession()
+            if (user.role == UserRole.ADMIN) {
+                startAdminPresencePolling()
+            } else {
+                adminPresencePollingJob?.cancel()
+                adminPresencePollingJob = null
+            }
+        }
+    }
+
+    fun onAppResumed() {
+        _isAppInForeground.value = true
+        val sid = _schoolConfig.value.schoolId
+        val user = _currentUser.value
+        if (sid.isNotBlank() && user != null) {
+            startPresenceHeartbeatForActiveSession()
+            if (user.role == UserRole.ADMIN) {
+                startAdminPresencePolling()
+            }
+        }
+    }
+
+    fun onAppStopped() {
+        _isAppInForeground.value = false
+        presenceHeartbeatJob?.cancel()
+        presenceHeartbeatJob = null
+        adminPresencePollingJob?.cancel()
+        adminPresencePollingJob = null
+        val sid = _schoolConfig.value.schoolId
+        val user = _currentUser.value
+        if (sid.isNotBlank() && user != null) {
+            FirebaseCloudSync.pushUserPresenceAsync(
+                schoolId = sid,
+                record = buildCurrentPresenceRecord(user, isOnline = false)
+            )
+        }
+    }
+
+    private fun startPresenceHeartbeatForActiveSession() {
+        presenceHeartbeatJob?.cancel()
+        presenceHeartbeatJob = viewModelScope.launch {
+            while (isActive && _isAppInForeground.value) {
+                val sid = _schoolConfig.value.schoolId
+                val user = _currentUser.value
+                if (sid.isNotBlank() && user != null) {
+                    FirebaseCloudSync.pushUserPresenceAwait(
+                        schoolId = sid,
+                        record = buildCurrentPresenceRecord(user, isOnline = true)
+                    )
+                }
+                delay(45_000L)
+            }
+        }
+    }
+
+    private fun startAdminPresencePolling() {
+        adminPresencePollingJob?.cancel()
+        adminPresencePollingJob = viewModelScope.launch {
+            while (isActive && _isAppInForeground.value) {
+                val user = _currentUser.value
+                if (user?.role == UserRole.ADMIN) {
+                    refreshActivePresenceNow(isManual = false)
+                } else {
+                    break
+                }
+                delay(20_000L)
+            }
+        }
+    }
+
+    fun refreshActivePresenceNow(isManual: Boolean = true) {
+        val sid = _schoolConfig.value.schoolId
+        val user = _currentUser.value
+        if (sid.isBlank() || user?.role != UserRole.ADMIN) return
+        viewModelScope.launch {
+            if (isManual) {
+                _platformPresenceSummary.value = _platformPresenceSummary.value.copy(isRefreshing = true)
+            }
+            try {
+                // Ensure admin's own live heartbeat is fresh before reading
+                val selfRecord = buildCurrentPresenceRecord(user, isOnline = _isAppInForeground.value)
+                if (_isAppInForeground.value) {
+                    FirebaseCloudSync.pushUserPresenceAwait(sid, selfRecord)
+                }
+                val rawList = FirebaseCloudSync.fetchAllActivePresence(sid)
+                if (rawList != null) {
+                    val nowMs = System.currentTimeMillis()
+                    val byUserId = linkedMapOf<String, ActiveUserPresenceRecord>()
+                    rawList.forEach { rec ->
+                        val existing = byUserId[rec.userId]
+                        if (existing == null || rec.lastActiveTimestamp >= existing.lastActiveTimestamp) {
+                            byUserId[rec.userId] = rec
+                        }
+                    }
+                    // Ensure current admin is included in case RTDB write propagation lags by milliseconds
+                    if (_isAppInForeground.value) {
+                        val existingSelf = byUserId[user.id]
+                        if (existingSelf == null || selfRecord.lastActiveTimestamp >= existingSelf.lastActiveTimestamp) {
+                            byUserId[user.id] = selfRecord
+                        }
+                    }
+                    val allRecords = byUserId.values.toList()
+                    val activeNowList = allRecords
+                        .filter { it.isTrulyActiveNow(nowMs) }
+                        .sortedByDescending { it.lastActiveTimestamp }
+                    val activeTodayUnique = allRecords
+                        .filter { it.isActiveToday(nowMs) }
+                        .distinctBy { it.userId }
+
+                    val teachersCount = activeNowList.count { it.categoryBucket() == "TEACHERS" }
+                    val stuParentCount = activeNowList.count { it.categoryBucket() == "STUDENTS_PARENTS" }
+                    val adminTransCount = activeNowList.count { it.categoryBucket() == "ADMIN_TRANSPORT" }
+
+                    _platformPresenceSummary.value = PlatformLivePresenceSummary(
+                        activeNowCount = activeNowList.size,
+                        activeTodayCount = maxOf(activeTodayUnique.size, activeNowList.size),
+                        activeNowUsers = activeNowList,
+                        teachersOnlineCount = teachersCount,
+                        studentsAndParentsOnlineCount = stuParentCount,
+                        adminAndTransportOnlineCount = adminTransCount,
+                        lastUpdatedMs = nowMs,
+                        isRefreshing = false
+                    )
+                } else {
+                    _platformPresenceSummary.value = _platformPresenceSummary.value.copy(isRefreshing = false)
+                }
+            } catch (_: Exception) {
+                _platformPresenceSummary.value = _platformPresenceSummary.value.copy(isRefreshing = false)
             }
         }
     }
@@ -1192,7 +1633,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     targetRole = UserRole.ADMIN.name,
                     createdAt = today,
                     isRead = false,
-                    schoolId = sid
+                    schoolId = sid,
+                    timestampMs = System.currentTimeMillis()
                 )
                 val updatedSchoolNotifs = listOf(adminNotif) + existingNotifs
                 repo.saveNotifications(updatedSchoolNotifs, sid)
@@ -1474,16 +1916,17 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                 sid,
                                 FirebaseConfigConstants.COL_MESSAGES
                             )
-                            if (!remoteMsgsRaw.isNullOrBlank() &&
-                                remoteMsgsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_MESSAGES)
-                            ) {
+                            val cachedMsgsBefore = repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_MESSAGES)
+                            if (!remoteMsgsRaw.isNullOrBlank() && remoteMsgsRaw != cachedMsgsBefore) {
+                                val wasChatCacheEmpty = cachedMsgsBefore.isNullOrBlank()
                                 val remoteMsgs = repo.parseChatMessagesJson(remoteMsgsRaw, sid)
                                 val currentIds = _chatMessages.value.map { it.id }.toSet()
                                 val newMsgs = remoteMsgs.filter { it.id !in currentIds }
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_MESSAGES, remoteMsgsRaw)
                                 _chatMessages.value = remoteMsgs
 
-                                if (newMsgs.isNotEmpty()) {
+                                if (newMsgs.isNotEmpty() && !wasChatCacheEmpty) {
+                                    val activeReadState = ensureUserNotificationStateHydratedSuspend(sid, user.id)
                                     val newest = newMsgs.last()
                                     val isSentByMe = newest.senderName.contains(user.fullName)
                                     val isTargetedRecipient = when {
@@ -1495,7 +1938,12 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                             user.role == UserRole.ADMIN
                                         else -> false
                                     }
-                                    if (isTargetedRecipient) {
+                                    val msgAlertKey = "chat_${newest.id}"
+                                    if (isTargetedRecipient &&
+                                        msgAlertKey !in firedSystemNotificationIds &&
+                                        newest.id !in activeReadState.readNotificationIds
+                                    ) {
+                                        firedSystemNotificationIds.add(msgAlertKey)
                                         SystemNotificationHelper.showSystemPushNotification(
                                             appContext,
                                             "رسالة جديدة من ${newest.senderName}",
@@ -1594,28 +2042,43 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
 
-                        // 11. Live sync: notifications (strictly filtered for the target recipient only)
+                        // 11. Live sync: notifications (strictly cloud-read-checked & transport-filtered)
                         if (!FirebaseCloudSync.wasRecentlyWrittenLocally(sid, FirebaseConfigConstants.COL_NOTIFICATIONS)) {
+                            // Always ensure per-user cloud read state is fetched BEFORE evaluating any unread / popup alerts
+                            val activeReadState = ensureUserNotificationStateHydratedSuspend(sid, user.id)
+
                             val remoteNotifsRaw = FirebaseCloudSync.fetchSubCollectionPayload(
                                 sid,
                                 FirebaseConfigConstants.COL_NOTIFICATIONS
                             )
-                            if (!remoteNotifsRaw.isNullOrBlank() &&
-                                remoteNotifsRaw != repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_NOTIFICATIONS)
-                            ) {
+                            val cachedRawBefore = repo.getRawCachedSubCollection(sid, FirebaseConfigConstants.COL_NOTIFICATIONS)
+                            if (!remoteNotifsRaw.isNullOrBlank() && remoteNotifsRaw != cachedRawBefore) {
+                                val wasLocalCacheEmpty = cachedRawBefore.isNullOrBlank()
                                 val remoteNotifs = repo.parseNotificationsJson(remoteNotifsRaw, sid)
                                 val currentIds = _notifications.value.map { it.id }.toSet()
                                 val newNotifIds = remoteNotifs.filter { it.id !in currentIds }.map { it.id }.toSet()
                                 repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_NOTIFICATIONS, remoteNotifsRaw)
                                 _notifications.value = remoteNotifs
 
-                                if (newNotifIds.isNotEmpty()) {
+                                // Never fire popups during cold cache hydration (e.g. right after reinstall)
+                                // or for any notification already read / older than cloud lastSeenTimestamp
+                                if (newNotifIds.isNotEmpty() && !wasLocalCacheEmpty) {
                                     val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
                                     val parentChildIds = getChildrenForParent(user).map { it.id }.toSet()
+                                    val subscribedTransportIds = getSubscribedTransportStudentIds(sid)
                                     val targetedNew = remoteNotifs.filter { n ->
-                                        n.id in newNotifIds && n.isTargetedForUser(user, linkedStu, parentChildIds)
+                                        n.id in newNotifIds &&
+                                            n.id !in firedSystemNotificationIds &&
+                                            !isNotificationAlreadySeenOrRead(n, activeReadState) &&
+                                            n.isTargetedForUser(
+                                                user = user,
+                                                linkedStudent = linkedStu,
+                                                allParentChildIds = parentChildIds,
+                                                subscribedTransportStudentIds = subscribedTransportIds
+                                            )
                                     }
                                     targetedNew.firstOrNull()?.let { latest ->
+                                        firedSystemNotificationIds.add(latest.id)
                                         _latestBannerAlert.value = latest
                                         SystemNotificationHelper.showSystemPushNotification(
                                             appContext,
@@ -2208,7 +2671,23 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         if (user == null) return emptyList()
         val linkedStu = _students.value.firstOrNull { it.id == user.linkedStudentId }
         val parentChildIds = getChildrenForParent(user).map { it.id }.toSet()
-        return all.filter { notif -> notif.isTargetedForUser(user, linkedStu, parentChildIds) }
+        val subscribedTransportIds = getSubscribedTransportStudentIds(schoolId)
+        val readState = _userNotificationReadState.value.let {
+            if (it.userId == user.id && it.schoolId == schoolId) it else repo.loadUserNotificationState(schoolId, user.id)
+        }
+        return all
+            .filter { notif ->
+                notif.isTargetedForUser(
+                    user = user,
+                    linkedStudent = linkedStu,
+                    allParentChildIds = parentChildIds,
+                    subscribedTransportStudentIds = subscribedTransportIds
+                )
+            }
+            .map { notif ->
+                val effectivelyRead = notif.isRead || isNotificationAlreadySeenOrRead(notif, readState)
+                if (effectivelyRead != notif.isRead) notif.copy(isRead = true) else notif
+            }
     }
 
     /**
@@ -2731,6 +3210,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun openNotificationDeepLink(notif: AppNotification) {
         val sid = _schoolConfig.value.schoolId
+        markNotificationsReadLocallyAndCloud(listOf(notif.id), updateLastSeen = true)
         if (!notif.isRead) {
             val updated = _notifications.value.map {
                 if (it.id == notif.id) it.copy(isRead = true) else it
@@ -3495,6 +3975,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _isDeveloperAuthenticated.value = false
         _isSchoolSetupUnlocked.value = false
         _activeSection.value = AppSection.DASHBOARD
+        onUserSessionActivated(resolvedSchoolId, matched)
 
         val roleGreeting = if (matched.isBusDriverAccount) "سائق الخط المدرسي المعتمد" else matched.role.arabicTitle
         showToastAlert("مرحباً بك ${matched.fullName} ($roleGreeting)", isSuccess = true)
@@ -3702,12 +4183,31 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         _isDeveloperAuthenticated.value = false
         _isSchoolSetupUnlocked.value = false
         _activeSection.value = AppSection.DASHBOARD
+        onUserSessionActivated(resolvedSchoolId, finalStudentAccount)
 
         showToastAlert("تم التعرف على الهوية الطلابية: مرحباً بك ${finalStudentAccount.fullName}", isSuccess = true)
         return Result.success(finalStudentAccount)
     }
 
     fun logout() {
+        val outgoingSid = _schoolConfig.value.schoolId
+        val outgoingUser = _currentUser.value
+        presenceHeartbeatJob?.cancel()
+        presenceHeartbeatJob = null
+        adminPresencePollingJob?.cancel()
+        adminPresencePollingJob = null
+        if (outgoingSid.isNotBlank() && outgoingUser != null) {
+            FirebaseCloudSync.pushUserPresenceAsync(
+                schoolId = outgoingSid,
+                record = buildCurrentPresenceRecord(outgoingUser, isOnline = false)
+            )
+        }
+        cloudNotifStateHydratedKey = ""
+        userUiPrefsHydratedKey = ""
+        _showSmartWelcomeHub.value = false
+        _userInterfacePreferences.value = UserInterfacePreferences()
+        _userNotificationReadState.value = UserNotificationReadState()
+        _platformPresenceSummary.value = PlatformLivePresenceSummary()
         repo.clearSession()
         _activeSession.value = null
         _currentUser.value = null
@@ -3720,6 +4220,23 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun forceLogout(reasonMessage: String = "تم إيقاف/إلغاء تفعيل المدرسة من قِبل الإدارة المركزية") {
         val currentSid = _schoolConfig.value.schoolId
+        val outgoingUser = _currentUser.value
+        presenceHeartbeatJob?.cancel()
+        presenceHeartbeatJob = null
+        adminPresencePollingJob?.cancel()
+        adminPresencePollingJob = null
+        if (currentSid.isNotBlank() && outgoingUser != null) {
+            FirebaseCloudSync.pushUserPresenceAsync(
+                schoolId = currentSid,
+                record = buildCurrentPresenceRecord(outgoingUser, isOnline = false)
+            )
+        }
+        cloudNotifStateHydratedKey = ""
+        userUiPrefsHydratedKey = ""
+        _showSmartWelcomeHub.value = false
+        _userInterfacePreferences.value = UserInterfacePreferences()
+        _userNotificationReadState.value = UserNotificationReadState()
+        _platformPresenceSummary.value = PlatformLivePresenceSummary()
         if (currentSid.isNotBlank()) {
             repo.clearLocalSchoolCacheOnly(currentSid)
         }
@@ -4543,7 +5060,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             isRead = false,
             schoolId = sid,
             isUrgent = isUrgent,
-            priority = priority
+            priority = priority,
+            timestampMs = System.currentTimeMillis()
         )
         val updated = listOf(notif) + _notifications.value
         _notifications.value = updated
@@ -4554,7 +5072,13 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         if (currUser != null) {
             val linkedStu = _students.value.firstOrNull { it.id == currUser.linkedStudentId }
             val parentChildIds = getChildrenForParent(currUser).map { it.id }.toSet()
-            if (notif.isTargetedForUser(currUser, linkedStu, parentChildIds)) {
+            val subscribedTransportIds = getSubscribedTransportStudentIds(sid)
+            val readState = _userNotificationReadState.value
+            if (notif.id !in firedSystemNotificationIds &&
+                !isNotificationAlreadySeenOrRead(notif, readState) &&
+                notif.isTargetedForUser(currUser, linkedStu, parentChildIds, subscribedTransportIds)
+            ) {
+                firedSystemNotificationIds.add(notif.id)
                 _latestBannerAlert.value = notif
                 SystemNotificationHelper.showSystemPushNotification(
                     context = appContext,
@@ -4568,6 +5092,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
 
     fun markAllNotificationsRead() {
         val sid = _schoolConfig.value.schoolId
+        val scopedIds = getScopedNotificationsForUser(_currentUser.value).map { it.id }
+        markNotificationsReadLocallyAndCloud(scopedIds, updateLastSeen = true)
         val updated = _notifications.value.map { it.copy(isRead = true) }
         _notifications.value = updated
         repo.saveNotifications(updated, sid)
@@ -5657,7 +6183,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             if (s.id == studentId) {
                 nextSubscribed = !s.isBusSubscribed
                 targetName = s.fullNameWithFather
-                s.copy(isBusSubscribed = nextSubscribed)
+                s.copy(
+                    isBusSubscribed = nextSubscribed,
+                    busRouteId = if (nextSubscribed) s.busRouteId else ""
+                )
             } else s
         }
         _students.value = updated
@@ -5695,7 +6224,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 targetName = s.fullNameWithFather
                 s.copy(
                     isBusSubscribed = isSubscribed,
-                    busRouteId = if (isSubscribed && cleanRouteId.isNotBlank()) cleanRouteId else s.busRouteId,
+                    busRouteId = if (isSubscribed) cleanRouteId.ifBlank { s.busRouteId } else "",
                     busRouteName = if (isSubscribed) cleanRoute else s.busRouteName,
                     busDriverName = if (isSubscribed && cleanDriver.isNotBlank()) cleanDriver else s.busDriverName,
                     busDriverPhone = if (isSubscribed && cleanPhone.isNotBlank()) cleanPhone else s.busDriverPhone,
@@ -6218,13 +6747,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             allSubscribedStudents
         }
 
-        val targetStudentsForAlert = if (scopedSubscribedStudents.isNotEmpty()) {
-            scopedSubscribedStudents
-        } else if (isAllVehicles && allSubscribedStudents.isEmpty()) {
-            _students.value.filter { (it.schoolId.isEmpty() || it.schoolId == sid) && it.isActive }
-        } else {
-            emptyList()
-        }
+        // Strictly notify ONLY students actively subscribed to the transport line (never unsubscribed students)
+        val targetStudentsForAlert = scopedSubscribedStudents
 
         val routeHeaderSuffix = if (!isAllVehicles && matchedSingleRoute != null) {
             " • ${matchedSingleRoute.routeAreaName.ifBlank { "الخط المدرسي" }}"
@@ -10904,6 +11428,11 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         return found
+    }
+
+    override fun onCleared() {
+        onAppStopped()
+        super.onCleared()
     }
 }
 

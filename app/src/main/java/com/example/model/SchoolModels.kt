@@ -1938,11 +1938,44 @@ data class AppNotification(
     val isRead: Boolean = false,
     val schoolId: String = "",
     val isUrgent: Boolean = false,
-    val priority: String = "normal"
+    val priority: String = "normal",
+    val timestampMs: Long = 0L
 ) {
+    /**
+     * Detects whether this notification relates to school transport / bus / vehicle movement
+     * by inspecting targetSection, title, body, or metadata keywords.
+     */
+    fun isTransportRelatedNotification(): Boolean {
+        if (targetSection.equals(AppSection.SCHOOL_TRANSPORT.name, ignoreCase = true)) return true
+        val combined = "$title $body $targetSection $priority".lowercase()
+        val transportKeywords = listOf(
+            "transport",
+            "bus",
+            "vehicle",
+            "تحرك",
+            "المركبة",
+            "مركبة",
+            "الباص",
+            "باص",
+            "خط النقل",
+            "الخط المدرسي",
+            "النقل المدرسي",
+            "انطلاق الخط",
+            "انطلاق خط",
+            "وصول الخط",
+            "رحلة العودة",
+            "صعد إلى الباص",
+            "نزل من الباص",
+            "صعود طالب للباص",
+            "نزول طالب"
+        )
+        return transportKeywords.any { combined.contains(it) }
+    }
+
     /**
      * Strict Notification Targeting Rule:
      * - Never notify the sender who triggered the action.
+     * - If transport-related and user is STUDENT or PARENT: strictly require active transport subscription.
      * - If targetUserId is set: ONLY that exact user receives it.
      * - If targetRole is set (e.g. "ADMIN" or "PARENT"): user role must match.
      * - If targetStudentId is set (grades, absence/lateness, report, tuition, private message, QR arrival, bus):
@@ -1955,9 +1988,44 @@ data class AppNotification(
     fun isTargetedForUser(
         user: UserAccount,
         linkedStudent: StudentRecord?,
-        allParentChildIds: Set<String> = emptySet()
+        allParentChildIds: Set<String> = emptySet(),
+        subscribedTransportStudentIds: Set<String>? = null
     ): Boolean {
         if (senderUserId.isNotEmpty() && senderUserId == user.id) return false
+
+        // Strict transport-line filter for students & parents:
+        // Unsubscribed students (and parents without a subscribed target student) must NEVER receive transport alerts.
+        if (isTransportRelatedNotification() && (user.role == UserRole.STUDENT || user.role == UserRole.PARENT)) {
+            val isTargetSubscribed = when {
+                targetStudentId.isNotEmpty() -> {
+                    when {
+                        subscribedTransportStudentIds != null -> targetStudentId in subscribedTransportStudentIds
+                        linkedStudent != null && linkedStudent.id == targetStudentId -> linkedStudent.isBusSubscribed
+                        else -> false
+                    }
+                }
+                user.role == UserRole.STUDENT -> {
+                    when {
+                        linkedStudent != null -> linkedStudent.isBusSubscribed
+                        subscribedTransportStudentIds != null && user.linkedStudentId.isNotBlank() ->
+                            user.linkedStudentId in subscribedTransportStudentIds
+                        else -> false
+                    }
+                }
+                user.role == UserRole.PARENT -> {
+                    when {
+                        subscribedTransportStudentIds != null -> {
+                            val relevantIds = allParentChildIds + listOfNotNull(user.linkedStudentId.takeIf { it.isNotBlank() })
+                            relevantIds.any { it in subscribedTransportStudentIds }
+                        }
+                        linkedStudent != null -> linkedStudent.isBusSubscribed
+                        else -> false
+                    }
+                }
+                else -> false
+            }
+            if (!isTargetSubscribed) return false
+        }
 
         if (targetUserId.isNotEmpty()) {
             return user.id == targetUserId
@@ -2885,4 +2953,85 @@ data class IssuedStudentReportCard(
     val isDismissedFromHome: Boolean = false,
     val schoolId: String = ""
 )
+
+/**
+ * Cloud-synced per-user notification read state stored under:
+ * schools/{schoolCode}/user_notification_state/{userId}.json
+ */
+data class UserNotificationReadState(
+    val userId: String = "",
+    val schoolId: String = "",
+    val lastSeenTimestamp: Long = 0L,
+    val readNotificationIds: Set<String> = emptySet(),
+    val updatedAt: Long = 0L
+)
+
+/**
+ * Lightweight real-time user presence record stored under:
+ * schools/{schoolCode}/active_presence/{userId}.json
+ */
+data class ActiveUserPresenceRecord(
+    val userId: String = "",
+    val name: String = "",
+    val role: String = "",
+    val isOnline: Boolean = false,
+    val lastActiveTimestamp: Long = 0L
+) {
+    fun isTrulyActiveNow(nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (!isOnline || lastActiveTimestamp <= 0L) return false
+        val delta = nowMs - lastActiveTimestamp
+        return delta in -30_000L..120_000L
+    }
+
+    fun isActiveToday(nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (lastActiveTimestamp <= 0L) return false
+        val delta = nowMs - lastActiveTimestamp
+        return delta in -30_000L..86_400_000L
+    }
+
+    fun categoryBucket(): String {
+        val r = role.trim()
+        return when {
+            r.contains("معلم") || r.contains("مدرس") || r.contains("تدريس") || r.equals("TEACHER", ignoreCase = true) -> "TEACHERS"
+            r.contains("طالب") || r.contains("ولي") || r.equals("STUDENT", ignoreCase = true) || r.equals("PARENT", ignoreCase = true) -> "STUDENTS_PARENTS"
+            else -> "ADMIN_TRANSPORT"
+        }
+    }
+}
+
+/**
+ * Real-time active platform presence summary displayed on the Principal Dashboard.
+ */
+data class PlatformLivePresenceSummary(
+    val activeNowCount: Int = 0,
+    val activeTodayCount: Int = 0,
+    val activeNowUsers: List<ActiveUserPresenceRecord> = emptyList(),
+    val teachersOnlineCount: Int = 0,
+    val studentsAndParentsOnlineCount: Int = 0,
+    val adminAndTransportOnlineCount: Int = 0,
+    val lastUpdatedMs: Long = 0L,
+    val isRefreshing: Boolean = false
+)
+
+/**
+ * Per-user interface preferences synced locally & in cloud at:
+ * schools/{schoolCode}/user_preferences/{userId}.json
+ */
+data class UserInterfacePreferences(
+    val userId: String = "",
+    val schoolId: String = "",
+    val hasSeenWelcomeHub: Boolean = false,
+    val preferredHomeMode: String = HOME_MODE_CLASSIC,
+    val updatedAt: Long = 0L
+) {
+    val isSmartHubDefault: Boolean
+        get() = preferredHomeMode.equals(HOME_MODE_SMART_HUB, ignoreCase = true)
+
+    companion object {
+        const val HOME_MODE_CLASSIC = "classic"
+        const val HOME_MODE_SMART_HUB = "smart_hub"
+    }
+}
+
+
 

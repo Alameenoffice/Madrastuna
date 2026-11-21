@@ -66,6 +66,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.model.*
 import com.example.ui.components.AdminSubscriptionAndBroadcastBanner
@@ -209,6 +212,22 @@ fun MadrasatiRootApp(
         }
     }
 
+    // Lightweight Real-Time Presence Lifecycle Observer (ON_RESUME -> online + 45s heartbeat, ON_STOP -> offline)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> viewModel.onAppResumed()
+                Lifecycle.Event.ON_STOP -> viewModel.onAppStopped()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     LaunchedEffect(toastAlert?.id) {
         if (toastAlert != null) {
             delay(3600)
@@ -242,6 +261,10 @@ fun MadrasatiRootApp(
     }
 
     var showSplashScreen by remember { mutableStateOf(true) }
+    val showSmartWelcomeHubRoot by viewModel.showSmartWelcomeHub.collectAsState()
+    val userUiPrefsRoot by viewModel.userInterfacePreferences.collectAsState()
+    val platformPresenceRoot by viewModel.platformPresenceSummary.collectAsState()
+    var showDriverReadingOasisOverlay by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
@@ -331,7 +354,43 @@ fun MadrasatiRootApp(
                 )
             }
             currentUser?.isBusDriverAccount == true -> {
-                com.example.ui.screens.DriverExclusiveScannerScreen(viewModel = viewModel)
+                val activeDriver = currentUser!!
+                when {
+                    showDriverReadingOasisOverlay -> {
+                        BackHandler { showDriverReadingOasisOverlay = false }
+                        com.example.reading.ReadingOasisScreen(
+                            schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
+                            studentId = activeDriver.id.ifBlank { "driver_user" },
+                            studentName = activeDriver.fullName.ifBlank { "بطل القراءة" },
+                            studentGrade = "",
+                            onClose = { showDriverReadingOasisOverlay = false }
+                        )
+                    }
+                    showSmartWelcomeHubRoot -> {
+                        BackHandler { viewModel.dismissSmartWelcomeHubToClassic() }
+                        SmartWelcomeHubScreen(
+                            currentUser = activeDriver,
+                            schoolName = schoolConfig.schoolName,
+                            presenceSummary = platformPresenceRoot,
+                            canManageCanteen = false,
+                            isStudentSubscribedToTransport = false,
+                            isSmartHubPinned = userUiPrefsRoot.isSmartHubDefault,
+                            onOpenReadingOasis = { showDriverReadingOasisOverlay = true },
+                            onNavigateSection = { viewModel.dismissSmartWelcomeHubToClassic() },
+                            onOpenSmartAdvisor = { viewModel.dismissSmartWelcomeHubToClassic() },
+                            onOpenManagementCenter = { viewModel.dismissSmartWelcomeHubToClassic() },
+                            onOpenLivePresence = { viewModel.dismissSmartWelcomeHubToClassic() },
+                            onOpenCanteenPos = { viewModel.dismissSmartWelcomeHubToClassic() },
+                            onOpenStudentWallet = { viewModel.dismissSmartWelcomeHubToClassic() },
+                            onOpenNotifications = { viewModel.dismissSmartWelcomeHubToClassic() },
+                            onTogglePinAsDefault = { enabled -> viewModel.setSmartWelcomeHubAsDefaultHome(enabled) },
+                            onGoToClassicHome = { viewModel.dismissSmartWelcomeHubToClassic() }
+                        )
+                    }
+                    else -> {
+                        com.example.ui.screens.DriverExclusiveScannerScreen(viewModel = viewModel)
+                    }
+                }
             }
             else -> {
                 AuthenticatedMainPlatform(viewModel = viewModel)
@@ -620,222 +679,71 @@ fun MadrasatiRootApp(
             }
         }
 
-        // Full-Screen 3D Glassmorphic Offline Experience (واجهة انقطاع الإنترنت ثلاثية الأبعاد وزجاجية 3D Glassmorphism)
+        // Executive Technical Offline Screen + Direct Offline Reading Oasis Access
         val isNetworkOnline by viewModel.isNetworkOnline.collectAsState()
-        val isDarkOffline by viewModel.isDarkMode.collectAsState()
+        val isCheckingNetworkNow by viewModel.isCheckingNetworkNow.collectAsState()
+        val rootStudents by viewModel.students.collectAsState()
+        val rootSelectedChildId by viewModel.selectedParentChildId.collectAsState()
+        var showOfflineReadingOasis by remember { mutableStateOf(false) }
+
+        LaunchedEffect(currentUser?.id) {
+            if (currentUser == null) {
+                showOfflineReadingOasis = false
+            }
+        }
+
         AnimatedVisibility(
-            visible = !isNetworkOnline,
-            enter = fadeIn(animationSpec = tween(280)),
+            visible = !isNetworkOnline && !showOfflineReadingOasis,
+            enter = fadeIn(animationSpec = tween(260)),
             exit = fadeOut(animationSpec = tween(220)),
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(99999f)
         ) {
-            val hapticOffline = LocalHapticFeedback.current
-            var retrySpinCount by remember { mutableStateOf(0) }
-            val retryRotationDegrees by animateFloatAsState(
-                targetValue = retrySpinCount * 360f,
-                animationSpec = tween(durationMillis = 680, easing = FastOutSlowInEasing),
-                label = "offline_retry_rotation"
-            )
-            val infiniteTransition = rememberInfiniteTransition(label = "offline_3d_glass_scene")
-            val floatOffset by infiniteTransition.animateFloat(
-                initialValue = -7f,
-                targetValue = 7f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(2100, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "offline_float_offset"
-            )
-            val pulseWave by infiniteTransition.animateFloat(
-                initialValue = 0.88f,
-                targetValue = 1.18f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1800, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "offline_pulse_wave"
-            )
-
-            SoftWaveMeshBackground(
-                isDarkMode = isDarkOffline,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures { /* Block all underlying clicks/touches while offline */ }
-                    }
-                    .testTag("network_connectivity_guard_banner")
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 22.dp, vertical = 32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // 3D Glassmorphic Center Card
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(
-                                elevation = 24.dp,
-                                shape = RoundedCornerShape(34.dp),
-                                ambientColor = Color(0xFF047857).copy(alpha = 0.25f),
-                                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.30f)
-                            ),
-                        shape = RoundedCornerShape(34.dp),
-                        color = if (isDarkOffline) {
-                            Color(0xFF062C22).copy(alpha = 0.94f)
-                        } else {
-                            Color.White.copy(alpha = 0.94f)
-                        },
-                        border = androidx.compose.foundation.BorderStroke(
-                            width = 1.6.dp,
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF10B981).copy(alpha = 0.45f),
-                                    GoldAccent.copy(alpha = 0.50f),
-                                    Color(0xFF0F3D5E).copy(alpha = 0.35f)
-                                )
-                            )
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 30.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(20.dp)
-                        ) {
-                            // Top 3D Wave & Animated Cloud Centerpiece
-                            Box(
-                                modifier = Modifier
-                                    .size(182.dp)
-                                    .graphicsLayer {
-                                        translationY = floatOffset
-                                    }
-                                    .shadow(
-                                        elevation = 16.dp,
-                                        shape = RoundedCornerShape(36.dp),
-                                        ambientColor = Color(0xFF059669).copy(alpha = 0.30f),
-                                        spotColor = Color(0xFF0F3D5E).copy(alpha = 0.35f)
-                                    )
-                                    .clip(RoundedCornerShape(36.dp))
-                                    .background(
-                                        Brush.linearGradient(
-                                            colors = listOf(
-                                                Color(0xFF064E3B),
-                                                Color(0xFF059669),
-                                                Color(0xFF0F3D5E)
-                                            )
-                                        )
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val cx = size.width / 2f
-                                    val cy = size.height / 2f
-                                    drawCircle(
-                                        color = Color.White.copy(alpha = 0.08f),
-                                        radius = size.minDimension * 0.45f * pulseWave,
-                                        center = Offset(cx, cy)
-                                    )
-                                    drawCircle(
-                                        color = GoldAccent.copy(alpha = 0.25f),
-                                        radius = size.minDimension * 0.36f * (2f - pulseWave * 0.78f),
-                                        center = Offset(cx, cy),
-                                        style = Stroke(width = 1.8.dp.toPx())
-                                    )
-                                }
-                                ThreeDIllustrationBox(
-                                    type = ThreeDIllustrationType.CLOUD_OFFLINE_3D,
-                                    modifier = Modifier.size(134.dp)
-                                )
-                            }
-
-                            Text(
-                                text = "لا يوجد اتصال بالإنترنت حالياً",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDarkOffline) Color.White else DeepForestGreen,
-                                textAlign = TextAlign.Center
-                            )
-
-                            Text(
-                                text = "يرجى التحقق من اتصال الشبكة؛ سيستأنف النظام التحديث التلقائي فور عودة الاتصال.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (isDarkOffline) Color.White.copy(alpha = 0.85f) else Color(0xFF334155),
-                                textAlign = TextAlign.Center,
-                                lineHeight = 25.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            )
-
-                            // 3D Interactive Retry Button with Smooth Rotation & HapticFeedback
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(54.dp)
-                                    .shadow(
-                                        elevation = 10.dp,
-                                        shape = RoundedCornerShape(50),
-                                        ambientColor = Color(0xFF059669).copy(alpha = 0.30f),
-                                        spotColor = Color(0xFF0F3D5E).copy(alpha = 0.35f)
-                                    )
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable {
-                                        hapticOffline.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        retrySpinCount += 1
-                                        viewModel.triggerImmediateCloudResync()
-                                    }
-                                    .testTag("network_retry_sync_button"),
-                                shape = RoundedCornerShape(50),
-                                color = Color.Transparent,
-                                border = androidx.compose.foundation.BorderStroke(1.3.dp, GoldAccent.copy(alpha = 0.72f))
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            Brush.horizontalGradient(
-                                                colors = listOf(
-                                                    Color(0xFF064E3B),
-                                                    Color(0xFF059669),
-                                                    Color(0xFF0F3D5E)
-                                                )
-                                            )
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Refresh,
-                                            contentDescription = "إعادة المحاولة الآن",
-                                            tint = GoldAccent,
-                                            modifier = Modifier
-                                                .size(21.dp)
-                                                .graphicsLayer {
-                                                    rotationZ = retryRotationDegrees
-                                                }
-                                        )
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text(
-                                            text = "إعادة المحاولة الآن",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
-                            }
-                        }
+            com.example.ui.components.ExecutiveOfflineScreen(
+                isCheckingNow = isCheckingNetworkNow,
+                isUserLoggedIn = currentUser != null,
+                onRetryConnection = { viewModel.triggerImmediateCloudResync() },
+                onOpenOfflineReadingOasis = {
+                    if (currentUser != null) {
+                        showOfflineReadingOasis = true
                     }
                 }
+            )
+        }
+
+        if (showOfflineReadingOasis && currentUser != null) {
+            val user = currentUser!!
+            val offlineStudent = remember(rootStudents, user, rootSelectedChildId) {
+                when (user.role) {
+                    UserRole.PARENT -> {
+                        val children = viewModel.getChildrenForParent(user)
+                        children.firstOrNull { it.id == rootSelectedChildId }
+                            ?: children.firstOrNull { it.id == user.linkedStudentId }
+                            ?: children.firstOrNull()
+                    }
+                    UserRole.STUDENT -> {
+                        rootStudents.firstOrNull {
+                            it.id == user.linkedStudentId ||
+                                it.studentUsername.equals(user.username, ignoreCase = true)
+                        }
+                    }
+                    else -> null
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(100000f)
+            ) {
+                BackHandler { showOfflineReadingOasis = false }
+                com.example.reading.ReadingOasisScreen(
+                    schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
+                    studentId = offlineStudent?.id?.ifBlank { user.id } ?: user.id,
+                    studentName = offlineStudent?.studentName?.ifBlank { user.fullName } ?: user.fullName.ifBlank { "بطل القراءة" },
+                    studentGrade = offlineStudent?.gradeClass.orEmpty(),
+                    onClose = { showOfflineReadingOasis = false }
+                )
             }
         }
     }
@@ -864,7 +772,8 @@ fun AuthenticatedMainPlatform(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
 
-    val notifications = remember(allNotifications, currentUser, allStudents) {
+    val userNotificationReadState by viewModel.userNotificationReadState.collectAsState()
+    val notifications = remember(allNotifications, currentUser, allStudents, userNotificationReadState) {
         viewModel.getScopedNotificationsForUser(currentUser)
     }
 
@@ -905,8 +814,19 @@ fun AuthenticatedMainPlatform(
     var showCanteenPosDialogFromDrawer by remember { mutableStateOf(false) }
     var showStudentWalletDialogFromDrawer by remember { mutableStateOf(false) }
     var showReadingOasisOverlay by remember { mutableStateOf(false) }
+    var showPresenceSheetFromWelcomeHub by remember { mutableStateOf(false) }
+    val showSmartWelcomeHub by viewModel.showSmartWelcomeHub.collectAsState()
+    val userInterfacePreferences by viewModel.userInterfacePreferences.collectAsState()
+    val platformPresenceSummary by viewModel.platformPresenceSummary.collectAsState()
     val canManageCanteen = remember(currentUser) {
         viewModel.canUserManageCanteen(currentUser)
+    }
+    val isStudentSubscribedToTransport = remember(currentUser, parentChildren, loggedInStudentRecord) {
+        when (currentUser?.role) {
+            UserRole.STUDENT -> loggedInStudentRecord?.isBusSubscribed == true
+            UserRole.PARENT -> parentChildren.any { it.isBusSubscribed }
+            else -> false
+        }
     }
 
     LaunchedEffect(featureSettings, activeSection, schoolConfig.schoolType) {
@@ -1011,6 +931,75 @@ fun AuthenticatedMainPlatform(
             studentGrade = activeReadingStudent?.gradeClass.orEmpty(),
             onClose = { showReadingOasisOverlay = false }
         )
+        return
+    }
+
+    if (showSmartWelcomeHub && currentUser != null) {
+        val activeUserForHub = currentUser!!
+        BackHandler {
+            viewModel.dismissSmartWelcomeHubToClassic()
+        }
+        SmartWelcomeHubScreen(
+            currentUser = activeUserForHub,
+            schoolName = schoolConfig.schoolName,
+            presenceSummary = platformPresenceSummary,
+            canManageCanteen = canManageCanteen,
+            isStudentSubscribedToTransport = isStudentSubscribedToTransport,
+            isSmartHubPinned = userInterfacePreferences.isSmartHubDefault,
+            onOpenReadingOasis = {
+                showReadingOasisOverlay = true
+            },
+            onNavigateSection = { targetSection ->
+                viewModel.markWelcomeHubSeenAndNavigate {
+                    viewModel.navigateToSection(targetSection)
+                }
+            },
+            onOpenSmartAdvisor = {
+                viewModel.markWelcomeHubSeenAndNavigate {
+                    viewModel.navigateToSection(AppSection.DASHBOARD)
+                    viewModel.openAiSchoolAdvisor(0)
+                }
+            },
+            onOpenManagementCenter = {
+                viewModel.markWelcomeHubSeenAndNavigate {
+                    viewModel.navigateToSection(AppSection.DASHBOARD)
+                    viewModel.openMinistryExecutiveSuite(0)
+                }
+            },
+            onOpenLivePresence = {
+                viewModel.refreshActivePresenceNow(isManual = true)
+                showPresenceSheetFromWelcomeHub = true
+            },
+            onOpenCanteenPos = {
+                viewModel.markWelcomeHubSeenAndNavigate {
+                    showCanteenPosDialogFromDrawer = true
+                }
+            },
+            onOpenStudentWallet = {
+                viewModel.markWelcomeHubSeenAndNavigate {
+                    showStudentWalletDialogFromDrawer = true
+                }
+            },
+            onOpenNotifications = {
+                viewModel.markWelcomeHubSeenAndNavigate {
+                    showNotificationsSheet = true
+                    viewModel.markAllNotificationsRead()
+                }
+            },
+            onTogglePinAsDefault = { enabled ->
+                viewModel.setSmartWelcomeHubAsDefaultHome(enabled)
+            },
+            onGoToClassicHome = {
+                viewModel.dismissSmartWelcomeHubToClassic()
+            }
+        )
+        if (showPresenceSheetFromWelcomeHub && activeUserForHub.role == UserRole.ADMIN) {
+            com.example.ui.components.RealTimePresenceBottomSheet(
+                summary = platformPresenceSummary,
+                onRefreshNow = { viewModel.refreshActivePresenceNow(isManual = true) },
+                onDismiss = { showPresenceSheetFromWelcomeHub = false }
+            )
+        }
         return
     }
 
