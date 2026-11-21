@@ -102,6 +102,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -653,17 +654,20 @@ fun NewQiraatiUnitsScreen(
             }
         }
 
-        // عنوان الوحدات القادمة (خريطة التوسع المستقبلية)
-        Text(
-            text = "الوحدات القادمة في رحلتنا:",
-            fontFamily = ReadingTajawalFont,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 17.sp,
-            color = ReadingColors.InkDark,
-            modifier = Modifier.padding(top = 4.dp)
-        )
+        // عنوان الوحدات القادمة (لا يظهر عند اكتمال الوحدات الأربع)
+        val upcomingUnitsList = units.filterNot { it.isAvailable }
+        if (upcomingUnitsList.isNotEmpty()) {
+            Text(
+                text = "الوحدات القادمة في رحلتنا:",
+                fontFamily = ReadingTajawalFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 17.sp,
+                color = ReadingColors.InkDark,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
 
-        units.filterNot { it.isAvailable }.forEach { upcoming ->
+        upcomingUnitsList.forEach { upcoming ->
             Surface(
                 shape = RoundedCornerShape(22.dp),
                 color = Color.White.copy(alpha = 0.90f),
@@ -763,7 +767,16 @@ fun NewQiraatiUnitPathScreen(
     val totalNodes = (if (unit.storySection != null) 1 else 0) +
         unit.letterLessons.size +
         (if (unit.unitChant != null) 1 else 0)
-    val xFractions = listOf(0.50f, 0.26f, 0.74f, 0.26f, 0.74f, 0.50f)
+    val xFractions = remember(totalNodes) {
+        List(totalNodes.coerceAtLeast(1)) { idx ->
+            when {
+                idx == 0 -> 0.50f
+                idx == totalNodes - 1 -> 0.50f
+                idx % 2 == 1 -> 0.26f
+                else -> 0.74f
+            }
+        }
+    }
     val rowSpacingDp = 166.dp
     val topPaddingDp = 18.dp
     val totalHeightDp = topPaddingDp + rowSpacingDp * totalNodes + 44.dp
@@ -855,10 +868,20 @@ fun NewQiraatiUnitPathScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                ReadingBlueBirdCanvas(
-                    bannerText = "",
-                    modifier = Modifier.size(72.dp)
-                )
+                when (unit.mascotStyle) {
+                    QiraatiMascotStyle.BEE -> ReadingBeeMascotCanvas(
+                        bannerText = "",
+                        modifier = Modifier.size(72.dp)
+                    )
+                    QiraatiMascotStyle.BLUE_PEN -> ReadingBluePenCanvas(
+                        bannerText = "",
+                        modifier = Modifier.size(72.dp)
+                    )
+                    QiraatiMascotStyle.BLUE_BIRD -> ReadingBlueBirdCanvas(
+                        bannerText = "",
+                        modifier = Modifier.size(72.dp)
+                    )
+                }
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -1265,6 +1288,15 @@ fun NewQiraatiChantScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    if (unit.mascotStyle == QiraatiMascotStyle.BLUE_PEN) {
+                        QiraatiStorySceneCanvas(
+                            artKey = QiraatiStoryArtKey.WATANI_IRAQ_MAP_AND_FLAG,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(136.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                        )
+                    }
                     ChantMusicalCanvas(
                         isPlaying = isRecitingAll || isSpeaking,
                         modifier = Modifier
@@ -1865,28 +1897,48 @@ private enum class QiraatiLessonStation(
 }
 
 /**
- * تلوين الحرف المستهدف أو المقطع باللون الأحمر الساطع مع الحفاظ التام على التشكيل وخط تجوال.
+ * مكوّن مخصّص لتلوين الحرف أو المقطع أو التنوين باللون الأحمر داخل الكلمة العربية
+ * مع الحفاظ 100% على اتصال الحروف العربية دون أي انفصال (عبر تطبيق color فقط داخل SpanStyle
+ * وتوحيد fontWeight على كامل النص لمنع تقسيم مقاطع التشكيل والاتصال).
  */
-private fun buildRedHighlightedText(
+@Composable
+fun ArabicHighlightedWord(
     word: String,
-    ranges: List<QiraatiHighlightRange>,
-    highlightColor: Color = Color(0xFFE11D48)
-): AnnotatedString = buildAnnotatedString {
-    append(word)
-    ranges.forEach { range ->
-        val safeStart = range.startInclusive.coerceIn(0, word.length)
-        val safeEnd = range.endExclusive.coerceIn(safeStart, word.length)
-        if (safeStart < safeEnd) {
-            addStyle(
-                style = SpanStyle(
-                    color = highlightColor,
-                    fontWeight = FontWeight.ExtraBold
-                ),
-                start = safeStart,
-                end = safeEnd
-            )
+    highlightRanges: List<QiraatiHighlightRange>,
+    fontSize: TextUnit = 24.sp,
+    lineHeight: TextUnit = 36.sp,
+    baseColor: Color = ReadingColors.InkDark,
+    highlightColor: Color = Color(0xFFE11D48),
+    fontWeight: FontWeight = FontWeight.ExtraBold,
+    textAlign: TextAlign = TextAlign.Center,
+    modifier: Modifier = Modifier
+) {
+    val styledText = remember(word, highlightRanges, highlightColor) {
+        buildAnnotatedString {
+            append(word)
+            highlightRanges.forEach { range ->
+                val safeStart = range.startInclusive.coerceIn(0, word.length)
+                val safeEnd = range.endExclusive.coerceIn(safeStart, word.length)
+                if (safeStart < safeEnd) {
+                    addStyle(
+                        style = SpanStyle(color = highlightColor),
+                        start = safeStart,
+                        end = safeEnd
+                    )
+                }
+            }
         }
     }
+    Text(
+        text = styledText,
+        fontFamily = ReadingTajawalFont,
+        fontWeight = fontWeight,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        color = baseColor,
+        textAlign = textAlign,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -1910,7 +1962,7 @@ fun NewQiraatiLetterScreen(
             if (lesson.analysisItems.isNotEmpty()) {
                 add(QiraatiLessonStation.ANALYSIS)
             }
-            if (lesson.puzzleItems.isNotEmpty()) {
+            if (lesson.puzzleItems.isNotEmpty() || lesson.sentenceFillItems.isNotEmpty()) {
                 add(QiraatiLessonStation.PUZZLE)
             }
             add(QiraatiLessonStation.READ_AND_WRITE)
@@ -1925,6 +1977,10 @@ fun NewQiraatiLetterScreen(
         }
         QiraatiLessonStation.SUKOON -> when {
             lesson.circleFilterWords.isNotEmpty() || lesson.suffixChoiceItems.isNotEmpty() -> "ألعاب (ة ، ـة)"
+            else -> station.shortTitle
+        }
+        QiraatiLessonStation.PUZZLE -> when {
+            lesson.sentenceFillItems.isNotEmpty() -> "ركّب وأكمل"
             else -> station.shortTitle
         }
         else -> station.shortTitle
@@ -2135,13 +2191,19 @@ fun NewQiraatiLetterScreen(
                             lesson = lesson,
                             engine = engine,
                             onPuzzleSolved = { word ->
-                                triggerWin("qiraati_puzzle", "رائع يا بطل! ركّبت كلمة $word")
+                                val praise = if (lesson.sentenceFillItems.isNotEmpty()) {
+                                    "رائع يا بطل! أكملت الجملة بنجاح: $word"
+                                } else {
+                                    "رائع يا بطل! ركّبت كلمة $word"
+                                }
+                                triggerWin("qiraati_puzzle", praise)
                             },
                             onNextStation = { activeStation = nextStationAfter(station) }
                         )
 
                         QiraatiLessonStation.READ_AND_WRITE -> Station7ReadAndWrite(
                             lesson = lesson,
+                            mascotStyle = unit.mascotStyle,
                             isSpeaking = isSpeaking,
                             engine = engine,
                             onReadSuccess = { word ->
@@ -2255,13 +2317,12 @@ private fun Station1IntroWords(
                                 artKey = item.artKey,
                                 modifier = Modifier.size(66.dp)
                             )
-                            Text(
-                                text = buildRedHighlightedText(item.word, item.highlightRanges),
-                                fontFamily = ReadingTajawalFont,
-                                fontWeight = FontWeight.ExtraBold,
+                            ArabicHighlightedWord(
+                                word = item.word,
+                                highlightRanges = item.highlightRanges,
                                 fontSize = 24.sp,
                                 lineHeight = 36.sp,
-                                color = ReadingColors.InkDark,
+                                baseColor = ReadingColors.InkDark,
                                 textAlign = TextAlign.Center
                             )
                             Surface(
@@ -2357,8 +2418,14 @@ private fun Station2And3Vowels(
             }
 
             lesson.tanweenListenWords.isNotEmpty() -> {
+                val isTanweenFath = lesson.targetLetter == "ـً"
+                val hasSentences = lesson.tanweenListenWords.any { it.word.contains(' ') }
                 Text(
-                    text = "استمع جيداً لصوت تنوين الضم (ـٌ) في آخر كل كلمة!",
+                    text = if (isTanweenFath) {
+                        "استمع جيداً لصوت تنوين الفتح (ـً ، اً) في الجمل المصوّرة!"
+                    } else {
+                        "استمع جيداً لصوت تنوين الضم (ـٌ) في آخر كل كلمة!"
+                    },
                     fontFamily = ReadingTajawalFont,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 15.5.sp,
@@ -2367,56 +2434,114 @@ private fun Station2And3Vowels(
                     textAlign = TextAlign.Center
                 )
 
-                lesson.tanweenListenWords.chunked(2).forEachIndexed { rIdx, rowItems ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        rowItems.forEachIndexed { cIdx, item ->
-                            val globalIdx = rIdx * 2 + cIdx
-                            val isActive = activePairIdx == globalIdx
-                            Surface(
-                                shape = RoundedCornerShape(24.dp),
-                                color = if (isActive) Color(0xFFFFFBEB) else Color.White,
-                                shadowElevation = if (isActive) 8.dp else 4.dp,
+                if (hasSentences) {
+                    lesson.tanweenListenWords.forEachIndexed { idx, item ->
+                        val isActive = activePairIdx == idx
+                        Surface(
+                            shape = RoundedCornerShape(26.dp),
+                            color = if (isActive) Color(0xFFFFFBEB) else Color.White,
+                            shadowElevation = if (isActive) 8.dp else 4.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    width = if (isActive) 2.5.dp else 1.8.dp,
+                                    color = if (isActive) ReadingColors.SunYellow else lesson.accentColor.copy(alpha = 0.45f),
+                                    shape = RoundedCornerShape(26.dp)
+                                )
+                                .clickable {
+                                    activePairIdx = idx
+                                    engine.playSuccessChime()
+                                    engine.speak(item.spokenText)
+                                }
+                                .testTag("qiraati_tanween_listen_$idx")
+                        ) {
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .border(
-                                        width = if (isActive) 2.5.dp else 1.8.dp,
-                                        color = if (isActive) ReadingColors.SunYellow else lesson.accentColor.copy(alpha = 0.45f),
-                                        shape = RoundedCornerShape(24.dp)
-                                    )
-                                    .clickable {
-                                        activePairIdx = globalIdx
-                                        engine.playSuccessChime()
-                                        engine.speak(item.spokenText)
-                                    }
-                                    .testTag("qiraati_tanween_listen_$globalIdx")
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
+                                QiraatiWordArtCanvas(artKey = item.artKey, modifier = Modifier.size(68.dp))
                                 Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    QiraatiWordArtCanvas(artKey = item.artKey, modifier = Modifier.size(64.dp))
-                                    Text(
-                                        text = buildRedHighlightedText(item.word, item.highlightRanges),
-                                        fontFamily = ReadingTajawalFont,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 26.sp,
-                                        lineHeight = 38.sp,
-                                        color = ReadingColors.InkDark,
-                                        textAlign = TextAlign.Center
+                                    ArabicHighlightedWord(
+                                        word = item.word,
+                                        highlightRanges = item.highlightRanges,
+                                        fontSize = 23.sp,
+                                        lineHeight = 36.sp,
+                                        baseColor = ReadingColors.InkDark,
+                                        textAlign = TextAlign.Start
                                     )
-                                    PlayfulSpeakerIcon(
-                                        isSpeaking = isActive,
-                                        tint = lesson.accentColor,
-                                        modifier = Modifier.size(22.dp)
+                                    Text(
+                                        text = "اضغط للاستماع إلى صوت تنوين الفتح",
+                                        fontFamily = ReadingTajawalFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = ReadingColors.InkSoft
                                     )
                                 }
+                                PlayfulSpeakerIcon(
+                                    isSpeaking = isActive,
+                                    tint = lesson.accentColor,
+                                    modifier = Modifier.size(26.dp)
+                                )
                             }
                         }
-                        if (rowItems.size == 1) Spacer(modifier = Modifier.weight(1f))
+                    }
+                } else {
+                    lesson.tanweenListenWords.chunked(2).forEachIndexed { rIdx, rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            rowItems.forEachIndexed { cIdx, item ->
+                                val globalIdx = rIdx * 2 + cIdx
+                                val isActive = activePairIdx == globalIdx
+                                Surface(
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = if (isActive) Color(0xFFFFFBEB) else Color.White,
+                                    shadowElevation = if (isActive) 8.dp else 4.dp,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .border(
+                                            width = if (isActive) 2.5.dp else 1.8.dp,
+                                            color = if (isActive) ReadingColors.SunYellow else lesson.accentColor.copy(alpha = 0.45f),
+                                            shape = RoundedCornerShape(24.dp)
+                                        )
+                                        .clickable {
+                                            activePairIdx = globalIdx
+                                            engine.playSuccessChime()
+                                            engine.speak(item.spokenText)
+                                        }
+                                        .testTag("qiraati_tanween_listen_$globalIdx")
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        QiraatiWordArtCanvas(artKey = item.artKey, modifier = Modifier.size(64.dp))
+                                        ArabicHighlightedWord(
+                                            word = item.word,
+                                            highlightRanges = item.highlightRanges,
+                                            fontSize = 26.sp,
+                                            lineHeight = 38.sp,
+                                            baseColor = ReadingColors.InkDark,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        PlayfulSpeakerIcon(
+                                            isSpeaking = isActive,
+                                            tint = lesson.accentColor,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            if (rowItems.size == 1) Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
@@ -2594,13 +2719,12 @@ private fun Station2And3Vowels(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             QiraatiWordArtCanvas(artKey = vw.artKey, modifier = Modifier.size(56.dp))
-                            Text(
-                                text = buildRedHighlightedText(vw.word, vw.highlightRanges),
-                                fontFamily = ReadingTajawalFont,
-                                fontWeight = FontWeight.ExtraBold,
+                            ArabicHighlightedWord(
+                                word = vw.word,
+                                highlightRanges = vw.highlightRanges,
                                 fontSize = 23.sp,
                                 lineHeight = 34.sp,
-                                color = ReadingColors.InkDark,
+                                baseColor = ReadingColors.InkDark,
                                 textAlign = TextAlign.Center
                             )
                             Surface(
@@ -2735,13 +2859,13 @@ private fun Station4Sukoon(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = buildRedHighlightedText(item.word, item.highlightRanges),
-                            fontFamily = ReadingTajawalFont,
-                            fontWeight = FontWeight.ExtraBold,
+                        ArabicHighlightedWord(
+                            word = item.word,
+                            highlightRanges = item.highlightRanges,
                             fontSize = 30.sp,
                             lineHeight = 42.sp,
-                            color = ReadingColors.InkDark
+                            baseColor = ReadingColors.InkDark,
+                            textAlign = TextAlign.Start
                         )
 
                         Row(
@@ -3329,6 +3453,21 @@ private fun Station6PuzzleGame(
     onPuzzleSolved: (String) -> Unit,
     onNextStation: () -> Unit
 ) {
+    if (lesson.sentenceFillItems.isNotEmpty()) {
+        SentenceFillPuzzleStation(
+            lesson = lesson,
+            engine = engine,
+            onSentenceCompleted = onPuzzleSolved,
+            onNextStation = onNextStation
+        )
+        return
+    }
+
+    if (lesson.puzzleItems.isEmpty()) {
+        onNextStation()
+        return
+    }
+
     var puzzleIndex by remember(lesson.id) { mutableIntStateOf(0) }
     val puzzle = lesson.puzzleItems[puzzleIndex % lesson.puzzleItems.size]
 
@@ -3338,7 +3477,7 @@ private fun Station6PuzzleGame(
     val selectedBranch = puzzle.branches.getOrNull(selectedBranchIdx)
     val isInterlocked = selectedBranch != null
 
-    // حركة انزلاق مرنة تدمج القطعتين عند اختيار القطعة المتفرعة
+    // حركة انزلاق مرنة تدمج القطع المتشابكة عند اختيار الفرع
     val slideGap by animateDpAsState(
         targetValue = if (isInterlocked) (-26).dp else 18.dp,
         animationSpec = spring(
@@ -3352,7 +3491,8 @@ private fun Station6PuzzleGame(
         listOf(
             ReadingColors.CandyPink to ReadingColors.CandyShadow,
             ReadingColors.SkyBlue to ReadingColors.SkyBlueShadow,
-            ReadingColors.MeadowGreen to ReadingColors.MeadowShadow
+            ReadingColors.MeadowGreen to ReadingColors.MeadowShadow,
+            ReadingColors.BerryPurple to ReadingColors.BerryShadow
         )
     }
 
@@ -3394,14 +3534,13 @@ private fun Station6PuzzleGame(
             }
         }
 
-        val maxPiecesInPuzzle = puzzle.branches.maxOfOrNull { it.resolvedPieces(puzzle.basePiece).size } ?: 2
-        val isThreePiecePuzzle = maxPiecesInPuzzle >= 3
+        val maxPiecesInPuzzle = (puzzle.branches.maxOfOrNull { it.resolvedPieces(puzzle.basePiece).size } ?: 2).coerceIn(2, 4)
 
         Text(
-            text = if (isThreePiecePuzzle) {
-                "اضغط على بطاقة المقاطع لتتعشّق القطع الثلاث معاً وتكوّن الكلمة!"
-            } else {
-                "اضغط على قطعة البازل الملونة لتتعشّق مع القطعة الأساسية وتكوّن الكلمة!"
+            text = when (maxPiecesInPuzzle) {
+                4 -> "اضغط على بطاقة المقاطع لتتعشّق القطع الأربع معاً وتكوّن الكلمة!"
+                3 -> "اضغط على بطاقة المقاطع لتتعشّق القطع الثلاث معاً وتكوّن الكلمة!"
+                else -> "اضغط على قطعة البازل الملونة لتتعشّق مع القطعة الأساسية وتكوّن الكلمة!"
             },
             fontFamily = ReadingTajawalFont,
             fontWeight = FontWeight.ExtraBold,
@@ -3410,7 +3549,7 @@ private fun Station6PuzzleGame(
             textAlign = TextAlign.Center
         )
 
-        // مسرح تعشيق قطع البازل (يدعم قطعتين أو 3 قطع متشابكة بسلاسة)
+        // مسرح تعشيق قطع البازل (يدعم قطعتين أو 3 قطع أو 4 قطع متشابكة بسلاسة)
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = if (isInterlocked) Color(0xFFF0FDF4) else Color.White,
@@ -3426,66 +3565,61 @@ private fun Station6PuzzleGame(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val resolved = selectedBranch?.resolvedPieces(puzzle.basePiece)
-                if (isThreePiecePuzzle) {
-                    val p0 = resolved?.getOrNull(0) ?: puzzle.basePiece
-                    val p1 = resolved?.getOrNull(1) ?: "؟"
-                    val p2 = resolved?.getOrNull(2) ?: "؟"
-                    val (midBg, midSh) = if (selectedBranchIdx >= 0) {
-                        branchColors[selectedBranchIdx % branchColors.size]
-                    } else {
-                        Color(0xFF94A3B8) to Color(0xFF64748B)
-                    }
-                    val (endBg, endSh) = if (selectedBranchIdx >= 0) {
-                        branchColors[(selectedBranchIdx + 1) % branchColors.size]
-                    } else {
-                        Color(0xFF94A3B8) to Color(0xFF64748B)
-                    }
+                val pieceCount = resolved?.size?.coerceIn(2, 4) ?: maxPiecesInPuzzle
+
+                if (pieceCount >= 3) {
+                    val pieceWidth = if (pieceCount == 4) 82.dp else 104.dp
+                    val pieceHeight = if (pieceCount == 4) 82.dp else 92.dp
+                    val overlapStep = if (pieceCount == 4) 11.dp else 14.dp
 
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        JigsawPuzzlePieceCanvas(
-                            text = p0,
-                            pieceColor = ReadingColors.CoralOrange,
-                            shadowColor = ReadingColors.CoralShadow,
-                            interlockSide = PuzzleInterlockSide.LEFT_TAB,
-                            isHighlighted = isInterlocked,
-                            modifier = Modifier
-                                .size(width = 104.dp, height = 92.dp)
-                                .clickable {
-                                    engine.playTapPop()
-                                    engine.speak(p0)
-                                }
-                        )
-                        Spacer(modifier = Modifier.width(if (isInterlocked) 0.dp else 4.dp))
-                        JigsawPuzzlePieceCanvas(
-                            text = p1,
-                            pieceColor = midBg,
-                            shadowColor = midSh,
-                            interlockSide = PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET,
-                            isHighlighted = isInterlocked,
-                            modifier = Modifier
-                                .offset(x = if (isInterlocked) 14.dp else 0.dp)
-                                .size(width = 104.dp, height = 92.dp)
-                        )
-                        Spacer(modifier = Modifier.width(if (isInterlocked) 0.dp else 4.dp))
-                        JigsawPuzzlePieceCanvas(
-                            text = p2,
-                            pieceColor = endBg,
-                            shadowColor = endSh,
-                            interlockSide = PuzzleInterlockSide.RIGHT_SOCKET,
-                            isHighlighted = isInterlocked,
-                            modifier = Modifier
-                                .offset(x = if (isInterlocked) 26.dp else 0.dp)
-                                .size(width = 104.dp, height = 92.dp)
-                        )
+                        for (pIdx in 0 until pieceCount) {
+                            val label = when {
+                                resolved != null -> resolved.getOrNull(pIdx) ?: "؟"
+                                pIdx == 0 -> puzzle.basePiece
+                                else -> "؟"
+                            }
+                            val (bg, sh) = when {
+                                pIdx == 0 -> ReadingColors.CoralOrange to ReadingColors.CoralShadow
+                                selectedBranchIdx >= 0 -> branchColors[(selectedBranchIdx + pIdx - 1) % branchColors.size]
+                                else -> Color(0xFF94A3B8) to Color(0xFF64748B)
+                            }
+                            val side = when (pIdx) {
+                                0 -> PuzzleInterlockSide.LEFT_TAB
+                                pieceCount - 1 -> PuzzleInterlockSide.RIGHT_SOCKET
+                                else -> PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
+                            }
+                            if (pIdx > 0) {
+                                Spacer(modifier = Modifier.width(if (isInterlocked) 0.dp else 3.dp))
+                            }
+                            JigsawPuzzlePieceCanvas(
+                                text = label,
+                                pieceColor = bg,
+                                shadowColor = sh,
+                                interlockSide = side,
+                                isHighlighted = isInterlocked,
+                                modifier = Modifier
+                                    .offset(x = if (isInterlocked) overlapStep * pIdx else 0.dp)
+                                    .size(width = pieceWidth, height = pieceHeight)
+                                    .clickable {
+                                        if (label != "؟") {
+                                            engine.playTapPop()
+                                            engine.speak(label)
+                                        }
+                                    }
+                            )
+                        }
                     }
                 } else {
                     Row(
@@ -3619,6 +3753,354 @@ private fun Station6PuzzleGame(
                         }
                     }
                 }
+            }
+        }
+
+        StationNextFooterButton(
+            label = "التالي: بطاقة أقرأ وسبورة الكتابة",
+            onClick = {
+                engine.playTapPop()
+                onNextStation()
+            }
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+    }
+}
+
+// ============================================================================
+// محطة ركّب الكلمة من المقاطع ثم أكمل الفراغ في الجملة (نشاط 4 في تنوين الفتح)
+// ============================================================================
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SentenceFillPuzzleStation(
+    lesson: QiraatiLetterLesson,
+    engine: ReadingAudioAndProgressEngine,
+    onSentenceCompleted: (String) -> Unit,
+    onNextStation: () -> Unit
+) {
+    val items = lesson.sentenceFillItems
+    var itemIdx by remember(lesson.id) { mutableIntStateOf(0) }
+    val item = items[itemIdx % items.size]
+
+    var filledCount by remember(lesson.id, itemIdx) { mutableIntStateOf(0) }
+    var wrongTapHint by remember(lesson.id, itemIdx) { mutableStateOf("") }
+    val completedIndices = remember(lesson.id) { mutableStateListOf<Int>() }
+
+    val shuffledOrder = remember(lesson.id, itemIdx) {
+        val base = item.syllables.indices.toList()
+        if (base.size <= 1) base else base.reversed().let { rev ->
+            if (rev == base) base else rev
+        }
+    }
+
+    val isWordAssembled = filledCount >= item.syllables.size
+    val leapScale by animateFloatAsState(
+        targetValue = if (isWordAssembled) 1.06f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "sentence_fill_leap"
+    )
+
+    val tilePalette = remember {
+        listOf(
+            ReadingColors.CoralOrange to ReadingColors.CoralShadow,
+            ReadingColors.SkyBlue to ReadingColors.SkyBlueShadow,
+            ReadingColors.BerryPurple to ReadingColors.BerryShadow,
+            ReadingColors.MeadowGreen to ReadingColors.MeadowShadow
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        if (items.size > 1) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items.forEachIndexed { idx, _ ->
+                    val active = idx == itemIdx
+                    val solved = idx in completedIndices
+                    PlayfulBouncyButton(
+                        onClick = {
+                            engine.playTapPop()
+                            itemIdx = idx
+                        },
+                        backgroundColor = when {
+                            active -> ReadingColors.BerryPurple
+                            solved -> ReadingColors.MeadowGreen
+                            else -> Color.White
+                        },
+                        shadowColor = when {
+                            active -> ReadingColors.BerryShadow
+                            solved -> ReadingColors.MeadowShadow
+                            else -> Color(0xFFCBD5E1)
+                        },
+                        cornerRadius = 16.dp,
+                        lipDepth = 4.dp,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        testTagValue = "qiraati_sentence_fill_tab_$idx"
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (solved) {
+                                PlayfulCheckIcon(tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                            Text(
+                                text = "جملة ${idx + 1}",
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.5.sp,
+                                color = if (active || solved) Color.White else ReadingColors.InkDark
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = "ركّب المقاطع بالترتيب لتقفز الكلمة وتكمل الجملة!",
+            fontFamily = ReadingTajawalFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 15.sp,
+            lineHeight = 23.sp,
+            color = ReadingColors.InkDark,
+            textAlign = TextAlign.Center
+        )
+
+        // بطاقة الجملة مع الفراغ الذي تقفز إليه الكلمة عند اكتمال تركيبها
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = if (isWordAssembled) Color(0xFFF0FDF4) else Color.White,
+            shadowElevation = if (isWordAssembled) 8.dp else 5.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    scaleX = leapScale
+                    scaleY = leapScale
+                }
+                .border(
+                    width = 2.5.dp,
+                    color = if (isWordAssembled) ReadingColors.MeadowGreen else lesson.accentColor.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(28.dp)
+                )
+                .clickable {
+                    engine.playTapPop()
+                    engine.speak(if (isWordAssembled) item.spokenSentence else item.spokenWord)
+                }
+                .testTag("qiraati_sentence_fill_card")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                QiraatiWordArtCanvas(artKey = item.artKey, modifier = Modifier.size(72.dp))
+
+                AnimatedContent(
+                    targetState = isWordAssembled,
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "sentence_blank_fill"
+                ) { assembled ->
+                    if (assembled) {
+                        val wordStart = item.completedSentence.indexOf(item.targetWord).coerceAtLeast(0)
+                        val wordEnd = (wordStart + item.targetWord.length).coerceAtMost(item.completedSentence.length)
+                        ArabicHighlightedWord(
+                            word = item.completedSentence,
+                            highlightRanges = listOf(QiraatiHighlightRange(wordStart, wordEnd)),
+                            fontSize = 27.sp,
+                            lineHeight = 40.sp,
+                            baseColor = ReadingColors.InkDark,
+                            highlightColor = Color(0xFF15803D),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            text = item.sentenceWithBlank,
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 26.sp,
+                            lineHeight = 38.sp,
+                            color = ReadingColors.InkDark,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                if (isWordAssembled) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = ReadingColors.SunYellow
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            PlayfulSpeakerIcon(tint = ReadingColors.InkDark, modifier = Modifier.size(18.dp))
+                            Text(
+                                text = "ممتاز! اضغط للاستماع للجملة الكاملة",
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.5.sp,
+                                color = ReadingColors.InkDark
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // مسرح تعشيق مقاطع الكلمة
+        val pieceCount = item.syllables.size.coerceIn(2, 4)
+        val pieceW = if (pieceCount >= 4) 82.dp else 118.dp
+        val pieceH = if (pieceCount >= 4) 80.dp else 92.dp
+        val stepOffset = if (pieceCount >= 4) 10.dp else 14.dp
+
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFFFFFBEB),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(2.dp, ReadingColors.SunYellow.copy(alpha = 0.7f), RoundedCornerShape(24.dp))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item.syllables.forEachIndexed { sIdx, syl ->
+                        val isFilled = sIdx < filledCount
+                        val (bg, sh) = if (isFilled) {
+                            tilePalette[sIdx % tilePalette.size]
+                        } else {
+                            Color(0xFFCBD5E1) to Color(0xFF94A3B8)
+                        }
+                        val side = when (sIdx) {
+                            0 -> PuzzleInterlockSide.LEFT_TAB
+                            item.syllables.lastIndex -> PuzzleInterlockSide.RIGHT_SOCKET
+                            else -> PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
+                        }
+                        if (sIdx > 0) {
+                            Spacer(modifier = Modifier.width(if (isWordAssembled) 0.dp else 3.dp))
+                        }
+                        JigsawPuzzlePieceCanvas(
+                            text = if (isFilled) syl else "${sIdx + 1}",
+                            pieceColor = bg,
+                            shadowColor = sh,
+                            interlockSide = side,
+                            isHighlighted = isWordAssembled,
+                            modifier = Modifier
+                                .offset(x = if (isWordAssembled) stepOffset * sIdx else 0.dp)
+                                .size(width = pieceW, height = pieceH)
+                        )
+                    }
+                }
+
+                if (wrongTapHint.isNotEmpty()) {
+                    Text(
+                        text = wrongTapHint,
+                        fontFamily = ReadingTajawalFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp,
+                        color = ReadingColors.CoralShadow,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        // أزرار المقاطع المبعثرة للاختيار بالترتيب
+        if (!isWordAssembled) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                shuffledOrder.forEach { origIdx ->
+                    val syllableText = item.syllables[origIdx]
+                    val alreadyPlaced = origIdx < filledCount
+                    val (bg, sh) = tilePalette[origIdx % tilePalette.size]
+                    PlayfulBouncyButton(
+                        onClick = {
+                            if (alreadyPlaced) return@PlayfulBouncyButton
+                            if (origIdx == filledCount) {
+                                wrongTapHint = ""
+                                filledCount++
+                                if (filledCount >= item.syllables.size) {
+                                    if (itemIdx !in completedIndices) {
+                                        completedIndices.add(itemIdx)
+                                    }
+                                    onSentenceCompleted(item.completedSentence)
+                                } else {
+                                    engine.playSuccessChime()
+                                    engine.speak(syllableText)
+                                }
+                            } else {
+                                engine.playGentleTryAgain()
+                                wrongTapHint = "جرّب المقطع الأول بالترتيب الصحيح يا بطل!"
+                            }
+                        },
+                        backgroundColor = if (alreadyPlaced) Color(0xFFE2E8F0) else bg,
+                        shadowColor = if (alreadyPlaced) Color(0xFFCBD5E1) else sh,
+                        cornerRadius = 22.dp,
+                        lipDepth = 5.dp,
+                        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
+                        modifier = Modifier.defaultMinSize(minWidth = 86.dp, minHeight = 68.dp),
+                        testTagValue = "qiraati_sentence_syllable_$origIdx"
+                    ) {
+                        Text(
+                            text = syllableText,
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 28.sp,
+                            lineHeight = 36.sp,
+                            color = if (alreadyPlaced) Color(0xFF94A3B8) else Color.White
+                        )
+                    }
+                }
+            }
+        } else if (itemIdx < items.lastIndex) {
+            PlayfulBouncyButton(
+                onClick = {
+                    engine.playTapPop()
+                    itemIdx++
+                },
+                backgroundColor = ReadingColors.SkyBlue,
+                shadowColor = ReadingColors.SkyBlueShadow,
+                cornerRadius = 22.dp,
+                lipDepth = 5.dp,
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                testTagValue = "qiraati_sentence_next_btn"
+            ) {
+                Text(
+                    text = "انتقل إلى الجملة التالية",
+                    fontFamily = ReadingTajawalFont,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    color = Color.White
+                )
             }
         }
 
@@ -3854,6 +4336,7 @@ private fun stripArabicDiacritics(raw: String): String =
 @Composable
 private fun Station7ReadAndWrite(
     lesson: QiraatiLetterLesson,
+    mascotStyle: QiraatiMascotStyle = QiraatiMascotStyle.BLUE_BIRD,
     isSpeaking: Boolean,
     engine: ReadingAudioAndProgressEngine,
     onReadSuccess: (String) -> Unit,
@@ -3861,11 +4344,16 @@ private fun Station7ReadAndWrite(
 ) {
     val context = LocalContext.current
     val tajawalTypeface = remember(context) { resolveQiraatiTajawalTypeface(context) }
+    val mascotArabicName = when (mascotStyle) {
+        QiraatiMascotStyle.BEE -> "النحلة الذكية"
+        QiraatiMascotStyle.BLUE_PEN -> "القلم الأزرق"
+        QiraatiMascotStyle.BLUE_BIRD -> "العصفور الأزرق"
+    }
 
-    // --- بطاقة العصفور الأزرق "أقرأ" مع المايكروفون الاختياري ---
+    // --- بطاقة الشخصية المرافقة "أقرأ" مع المايكروفون الاختياري ---
     var selectedReadWordIdx by remember(lesson.id) { mutableIntStateOf(0) }
     val currentReadWord = lesson.readAloudWords[selectedReadWordIdx % lesson.readAloudWords.size]
-    var readStatus by remember(lesson.id) { mutableStateOf("اضغط على الكلمات لتسمعها، أو اقرأها بصوتك للعصفور الأزرق!") }
+    var readStatus by remember(lesson.id) { mutableStateOf("اضغط على الكلمات لتسمعها، أو اقرأها بصوتك لـ$mascotArabicName!") }
     var isListeningRead by remember { mutableStateOf(false) }
 
     val speechRecognizer = remember(context) {
@@ -3937,7 +4425,7 @@ private fun Station7ReadAndWrite(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) startVoiceReadCheck()
-        else readStatus = "اضغط على الكلمات لتسمعها وتقرأها مع العصفور الأزرق"
+        else readStatus = "اضغط على الكلمات لتسمعها وتقرأها مع $mascotArabicName"
     }
 
     // --- سبورة التتبع الدقيقة بالـ Bitmap 160x160 ---
@@ -3995,10 +4483,20 @@ private fun Station7ReadAndWrite(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                ReadingBlueBirdCanvas(
-                    bannerText = "أقرأ",
-                    isCelebrating = isListeningRead
-                )
+                when (mascotStyle) {
+                    QiraatiMascotStyle.BEE -> ReadingBeeMascotCanvas(
+                        bannerText = "أقرأ",
+                        isCelebrating = isListeningRead
+                    )
+                    QiraatiMascotStyle.BLUE_PEN -> ReadingBluePenCanvas(
+                        bannerText = "أقرأ",
+                        isCelebrating = isListeningRead
+                    )
+                    QiraatiMascotStyle.BLUE_BIRD -> ReadingBlueBirdCanvas(
+                        bannerText = "أقرأ",
+                        isCelebrating = isListeningRead
+                    )
+                }
 
                 Text(
                     text = readStatus,
@@ -4015,6 +4513,7 @@ private fun Station7ReadAndWrite(
                 ) {
                     lesson.readAloudWords.forEachIndexed { idx, word ->
                         val selected = idx == selectedReadWordIdx
+                        val isLongSentence = word.length > 18
                         PlayfulBouncyButton(
                             onClick = {
                                 selectedReadWordIdx = idx
@@ -4025,16 +4524,17 @@ private fun Station7ReadAndWrite(
                             shadowColor = if (selected) ReadingColors.SkyBlueShadow else Color(0xFFBAE6FD),
                             cornerRadius = 20.dp,
                             lipDepth = 4.dp,
-                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                             testTagValue = "qiraati_read_word_$idx"
                         ) {
                             Text(
                                 text = word,
                                 fontFamily = ReadingTajawalFont,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 26.sp,
-                                lineHeight = 36.sp,
-                                color = if (selected) Color.White else ReadingColors.InkDark
+                                fontSize = if (isLongSentence) 19.sp else 26.sp,
+                                lineHeight = if (isLongSentence) 32.sp else 36.sp,
+                                color = if (selected) Color.White else ReadingColors.InkDark,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }

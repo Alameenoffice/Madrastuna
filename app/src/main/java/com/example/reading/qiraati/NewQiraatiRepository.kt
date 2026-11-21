@@ -14,106 +14,24 @@ object NewQiraatiRepository {
     const val BOOK_TITLE: String = "قراءتي الجديدة"
     const val BOOK_SUBTITLE: String = "الصف الأول الابتدائي — المنهج العراقي"
 
-    private val upcomingUnitsCatalog: List<QiraatiUnit> = listOf(
-        QiraatiUnit(
-            id = "unit_3_madinati",
-            unitNumber = 3,
-            unitBadge = "الوحدة الثالثة",
-            title = "الوحدة الثالثة: مدينتي وقريتي",
-            shortTitle = "مدينتي وقريتي",
-            description = "قريباً — حكايات الجيران والطرقات والحقول الجميلة مع أنشطة التهجئة والتحليل",
-            themeColor = Color(0xFF22C55E),
-            theme = QiraatiUnitTheme(
-                primaryColor = Color(0xFF22C55E),
-                shadowColor = Color(0xFF15803D),
-                softSurfaceColor = Color(0xFFF0FDF4),
-                badgeColor = Color(0xFF4ADE80)
-            ),
-            storySection = null,
-            letterLessons = emptyList(),
-            isAvailable = false,
-            comingSoonLabel = "قريباً",
-            plannedLetters = listOf("ق", "ز", "ك", "ل"),
-            coverArtKey = QiraatiStoryArtKey.UPCOMING_CITY_VILLAGE
-        ),
-        QiraatiUnit(
-            id = "unit_4_sihati",
-            unitNumber = 4,
-            unitBadge = "الوحدة الرابعة",
-            title = "الوحدة الرابعة: صحتي وسلامتي",
-            shortTitle = "صحتي وسلامتي",
-            description = "قريباً — عادات النظافة والغذاء الصحي والنشاط اليومي مع حروف جديدة ممتعة",
-            themeColor = Color(0xFF8B5CF6),
-            theme = QiraatiUnitTheme(
-                primaryColor = Color(0xFF8B5CF6),
-                shadowColor = Color(0xFF6233C7),
-                softSurfaceColor = Color(0xFFF5F3FF),
-                badgeColor = Color(0xFFA78BFA)
-            ),
-            storySection = null,
-            letterLessons = emptyList(),
-            isAvailable = false,
-            comingSoonLabel = "قريباً",
-            plannedLetters = listOf("ط", "ح", "ص", "ش"),
-            coverArtKey = QiraatiStoryArtKey.UPCOMING_HEALTH
-        ),
-        QiraatiUnit(
-            id = "unit_5_biati",
-            unitNumber = 5,
-            unitBadge = "الوحدة الخامسة",
-            title = "الوحدة الخامسة: بيئتي الجميلة",
-            shortTitle = "بيئتي الجميلة",
-            description = "قريباً — الأشجار والأنهار والطيور في ربوع بلادنا مع تدريبات القراءة الطلقة",
-            themeColor = Color(0xFFF59E0B),
-            theme = QiraatiUnitTheme(
-                primaryColor = Color(0xFFF59E0B),
-                shadowColor = Color(0xFFB45309),
-                softSurfaceColor = Color(0xFFFFFBEB),
-                badgeColor = Color(0xFFFCD34D)
-            ),
-            storySection = null,
-            letterLessons = emptyList(),
-            isAvailable = false,
-            comingSoonLabel = "قريباً",
-            plannedLetters = listOf("ع", "خ", "ج", "ذ"),
-            coverArtKey = QiraatiStoryArtKey.UPCOMING_NATURE
-        ),
-        QiraatiUnit(
-            id = "unit_6_watani",
-            unitNumber = 6,
-            unitBadge = "الوحدة السادسة",
-            title = "الوحدة السادسة: وطني العراق",
-            shortTitle = "وطني العراق",
-            description = "قريباً — ختام الرحلة مع قصص الوطن الجميل وإتقان جميع الحروف العربية",
-            themeColor = Color(0xFFEC4899),
-            theme = QiraatiUnitTheme(
-                primaryColor = Color(0xFFEC4899),
-                shadowColor = Color(0xFFBE185D),
-                softSurfaceColor = Color(0xFFFDF2F8),
-                badgeColor = Color(0xFFF472B6)
-            ),
-            storySection = null,
-            letterLessons = emptyList(),
-            isAvailable = false,
-            comingSoonLabel = "قريباً",
-            plannedLetters = listOf("غ", "ظ", "ض", "ث"),
-            coverArtKey = QiraatiStoryArtKey.UPCOMING_IRAQ
-        )
-    )
+    private val upcomingUnitsCatalog: List<QiraatiUnit> = emptyList()
 
     /**
-     * جميع وحدات خريطة كتاب "قراءتي الجديدة" (الوحدة الأولى والثانية متوفرتان + الوحدات القادمة).
+     * جميع وحدات كتاب "قراءتي الجديدة — الصف الأول الابتدائي" مكتملة بالوحدات الأربع:
+     * (الأولى: أسرتي، الثانية: مدرستي، الثالثة: وطني، الرابعة: صحتي وبيئتي).
      */
     val allUnits: List<QiraatiUnit> = listOf(
         Unit1UsratyData.unit,
-        Unit2MadrasatiData.unit
+        Unit2MadrasatiData.unit,
+        Unit3WataniData.unit,
+        Unit4SihatiWaBiatiData.unit
     ) + upcomingUnitsCatalog
 
     /** الوحدات المتوفرة والجاهزة للتعلّم حالياً. */
     val availableUnits: List<QiraatiUnit>
         get() = allUnits.filter { it.isAvailable }
 
-    /** الوحدات القادمة (قريباً) لإظهار خريطة مشوّقة قابلة للتوسّع. */
+    /** الوحدات القادمة (قريباً) إن وُجدت في الإصدارات المستقبلية. */
     val upcomingUnits: List<QiraatiUnit>
         get() = allUnits.filterNot { it.isAvailable }
 

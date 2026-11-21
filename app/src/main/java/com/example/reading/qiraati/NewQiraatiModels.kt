@@ -27,11 +27,28 @@ enum class QiraatiStoryArtKey {
     MADRASATI_GATE_ARRIVAL,
     MADRASATI_YARD_LINEUP,
     MADRASATI_CLASSROOM_LESSON,
+    WATANI_CLASSROOM_MAP_FLAG,
+    WATANI_NATIONAL_DAY_PARTY,
+    WATANI_THREE_IRAQI_PALMS,
+    WATANI_IRAQ_MAP_AND_FLAG,
+    SIHATI_HYGIENE_TOOLS,
+    SIHATI_HAND_WASHING,
+    SIHATI_HEALTHY_BREAKFAST,
+    SIHATI_PARK_PLAY_KITE_BIKE,
     UPCOMING_SCHOOL,
     UPCOMING_CITY_VILLAGE,
     UPCOMING_HEALTH,
     UPCOMING_NATURE,
     UPCOMING_IRAQ
+}
+
+/**
+ * شخصية المرافق التفاعلي في فقرة "أقرأ" وترويسة الوحدة.
+ */
+enum class QiraatiMascotStyle(val key: String) {
+    BLUE_BIRD("bird"),
+    BLUE_PEN("pen"),
+    BEE("bee")
 }
 
 /**
@@ -150,6 +167,106 @@ enum class QiraatiWordArtKey {
     ROSE,
     SHIP,
     PAINTING,
+
+    // كلمات الوحدة الثالثة (و، ي، ق، ل، ط، ع، تنوين الفتح)
+    FACES,
+    PILLOW,
+    BUCKET,
+    WAVE,
+    FRUITS,
+    PEACOCK,
+    COLORING,
+    MEDICINE,
+    BOW,
+    PEACH,
+    PUMPKIN,
+    PRAYING,
+    HAND,
+    FLUTE,
+    LEMON,
+    CUCUMBER,
+    BIRDS,
+    MILLIONS,
+    WATER_SPRING,
+    CLAPPING,
+    RESORTS,
+    JASMINE,
+    EGGS,
+    CARDAMOM,
+    OIL,
+    HAT,
+    SHARK,
+    PENGUIN,
+    FALCON,
+    COINS,
+    FLOUR,
+    COTTON,
+    STORY,
+    SCORPION,
+    FIELD,
+    TOY,
+    TONGUE,
+    GAZELLE,
+    DOG,
+    PLAYER,
+    HEARTS,
+    SCIENTIST,
+    THREE,
+    BALLOON,
+    PLAYGROUND,
+    PEPPER,
+    DOCTOR,
+    TAILOR,
+    CAPTAIN,
+    PERFUMES,
+    TRAIN,
+    RECTANGLE,
+    HAMMER,
+    KITCHEN,
+    IRAQ_FLAG,
+    BONES,
+    FINGER,
+    TORCH,
+    OUD,
+    STICKS,
+    GRAPES,
+    OSTRICH,
+    FOX,
+    MINT,
+    LEAF,
+
+    // كلمات الوحدة الرابعة (ح، ش، ز — صحتي وبيئتي)
+    DOVE,
+    GRAINS,
+    SHOE,
+    WALL,
+    WHALE,
+    SWEETS,
+    BELT,
+    WALLET,
+    COAL,
+    THERMOMETER,
+    CANDLE,
+    WINDOW,
+    SAIL,
+    APRICOT,
+    TREES,
+    STREET,
+    PEELS,
+    SAWS,
+    CHALK,
+    GRASS,
+    COMB,
+    WATER_BOTTLE,
+    BUTTON,
+    GOAT,
+    SNAIL,
+    ISLAND,
+    OLIVES,
+    DECORATION,
+    FLOWERS,
+    VASE,
+    TOOTHBRUSH,
 
     // مفتاح عام قابل لإعادة الاستخدام في الوحدات القادمة
     GENERIC_WORD
@@ -317,6 +434,19 @@ data class QiraatiPuzzleItem(
 )
 
 /**
+ * نشاط تركيب الكلمة من المقاطع ثم إكمال الجملة ذات الفراغ (مثل نشاط تنوين الفتح في الوحدة الثالثة).
+ */
+data class QiraatiSentenceFillItem(
+    val syllables: List<String>,
+    val targetWord: String,
+    val sentenceWithBlank: String,
+    val completedSentence: String,
+    val artKey: QiraatiWordArtKey = QiraatiWordArtKey.GENERIC_WORD,
+    val spokenWord: String = targetWord,
+    val spokenSentence: String = completedSentence
+)
+
+/**
  * درس حرف أو مهارة متكامل وفق تسلسل أنشطة كتاب "قراءتي الجديدة — الصف الأول الابتدائي" العراقي الرسمي.
  */
 data class QiraatiLetterLesson(
@@ -340,7 +470,8 @@ data class QiraatiLetterLesson(
     val circleFilterWords: List<QiraatiCircleFilterWord> = emptyList(),
     val suffixChoiceItems: List<QiraatiSuffixChoiceItem> = emptyList(),
     val isAppleVowelsStyle: Boolean = false,
-    val tanweenListenWords: List<QiraatiIntroWord> = emptyList()
+    val tanweenListenWords: List<QiraatiIntroWord> = emptyList(),
+    val sentenceFillItems: List<QiraatiSentenceFillItem> = emptyList()
 )
 
 /**
@@ -362,7 +493,8 @@ data class QiraatiUnit(
     val plannedLetters: List<String> = letterLessons.map { it.targetLetter },
     val coverArtKey: QiraatiStoryArtKey = storySection?.listeningScene?.artKey
         ?: QiraatiStoryArtKey.USRATY_FAMILY_HOME,
-    val unitChant: QiraatiUnitChant? = null
+    val unitChant: QiraatiUnitChant? = null,
+    val mascotStyle: QiraatiMascotStyle = QiraatiMascotStyle.BLUE_BIRD
 )
 
 /**
@@ -384,7 +516,12 @@ fun findArabicLetterRanges(word: String, targetChar: Char): List<QiraatiHighligh
         word.forEachIndexed { idx, ch ->
             if (ch == targetChar) {
                 val start = (idx - 1).coerceAtLeast(0)
-                ranges.add(QiraatiHighlightRange(startInclusive = start, endExclusive = idx + 1))
+                var end = idx + 1
+                // في تنوين الفتح (مثل: عَلَمًا / بَابًا) نضم الألف التابعة مباشرة لتتلوّن كاملة بالأحمر
+                if (targetChar == '\u064B' && end < word.length && word[end] == 'ا') {
+                    end++
+                }
+                ranges.add(QiraatiHighlightRange(startInclusive = start, endExclusive = end))
             }
         }
         return ranges
