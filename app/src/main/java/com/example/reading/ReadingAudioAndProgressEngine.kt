@@ -97,9 +97,10 @@ data class ReadingProgressState(
  * 1) أولوية التشغيل الفوري والآمن عبر android.media.MediaPlayer بالترتيب:
  *    (أ) الذاكرة المحلية للتطبيق: filesDir/reading_audio/{md5_12}.mp3
  *    (ب) حزمة الأصول المدمجة للعمل بدون إنترنت: assets/reading_audio/{md5_12}.mp3 (مع فك ضغط تلقائي إلى cacheDir)
- *    (ج) تحميل اختياري لمرة واحدة في الخلفية عند ضبط remoteVoiceBaseUrl
- *    (د) بديل احتياطي أخير عبر TextToSpeech فقط عند عدم توفر ملف MP3 مطابق.
- * 2) نطق مقطعي متزامن بالصوت الحقيقي عبر MediaPlayer.setOnCompletionListener.
+ *    (ج) تقسيم تلقائي للعبارات المركّبة عند علامات الترقيم (، : . ! ؟) وتشغيل أجزائها بالتتابع عبر MP3
+ *    (د) تحميل اختياري لمرة واحدة في الخلفية عند ضبط remoteVoiceBaseUrl
+ *    (هـ) إيقاف تام للصوت الآلي (ENABLE_ROBOTIC_TTS_FALLBACK = false) لضمان صوت بشري حقيقي 100%.
+ * 2) نطق متتابع ومقطعي متزامن بالصوت الحقيقي عبر MediaPlayer.setOnCompletionListener.
  * 3) حفظ محلي فوري للنجوم والشخصية الرمزية ومزامنة ساحة أبطال الصف مع Firebase RTDB.
  */
 class ReadingAudioAndProgressEngine(
@@ -136,7 +137,9 @@ class ReadingAudioAndProgressEngine(
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
     init {
-        initTextToSpeech()
+        if (ENABLE_ROBOTIC_TTS_FALLBACK) {
+            initTextToSpeech()
+        }
         syncFromCloudInBackground()
     }
 
@@ -303,8 +306,10 @@ class ReadingAudioAndProgressEngine(
      * يشغّل الصوت الحقيقي المطابق للنص من حزمة الـ MP3 بالأولوية:
      * (أ) filesDir/reading_audio/{fileName}
      * (ب) assets/reading_audio/{fileName} (مع فك ضغط تلقائي لمرة واحدة في cacheDir/reading_audio/)
-     * (ج) تحميل تلقائي في الخلفية لمرة واحدة (إذا تم ضبط remoteVoiceBaseUrl)
-     * (د) بديل احتياطي أخير عبر TextToSpeech فقط عند عدم توفر ملف MP3 مطابق.
+     * (ج) إذا لم يُعثر على ملف مطابق للنص الكامل، يفحص وجود علامات الترقيم (، أو : أو . أو ! أو ؟)
+     *     ويقّسم النص لتشغيل كل جزء عبر ملفه الصوتي بالترتيب عبر speakSequence.
+     * (د) تحميل تلقائي في الخلفية لمرة واحدة (إذا تم ضبط remoteVoiceBaseUrl)
+     * (هـ) لا يعمل TextToSpeech الآلي مطلقاً طالما ENABLE_ROBOTIC_TTS_FALLBACK = false.
      */
     fun speak(text: String, audioKey: String? = null) {
         if (isReleased) return
@@ -323,15 +328,56 @@ class ReadingAudioAndProgressEngine(
             return
         }
 
+        // إذا لم يُعثر على ملف MP3 مطابق للنص الكامل، قسّم النص عند علامات الترقيم وشغّل كل جزء بالترتيب
+        val punctuationParts = splitByPunctuation(cleaned)
+        if (punctuationParts.size > 1 || (punctuationParts.size == 1 && punctuationParts[0] != cleaned)) {
+            speakSequence(*punctuationParts.toTypedArray())
+            return
+        }
+
         // تحميل اختياري لمرة واحدة في الخلفية ليعمل بدون إنترنت لاحقاً
         scheduleBackgroundVoiceDownload(md5FileName)
 
-        // بديل احتياطي أخير عبر TextToSpeech فقط عند عدم توفر ملف MP3
-        speakWithTtsFallback(cleaned)
+        // إيقاف تام للصوت الآلي عندما يكون ENABLE_ROBOTIC_TTS_FALLBACK = false
+        if (ENABLE_ROBOTIC_TTS_FALLBACK) {
+            speakWithTtsFallback(cleaned)
+        }
     }
 
     /**
-     * نطق عبارات التشجيع الطفولية الحقيقية عشوائياً عبر نفس محرك الـ MP3 (مع البديل الاحتياطي عند الحاجة).
+     * يشغّل قائمة نصوص بالتتابع السلس عبر MediaPlayer مع فاصل قصير 120ms بين كل مقطع وآخر
+     * عبر setOnCompletionListener، مع تجاهل أي عنصر فارغ.
+     */
+    fun speakSequence(vararg parts: String) {
+        if (isReleased) return
+        val cleanedParts = parts
+            .map { normalizeTextForAudio(it) }
+            .filter { it.isNotEmpty() }
+        if (cleanedParts.isEmpty()) return
+
+        segmentJob?.cancel()
+        speakingTimeoutJob?.cancel()
+        stopActiveMediaPlayer()
+        runCatching { tts?.stop() }
+
+        segmentJob = engineScope.launch {
+            _isSpeaking.value = true
+            try {
+                cleanedParts.forEachIndexed { index, part ->
+                    val played = playTextOrSplitPunctuationAndAwait(part)
+                    if (played && index < cleanedParts.lastIndex) {
+                        delay(SEQUENCE_PAUSE_MS)
+                    }
+                }
+            } finally {
+                stopActiveMediaPlayer()
+                _isSpeaking.value = false
+            }
+        }
+    }
+
+    /**
+     * نطق عبارات التشجيع الطفولية الحقيقية عشوائياً عبر ملفات الـ MP3 الثابتة والخالية من المتغيرات.
      */
     fun playEncouragement(isSuccess: Boolean) {
         val phrase = if (isSuccess) {
@@ -372,7 +418,7 @@ class ReadingAudioAndProgressEngine(
                     val cleanedSyllable = normalizeTextForAudio(rawSyllable)
                     if (cleanedSyllable.isNotEmpty()) {
                         onActiveIndex(index)
-                        playTextAndAwaitCompletion(cleanedSyllable)
+                        playTextOrSplitPunctuationAndAwait(cleanedSyllable)
                         if (index < syllables.lastIndex || !wholeWord.isNullOrBlank()) {
                             delay(pauseBetweenMs)
                         }
@@ -383,7 +429,7 @@ class ReadingAudioAndProgressEngine(
                 val cleanedWhole = wholeWord?.let { normalizeTextForAudio(it) }.orEmpty()
                 if (cleanedWhole.isNotEmpty()) {
                     onWholeWordActive(true)
-                    playTextAndAwaitCompletion(cleanedWhole)
+                    playTextOrSplitPunctuationAndAwait(cleanedWhole)
                     onWholeWordActive(false)
                 }
                 onFinished()
@@ -417,10 +463,43 @@ class ReadingAudioAndProgressEngine(
     }
 
     /**
-     * يشغّل نصاً واحداً (MP3 بأولوية كاملة عبر MediaPlayer.setOnCompletionListener، أو TTS كبديل أخير)
-     * وينتظر انتهاء تشغيله الفعلي بدقة قبل المتابعة للمقطع التالي.
+     * يشغّل نصاً واحداً عبر MP3؛ وإن لم يوجد ملف كامل وكان يحتوي على علامات ترقيم (، : . ! ؟)
+     * يقسمه ويشغّل كل جزء عبر ملفه الصوتي بالتتابع مع فاصل 120ms.
      */
-    private suspend fun playTextAndAwaitCompletion(cleanedText: String) {
+    private suspend fun playTextOrSplitPunctuationAndAwait(cleanedText: String): Boolean {
+        if (playSingleMp3AndAwait(cleanedText)) {
+            return true
+        }
+
+        val subParts = splitByPunctuation(cleanedText)
+        if (subParts.size > 1 || (subParts.size == 1 && subParts[0] != cleanedText)) {
+            var anyPlayed = false
+            subParts.forEachIndexed { idx, sub ->
+                val playedSub = playSingleMp3AndAwait(sub)
+                if (playedSub) {
+                    anyPlayed = true
+                    if (idx < subParts.lastIndex) {
+                        delay(SEQUENCE_PAUSE_MS)
+                    }
+                }
+            }
+            if (anyPlayed) return true
+        }
+
+        scheduleBackgroundVoiceDownload(audioFileNameForText(cleanedText))
+
+        if (!ENABLE_ROBOTIC_TTS_FALLBACK) {
+            return false
+        }
+
+        playWithTtsAndAwait(cleanedText)
+        return true
+    }
+
+    /**
+     * يحاول تشغيل ملف MP3 مطابق للنص عبر MediaPlayer.setOnCompletionListener وينتظر اكتماله.
+     */
+    private suspend fun playSingleMp3AndAwait(cleanedText: String): Boolean {
         val md5FileName = audioFileNameForText(cleanedText)
         val legacyKey = mapTextToAudioKey(cleanedText)
 
@@ -450,16 +529,17 @@ class ReadingAudioAndProgressEngine(
         }
 
         if (startedMp3 && completedViaMp3 != null) {
-            return
+            return true
         }
         if (startedMp3) {
             stopActiveMediaPlayer()
-            return
+            return true
         }
+        return false
+    }
 
-        scheduleBackgroundVoiceDownload(md5FileName)
-
-        // بديل احتياطي أخير عبر TextToSpeech في حال عدم وجود ملف MP3
+    private suspend fun playWithTtsAndAwait(cleanedText: String) {
+        if (!ENABLE_ROBOTIC_TTS_FALLBACK) return
         if (!isTtsReady || tts == null) {
             delay((cleanedText.length * 85L).coerceIn(450L, 1400L))
             return
@@ -488,6 +568,7 @@ class ReadingAudioAndProgressEngine(
     }
 
     private fun speakWithTtsFallback(cleanedText: String) {
+        if (!ENABLE_ROBOTIC_TTS_FALLBACK) return
         if (!isTtsReady) {
             pendingSpeech = cleanedText
             return
@@ -912,8 +993,10 @@ class ReadingAudioAndProgressEngine(
     }
 
     companion object {
+        private const val ENABLE_ROBOTIC_TTS_FALLBACK = false
         private const val CHILD_SPEECH_RATE = 0.86f
         private const val CHILD_SPEECH_PITCH = 1.22f
+        private const val SEQUENCE_PAUSE_MS = 120L
         private const val SYLLABLE_PAUSE_MS = 180L
         private const val MIN_VALID_MP3_BYTES = 128L
         private const val AUDIO_CACHE_DIR = "reading_audio"
@@ -926,12 +1009,13 @@ class ReadingAudioAndProgressEngine(
         const val remoteVoiceBaseUrl: String = ""
 
         private val WHITESPACE_REGEX = Regex("\\s+")
+        private val PUNCTUATION_SPLIT_REGEX = Regex("[،:.!؟]+")
 
         private val SUCCESS_ENCOURAGEMENTS: List<String> = listOf(
+            "ممتاز يا بطل!",
             "أحسنت يا بطل!",
-            "ممتاز، أنت رائع!",
-            "يا لك من قارئ ذكي!",
-            "بطل حقيقي!"
+            "رائع جداً!",
+            "أنت بطل القراءة!"
         )
 
         private val TRY_AGAIN_ENCOURAGEMENTS: List<String> = listOf(
@@ -944,6 +1028,17 @@ class ReadingAudioAndProgressEngine(
          */
         private fun normalizeTextForAudio(text: String): String =
             text.trim().replace(WHITESPACE_REGEX, " ")
+
+        /**
+         * تقسيم النص المركّب عند علامات الترقيم العربية والأساسية لتشغيل كل جزء عبر ملفه الصوتي.
+         */
+        private fun splitByPunctuation(cleanedText: String): List<String> {
+            if (!PUNCTUATION_SPLIT_REGEX.containsMatchIn(cleanedText)) return emptyList()
+            return cleanedText
+                .split(PUNCTUATION_SPLIT_REGEX)
+                .map { normalizeTextForAudio(it) }
+                .filter { it.isNotEmpty() }
+        }
 
         /**
          * دالة توليد اسم الملف الصوتي الموحّد:

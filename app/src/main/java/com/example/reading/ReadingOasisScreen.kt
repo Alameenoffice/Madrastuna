@@ -139,17 +139,19 @@ fun ReadingOasisScreen(
                             onSelectLevel = { chosenLevel ->
                                 engine.playTapPop()
                                 activeLevel = chosenLevel
-                                engine.speak("${chosenLevel.title}: ${chosenLevel.subtitle}")
+                                engine.speakSequence(chosenLevel.title, chosenLevel.subtitle)
                             },
                             onSelectLesson = { chosen ->
                                 engine.playTapPop()
                                 viewMode = OasisViewMode.Lesson(chosen)
-                                engine.speak("درس ${chosen.title}، ${chosen.letterNameSpoken}")
+                                engine.speakSequence("درس", chosen.title, chosen.letterNameSpoken)
                             },
                             onGreetTap = {
                                 engine.playTapPop()
-                                engine.speak(
-                                    "مرحباً يا $effectiveStudentName! أهلاً بك في واحة القراءة الذكية، أنت الآن في ${activeLevel.title}، هيا نلعب ونتعلّم معاً"
+                                engine.speakSequence(
+                                    "أهلاً بك في واحة القراءة الذكية!",
+                                    activeLevel.title,
+                                    "هيا نلعب ونتعلّم معاً!"
                                 )
                             },
                             onBack = {
@@ -225,7 +227,7 @@ fun ReadingOasisScreen(
                                 grade = studentGradeLabel,
                                 avatarId = avatar.id
                             )
-                            engine.speak("اختيار رائع يا بطل! شخصيتك الآن هي ${avatar.name}")
+                            engine.speakSequence("اختيار رائع يا بطل!", avatar.name)
                         },
                         onDismiss = {
                             engine.playTapPop()

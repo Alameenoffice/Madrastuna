@@ -121,10 +121,10 @@ fun ReadingLessonScreen(
         }
     }
 
-    fun triggerVictory(pillarKey: String, spokenPraise: String, banner: String) {
+    fun triggerVictory(pillarKey: String, banner: String, vararg spokenParts: String) {
         engine.recordActivityWin(lesson.id, pillarKey)
         engine.playVictoryFanfare()
-        engine.speak(spokenPraise)
+        engine.speakSequence(*spokenParts)
         celebrationBannerText = banner
         showCelebration = true
     }
@@ -191,8 +191,9 @@ fun ReadingLessonScreen(
                             onWordCompleted = { fullText ->
                                 triggerVictory(
                                     pillarKey = "assemble",
-                                    spokenPraise = "أحسنت يا بطل! $fullText",
-                                    banner = "أحسنت يا بطل! أتممت التركيب بنجاح"
+                                    banner = "أحسنت يا بطل! أتممت التركيب بنجاح",
+                                    "أحسنت يا بطل!",
+                                    fullText
                                 )
                             }
                         )
@@ -202,11 +203,13 @@ fun ReadingLessonScreen(
                             isSpeaking = isSpeaking,
                             engine = engine,
                             onWritingFinished = { writtenTarget ->
-                                val label = if (writtenTarget.length <= 2) "حرف $writtenTarget" else "كلمة $writtenTarget"
+                                val prefix = if (writtenTarget.length <= 2) "حرف" else "كلمة"
                                 triggerVictory(
                                     pillarKey = "write",
-                                    spokenPraise = "رائع يا بطل! خطك جميل جداً في كتابة $label",
-                                    banner = "رائع يا بطل! ربحت نجمة الكتابة"
+                                    banner = "رائع يا بطل! ربحت نجمة الكتابة",
+                                    "رائع جداً!",
+                                    prefix,
+                                    writtenTarget
                                 )
                             }
                         )
@@ -219,8 +222,9 @@ fun ReadingLessonScreen(
                             onChallengeWon = { wordText ->
                                 triggerVictory(
                                     pillarKey = "challenge",
-                                    spokenPraise = "ممتاز يا بطل! إجابة صحيحة، $wordText",
-                                    banner = "ممتاز يا بطل! ربحت نجمة ذهبية"
+                                    banner = "ممتاز يا بطل! ربحت نجمة ذهبية",
+                                    "ممتاز يا بطل!",
+                                    wordText
                                 )
                             }
                         )
@@ -963,8 +967,10 @@ private fun AssembleWordTab(
 
     LaunchedEffect(lesson.id, wordIndex) {
         delay(260L)
-        val promptPrefix = if (isSentenceLevel) "ركّب الجملة: " else "ركّب كلمة: "
-        engine.speak("$promptPrefix${currentWord.spokenWord}")
+        engine.speakSequence(
+            if (isSentenceLevel) "ركّب الجملة" else "ركّب كلمة",
+            currentWord.spokenWord
+        )
     }
 
     Column(
@@ -1793,7 +1799,11 @@ private fun MagicWritingBoardTab(
             PlayfulBouncyButton(
                 onClick = {
                     engine.playTapPop()
-                    engine.speak(if (activeTarget.length <= 2) "حرف $activeTarget" else activeTarget)
+                    if (activeTarget.length <= 2) {
+                        engine.speakSequence("حرف", activeTarget)
+                    } else {
+                        engine.speak(activeTarget)
+                    }
                 },
                 backgroundColor = ReadingColors.SkyBlue,
                 shadowColor = ReadingColors.SkyBlueShadow,
@@ -2103,7 +2113,7 @@ private fun StarChallengeTab(
                                 onChallengeWon(optionText)
                             } else {
                                 engine.playGentleTryAgain()
-                                engine.speak("حاول مرة أخرى يا بطل")
+                                engine.playEncouragement(isSuccess = false)
                                 challengeStatus = "حاول مرة أخرى يا بطل!"
                             }
                         },

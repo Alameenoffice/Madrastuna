@@ -191,7 +191,7 @@ fun NewQiraatiNavHost(
                     },
                     onTapUpcoming = { unit ->
                         engine.playTapPop()
-                        engine.speak("${unit.title} ستتوفر قريباً يا بطل")
+                        engine.speakSequence(unit.title, "ستتوفر قريباً يا بطل")
                     },
                     onOpenAvatarPicker = onOpenAvatarPicker,
                     onOpenLeaderboard = onOpenLeaderboard,
@@ -203,12 +203,12 @@ fun NewQiraatiNavHost(
                     progress = progress,
                     onOpenStory = {
                         engine.playTapPop()
-                        engine.speak("الاستماع والمحادثة: ${currentRoute.unit.shortTitle}")
+                        engine.speakSequence("الاستماع والمحادثة", currentRoute.unit.shortTitle)
                         route = QiraatiRoute.StoryLesson(currentRoute.unit)
                     },
                     onOpenLetterLesson = { lesson ->
                         engine.playTapPop()
-                        engine.speak("درس ${lesson.letterName}")
+                        engine.speakSequence("درس", lesson.letterName)
                         route = QiraatiRoute.LetterLesson(currentRoute.unit, lesson)
                     },
                     onOpenChant = {
@@ -1664,9 +1664,9 @@ fun NewQiraatiStoryScreen(
                     PlayfulBouncyButton(
                         onClick = {
                             engine.playTapPop()
-                            val fullStory = (listOf(story.listeningScene.narrationText) + story.interactiveStoryLines)
-                                .joinToString(" ")
-                            engine.speak(fullStory)
+                            val storyParts = (listOf(story.listeningScene.narrationText) + story.interactiveStoryLines)
+                                .toTypedArray()
+                            engine.speakSequence(*storyParts)
                             engine.recordActivityWin(story.id, "story_listen")
                         },
                         backgroundColor = ReadingColors.SkyBlue,
@@ -1740,7 +1740,7 @@ fun NewQiraatiStoryScreen(
                         PlayfulBouncyButton(
                             onClick = {
                                 engine.playTapPop()
-                                engine.speak("${scene.audioDescription} ${scene.narrationText}")
+                                engine.speakSequence(scene.audioDescription, scene.narrationText)
                             },
                             backgroundColor = ReadingColors.MeadowGreen,
                             shadowColor = ReadingColors.MeadowShadow,
@@ -2001,10 +2001,10 @@ fun NewQiraatiLetterScreen(
         }
     }
 
-    fun triggerWin(pillarKey: String, speechPraise: String) {
+    fun triggerWin(pillarKey: String, vararg speechParts: String) {
         engine.playVictoryFanfare()
         engine.recordActivityWin(lesson.id, pillarKey)
-        engine.speak(speechPraise)
+        engine.speakSequence(*speechParts)
         showCelebration = true
     }
 
@@ -2182,7 +2182,7 @@ fun NewQiraatiLetterScreen(
                             lesson = lesson,
                             engine = engine,
                             onWordAnalyzed = { word ->
-                                triggerWin("qiraati_analysis", "ممتاز يا بطل! حلّلت كلمة $word بنجاح")
+                                triggerWin("qiraati_analysis", "ممتاز يا بطل!", word)
                             },
                             onNextStation = { activeStation = nextStationAfter(station) }
                         )
@@ -2191,12 +2191,7 @@ fun NewQiraatiLetterScreen(
                             lesson = lesson,
                             engine = engine,
                             onPuzzleSolved = { word ->
-                                val praise = if (lesson.sentenceFillItems.isNotEmpty()) {
-                                    "رائع يا بطل! أكملت الجملة بنجاح: $word"
-                                } else {
-                                    "رائع يا بطل! ركّبت كلمة $word"
-                                }
-                                triggerWin("qiraati_puzzle", praise)
+                                triggerWin("qiraati_puzzle", "رائع جداً!", word)
                             },
                             onNextStation = { activeStation = nextStationAfter(station) }
                         )
@@ -2207,10 +2202,10 @@ fun NewQiraatiLetterScreen(
                             isSpeaking = isSpeaking,
                             engine = engine,
                             onReadSuccess = { word ->
-                                triggerWin("qiraati_read", "أحسنت يا بطل! قراءتك لكلمة $word ممتازة")
+                                triggerWin("qiraati_read", "أحسنت يا بطل!", word)
                             },
                             onWriteSuccess = { target ->
-                                triggerWin("qiraati_write", "بطل الخط العربي! كتبت $target بدقة رائعة")
+                                triggerWin("qiraati_write", "أنت بطل القراءة!", target)
                             }
                         )
                     }
@@ -2842,7 +2837,7 @@ private fun Station4Sukoon(
                     .clickable {
                         jumpedIdx = idx
                         engine.playSuccessChime()
-                        engine.speak("${item.sukoonSyllable} .. ${item.spokenText}")
+                        engine.speakSequence(item.sukoonSyllable, item.spokenText)
                     }
                     .testTag("qiraati_sukoon_card_$idx")
             ) {
