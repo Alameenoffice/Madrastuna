@@ -1,0 +1,181 @@
+name: Generate Reading Audio (Fusha Child Voice)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pitch:
+        description: 'نبرة الصوت الطفولية (مثلاً +22Hz أو +26Hz لصوت أصغر)'
+        required: true
+        default: '+22Hz'
+      rate:
+        description: 'سرعة القراءة (مثلاً -8% واضحة جداً للأطفال)'
+        required: true
+        default: '-8%'
+      force_regenerate:
+        description: 'إعادة توليد كل الأصوات من الصفر (فعّلها فقط إذا غيّرت النبرة لاحقاً)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-audio-pack:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install edge-tts
+        run: pip install --upgrade edge-tts
+
+      - name: Extract Arabic texts and generate MP3 voice pack
+        env:
+          TTS_VOICE: 'ar-SA-ZariyahNeural'
+          TTS_PITCH: ${{ github.event.inputs.pitch || '+22Hz' }}
+          TTS_RATE: ${{ github.event.inputs.rate || '-8%' }}
+          FORCE_REGEN: ${{ github.event.inputs.force_regenerate || 'false' }}
+        run: |
+          python3 - << 'EOF'
+          import asyncio
+          import hashlib
+          import os
+          import re
+          from pathlib import Path
+          import edge_tts
+
+          VOICE = os.environ["TTS_VOICE"]
+          PITCH = os.environ["TTS_PITCH"]
+          RATE = os.environ["TTS_RATE"]
+          FORCE = os.environ["FORCE_REGEN"].lower() == "true"
+
+          main_dir = Path("app/src/main")
+          if not main_dir.exists():
+              manifests = list(Path(".").rglob("AndroidManifest.xml"))
+              if manifests:
+                  main_dir = manifests[0].parent
+              else:
+                  main_dir = Path("app/src/main")
+
+          out_dir = main_dir / "assets" / "reading_audio"
+          out_dir.mkdir(parents=True, exist_ok=True)
+          print(f"Output directory: {out_dir}")
+
+          kt_files = []
+          for p in Path(".").rglob("*.kt"):
+              parts = [part.lower() for part in p.parts]
+              if "reading" in parts or "qiraati" in parts:
+                  kt_files.append(p)
+
+          print(f"Found {len(kt_files)} Kotlin files in reading/qiraati.")
+
+          texts = {
+              "أحسنت يا بطل!",
+              "ممتاز، أنت رائع!",
+              "يا لك من قارئ ذكي!",
+              "بطل حقيقي!",
+              "حاول مرة أخرى يا بطل!",
+              "أنت قريب، جرّب مجدداً!",
+          }
+
+          arabic_re = re.compile(r"[\u0600-\u06FF]")
+          string_literal_re = re.compile(r'"((?:[^"\\]|\\.)*)"')
+          char_literal_re = re.compile(r"'([\u0600-\u06FF])'")
+
+          def normalize_key(text: str) -> str:
+              return re.sub(r"\s+", " ", text.strip())
+
+          def clean_for_speech(text: str) -> str:
+              spoken = text.replace("\u0640", "")
+              spoken = re.sub(r"\.{2,}", " ", spoken)
+              spoken = spoken.replace("•", "، ")
+              spoken = spoken.replace("|", "، ")
+              spoken = re.sub(r"\s+", " ", spoken).strip()
+              return spoken
+
+          def md5_filename(normalized_text: str) -> str:
+              digest = hashlib.md5(normalized_text.encode("utf-8")).hexdigest()[:12]
+              return f"{digest}.mp3"
+
+          for kt_file in kt_files:
+              content = kt_file.read_text(encoding="utf-8", errors="ignore")
+              content = re.sub(r"//.*", "", content)
+              content = re.sub(r"/\*[\s\S]*?\*/", "", content)
+
+              for match in string_literal_re.finditer(content):
+                  raw = match.group(1)
+                  if "$" in raw or "\\n" in raw:
+                      continue
+                  raw = raw.replace('\\"', '"').replace("\\'", "'")
+                  if not arabic_re.search(raw):
+                      continue
+                  norm = normalize_key(raw)
+                  if 1 <= len(norm) <= 280:
+                      texts.add(norm)
+
+              for match in char_literal_re.finditer(content):
+                  texts.add(normalize_key(match.group(1)))
+
+          print(f"Total unique Arabic items extracted: {len(texts)}")
+
+          sem = asyncio.Semaphore(4)
+          stats = {"created": 0, "skipped": 0, "failed": 0}
+
+          async def generate_one(norm_text: str):
+              fname = md5_filename(norm_text)
+              target = out_dir / fname
+
+              if target.exists() and target.stat().st_size > 200 and not FORCE:
+                  stats["skipped"] += 1
+                  return
+
+              spoken = clean_for_speech(norm_text)
+              if not spoken or not arabic_re.search(spoken):
+                  stats["skipped"] += 1
+                  return
+
+              async with sem:
+                  for attempt in range(1, 4):
+                      try:
+                          comm = edge_tts.Communicate(
+                              text=spoken,
+                              voice=VOICE,
+                              rate=RATE,
+                              pitch=PITCH,
+                          )
+                          await comm.save(str(target))
+                          if target.exists() and target.stat().st_size > 100:
+                              stats["created"] += 1
+                              return
+                      except Exception as exc:
+                          if attempt == 3:
+                              print(f"Failed [{fname}] ({norm_text[:30]}): {exc}")
+                              stats["failed"] += 1
+                          else:
+                              await asyncio.sleep(1.5 * attempt)
+
+          async def main():
+              tasks = [generate_one(t) for t in sorted(texts)]
+              await asyncio.gather(*tasks)
+
+          asyncio.run(main())
+          print(f"Done! Created: {stats['created']}, Skipped: {stats['skipped']}, Failed: {stats['failed']}")
+          EOF
+
+      - name: Commit and push generated audio files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No new audio files to commit."
+          else
+            git commit -m "Add generated child-friendly Arabic MP3 voice pack for Reading Oasis"
+            git push
+          fi
