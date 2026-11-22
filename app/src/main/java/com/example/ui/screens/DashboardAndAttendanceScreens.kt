@@ -249,7 +249,72 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.Top
             ) {
-                // 1) FIRST: Welcome Hero Section ("مرحباً بك، ...") edge-to-edge on top layer with welcoming academic character
+                // 1) FIRST: Welcome Hero Section ("مرحباً بك، ...") with SmartWelcomeProfileAvatar & Daily Status Ring
+                val activeAvatarPhotoSource = remember(
+                    isParentOrStudent,
+                    myStudent?.id,
+                    myStudent?.photoBase64,
+                    currentUser?.id,
+                    currentUser?.photoBase64,
+                    accounts
+                ) {
+                    val user = currentUser
+                    if (isParentOrStudent) {
+                        if (myStudent != null) {
+                            myStudent.photoBase64.orEmpty()
+                        } else {
+                            user?.photoBase64.orEmpty()
+                        }
+                    } else {
+                        user?.photoBase64?.ifBlank {
+                            accounts.firstOrNull { it.id == user.id }?.photoBase64.orEmpty()
+                        }.orEmpty()
+                    }
+                }
+                val activeAvatarPersona = remember(
+                    isParentOrStudent,
+                    myStudent?.gender,
+                    myStudent?.studentName,
+                    currentUser?.role,
+                    currentUser?.gender,
+                    currentUser?.fullName,
+                    schoolConfig.schoolGenderType
+                ) {
+                    resolveSmartAvatarPersona(
+                        role = currentUser?.role,
+                        gender = if (isParentOrStudent) myStudent?.gender else currentUser?.gender,
+                        schoolGenderType = schoolConfig.schoolGenderType,
+                        fullName = if (isParentOrStudent) myStudent?.studentName else currentUser?.fullName,
+                        isBusDriver = currentUser?.isDriverInSchoolConfig(schoolConfig) == true
+                    )
+                }
+                val studentTodayAttendanceStatus = remember(
+                    isParentOrStudent,
+                    myStudent,
+                    attendance,
+                    students,
+                    todayIso,
+                    todayHolidayLabel
+                ) {
+                    if (isParentOrStudent && myStudent != null) {
+                        viewModel.getStudentStatusForDate(myStudent, todayIso)
+                    } else {
+                        null
+                    }
+                }
+                val activeDailyStatusBadge = remember(
+                    isParentOrStudent,
+                    studentTodayAttendanceStatus,
+                    todayHolidayLabel
+                ) {
+                    resolveDailyStatusBadgeSpec(
+                        isParentOrStudent = isParentOrStudent,
+                        attendanceStatus = studentTodayAttendanceStatus,
+                        isHolidayToday = todayHolidayLabel != null,
+                        staffDailyStatusText = "متصل الآن"
+                    )
+                }
+
                 ThreeDHeroHeaderCard(
                     title = "$welcomeGreetingPrefix، ${currentUser?.fullName ?: ""}",
                     subtitle = "$welcomeSubtitle • ${schoolConfig.ministryAffiliation} (${schoolConfig.schoolGenderType})",
@@ -264,6 +329,26 @@ fun DashboardScreen(
                     onBottomActionClick = if (isAdmin) {
                         { viewModel.navigateToSection(AppSection.ADMIN_ACCOUNTS) }
                     } else null,
+                    customTrailingContent = {
+                        SmartWelcomeProfileAvatar(
+                            photoSource = activeAvatarPhotoSource,
+                            contentDescription = if (isParentOrStudent && myStudent != null) {
+                                "صورة ${myStudent.studentName}"
+                            } else {
+                                "صورة ${currentUser?.fullName ?: "المستخدم"}"
+                            },
+                            persona = activeAvatarPersona,
+                            statusBadge = activeDailyStatusBadge,
+                            onClick = {
+                                if (isParentOrStudent) {
+                                    viewModel.navigateToSection(AppSection.STUDENT_PERSONAL_PROFILE)
+                                } else {
+                                    viewModel.navigateToSection(AppSection.SETTINGS)
+                                }
+                            },
+                            avatarSize = 86.dp
+                        )
+                    },
                     modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 

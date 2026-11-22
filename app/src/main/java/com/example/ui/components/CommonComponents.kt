@@ -6389,9 +6389,9 @@ fun SeamlessWaveTeacherSpotlightSection(
         if (topTeachers.isNotEmpty()) {
             topTeachers.take(3).mapIndexed { index, summary ->
                 val rankTitle = when (index) {
-                    0 -> if (summary.teacher.isFemale) "المتصدرة الأولى #1" else "المتصدر الأول #1"
-                    1 -> "المركز الثاني #2"
-                    else -> "المركز الثالث #3"
+                    0 -> "المتصدر #1"
+                    1 -> "المركز #2"
+                    else -> "المركز #3"
                 }
                 SpotlightSlide(
                     rankIndex = index,
@@ -6409,7 +6409,7 @@ fun SeamlessWaveTeacherSpotlightSection(
             listOf(
                 SpotlightSlide(
                     rankIndex = 0,
-                    rankLabel = "المتصدر الأول #1",
+                    rankLabel = "المتصدر #1",
                     honorificTitle = "الأستاذ",
                     fullName = teacherName,
                     subjects = teacherSubjects.ifBlank { "الكادر التدريسي المتميز" },
@@ -6440,40 +6440,51 @@ fun SeamlessWaveTeacherSpotlightSection(
             .fillMaxWidth()
             .clip(SeamlessFullWidthWaveShape)
             .background(
-                Brush.horizontalGradient(
+                Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFF064E3B),
+                        Color(0xFF059669),
                         Color(0xFF047857),
-                        Color(0xFF0F3D5E)
-                    )
+                        Color(0xFF064E3B)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(900f, 520f)
                 )
             )
             .clickable { onOpenEvaluationSection() }
             .testTag("home_top_teacher_wave_spotlight")
     ) {
+        // Harmonious translucent light-emerald internal wave + thin golden hairline along the curve
         Canvas(modifier = Modifier.matchParentSize()) {
             val w = size.width
             val h = size.height
-            val goldenRibbon = Path().apply {
-                moveTo(0f, h * 0.66f)
+            val waveCurve = Path().apply {
+                moveTo(0f, h * 0.68f)
                 cubicTo(
-                    w * 0.32f, h * 0.40f,
-                    w * 0.68f, h * 0.90f,
-                    w, h * 0.54f
+                    w * 0.34f, h * 0.50f,
+                    w * 0.68f, h * 0.84f,
+                    w, h * 0.58f
                 )
+            }
+            val filledWave = Path().apply {
+                addPath(waveCurve)
                 lineTo(w, h)
                 lineTo(0f, h)
                 close()
             }
             drawPath(
-                path = goldenRibbon,
+                path = filledWave,
+                color = Color(0xFF34D399).copy(alpha = 0.14f)
+            )
+            drawPath(
+                path = waveCurve,
                 brush = Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFFFBBF24).copy(alpha = 0.22f),
-                        Color(0xFF34D399).copy(alpha = 0.14f),
-                        Color(0xFFF59E0B).copy(alpha = 0.24f)
+                    colors = listOf(
+                        Color(0xFFFDE68A).copy(alpha = 0.15f),
+                        Color(0xFFFDE68A).copy(alpha = 0.68f),
+                        Color(0xFFFDE68A).copy(alpha = 0.18f)
                     )
-                )
+                ),
+                style = Stroke(width = 1.3.dp.toPx(), cap = StrokeCap.Round)
             )
         }
 
@@ -6483,11 +6494,91 @@ fun SeamlessWaveTeacherSpotlightSection(
                 .padding(
                     start = 18.dp,
                     end = 18.dp,
-                    top = 18.dp + topOverlapPadding,
-                    bottom = 18.dp
+                    top = 14.dp + topOverlapPadding,
+                    bottom = 22.dp
                 ),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Subtle semi-transparent top divider separating header & spotlight softly
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.8.dp)
+                    .background(Color.White.copy(alpha = 0.15f))
+            )
+
+            // 1) Top Row: Title + Frosted Gold Rank Pill on Right; Refined Glassmorphic "إخفاء" Button for Admin on Left
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "نخبة الكادر التدريسي",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFFFDE68A).copy(alpha = 0.20f),
+                        border = BorderStroke(0.9.dp, Color(0xFFFDE68A).copy(alpha = 0.55f))
+                    ) {
+                        Text(
+                            text = currentSlide.rankLabel,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFFEF08A),
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                if (isAdmin && onHideFromHome != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.14f),
+                        border = BorderStroke(0.9.dp, Color.White.copy(alpha = 0.30f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onHideFromHome() }
+                            .testTag("hide_top_teacher_from_home_btn")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VisibilityOff,
+                                contentDescription = "إخفاء",
+                                tint = Color.White.copy(alpha = 0.90f),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "إخفاء",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2) Middle Row: Thin Vertical Gold Accent Bar + Teacher Info + Frosted Rating Pill on Right; New Excellence Medal (~76.dp) on Left
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -6509,8 +6600,8 @@ fun SeamlessWaveTeacherSpotlightSection(
                     ) {
                         Box(
                             modifier = Modifier
-                                .width(3.5.dp)
-                                .height(72.dp)
+                                .width(3.dp)
+                                .height(64.dp)
                                 .clip(RoundedCornerShape(50))
                                 .background(
                                     Brush.verticalGradient(
@@ -6524,30 +6615,6 @@ fun SeamlessWaveTeacherSpotlightSection(
                             verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Text(
-                                text = "نخبة الكادر التدريسي",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFA7F3D0),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFFFBBF24).copy(alpha = 0.24f)
-                            ) {
-                                Text(
-                                    text = slide.rankLabel,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFEF08A),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                )
-                            }
-
-                            Text(
                                 text = "${slide.honorificTitle}: ${slide.fullName}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontSize = 16.sp,
@@ -6560,7 +6627,7 @@ fun SeamlessWaveTeacherSpotlightSection(
                             Text(
                                 text = slide.subjects,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFFD1FAE5),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -6568,114 +6635,100 @@ fun SeamlessWaveTeacherSpotlightSection(
 
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.18f)
+                                color = Color.White.copy(alpha = 0.14f),
+                                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.26f))
                             ) {
-                                Text(
-                                    text = String.format(
-                                        java.util.Locale.US,
-                                        "%.1f / 5.0 (%d تقييم)",
-                                        slide.avgRating,
-                                        slide.count
-                                    ),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFEF08A),
-                                    maxLines = 1,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Star,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFEF08A),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = String.format(
+                                            java.util.Locale.US,
+                                            "%.1f / 5.0 • %d تقييم",
+                                            slide.avgRating,
+                                            slide.count
+                                        ),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFEF08A),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-                ThreeDIllustrationBox(
-                    type = ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D,
-                    modifier = Modifier.requiredSize(74.dp)
+                EliteTeacherExcellenceMedalCanvas(
+                    modifier = Modifier.requiredSize(76.dp)
                 )
             }
 
-            Column(
+            // 3) Bottom Row: Single Sleek Glassmorphic Button directly above the bottom wave curve
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.16f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.34f)),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onOpenEvaluationSection() }
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color.White.copy(alpha = 0.16f),
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .clip(RoundedCornerShape(50))
-                            .clickable { onOpenEvaluationSection() }
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(Icons.Filled.Star, contentDescription = null, tint = Color(0xFFFEF08A), modifier = Modifier.size(14.dp))
-                            Text(
-                                text = "عرض تقييمات الكادر التدريسي",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    // 3 Glowing Indicator Dots for the Top 3 Teachers
-                    if (slides.size > 1) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.padding(start = 8.dp)
-                        ) {
-                            slides.forEachIndexed { idx, _ ->
-                                val isSelected = idx == activeIndex
-                                Box(
-                                    modifier = Modifier
-                                        .height(6.dp)
-                                        .width(if (isSelected) 18.dp else 6.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .background(
-                                            if (isSelected) Color(0xFFFEF08A) else Color.White.copy(alpha = 0.35f)
-                                        )
-                                        .clickable { activeIndex = idx }
-                                )
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = null,
+                            tint = Color(0xFFFEF08A),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "عرض تقييمات الكادر التدريسي",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
 
-                if (isAdmin && onHideFromHome != null) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFFEF4444).copy(alpha = 0.24f),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .clickable { onHideFromHome() }
-                            .testTag("hide_top_teacher_from_home_btn")
+                if (slides.size > 1) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.padding(start = 10.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(Icons.Filled.VisibilityOff, contentDescription = null, tint = Color(0xFFFEE2E2), modifier = Modifier.size(13.dp))
-                            Text(
-                                text = "إزالة من الرئيسية",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        slides.forEachIndexed { idx, _ ->
+                            val isSelected = idx == activeIndex
+                            Box(
+                                modifier = Modifier
+                                    .height(5.dp)
+                                    .width(if (isSelected) 18.dp else 6.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(
+                                        if (isSelected) Color(0xFFFEF08A) else Color.White.copy(alpha = 0.35f)
+                                    )
+                                    .clickable { activeIndex = idx }
                             )
                         }
                     }
@@ -6686,24 +6739,16 @@ fun SeamlessWaveTeacherSpotlightSection(
 }
 
 /**
- * القسم الترحيبي / الترويسي الملكي ثلاثي الأبعاد المدمج بأمواج انسيابية مع جسم الصفحة
- * (Seamless Wave-Curved 3D Royal Hero Section)
- * يطابق الصورة المرجعية حرفياً:
- * - حافة علوية وسفلية منحنية بموجة Bezier ناعمة بدلاً من الصندوق المستطيل ذي الإطار
- * - تدرج زمردي إلى كحلي عميق + شبكة نقاط مضيئة (Halftone Dot Matrix)
- * - كبسولات زجاجية علوية + مجسم ثلاثي الأبعاد متحرك على اليسار + شريط زر زجاجي سفلي اختياري.
- */
-/**
- * 3D Isometric Academic Crown & Crystal Shield/Cube with Glass Orbs & 3-Layer Holographic Light Pedestal
- * for the Emerald Welcome Hero Banner (strictly no cartoon human faces).
+ * Fallback calm academic emblem (cartoon character permanently removed).
  */
 @Composable
 fun WelcomeBannerBezierCharacter(
-    modifier: Modifier = Modifier.size(108.dp)
+    modifier: Modifier = Modifier.size(86.dp)
 ) {
-    ThreeDIllustrationBox(
-        type = ThreeDIllustrationType.WELCOME_ACADEMIC_CHARACTER,
-        modifier = modifier
+    SmartVectorPortraitCanvas(
+        persona = SmartAvatarPersona.STAFF_MALE,
+        animateCalmly = true,
+        modifier = modifier.clip(CircleShape)
     )
 }
 
@@ -6721,6 +6766,7 @@ fun ThreeDHeroHeaderCard(
     bottomActionTestTag: String = "hero_bottom_action_btn",
     onBottomActionClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    customTrailingContent: (@Composable () -> Unit)? = null,
     extraBottomContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
     // Custom Bezier Wave Shape: curved wave top & curved wave bottom matching reference image
@@ -6931,22 +6977,26 @@ fun ThreeDHeroHeaderCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                when (illustrationType) {
-                    ThreeDIllustrationType.WELCOME_ACADEMIC_CHARACTER -> {
-                        WelcomeBannerBezierCharacter(
-                            modifier = Modifier.size(108.dp)
-                        )
-                    }
-                    ThreeDIllustrationType.READING_OASIS_BOOK -> {
-                        ReadingOasisOnboardingBookCanvas(
-                            modifier = Modifier.size(114.dp)
-                        )
-                    }
-                    else -> {
-                        ThreeDIllustrationBox(
-                            type = illustrationType,
-                            modifier = Modifier.size(108.dp)
-                        )
+                if (customTrailingContent != null) {
+                    customTrailingContent()
+                } else {
+                    when (illustrationType) {
+                        ThreeDIllustrationType.WELCOME_ACADEMIC_CHARACTER -> {
+                            WelcomeBannerBezierCharacter(
+                                modifier = Modifier.size(86.dp)
+                            )
+                        }
+                        ThreeDIllustrationType.READING_OASIS_BOOK -> {
+                            ReadingOasisOnboardingBookCanvas(
+                                modifier = Modifier.size(114.dp)
+                            )
+                        }
+                        else -> {
+                            ThreeDIllustrationBox(
+                                type = illustrationType,
+                                modifier = Modifier.size(108.dp)
+                            )
+                        }
                     }
                 }
             }
