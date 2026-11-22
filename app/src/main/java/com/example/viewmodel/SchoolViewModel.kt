@@ -2344,10 +2344,22 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                                     val busObj = org.json.JSONObject(remoteBusRaw)
                                     val evName = busObj.optString("eventType", "")
                                     val evTime = busObj.optString("timestamp", "")
-                                    if (evName.isNotBlank() && evName != _schoolConfig.value.activeBusEvent) {
-                                        _schoolConfig.value = _schoolConfig.value.copy(
+                                    val evTsMillis = busObj.optLong("lastUpdatedTimestamp", 0L)
+                                    val evDateIso = ArabicTextNormalizer.normalizeDateIso(busObj.optString("lastUpdatedDate", ""))
+                                    val evHolidayOverride = busObj.optBoolean("isHolidayOverrideActive", false)
+                                    val currentCfg = _schoolConfig.value
+                                    if (evName != currentCfg.activeBusEvent ||
+                                        evTsMillis != currentCfg.lastUpdatedTimestamp ||
+                                        evDateIso != currentCfg.lastUpdatedDate ||
+                                        evHolidayOverride != currentCfg.isHolidayOverrideActive
+                                    ) {
+                                        _schoolConfig.value = currentCfg.copy(
                                             activeBusEvent = evName,
-                                            activeBusEventTimestamp = evTime
+                                            activeBusEventTimestamp = evTime,
+                                            activeBusEventDateIso = evDateIso,
+                                            lastUpdatedTimestamp = evTsMillis,
+                                            lastUpdatedDate = evDateIso,
+                                            isHolidayOverrideActive = evHolidayOverride
                                         )
                                     }
                                 }
@@ -6290,7 +6302,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 isDriverAccountEnabled = isDriverAccountEnabled,
                 activeBusEvent = existingMatch?.activeBusEvent.orEmpty(),
                 activeBusEventTimestamp = existingMatch?.activeBusEventTimestamp.orEmpty(),
-                activeBusEventDateIso = existingMatch?.activeBusEventDateIso.orEmpty()
+                activeBusEventDateIso = existingMatch?.activeBusEventDateIso.orEmpty(),
+                lastUpdatedTimestamp = existingMatch?.lastUpdatedTimestamp ?: 0L,
+                lastUpdatedDate = existingMatch?.lastUpdatedDate.orEmpty(),
+                isHolidayOverrideActive = existingMatch?.isHolidayOverrideActive ?: false
             )
             val existingIdx = currentRoutes.indexOfFirst {
                 it.id == primaryItem.id || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true)
@@ -6382,7 +6397,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             isDriverAccountEnabled = isDriverAccountEnabled,
             activeBusEvent = existingRoute?.activeBusEvent.orEmpty(),
             activeBusEventTimestamp = existingRoute?.activeBusEventTimestamp.orEmpty(),
-            activeBusEventDateIso = existingRoute?.activeBusEventDateIso.orEmpty()
+            activeBusEventDateIso = existingRoute?.activeBusEventDateIso.orEmpty(),
+            lastUpdatedTimestamp = existingRoute?.lastUpdatedTimestamp ?: 0L,
+            lastUpdatedDate = existingRoute?.lastUpdatedDate.orEmpty(),
+            isHolidayOverrideActive = existingRoute?.isHolidayOverrideActive ?: false
         )
 
         val idx = currentList.indexOfFirst { it.id == resolvedId || it.routeAreaName.equals(cleanRouteArea, ignoreCase = true) }
@@ -6690,15 +6708,21 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
      * Sends an instant School Bus & Transport notification (`bus_tracking`)
      * EXCLUSIVELY to parents of students subscribed to the school bus (`isBusSubscribed == true`).
      */
-    fun sendBusTrackingAlert(eventType: BusEventType) {
-        sendBusTrackingAlert(eventType = eventType, targetRouteId = "ALL")
+    fun sendBusTrackingAlert(eventType: BusEventType, isHolidayOverride: Boolean = false) {
+        sendBusTrackingAlert(eventType = eventType, targetRouteId = "ALL", isHolidayOverride = isHolidayOverride)
     }
 
-    fun sendBusTrackingAlert(eventType: BusEventType, targetRouteId: String) {
+    fun sendBusTrackingAlert(
+        eventType: BusEventType,
+        targetRouteId: String,
+        isHolidayOverride: Boolean = false
+    ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
         val sid = _schoolConfig.value.schoolId
-        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val nowStamp = SimpleDateFormat("yyyy/MM/dd hh:mm a", Locale("ar")).format(Date())
+        val nowMillis = System.currentTimeMillis()
+        val nowDateObj = Date(nowMillis)
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(nowDateObj)
+        val nowStamp = SimpleDateFormat("yyyy/MM/dd hh:mm a", Locale("ar")).format(nowDateObj)
 
         val currentEffectiveRoutes = _schoolConfig.value.effectiveBusRoutesList
         val isAllVehicles = targetRouteId.isBlank() || targetRouteId.equals("ALL", ignoreCase = true)
@@ -6713,7 +6737,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 route.copy(
                     activeBusEvent = eventType.name,
                     activeBusEventTimestamp = nowStamp,
-                    activeBusEventDateIso = todayIso
+                    activeBusEventDateIso = todayIso,
+                    lastUpdatedTimestamp = nowMillis,
+                    lastUpdatedDate = todayIso,
+                    isHolidayOverrideActive = isHolidayOverride
                 )
             } else {
                 route
@@ -6725,6 +6752,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 activeBusEvent = eventType.name,
                 activeBusEventTimestamp = nowStamp,
                 activeBusEventDateIso = todayIso,
+                lastUpdatedTimestamp = nowMillis,
+                lastUpdatedDate = todayIso,
+                isHolidayOverrideActive = isHolidayOverride,
                 registeredBusRoutes = updatedRoutes
             )
         } else {
@@ -6768,7 +6798,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
 
-        // Also record latest bus event in schools/{schoolId}/bus_tracking
+        // Also record latest bus event + timestamp + date in schools/{schoolId}/bus_tracking
         val payload = org.json.JSONObject().apply {
             put("eventType", eventType.name)
             put("targetRouteId", if (isAllVehicles) "ALL" else (matchedSingleRoute?.id ?: targetRouteId))
@@ -6777,6 +6807,9 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             put("liveRouteStatusText", eventType.liveRouteStatusText)
             put("notifiedStudentsCount", targetStudentsForAlert.size)
             put("timestamp", nowStamp)
+            put("lastUpdatedTimestamp", nowMillis)
+            put("lastUpdatedDate", todayIso)
+            put("isHolidayOverrideActive", isHolidayOverride)
         }.toString()
         repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
@@ -6799,6 +6832,71 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 isSuccess = true
             )
         }
+    }
+
+    /**
+     * إنهاء الرحلة الحالية فوراً وإعادة الخط إلى وضع الاستعداد (Standby) مع مزامنة فورية في Firebase.
+     */
+    fun endBusTrip(targetRouteId: String = "ALL") {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val sid = _schoolConfig.value.schoolId
+        val currentEffectiveRoutes = _schoolConfig.value.effectiveBusRoutesList
+        val isAllVehicles = targetRouteId.isBlank() || targetRouteId.equals("ALL", ignoreCase = true)
+        val matchedSingleRoute = if (!isAllVehicles) {
+            currentEffectiveRoutes.firstOrNull {
+                it.id == targetRouteId || it.routeAreaName.equals(targetRouteId, ignoreCase = true)
+            }
+        } else null
+
+        val updatedRoutes = currentEffectiveRoutes.map { route ->
+            if (isAllVehicles || route.id == matchedSingleRoute?.id) {
+                route.copy(
+                    activeBusEvent = "",
+                    activeBusEventTimestamp = "",
+                    activeBusEventDateIso = "",
+                    lastUpdatedTimestamp = 0L,
+                    lastUpdatedDate = "",
+                    isHolidayOverrideActive = false
+                )
+            } else {
+                route
+            }
+        }
+
+        val updatedConfig = if (isAllVehicles || currentEffectiveRoutes.size <= 1) {
+            _schoolConfig.value.copy(
+                activeBusEvent = "",
+                activeBusEventTimestamp = "",
+                activeBusEventDateIso = "",
+                lastUpdatedTimestamp = 0L,
+                lastUpdatedDate = "",
+                isHolidayOverrideActive = false,
+                registeredBusRoutes = updatedRoutes
+            )
+        } else {
+            _schoolConfig.value.copy(
+                registeredBusRoutes = updatedRoutes
+            )
+        }
+        _schoolConfig.value = updatedConfig
+        repo.saveSchoolConfig(updatedConfig)
+
+        val payload = org.json.JSONObject().apply {
+            put("eventType", "")
+            put("targetRouteId", if (isAllVehicles) "ALL" else (matchedSingleRoute?.id ?: targetRouteId))
+            put("targetRouteName", if (isAllVehicles) "جميع المركبات" else (matchedSingleRoute?.routeAreaName ?: ""))
+            put("arabicLabel", "وضع الاستعداد")
+            put("liveRouteStatusText", "الخط في وضع الاستعداد • خارج أوقات الدوام")
+            put("notifiedStudentsCount", 0)
+            put("timestamp", "")
+            put("lastUpdatedTimestamp", 0L)
+            put("lastUpdatedDate", "")
+            put("isHolidayOverrideActive", false)
+        }.toString()
+        repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
+        FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
+
+        showToastAlert("تم إنهاء الرحلة وإعادة الخط إلى وضع الاستعداد", isSuccess = true)
     }
 
     fun showBannerMessage(message: String) {

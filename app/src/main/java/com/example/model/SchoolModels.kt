@@ -1,5 +1,9 @@
 package com.example.model
 
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -547,6 +551,9 @@ data class SchoolConfig(
     val activeBusEvent: String = "",
     val activeBusEventTimestamp: String = "",
     val activeBusEventDateIso: String = "",
+    val lastUpdatedTimestamp: Long = 0L,
+    val lastUpdatedDate: String = "",
+    val isHolidayOverrideActive: Boolean = false,
     val allowParentToViewDriverIdentity: Boolean = true,
     val busDriverName: String = "السائق المعتمد للخط المدرسي",
     val busDriverPhone: String = "",
@@ -619,10 +626,125 @@ data class SchoolConfig(
                     isDriverAccountEnabled = isDriverAccountEnabled,
                     activeBusEvent = activeBusEvent,
                     activeBusEventTimestamp = activeBusEventTimestamp,
-                    activeBusEventDateIso = activeBusEventDateIso
+                    activeBusEventDateIso = activeBusEventDateIso,
+                    lastUpdatedTimestamp = lastUpdatedTimestamp,
+                    lastUpdatedDate = lastUpdatedDate,
+                    isHolidayOverrideActive = isHolidayOverrideActive
                 )
             )
         }
+
+    fun resolveTransportStatus(
+        holidayLabel: String? = null,
+        nowMillis: Long = System.currentTimeMillis()
+    ): ResolvedTransportStatus = resolveTransportStatus(
+        activeBusEvent = activeBusEvent,
+        activeBusEventDateIso = activeBusEventDateIso,
+        lastUpdatedDate = lastUpdatedDate,
+        lastUpdatedTimestamp = lastUpdatedTimestamp,
+        isHolidayOverrideActive = isHolidayOverrideActive,
+        holidayLabel = holidayLabel,
+        nowMillis = nowMillis
+    )
+}
+
+enum class TransportOperationalState {
+    ACTIVE,
+    HOLIDAY_STOPPED,
+    STANDBY_OFF_HOURS
+}
+
+data class ResolvedTransportStatus(
+    val operationalState: TransportOperationalState,
+    val activeEvent: BusEventType?,
+    val statusHeadline: String,
+    val shortBadgeText: String,
+    val isHoliday: Boolean,
+    val holidayLabel: String?,
+    val isHolidayOverrideActive: Boolean
+) {
+    val isActivelyRunning: Boolean
+        get() = operationalState == TransportOperationalState.ACTIVE && activeEvent != null
+}
+
+private const val TRANSPORT_TRIP_EXPIRY_MS = 3L * 60L * 60L * 1000L
+
+fun resolveTransportStatus(
+    activeBusEvent: String,
+    activeBusEventDateIso: String,
+    lastUpdatedDate: String,
+    lastUpdatedTimestamp: Long,
+    isHolidayOverrideActive: Boolean,
+    holidayLabel: String?,
+    nowMillis: Long = System.currentTimeMillis()
+): ResolvedTransportStatus {
+    val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMillis))
+    val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+    val hourOfDay = cal.get(Calendar.HOUR_OF_DAY)
+
+    val isIraqWeekend = dayOfWeek == Calendar.FRIDAY || dayOfWeek == Calendar.SATURDAY
+    val resolvedHolidayLabel = when {
+        !holidayLabel.isNullOrBlank() -> holidayLabel
+        dayOfWeek == Calendar.FRIDAY -> "عطلة أسبوعية - الجمعة"
+        dayOfWeek == Calendar.SATURDAY -> "عطلة أسبوعية - السبت"
+        else -> null
+    }
+    val isHoliday = isIraqWeekend || !holidayLabel.isNullOrBlank()
+
+    val parsedEvent = BusEventType.entries.firstOrNull { it.name == activeBusEvent.trim() }
+    val effectiveDate = ArabicTextNormalizer.normalizeDateIso(
+        lastUpdatedDate.ifBlank { activeBusEventDateIso }.trim()
+    )
+    val isSameDay = effectiveDate.isNotEmpty() && effectiveDate == todayIso
+    val ageMs = nowMillis - lastUpdatedTimestamp
+    val isWithinExpiryWindow = lastUpdatedTimestamp > 0L && ageMs in 0L..TRANSPORT_TRIP_EXPIRY_MS
+    val isWithinSchoolHours = hourOfDay in 6..16
+
+    if (isHoliday) {
+        if (isHolidayOverrideActive && parsedEvent != null && isSameDay && isWithinExpiryWindow) {
+            return ResolvedTransportStatus(
+                operationalState = TransportOperationalState.ACTIVE,
+                activeEvent = parsedEvent,
+                statusHeadline = "${parsedEvent.liveRouteStatusText} (رحلة استثنائية)",
+                shortBadgeText = "رحلة استثنائية",
+                isHoliday = true,
+                holidayLabel = resolvedHolidayLabel,
+                isHolidayOverrideActive = true
+            )
+        }
+        return ResolvedTransportStatus(
+            operationalState = TransportOperationalState.HOLIDAY_STOPPED,
+            activeEvent = null,
+            statusHeadline = "الخط متوقف • عطلة رسمية",
+            shortBadgeText = "عطلة رسمية",
+            isHoliday = true,
+            holidayLabel = resolvedHolidayLabel,
+            isHolidayOverrideActive = false
+        )
+    }
+
+    if (parsedEvent == null || !isSameDay || !isWithinExpiryWindow || !isWithinSchoolHours) {
+        return ResolvedTransportStatus(
+            operationalState = TransportOperationalState.STANDBY_OFF_HOURS,
+            activeEvent = null,
+            statusHeadline = "الخط في وضع الاستعداد • خارج أوقات الدوام",
+            shortBadgeText = "وضع الاستعداد",
+            isHoliday = false,
+            holidayLabel = null,
+            isHolidayOverrideActive = false
+        )
+    }
+
+    return ResolvedTransportStatus(
+        operationalState = TransportOperationalState.ACTIVE,
+        activeEvent = parsedEvent,
+        statusHeadline = parsedEvent.liveRouteStatusText,
+        shortBadgeText = "نشط اليوم",
+        isHoliday = false,
+        holidayLabel = null,
+        isHolidayOverrideActive = false
+    )
 }
 
 data class BusRouteFleetItem(
@@ -638,8 +760,23 @@ data class BusRouteFleetItem(
     val isDriverAccountEnabled: Boolean = true,
     val activeBusEvent: String = "",
     val activeBusEventTimestamp: String = "",
-    val activeBusEventDateIso: String = ""
+    val activeBusEventDateIso: String = "",
+    val lastUpdatedTimestamp: Long = 0L,
+    val lastUpdatedDate: String = "",
+    val isHolidayOverrideActive: Boolean = false
 ) {
+    fun resolveTransportStatus(
+        holidayLabel: String? = null,
+        nowMillis: Long = System.currentTimeMillis()
+    ): ResolvedTransportStatus = resolveTransportStatus(
+        activeBusEvent = activeBusEvent,
+        activeBusEventDateIso = activeBusEventDateIso,
+        lastUpdatedDate = lastUpdatedDate,
+        lastUpdatedTimestamp = lastUpdatedTimestamp,
+        isHolidayOverrideActive = isHolidayOverrideActive,
+        holidayLabel = holidayLabel,
+        nowMillis = nowMillis
+    )
     fun matchesStudent(student: StudentRecord, isOnlyRouteInSchool: Boolean = false): Boolean {
         if (!student.isBusSubscribed) return false
         if (id.isNotBlank() && student.busRouteId.isNotBlank() && student.busRouteId.equals(id, ignoreCase = true)) {

@@ -79,6 +79,7 @@ fun resolveReadingHeroTitle(totalStars: Int): ReadingHeroRankInfo = when {
 data class ReadingProgressState(
     val lessonStars: Map<String, Int> = emptyMap(),
     val completedPillars: Map<String, Set<String>> = emptyMap(),
+    val awardedRewardKeys: Set<String> = emptySet(),
     val bonusStars: Int = 0,
     val avatarId: String = ReadingAvatarCatalog.DEFAULT_AVATAR_ID,
     val updatedAt: Long = 0L
@@ -90,6 +91,8 @@ data class ReadingProgressState(
         get() = lessonStars.count { it.value > 0 }
 
     fun starsForLesson(lessonId: String): Int = (lessonStars[lessonId] ?: 0).coerceIn(0, 3)
+
+    fun hasAwardedReward(rewardKey: String): Boolean = rewardKey.trim() in awardedRewardKeys
 }
 
 /**
@@ -132,6 +135,15 @@ class ReadingAudioAndProgressEngine(
 
     private val _progress = MutableStateFlow(loadCachedProgress(appContext, schoolCode, studentId))
     val progress: StateFlow<ReadingProgressState> = _progress.asStateFlow()
+
+    /**
+     * مجموعة دائمة لمعرّفات التمارين والأنشطة التي مُنحت نجومها مسبقاً لمنع تكرار النجوم.
+     * تُحفظ محلياً في SharedPreferences وتُزامَن سحابياً داخل سجل الطالب في Firebase.
+     */
+    val awardedRewardKeys: MutableSet<String> =
+        java.util.Collections.synchronizedSet(LinkedHashSet(_progress.value.awardedRewardKeys))
+
+    private val rewardLock = Any()
 
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
@@ -861,37 +873,122 @@ class ReadingAudioAndProgressEngine(
         }
     }
 
-    /**
-     * تسجيل إنجاز نشاط داخل الدرس ومنح النجوم وحفظها فوراً في SharedPreferences
-     * ثم مزامنتها بالخلفية مع Firebase RTDB.
-     */
-    fun recordActivityWin(lessonId: String, pillarKey: String) {
-        val current = _progress.value
-        val existingPillars = current.completedPillars[lessonId].orEmpty()
-        val updatedPillarsSet = existingPillars + pillarKey
-        val newLessonStarCount = maxOf(
-            current.starsForLesson(lessonId),
-            updatedPillarsSet.size.coerceAtMost(3)
-        )
-        val alreadyHadPillar = pillarKey in existingPillars
-        val updatedLessonStars = current.lessonStars.toMutableMap().apply {
-            put(lessonId, newLessonStarCount)
+    fun hasAwardedReward(rewardKey: String): Boolean {
+        val cleanKey = rewardKey.trim()
+        if (cleanKey.isEmpty()) return false
+        synchronized(rewardLock) {
+            return cleanKey in awardedRewardKeys || cleanKey in _progress.value.awardedRewardKeys
         }
-        val updatedPillarsMap = current.completedPillars.toMutableMap().apply {
-            put(lessonId, updatedPillarsSet)
-        }
-        val nextBonus = if (alreadyHadPillar) current.bonusStars + 1 else current.bonusStars
+    }
 
-        val updated = ReadingProgressState(
-            lessonStars = updatedLessonStars,
-            completedPillars = updatedPillarsMap,
-            bonusStars = nextBonus,
-            avatarId = current.avatarId,
-            updatedAt = System.currentTimeMillis()
+    /**
+     * دالة موحّدة محمية ضد التكرار لمنح النجوم لمرة واحدة فقط لكل معرّف تمرين فريد (rewardKey).
+     * - إذا كان rewardKey موجوداً مسبقاً في awardedRewardKeys: لا تزد totalStars نهائياً وتُرجع false.
+     * - إذا لم يكن موجوداً: تضيفه إلى awardedRewardKeys، وتزيد totalStars بمقدار stars،
+     *   وتحفظ وتزامن السجل محلياً وسحابياً، وتُرجع true.
+     */
+    fun awardStarsOnce(rewardKey: String, stars: Int): Boolean {
+        return awardStarsOnce(
+            rewardKey = rewardKey,
+            stars = stars,
+            lessonId = null,
+            pillarKey = null
         )
-        _progress.value = updated
-        saveLocalProgress(appContext, schoolCode, studentId, updated)
-        syncToCloudInBackground(updated)
+    }
+
+    fun awardStarsOnce(
+        rewardKey: String,
+        stars: Int,
+        lessonId: String?,
+        pillarKey: String?
+    ): Boolean {
+        val cleanKey = rewardKey.trim()
+        if (cleanKey.isEmpty() || stars <= 0) return false
+
+        val updatedState: ReadingProgressState = synchronized(rewardLock) {
+            val current = _progress.value
+            val currentKeys = LinkedHashSet(current.awardedRewardKeys).apply {
+                addAll(awardedRewardKeys)
+            }
+            if (cleanKey in currentKeys) {
+                awardedRewardKeys.add(cleanKey)
+                return false
+            }
+
+            currentKeys.add(cleanKey)
+            awardedRewardKeys.add(cleanKey)
+
+            val updatedLessonStars = current.lessonStars.toMutableMap()
+            val updatedPillarsMap = current.completedPillars.toMutableMap()
+            var lessonStarDelta = 0
+
+            if (!lessonId.isNullOrBlank()) {
+                val existingStars = current.starsForLesson(lessonId)
+                if (!pillarKey.isNullOrBlank()) {
+                    val existingPillars = current.completedPillars[lessonId].orEmpty()
+                    val updatedPillarsSet = existingPillars + pillarKey
+                    updatedPillarsMap[lessonId] = updatedPillarsSet
+                    val targetLessonStars = maxOf(
+                        existingStars,
+                        minOf(3, existingStars + stars)
+                    )
+                    lessonStarDelta = (targetLessonStars - existingStars).coerceAtLeast(0)
+                    updatedLessonStars[lessonId] = targetLessonStars
+                } else {
+                    val targetLessonStars = maxOf(
+                        existingStars,
+                        minOf(3, existingStars + stars)
+                    )
+                    lessonStarDelta = (targetLessonStars - existingStars).coerceAtLeast(0)
+                    updatedLessonStars[lessonId] = targetLessonStars
+                }
+            }
+
+            val bonusDelta = (stars - lessonStarDelta).coerceAtLeast(0)
+
+            val nextState = ReadingProgressState(
+                lessonStars = updatedLessonStars,
+                completedPillars = updatedPillarsMap,
+                awardedRewardKeys = currentKeys.toSet(),
+                bonusStars = current.bonusStars + bonusDelta,
+                avatarId = current.avatarId,
+                updatedAt = System.currentTimeMillis()
+            )
+            _progress.value = nextState
+            nextState
+        }
+
+        saveLocalProgress(appContext, schoolCode, studentId, updatedState)
+        syncToCloudInBackground(updatedState)
+        return true
+    }
+
+    /**
+     * تسجيل إنجاز نشاط داخل الدرس ومنح النجوم لمرة واحدة فقط (محمي عبر awardStarsOnce)
+     * وحفظها فوراً في SharedPreferences ثم مزامنتها بالخلفية مع Firebase RTDB.
+     * يُرجع true إذا مُنحت النجوم للمرة الأولى، و false إذا كان النشاط مُحتسباً مسبقاً.
+     */
+    fun recordActivityWin(
+        lessonId: String,
+        pillarKey: String,
+        rewardKey: String = "activity_${lessonId}_${pillarKey}",
+        stars: Int = 1
+    ): Boolean {
+        val cleanKey = rewardKey.trim().ifEmpty { "activity_${lessonId}_${pillarKey}" }
+        val legacyPillarKey = "activity_${lessonId}_${pillarKey}"
+        synchronized(rewardLock) {
+            val existingPillars = _progress.value.completedPillars[lessonId].orEmpty()
+            if (cleanKey == legacyPillarKey && pillarKey in existingPillars) {
+                awardedRewardKeys.add(cleanKey)
+                return false
+            }
+        }
+        return awardStarsOnce(
+            rewardKey = cleanKey,
+            stars = stars,
+            lessonId = lessonId,
+            pillarKey = pillarKey
+        )
     }
 
     /**
@@ -906,12 +1003,16 @@ class ReadingAudioAndProgressEngine(
         avatarId: String
     ) {
         val validAvatar = ReadingAvatarCatalog.byId(avatarId).id
-        val current = _progress.value
-        val updated = current.copy(
-            avatarId = validAvatar,
-            updatedAt = System.currentTimeMillis()
-        )
-        _progress.value = updated
+        val updated = synchronized(rewardLock) {
+            val current = _progress.value
+            val next = current.copy(
+                avatarId = validAvatar,
+                awardedRewardKeys = current.awardedRewardKeys + awardedRewardKeys,
+                updatedAt = System.currentTimeMillis()
+            )
+            _progress.value = next
+            next
+        }
         saveLocalProgress(appContext, schoolCode, studentId, updated)
         engineScope.launch(Dispatchers.IO) {
             pushProgressToCloudBlocking(
@@ -941,8 +1042,12 @@ class ReadingAudioAndProgressEngine(
                         val raw = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                         if (raw.isNotBlank() && raw != "null") {
                             val remote = parseProgressJson(raw)
-                            val merged = mergeProgress(_progress.value, remote)
-                            _progress.value = merged
+                            val merged = synchronized(rewardLock) {
+                                val next = mergeProgress(_progress.value, remote)
+                                awardedRewardKeys.addAll(next.awardedRewardKeys)
+                                _progress.value = next
+                                next
+                            }
                             saveLocalProgress(appContext, schoolCode, studentId, merged)
                         }
                     }
@@ -1360,6 +1465,12 @@ class ReadingAudioAndProgressEngine(
                 pillarsObj.put(k, arr)
             }
             root.put("completedPillars", pillarsObj)
+
+            val awardedKeysArr = JSONArray()
+            state.awardedRewardKeys.forEach { key ->
+                if (key.isNotBlank()) awardedKeysArr.put(key)
+            }
+            root.put("awardedRewardKeys", awardedKeysArr)
             return root.toString()
         }
 
@@ -1391,12 +1502,37 @@ class ReadingAudioAndProgressEngine(
                     }
                 }
             }
+            val awardedKeys = LinkedHashSet<String>()
+            val awardedArr = root.optJSONArray("awardedRewardKeys")
+            if (awardedArr != null) {
+                for (i in 0 until awardedArr.length()) {
+                    val item = awardedArr.optString(i, "").trim()
+                    if (item.isNotBlank()) awardedKeys.add(item)
+                }
+            } else {
+                val awardedObj = root.optJSONObject("awardedRewardKeys")
+                if (awardedObj != null) {
+                    val kIt = awardedObj.keys()
+                    while (kIt.hasNext()) {
+                        val k = kIt.next().trim()
+                        if (k.isNotBlank()) awardedKeys.add(k)
+                    }
+                }
+            }
+            // توافق خلفي: اعتبار الأركان المكتملة سابقاً معرّفات مُحتسبة
+            pillarsMap.forEach { (lessonId, pillars) ->
+                pillars.forEach { pillar ->
+                    awardedKeys.add("activity_${lessonId}_${pillar}")
+                }
+            }
+
             val parsedAvatar = ReadingAvatarCatalog.byId(
                 root.optString("avatarId", ReadingAvatarCatalog.DEFAULT_AVATAR_ID)
             ).id
             return ReadingProgressState(
                 lessonStars = starsMap,
                 completedPillars = pillarsMap,
+                awardedRewardKeys = awardedKeys.toSet(),
                 bonusStars = root.optInt("bonusStars", 0).coerceAtLeast(0),
                 avatarId = parsedAvatar,
                 updatedAt = maxOf(root.optLong("lastUpdated", 0L), root.optLong("updatedAt", 0L))
@@ -1415,6 +1551,10 @@ class ReadingAudioAndProgressEngine(
             remote.completedPillars.forEach { (lessonId, set) ->
                 mergedPillars[lessonId] = (mergedPillars[lessonId].orEmpty() + set)
             }
+            val mergedAwardedKeys = LinkedHashSet<String>().apply {
+                addAll(local.awardedRewardKeys)
+                addAll(remote.awardedRewardKeys)
+            }
             val chosenAvatar = if (remote.updatedAt > local.updatedAt && remote.avatarId.isNotBlank()) {
                 remote.avatarId
             } else {
@@ -1423,6 +1563,7 @@ class ReadingAudioAndProgressEngine(
             return ReadingProgressState(
                 lessonStars = mergedStars,
                 completedPillars = mergedPillars,
+                awardedRewardKeys = mergedAwardedKeys.toSet(),
                 bonusStars = maxOf(local.bonusStars, remote.bonusStars),
                 avatarId = ReadingAvatarCatalog.byId(chosenAvatar).id,
                 updatedAt = maxOf(local.updatedAt, remote.updatedAt)

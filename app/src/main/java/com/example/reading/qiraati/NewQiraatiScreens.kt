@@ -1200,8 +1200,13 @@ fun NewQiraatiChantScreen(
             }
             isRecitingAll = false
             activeVerseIdx = -1
-            engine.playVictoryFanfare()
-            engine.recordActivityWin(chant.id, "chant_listen")
+            val awarded = engine.recordActivityWin(
+                lessonId = chant.id,
+                pillarKey = "chant_listen",
+                rewardKey = "chant_${chant.id}_listen",
+                stars = 1
+            )
+            if (awarded) engine.playVictoryFanfare() else engine.playSuccessChime()
             showCelebration = true
         }
     }
@@ -1492,7 +1497,12 @@ fun NewQiraatiStoryScreen(
         if (recognizer == null) {
             voiceFeedback = "أحسنت يا بطل! استمر في التحدث ومشاركة أفكارك مع أسرتك"
             engine.playSuccessChime()
-            engine.recordActivityWin(story.id, "story_talk_$questionIndex")
+            engine.recordActivityWin(
+                lessonId = story.id,
+                pillarKey = "story_talk_$questionIndex",
+                rewardKey = "story_${story.id}_talk_$questionIndex",
+                stars = 1
+            )
             showCelebration = true
             return
         }
@@ -1523,8 +1533,13 @@ fun NewQiraatiStoryScreen(
                     } else {
                         "تعبير جميل يا بطل! أحسنت الحديث عن أسرتك"
                     }
-                    engine.playVictoryFanfare()
-                    engine.recordActivityWin(story.id, "story_talk_$questionIndex")
+                    val awarded = engine.recordActivityWin(
+                        lessonId = story.id,
+                        pillarKey = "story_talk_$questionIndex",
+                        rewardKey = "story_${story.id}_talk_$questionIndex",
+                        stars = 1
+                    )
+                    if (awarded) engine.playVictoryFanfare() else engine.playSuccessChime()
                     engine.speak("أحسنت يا بطل! حديثك عن أسرتك جميل جداً")
                     showCelebration = true
                 }
@@ -1667,7 +1682,12 @@ fun NewQiraatiStoryScreen(
                             val storyParts = (listOf(story.listeningScene.narrationText) + story.interactiveStoryLines)
                                 .toTypedArray()
                             engine.speakSequence(*storyParts)
-                            engine.recordActivityWin(story.id, "story_listen")
+                            engine.recordActivityWin(
+                                lessonId = story.id,
+                                pillarKey = "story_listen",
+                                rewardKey = "story_${story.id}_listen",
+                                stars = 1
+                            )
                         },
                         backgroundColor = ReadingColors.SkyBlue,
                         shadowColor = ReadingColors.SkyBlueShadow,
@@ -2001,11 +2021,21 @@ fun NewQiraatiLetterScreen(
         }
     }
 
-    fun triggerWin(pillarKey: String, vararg speechParts: String) {
-        engine.playVictoryFanfare()
-        engine.recordActivityWin(lesson.id, pillarKey)
+    fun triggerWin(pillarKey: String, rewardKey: String, vararg speechParts: String): Boolean {
+        val awarded = engine.recordActivityWin(
+            lessonId = lesson.id,
+            pillarKey = pillarKey,
+            rewardKey = rewardKey,
+            stars = 1
+        )
+        if (awarded) {
+            engine.playVictoryFanfare()
+        } else {
+            engine.playSuccessChime()
+        }
         engine.speakSequence(*speechParts)
         showCelebration = true
+        return awarded
     }
 
     val activeStepIndex = (visibleStations.indexOf(activeStation).takeIf { it >= 0 } ?: 0) + 1
@@ -2173,7 +2203,9 @@ fun NewQiraatiLetterScreen(
                         QiraatiLessonStation.SUKOON -> Station4Sukoon(
                             lesson = lesson,
                             engine = engine,
-                            onSpecialGameWin = { key, praise -> triggerWin(key, praise) },
+                            onSpecialGameWin = { key, praise ->
+                                triggerWin(key, "game_${lesson.id}_${key}", praise)
+                            },
                             nextLabel = "التالي: ${stationLabelFor(nextStationAfter(station))}",
                             onNextStation = { activeStation = nextStationAfter(station) }
                         )
@@ -2182,7 +2214,7 @@ fun NewQiraatiLetterScreen(
                             lesson = lesson,
                             engine = engine,
                             onWordAnalyzed = { word ->
-                                triggerWin("qiraati_analysis", "ممتاز يا بطل!", word)
+                                triggerWin("qiraati_analysis", "analysis_${lesson.id}_${word}", "ممتاز يا بطل!", word)
                             },
                             onNextStation = { activeStation = nextStationAfter(station) }
                         )
@@ -2191,7 +2223,7 @@ fun NewQiraatiLetterScreen(
                             lesson = lesson,
                             engine = engine,
                             onPuzzleSolved = { word ->
-                                triggerWin("qiraati_puzzle", "رائع جداً!", word)
+                                triggerWin("qiraati_puzzle", "puzzle_${lesson.id}_${word}", "رائع جداً!", word)
                             },
                             onNextStation = { activeStation = nextStationAfter(station) }
                         )
@@ -2202,10 +2234,10 @@ fun NewQiraatiLetterScreen(
                             isSpeaking = isSpeaking,
                             engine = engine,
                             onReadSuccess = { word ->
-                                triggerWin("qiraati_read", "أحسنت يا بطل!", word)
+                                triggerWin("qiraati_read", "read_${lesson.id}_${word}", "أحسنت يا بطل!", word)
                             },
                             onWriteSuccess = { target ->
-                                triggerWin("qiraati_write", "أنت بطل القراءة!", target)
+                                triggerWin("qiraati_write", "write_${lesson.id}_${target}", "أنت بطل القراءة!", target)
                             }
                         )
                     }
@@ -2377,6 +2409,7 @@ private fun Station2And3Vowels(
     ) {
         when {
             lesson.isAppleVowelsStyle -> {
+                val tappedAppleIndices = remember(lesson.id) { mutableStateListOf<Int>() }
                 Text(
                     text = "اضغط على كل تفاحة حمراء لتسمع صوت التاء المربوطة مع الحركات!",
                     fontFamily = ReadingTajawalFont,
@@ -2403,8 +2436,19 @@ private fun Station2And3Vowels(
                                 .size(width = 148.dp, height = 148.dp)
                                 .clickable {
                                     activePairIdx = idx
+                                    if (!tappedAppleIndices.contains(idx)) {
+                                        tappedAppleIndices.add(idx)
+                                    }
                                     engine.playSuccessChime()
                                     engine.speak(pair.spokenShort)
+                                    if (tappedAppleIndices.size >= lesson.vowelPairs.size) {
+                                        engine.awardStarsOnce(
+                                            rewardKey = "apples_${lesson.id}",
+                                            stars = 1,
+                                            lessonId = lesson.id,
+                                            pillarKey = "qiraati_apples"
+                                        )
+                                    }
                                 }
                                 .testTag("qiraati_apple_vowel_$idx")
                         )
@@ -4327,6 +4371,21 @@ private fun evaluateQiraatiTracingBitmap(
 private fun stripArabicDiacritics(raw: String): String =
     raw.filterNot { it.isArabicDiacritic() }.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").trim()
 
+private fun computeQiraatiStrokeLengthPx(
+    strokes: List<QiraatiStroke>,
+    activePts: List<Offset>
+): Float {
+    var total = 0f
+    fun accumulate(pts: List<Offset>) {
+        for (i in 1 until pts.size) {
+            total += kotlin.math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+        }
+    }
+    strokes.forEach { accumulate(it.points) }
+    accumulate(activePts)
+    return total
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Station7ReadAndWrite(
@@ -4335,7 +4394,7 @@ private fun Station7ReadAndWrite(
     isSpeaking: Boolean,
     engine: ReadingAudioAndProgressEngine,
     onReadSuccess: (String) -> Unit,
-    onWriteSuccess: (String) -> Unit
+    onWriteSuccess: (String) -> Boolean
 ) {
     val context = LocalContext.current
     val tajawalTypeface = remember(context) { resolveQiraatiTajawalTypeface(context) }
@@ -4442,6 +4501,11 @@ private fun Station7ReadAndWrite(
         mutableStateOf("تتبّع الحرف ($activeTraceTarget) فوق الخط الرمادي بإصبعك")
     }
     var isWriteWarning by remember(lesson.id, formIdx) { mutableStateOf(false) }
+    var hasCompletedCurrentStep by remember(lesson.id, formIdx) { mutableStateOf(false) }
+    var isSubmittingStep by remember(lesson.id, formIdx) { mutableStateOf(false) }
+
+    val totalDrawnLengthPx = computeQiraatiStrokeLengthPx(completedStrokes, activePoints)
+    val hasSufficientDrawing = (completedStrokes.isNotEmpty() || activePoints.size >= 2) && totalDrawnLengthPx >= 72f
 
     val pulse = rememberInfiniteTransition(label = "qiraati_dot_pulse")
     val dotR by pulse.animateFloat(
@@ -4763,6 +4827,8 @@ private fun Station7ReadAndWrite(
                             completedStrokes.clear()
                             activePoints.clear()
                             isWriteWarning = false
+                            hasCompletedCurrentStep = false
+                            isSubmittingStep = false
                             writeHint = "تتبّع الحرف ($activeTraceTarget) فوق الخط الرمادي بإصبعك"
                         },
                         backgroundColor = ReadingColors.CandyPink,
@@ -4816,27 +4882,78 @@ private fun Station7ReadAndWrite(
                         }
                     }
 
+                    val hasNextForm = lesson.tracingForms.size > 1 && formIdx + 1 < lesson.tracingForms.size
+                    val writeBtnLabel = when {
+                        !hasCompletedCurrentStep -> "أنهيت الكتابة"
+                        hasNextForm -> "التالي"
+                        else -> "أعد التدريب"
+                    }
+                    val writeBtnBg = when {
+                        !hasCompletedCurrentStep -> ReadingColors.MeadowGreen
+                        hasNextForm -> ReadingColors.SkyBlue
+                        else -> ReadingColors.BerryPurple
+                    }
+                    val writeBtnShadow = when {
+                        !hasCompletedCurrentStep -> ReadingColors.MeadowShadow
+                        hasNextForm -> ReadingColors.SkyBlueShadow
+                        else -> ReadingColors.BerryShadow
+                    }
+
                     PlayfulBouncyButton(
                         onClick = {
+                            if (hasCompletedCurrentStep) {
+                                engine.playTapPop()
+                                if (hasNextForm) {
+                                    formIdx += 1
+                                    engine.speak(lesson.letterName)
+                                } else {
+                                    completedStrokes.clear()
+                                    activePoints.clear()
+                                    hasCompletedCurrentStep = false
+                                    isSubmittingStep = false
+                                    isWriteWarning = false
+                                    writeHint = "تتبّع الحرف ($activeTraceTarget) فوق الخط الرمادي بإصبعك"
+                                }
+                                return@PlayfulBouncyButton
+                            }
+
+                            if (isSubmittingStep || !hasSufficientDrawing) {
+                                return@PlayfulBouncyButton
+                            }
+
+                            isSubmittingStep = true
+                            val strokesToEval = if (activePoints.isNotEmpty()) {
+                                completedStrokes.toList() + QiraatiStroke(selectedCrayon, activePoints.toList())
+                            } else {
+                                completedStrokes.toList()
+                            }
                             val eval = evaluateQiraatiTracingBitmap(
                                 targetText = activeTraceTarget,
-                                strokes = completedStrokes.toList(),
+                                strokes = strokesToEval,
                                 boardSize = boardPixelSize,
                                 typeface = tajawalTypeface
                             )
                             if (eval.passed) {
+                                hasCompletedCurrentStep = true
+                                isSubmittingStep = false
                                 isWriteWarning = false
-                                writeHint = "ممتاز يا بطل! كتبت ($activeTraceTarget) بدقة رائعة"
-                                onWriteSuccess(activeTraceTarget)
+                                val awarded = onWriteSuccess(activeTraceTarget)
+                                writeHint = if (awarded) {
+                                    "ممتاز يا بطل! كتبت ($activeTraceTarget) بدقة رائعة"
+                                } else {
+                                    "أحسنت! أعدت التدريب بنجاح، تم احتساب نجوم هذا الحرف مسبقاً"
+                                }
                             } else {
+                                isSubmittingStep = false
                                 engine.playGentleTryAgain()
                                 isWriteWarning = true
                                 writeHint = "حاول تتبّع الحرف الرمادي بدقة يا بطل!"
                                 engine.speak("حاول تتبع الحرف الرمادي بدقة يا بطل")
                             }
                         },
-                        backgroundColor = ReadingColors.MeadowGreen,
-                        shadowColor = ReadingColors.MeadowShadow,
+                        backgroundColor = writeBtnBg,
+                        shadowColor = writeBtnShadow,
+                        enabled = if (hasCompletedCurrentStep) true else (hasSufficientDrawing && !isSubmittingStep),
                         cornerRadius = 18.dp,
                         lipDepth = 4.dp,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
@@ -4849,7 +4966,7 @@ private fun Station7ReadAndWrite(
                         ) {
                             PlayfulCheckIcon(tint = Color.White, modifier = Modifier.size(18.dp))
                             Text(
-                                text = "أنهيت الكتابة",
+                                text = writeBtnLabel,
                                 fontFamily = ReadingTajawalFont,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 13.5.sp,

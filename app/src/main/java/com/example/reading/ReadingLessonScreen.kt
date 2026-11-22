@@ -92,6 +92,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import com.example.R
 import java.io.File
+import kotlin.math.hypot
 import kotlin.math.min
 import kotlinx.coroutines.delay
 
@@ -121,12 +122,29 @@ fun ReadingLessonScreen(
         }
     }
 
-    fun triggerVictory(pillarKey: String, banner: String, vararg spokenParts: String) {
-        engine.recordActivityWin(lesson.id, pillarKey)
-        engine.playVictoryFanfare()
+    fun triggerVictory(
+        pillarKey: String,
+        rewardKey: String,
+        banner: String,
+        repeatBanner: String = "أحسنت! أعدت التدريب بنجاح، تم احتساب نجوم هذا النشاط مسبقاً",
+        vararg spokenParts: String
+    ): Boolean {
+        val awarded = engine.recordActivityWin(
+            lessonId = lesson.id,
+            pillarKey = pillarKey,
+            rewardKey = rewardKey,
+            stars = 1
+        )
+        if (awarded) {
+            engine.playVictoryFanfare()
+            celebrationBannerText = banner
+        } else {
+            engine.playSuccessChime()
+            celebrationBannerText = repeatBanner
+        }
         engine.speakSequence(*spokenParts)
-        celebrationBannerText = banner
         showCelebration = true
+        return awarded
     }
 
     Box(
@@ -191,7 +209,9 @@ fun ReadingLessonScreen(
                             onWordCompleted = { fullText ->
                                 triggerVictory(
                                     pillarKey = "assemble",
+                                    rewardKey = "assemble_${lesson.id}_${fullText}",
                                     banner = "أحسنت يا بطل! أتممت التركيب بنجاح",
+                                    repeatBanner = "أحسنت! أعدت التدريب بنجاح، تم احتساب نجوم هذه الكلمة مسبقاً",
                                     "أحسنت يا بطل!",
                                     fullText
                                 )
@@ -206,7 +226,9 @@ fun ReadingLessonScreen(
                                 val prefix = if (writtenTarget.length <= 2) "حرف" else "كلمة"
                                 triggerVictory(
                                     pillarKey = "write",
+                                    rewardKey = "write_${lesson.id}_${writtenTarget}",
                                     banner = "رائع يا بطل! ربحت نجمة الكتابة",
+                                    repeatBanner = "أحسنت! أعدت التدريب بنجاح، تم احتساب نجوم هذا الحرف مسبقاً",
                                     "رائع جداً!",
                                     prefix,
                                     writtenTarget
@@ -222,7 +244,9 @@ fun ReadingLessonScreen(
                             onChallengeWon = { wordText ->
                                 triggerVictory(
                                     pillarKey = "challenge",
+                                    rewardKey = "challenge_${lesson.id}_${wordText}",
                                     banner = "ممتاز يا بطل! ربحت نجمة ذهبية",
+                                    repeatBanner = "أحسنت! أعدت التدريب بنجاح، تم احتساب نجوم هذا التحدي مسبقاً",
                                     "ممتاز يا بطل!",
                                     wordText
                                 )
@@ -1470,12 +1494,27 @@ private fun evaluateLetterTracingWithBitmap(
     }
 }
 
+private fun computeTotalStrokeLengthPx(
+    strokes: List<DrawnStroke>,
+    activePts: List<Offset>
+): Float {
+    var total = 0f
+    fun accumulate(pts: List<Offset>) {
+        for (i in 1 until pts.size) {
+            total += hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+        }
+    }
+    strokes.forEach { accumulate(it.points) }
+    accumulate(activePts)
+    return total
+}
+
 @Composable
 private fun MagicWritingBoardTab(
     lesson: ReadingLesson,
     isSpeaking: Boolean,
     engine: ReadingAudioAndProgressEngine,
-    onWritingFinished: (String) -> Unit
+    onWritingFinished: (String) -> Boolean
 ) {
     val context = LocalContext.current
     val tajawalTypeface = remember(context) { resolveTajawalTypeface(context) }
@@ -1503,6 +1542,11 @@ private fun MagicWritingBoardTab(
     }
     var isWarningFeedback by remember(lesson.id, selectedLetterIdx) { mutableStateOf(false) }
     var startDotFlashActive by remember(lesson.id, selectedLetterIdx) { mutableStateOf(false) }
+    var hasCompletedCurrentStep by remember(lesson.id, selectedLetterIdx) { mutableStateOf(false) }
+    var isSubmittingStep by remember(lesson.id, selectedLetterIdx) { mutableStateOf(false) }
+
+    val totalDrawnLengthPx = computeTotalStrokeLengthPx(completedStrokes, activePoints)
+    val hasSufficientDrawing = (completedStrokes.isNotEmpty() || activePoints.size >= 2) && totalDrawnLengthPx >= 72f
 
     LaunchedEffect(startDotFlashActive) {
         if (startDotFlashActive) {
@@ -1769,6 +1813,8 @@ private fun MagicWritingBoardTab(
                     completedStrokes.clear()
                     activePoints.clear()
                     isWarningFeedback = false
+                    hasCompletedCurrentStep = false
+                    isSubmittingStep = false
                     guidanceMessage = "${lesson.level.writePromptPrefix} ($activeTarget)"
                 },
                 backgroundColor = ReadingColors.CandyPink,
@@ -1830,40 +1876,83 @@ private fun MagicWritingBoardTab(
                 }
             }
 
+            val hasNextLetter = lesson.traceLetters.size > 1 && selectedLetterIdx + 1 < lesson.traceLetters.size
+            val doneButtonLabel = when {
+                !hasCompletedCurrentStep -> "أنهيت الكتابة"
+                hasNextLetter -> "التالي"
+                else -> "أعد التدريب"
+            }
+            val doneButtonBg = when {
+                !hasCompletedCurrentStep -> ReadingColors.MeadowGreen
+                hasNextLetter -> ReadingColors.SkyBlue
+                else -> ReadingColors.BerryPurple
+            }
+            val doneButtonShadow = when {
+                !hasCompletedCurrentStep -> ReadingColors.MeadowShadow
+                hasNextLetter -> ReadingColors.SkyBlueShadow
+                else -> ReadingColors.BerryShadow
+            }
+
             PlayfulBouncyButton(
                 onClick = {
-                    if (completedStrokes.isEmpty()) {
+                    if (hasCompletedCurrentStep) {
+                        engine.playTapPop()
+                        if (hasNextLetter) {
+                            selectedLetterIdx += 1
+                            engine.speak(lesson.traceLetters[selectedLetterIdx % lesson.traceLetters.size])
+                        } else {
+                            completedStrokes.clear()
+                            activePoints.clear()
+                            hasCompletedCurrentStep = false
+                            isSubmittingStep = false
+                            isWarningFeedback = false
+                            guidanceMessage = "${lesson.level.writePromptPrefix} ($activeTarget)"
+                        }
+                        return@PlayfulBouncyButton
+                    }
+
+                    if (isSubmittingStep || !hasSufficientDrawing) {
+                        return@PlayfulBouncyButton
+                    }
+
+                    isSubmittingStep = true
+                    val strokesToEval = if (activePoints.isNotEmpty()) {
+                        completedStrokes.toList() + DrawnStroke(selectedColor, activePoints.toList())
+                    } else {
+                        completedStrokes.toList()
+                    }
+                    val result = evaluateLetterTracingWithBitmap(
+                        targetText = activeTarget,
+                        strokes = strokesToEval,
+                        boardSize = boardPixelSize,
+                        typeface = tajawalTypeface
+                    )
+                    if (result.passed) {
+                        hasCompletedCurrentStep = true
+                        isSubmittingStep = false
+                        isWarningFeedback = false
+                        val awarded = onWritingFinished(activeTarget)
+                        guidanceMessage = if (awarded) {
+                            "ممتاز يا بطل! كتبت ($activeTarget) بدقة رائعة"
+                        } else {
+                            "أحسنت! أعدت التدريب بنجاح، تم احتساب نجوم هذا الحرف مسبقاً"
+                        }
+                    } else {
+                        isSubmittingStep = false
                         engine.playGentleTryAgain()
                         isWarningFeedback = true
                         startDotFlashActive = true
-                        guidanceMessage = "حاول تتبّع الحرف الرمادي بدقة يا بطل!"
-                        engine.speak("ابدأ من النقطة الخضراء وتتبّع الكتابة بإصبعك يا بطل")
-                    } else {
-                        val result = evaluateLetterTracingWithBitmap(
-                            targetText = activeTarget,
-                            strokes = completedStrokes.toList(),
-                            boardSize = boardPixelSize,
-                            typeface = tajawalTypeface
-                        )
-                        if (result.passed) {
-                            isWarningFeedback = false
-                            guidanceMessage = "ممتاز يا بطل! كتبت ($activeTarget) بدقة رائعة"
-                            onWritingFinished(activeTarget)
+                        guidanceMessage = if (result.inBoundsPrecisionRatio < 0.58f) {
+                            "حاول تتبّع الحرف الرمادي بدقة يا بطل! ابقَ فوق الخط الرمادي"
                         } else {
-                            engine.playGentleTryAgain()
-                            isWarningFeedback = true
-                            startDotFlashActive = true
-                            guidanceMessage = if (result.inBoundsPrecisionRatio < 0.58f) {
-                                "حاول تتبّع الحرف الرمادي بدقة يا بطل! ابقَ فوق الخط الرمادي"
-                            } else {
-                                "حاول تتبّع الحرف الرمادي بدقة يا بطل! أكمل بقية الكتابة"
-                            }
-                            engine.speak("حاول تتبّع الحرف الرمادي بدقة يا بطل!")
+                            "حاول تتبّع الحرف الرمادي بدقة يا بطل! أكمل بقية الكتابة"
                         }
+                        engine.speak("حاول تتبّع الحرف الرمادي بدقة يا بطل!")
                     }
                 },
-                backgroundColor = ReadingColors.MeadowGreen,
-                shadowColor = ReadingColors.MeadowShadow,
+                backgroundColor = doneButtonBg,
+                shadowColor = doneButtonShadow,
+                enabled = if (hasCompletedCurrentStep) true else (hasSufficientDrawing && !isSubmittingStep),
                 cornerRadius = 18.dp,
                 lipDepth = 4.dp,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
@@ -1876,7 +1965,7 @@ private fun MagicWritingBoardTab(
                 ) {
                     PlayfulCheckIcon(tint = Color.White, modifier = Modifier.size(18.dp))
                     Text(
-                        text = "أنهيت الكتابة",
+                        text = doneButtonLabel,
                         fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 13.sp,

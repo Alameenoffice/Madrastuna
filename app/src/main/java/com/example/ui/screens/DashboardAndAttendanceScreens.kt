@@ -3,15 +3,19 @@ package com.example.ui.screens
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -44,7 +48,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.delay
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -927,10 +933,13 @@ fun DashboardScreen(
                     ) {
                         SchoolBusQuickAlertsCard(
                             busSubscribersCount = busSubscribersCount,
-                            activeBusEventName = schoolConfig.activeBusEvent,
-                            activeBusEventTimestamp = schoolConfig.activeBusEventTimestamp,
+                            schoolConfig = schoolConfig,
+                            todayHolidayLabel = todayHolidayLabel,
                             canControlTrip = isAdmin || isTeacher,
-                            onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) },
+                            onSendBusAlert = { eventType, isHolidayOverride ->
+                                viewModel.sendBusTrackingAlert(eventType = eventType, isHolidayOverride = isHolidayOverride)
+                            },
+                            onEndBusTrip = { viewModel.endBusTrip() },
                             onOpenTransportSection = { viewModel.navigateToSection(AppSection.SCHOOL_TRANSPORT) }
                         )
                     }
@@ -2905,12 +2914,20 @@ fun DailyAttendanceScreen(
             if ((schoolConfig.schoolType == SchoolType.PRIVATE || featureSettings.busTrackingEnabled) && canEdit) {
                 item {
                     val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
+                    val attTodayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
+                    val attHolidaysConfig by viewModel.holidaysConfig.collectAsState()
+                    val attTodayHolidayLabel = remember(attHolidaysConfig, attTodayIso) {
+                        viewModel.getHolidayLabelForDate(attTodayIso)
+                    }
                     SchoolBusQuickAlertsCard(
                         busSubscribersCount = busSubscribersCount,
-                        activeBusEventName = schoolConfig.activeBusEvent,
-                        activeBusEventTimestamp = schoolConfig.activeBusEventTimestamp,
+                        schoolConfig = schoolConfig,
+                        todayHolidayLabel = attTodayHolidayLabel,
                         canControlTrip = true,
-                        onSendBusAlert = { eventType -> viewModel.sendBusTrackingAlert(eventType) },
+                        onSendBusAlert = { eventType, isHolidayOverride ->
+                            viewModel.sendBusTrackingAlert(eventType = eventType, isHolidayOverride = isHolidayOverride)
+                        },
+                        onEndBusTrip = { viewModel.endBusTrip() },
                         onOpenTransportSection = { viewModel.navigateToSection(AppSection.SCHOOL_TRANSPORT) }
                     )
                 }
@@ -4497,23 +4514,283 @@ private fun InteractiveParentDismissalPickupCard(
 }
 
 @Composable
+private fun CompactTransportControlButtonsRow(
+    resolvedStatus: ResolvedTransportStatus,
+    onActivateEvent: (BusEventType, Boolean) -> Unit,
+    onEndTrip: () -> Unit,
+    testTagPrefix: String = "bus_alert_btn_",
+    modifier: Modifier = Modifier
+) {
+    var pendingHolidayConfirmEvent by remember { mutableStateOf<BusEventType?>(null) }
+
+    val pulseTransition = rememberInfiniteTransition(label = "compact_transport_dot_pulse")
+    val pulseDotAlpha by pulseTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_dot_alpha"
+    )
+    val pulseDotScale by pulseTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_dot_scale"
+    )
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (resolvedStatus.isHoliday) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFFFFBEB),
+                border = BorderStroke(1.dp, Color(0xFFFCD34D))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.EventBusy,
+                        contentDescription = null,
+                        tint = Color(0xFFB45309),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = if (resolvedStatus.isHolidayOverrideActive) {
+                            "تم تفعيل رحلة استثنائية اليوم (${resolvedStatus.holidayLabel ?: "عطلة رسمية"}) — انقر مجدداً على الزر النشط لإنهائها"
+                        } else {
+                            "اليوم ${resolvedStatus.holidayLabel ?: "عطلة رسمية"} — الخط متوقف تلقائياً، ويمكن تفعيل رحلة استثنائية عند الحاجة"
+                        },
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF92400E),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        val controlItems = listOf(
+            Triple(BusEventType.MORNING_DEPARTURE, "الانطلاق الصباحي", Icons.Filled.WbSunny),
+            Triple(BusEventType.ARRIVED_AT_SCHOOL, "وصول المدرسة", Icons.Filled.VerifiedUser),
+            Triple(BusEventType.RETURN_HOME_DEPARTURE, "رحلة العودة", Icons.Filled.Home)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            controlItems.forEach { (busEvent, compactTitle, btnIcon) ->
+                val isSelected = resolvedStatus.isActivelyRunning && resolvedStatus.activeEvent == busEvent
+                val interactionSource = remember { MutableInteractionSource() }
+                val isPressed by interactionSource.collectIsPressedAsState()
+                val pressScale by animateFloatAsState(
+                    targetValue = if (isPressed) 0.94f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    ),
+                    label = "transport_btn_scale_${busEvent.name}"
+                )
+
+                val shape = RoundedCornerShape(14.dp)
+                Surface(
+                    onClick = {
+                        when {
+                            isSelected -> onEndTrip()
+                            resolvedStatus.isHoliday && !resolvedStatus.isHolidayOverrideActive -> {
+                                pendingHolidayConfirmEvent = busEvent
+                            }
+                            else -> onActivateEvent(busEvent, resolvedStatus.isHoliday)
+                        }
+                    },
+                    interactionSource = interactionSource,
+                    shape = shape,
+                    color = Color.Transparent,
+                    border = if (isSelected) {
+                        BorderStroke(1.5.dp, Color(0xFFFDE68A))
+                    } else {
+                        BorderStroke(1.dp, Color(0xFFA7F3D0))
+                    },
+                    shadowElevation = if (isSelected) 4.dp else 0.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(72.dp)
+                        .graphicsLayer {
+                            scaleX = pressScale
+                            scaleY = pressScale
+                        }
+                        .testTag("${testTagPrefix}${busEvent.name}")
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = if (isSelected) {
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color(0xFF059669),
+                                            Color(0xFF047857),
+                                            Color(0xFF065F46)
+                                        )
+                                    )
+                                } else {
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color(0xFFF0FDF4),
+                                            Color(0xFFECFDF5)
+                                        )
+                                    )
+                                }
+                            )
+                            .padding(horizontal = 6.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = btnIcon,
+                                    contentDescription = compactTitle,
+                                    tint = if (isSelected) Color(0xFFFDE68A) else Color(0xFF059669),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .graphicsLayer {
+                                                scaleX = pulseDotScale
+                                                scaleY = pulseDotScale
+                                                alpha = pulseDotAlpha
+                                            }
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFFDE68A))
+                                    )
+                                }
+                            }
+                            Text(
+                                text = compactTitle,
+                                fontSize = 11.5.sp,
+                                lineHeight = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isSelected) Color.White else Color(0xFF065F46),
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (resolvedStatus.isActivelyRunning) {
+            Text(
+                text = "انقر مجدداً على الزر النشط لإنهاء الرحلة وإعادة الخط إلى وضع الاستعداد فوراً",
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF047857),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+
+    pendingHolidayConfirmEvent?.let { targetEvent ->
+        AlertDialog(
+            onDismissRequest = { pendingHolidayConfirmEvent = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.DirectionsBus,
+                    contentDescription = null,
+                    tint = Color(0xFF059669)
+                )
+            },
+            title = {
+                Text(
+                    text = "تفعيل رحلة استثنائية في العطلة",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "اليوم ${resolvedStatus.holidayLabel ?: "عطلة رسمية"} والخط متوقف تلقائياً. هل ترغب بتفعيل (${targetEvent.arabicLabel}) كرحلة استثنائية الآن؟",
+                    fontSize = 13.5.sp,
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingHolidayConfirmEvent = null
+                        onActivateEvent(targetEvent, true)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                ) {
+                    Text("تأكيد التفعيل", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingHolidayConfirmEvent = null }) {
+                    Text("إلغاء", color = Color(0xFF475569), fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+}
+
+@Composable
 private fun SchoolBusQuickAlertsCard(
     busSubscribersCount: Int,
-    activeBusEventName: String = "",
-    activeBusEventTimestamp: String = "",
+    schoolConfig: SchoolConfig,
+    todayHolidayLabel: String? = null,
     canControlTrip: Boolean = true,
-    onSendBusAlert: (BusEventType) -> Unit,
+    onSendBusAlert: (BusEventType, Boolean) -> Unit,
+    onEndBusTrip: () -> Unit = {},
     onOpenTransportSection: () -> Unit = {}
 ) {
-    val resolvedBusEvent = remember(activeBusEventName) {
-        BusEventType.entries.firstOrNull { it.name == activeBusEventName } ?: BusEventType.MORNING_DEPARTURE
+    var clockTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000L)
+            clockTickMillis = System.currentTimeMillis()
+        }
     }
-    var activeBusState by remember(resolvedBusEvent) { mutableStateOf(resolvedBusEvent) }
 
-    val activeStationIndex = when (activeBusState) {
-        BusEventType.MORNING_DEPARTURE -> 1
-        BusEventType.ARRIVED_AT_SCHOOL -> 2
-        BusEventType.RETURN_HOME_DEPARTURE -> 0
+    val resolvedStatus = remember(
+        schoolConfig.activeBusEvent,
+        schoolConfig.activeBusEventDateIso,
+        schoolConfig.lastUpdatedDate,
+        schoolConfig.lastUpdatedTimestamp,
+        schoolConfig.isHolidayOverrideActive,
+        todayHolidayLabel,
+        clockTickMillis
+    ) {
+        schoolConfig.resolveTransportStatus(
+            holidayLabel = todayHolidayLabel,
+            nowMillis = clockTickMillis
+        )
     }
 
     Card(
@@ -4606,88 +4883,23 @@ private fun SchoolBusQuickAlertsCard(
 
             // Full-Width Panoramic Bezier Wave Road Track with 3D Bus
             FullWidthBezierWaveRoadTrack(
-                activeBusState = activeBusState,
-                activeStationIndex = activeStationIndex,
-                lastUpdatedTimestamp = formatBusTimestampPretty(activeBusEventTimestamp)
+                resolvedStatus = resolvedStatus,
+                lastUpdatedTimestamp = if (resolvedStatus.isActivelyRunning) {
+                    formatBusTimestampPretty(schoolConfig.activeBusEventTimestamp)
+                } else {
+                    ""
+                }
             )
 
-            // 3 Full-Width / Unclipped Trip Control Action Buttons for Principal & Supervisor
+            // Compact Single-Row Horizontal Trip Control Buttons for Principal & Supervisor
             if (canControlTrip) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val controlButtons = listOf(
-                        Triple(BusEventType.MORNING_DEPARTURE, "بدء الانطلاق الصباحي", Icons.Filled.WbSunny),
-                        Triple(BusEventType.ARRIVED_AT_SCHOOL, "تأكيد الوصول للمدرسة", Icons.Filled.Verified),
-                        Triple(BusEventType.RETURN_HOME_DEPARTURE, "انطلاق رحلة العودة للمنازل", Icons.Filled.Home)
-                    )
-                    controlButtons.forEach { (busEvent, fullButtonTitle, btnIcon) ->
-                        val isSelected = activeBusState == busEvent
-                        Button(
-                            onClick = {
-                                activeBusState = busEvent
-                                onSendBusAlert(busEvent)
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 46.dp)
-                                .testTag("bus_alert_btn_${busEvent.name}"),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isSelected) Color(0xFF047857) else Color(0xFF064E3B),
-                                contentColor = Color.White
-                            ),
-                            border = if (isSelected) BorderStroke(1.5.dp, Color(0xFFFDE68A)) else null
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = btnIcon,
-                                        contentDescription = null,
-                                        tint = if (isSelected) Color(0xFFFDE68A) else Color(0xFF6EE7B7),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = fullButtonTitle,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                                if (isSelected) {
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = Color(0xFFFDE68A).copy(alpha = 0.22f),
-                                        border = BorderStroke(1.dp, Color(0xFFFDE68A))
-                                    ) {
-                                        Text(
-                                            text = "نشط الآن",
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFFFDE68A),
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                CompactTransportControlButtonsRow(
+                    resolvedStatus = resolvedStatus,
+                    onActivateEvent = onSendBusAlert,
+                    onEndTrip = onEndBusTrip,
+                    testTagPrefix = "bus_alert_btn_",
+                    modifier = Modifier.padding(horizontal = 14.dp)
+                )
             }
         }
     }
@@ -4695,22 +4907,31 @@ private fun SchoolBusQuickAlertsCard(
 
 /**
  * مشهد مسار بانورامي متموج بكامل عرض الشاشة (Full-Width Bezier Wave Road Track)
- * تتحرك عليه مركبة/باص 3D فيكتوري بفيزياء ناعمة بين المحطات الثلاث:
- * (منزل الطالب ⬅️ في الطريق السريع ⬅️ بوابة المدرسة)
+ * تتحرك عليه مركبة/باص 3D فيكتوري بفيزياء ناعمة بين المحطات الثلاث أثناء الدوام الفعلي،
+ * وتتوقف تلقائياً في وضع الاستعداد أو العطل الرسمية وخارج أوقات الدوام.
  */
 @Composable
 private fun FullWidthBezierWaveRoadTrack(
-    activeBusState: BusEventType,
-    activeStationIndex: Int,
+    resolvedStatus: ResolvedTransportStatus,
     lastUpdatedTimestamp: String
 ) {
+    val isActive = resolvedStatus.isActivelyRunning
+    val activeBusState = resolvedStatus.activeEvent
+    val activeStationIndex = when (activeBusState) {
+        BusEventType.MORNING_DEPARTURE -> 1
+        BusEventType.ARRIVED_AT_SCHOOL -> 2
+        BusEventType.RETURN_HOME_DEPARTURE -> 0
+        null -> 0
+    }
+
     // Target normalized X along the panoramic Bezier track:
     // Station 0 (منزل الطالب - Right): 0.82f
     // Station 1 (في الطريق السريع - Center): 0.50f
     // Station 2 (بوابة المدرسة - Left): 0.18f
-    val targetT = when (activeStationIndex) {
-        0 -> 0.82f
-        1 -> 0.50f
+    val targetT = when {
+        !isActive -> 0.82f
+        activeStationIndex == 0 -> 0.82f
+        activeStationIndex == 1 -> 0.50f
         else -> 0.18f
     }
     val animatedBusT by animateFloatAsState(
@@ -4748,6 +4969,28 @@ private fun FullWidthBezierWaveRoadTrack(
         label = "station_node_pulse"
     )
 
+    val effectiveSuspension = if (isActive) busSuspensionFloat else 0f
+    val effectiveWheelSpin = if (isActive) wheelSpinDeg else 0f
+
+    val statusDotColor = when (resolvedStatus.operationalState) {
+        TransportOperationalState.ACTIVE -> Color(0xFFFBBF24)
+        TransportOperationalState.HOLIDAY_STOPPED -> Color(0xFFF59E0B)
+        TransportOperationalState.STANDBY_OFF_HOURS -> Color(0xFF94A3B8)
+    }
+    val statusLineText = when {
+        !isActive -> resolvedStatus.statusHeadline
+        activeBusState == BusEventType.MORNING_DEPARTURE -> "حالة الخط الآن: انطلاق صباحي في الطريق السريع نحو المدرسة"
+        activeBusState == BusEventType.ARRIVED_AT_SCHOOL -> "حالة الخط الآن: وصل الباص بأمان إلى بوابة المدرسة"
+        activeBusState == BusEventType.RETURN_HOME_DEPARTURE -> "حالة الخط الآن: انطلاق رحلة العودة نحو منزل الطالب"
+        else -> resolvedStatus.statusHeadline
+    }
+    val rightBadgeText = if (isActive) {
+        lastUpdatedTimestamp.takeIf { it.isNotBlank() }?.let { formatBusTimestampPretty(it) }
+            ?: resolvedStatus.shortBadgeText
+    } else {
+        resolvedStatus.shortBadgeText
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -4763,7 +5006,7 @@ private fun FullWidthBezierWaveRoadTrack(
             .padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Top Status Bar with Formatted Slash Date (2026/11/13)
+        // Top Status Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -4778,31 +5021,32 @@ private fun FullWidthBezierWaveRoadTrack(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFFFBBF24),
+                    color = statusDotColor,
                     modifier = Modifier.size(10.dp)
                 ) {}
                 Text(
-                    text = when (activeBusState) {
-                        BusEventType.MORNING_DEPARTURE -> "حالة الخط الآن: انطلاق صباحي في الطريق السريع نحو المدرسة"
-                        BusEventType.ARRIVED_AT_SCHOOL -> "حالة الخط الآن: وصل الباص بأمان إلى بوابة المدرسة ✓"
-                        BusEventType.RETURN_HOME_DEPARTURE -> "حالة الخط الآن: انطلاق رحلة العودة نحو منزل الطالب"
-                    },
+                    text = statusLineText,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
             }
 
+            Spacer(modifier = Modifier.width(8.dp))
+
             Surface(
                 shape = RoundedCornerShape(50),
-                color = Color.White.copy(alpha = 0.14f),
-                border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.55f))
+                color = if (isActive) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.08f),
+                border = BorderStroke(
+                    1.dp,
+                    if (isActive) Color(0xFFFDE68A).copy(alpha = 0.55f) else Color(0xFF94A3B8).copy(alpha = 0.45f)
+                )
             ) {
                 Text(
-                    text = formatBusTimestampPretty(lastUpdatedTimestamp),
+                    text = rightBadgeText,
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFFDE68A),
+                    color = if (isActive) Color(0xFFFDE68A) else Color(0xFFD1FAE5),
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     maxLines = 1,
                     softWrap = false
@@ -4820,7 +5064,6 @@ private fun FullWidthBezierWaveRoadTrack(
                 val w = size.width
                 val h = size.height
 
-                // Helper function computing Y on the smooth sinusoidal Bezier wave road for any normalized X in [0, 1]
                 fun roadYAt(normX: Float): Float {
                     val baseLineY = h * 0.64f
                     val waveAmp = h * 0.11f
@@ -4836,40 +5079,40 @@ private fun FullWidthBezierWaveRoadTrack(
                         lineTo(w * nx, roadYAt(nx))
                     }
                 }
-                // Outer glowing emerald-gold road bed
                 drawPath(
                     path = roadRibbonPath,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            Color(0xFF10B981).copy(alpha = 0.35f),
-                            Color(0xFF059669).copy(alpha = 0.55f),
-                            Color(0xFF10B981).copy(alpha = 0.35f)
+                            Color(0xFF10B981).copy(alpha = if (isActive) 0.35f else 0.18f),
+                            Color(0xFF059669).copy(alpha = if (isActive) 0.55f else 0.28f),
+                            Color(0xFF10B981).copy(alpha = if (isActive) 0.35f else 0.18f)
                         )
                     ),
                     style = Stroke(width = 18.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
-                // Inner dark asphalt track
                 drawPath(
                     path = roadRibbonPath,
                     color = Color(0xFF0F172A).copy(alpha = 0.85f),
                     style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
-                // Center golden neon guide line
                 drawPath(
                     path = roadRibbonPath,
                     brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFF34D399), Color(0xFFFDE68A), Color(0xFF34D399))
+                        colors = if (isActive) {
+                            listOf(Color(0xFF34D399), Color(0xFFFDE68A), Color(0xFF34D399))
+                        } else {
+                            listOf(Color(0xFF64748B), Color(0xFF94A3B8), Color(0xFF64748B))
+                        }
                     ),
                     style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
 
-                // 2) Three Station Anchors on the Wavy Track:
-                // idx 0 = منزل الطالب (0.82f), idx 1 = في الطريق السريع (0.50f), idx 2 = بوابة المدرسة (0.18f)
+                // 2) Three Station Anchors on the Wavy Track
                 val stationNormXs = listOf(0.82f, 0.50f, 0.18f)
                 stationNormXs.forEachIndexed { idx, nx ->
                     val sx = w * nx
                     val sy = roadYAt(nx)
-                    val isCurrent = idx == activeStationIndex
+                    val isCurrent = isActive && idx == activeStationIndex
 
                     if (isCurrent) {
                         drawCircle(
@@ -4898,44 +5141,45 @@ private fun FullWidthBezierWaveRoadTrack(
                     )
                 }
 
-                // 3) 3D Vector School Bus Gliding Smoothly Along the Bezier Wave Track
+                // 3) 3D Vector School Bus (glides when active, parked calmly when standby/holiday)
                 val busX = w * animatedBusT
                 val busRoadY = roadYAt(animatedBusT)
-                val busY = busRoadY - 12.dp.toPx() + busSuspensionFloat
+                val busY = busRoadY - 12.dp.toPx() + effectiveSuspension
                 val bw = 66.dp.toPx()
                 val bh = 30.dp.toPx()
                 val facingRight = activeBusState == BusEventType.RETURN_HOME_DEPARTURE
 
-                // Ground shadow under the 3D Bus
                 drawOval(
                     color = Color.Black.copy(alpha = 0.35f),
                     topLeft = Offset(busX - bw * 0.46f, busRoadY - 3.dp.toPx()),
                     size = Size(bw * 0.92f, 7.dp.toPx())
                 )
 
-                // Headlight volumetric cone
-                val beamStartX = if (facingRight) busX + bw * 0.48f else busX - bw * 0.48f
-                val beamEndX = if (facingRight) busX + bw * 0.92f else busX - bw * 0.92f
-                val headlightCone = Path().apply {
-                    moveTo(beamStartX, busY - bh * 0.28f)
-                    lineTo(beamEndX, busY - bh * 0.62f)
-                    lineTo(beamEndX, busY + bh * 0.05f)
-                    close()
-                }
-                drawPath(
-                    path = headlightCone,
-                    brush = Brush.horizontalGradient(
-                        colors = if (facingRight) {
-                            listOf(Color(0xFFFEF08A).copy(alpha = 0.55f), Color.Transparent)
-                        } else {
-                            listOf(Color.Transparent, Color(0xFFFEF08A).copy(alpha = 0.55f))
-                        },
-                        startX = minOf(beamStartX, beamEndX),
-                        endX = maxOf(beamStartX, beamEndX)
+                // Headlight volumetric cone (only lit when actively running)
+                if (isActive) {
+                    val beamStartX = if (facingRight) busX + bw * 0.48f else busX - bw * 0.48f
+                    val beamEndX = if (facingRight) busX + bw * 0.92f else busX - bw * 0.92f
+                    val headlightCone = Path().apply {
+                        moveTo(beamStartX, busY - bh * 0.28f)
+                        lineTo(beamEndX, busY - bh * 0.62f)
+                        lineTo(beamEndX, busY + bh * 0.05f)
+                        close()
+                    }
+                    drawPath(
+                        path = headlightCone,
+                        brush = Brush.horizontalGradient(
+                            colors = if (facingRight) {
+                                listOf(Color(0xFFFEF08A).copy(alpha = 0.55f), Color.Transparent)
+                            } else {
+                                listOf(Color.Transparent, Color(0xFFFEF08A).copy(alpha = 0.55f))
+                            },
+                            startX = minOf(beamStartX, beamEndX),
+                            endX = maxOf(beamStartX, beamEndX)
+                        )
                     )
-                )
+                }
 
-                // 3D Bus Upper Roof Deck (Isometric depth)
+                // 3D Bus Upper Roof Deck
                 val roofPath = Path().apply {
                     moveTo(busX - bw * 0.42f, busY - bh * 0.92f)
                     cubicTo(
@@ -4954,7 +5198,7 @@ private fun FullWidthBezierWaveRoadTrack(
                     )
                 )
 
-                // 3D Sculpted Bus Main Body (Bezier Aerodynamic Coach)
+                // 3D Sculpted Bus Main Body
                 val busHullPath = Path().apply {
                     moveTo(busX - bw * 0.48f, busY)
                     cubicTo(
@@ -4986,7 +5230,6 @@ private fun FullWidthBezierWaveRoadTrack(
                     style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round)
                 )
 
-                // Golden Royal Belt Stripe along the Bus Body
                 val beltPath = Path().apply {
                     moveTo(busX - bw * 0.48f, busY - bh * 0.34f)
                     quadraticBezierTo(
@@ -5000,7 +5243,6 @@ private fun FullWidthBezierWaveRoadTrack(
                     style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
                 )
 
-                // Panoramic Glass Windows Row
                 for (winIdx in -1..1) {
                     val wx = busX + winIdx * (bw * 0.25f)
                     drawRoundRect(
@@ -5013,7 +5255,6 @@ private fun FullWidthBezierWaveRoadTrack(
                     )
                 }
 
-                // Rotating 3D Wheels with Spokes
                 listOf(busX - bw * 0.28f, busX + bw * 0.28f).forEach { wx ->
                     val wheelCenter = Offset(wx, busY + 1.dp.toPx())
                     drawCircle(
@@ -5021,7 +5262,7 @@ private fun FullWidthBezierWaveRoadTrack(
                         radius = 6.5.dp.toPx(),
                         center = wheelCenter
                     )
-                    rotate(degrees = wheelSpinDeg, pivot = wheelCenter) {
+                    rotate(degrees = effectiveWheelSpin, pivot = wheelCenter) {
                         drawLine(
                             color = Color(0xFFFDE68A),
                             start = Offset(wheelCenter.x - 4.dp.toPx(), wheelCenter.y),
@@ -5055,7 +5296,7 @@ private fun FullWidthBezierWaveRoadTrack(
                 2 to "بوابة المدرسة"
             )
             stationsLabels.forEach { (idx, label) ->
-                val isCurrent = idx == activeStationIndex
+                val isCurrent = isActive && idx == activeStationIndex
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = if (isCurrent) Color(0xFFFBBF24).copy(alpha = 0.20f) else Color.White.copy(alpha = 0.08f),
@@ -10218,28 +10459,36 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
         }
     }
 
-    val todayIso = remember {
-        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+    var fleetClockTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000L)
+            fleetClockTickMillis = System.currentTimeMillis()
+        }
     }
-    val isTodayHoliday = remember(todayIso, schoolConfig) {
-        viewModel.isDateHoliday(todayIso) || viewModel.getHolidayLabelForDate(todayIso) != null
+
+    val todayIso = remember(fleetClockTickMillis) {
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(fleetClockTickMillis))
     }
     val todayHolidayLabel = remember(todayIso, schoolConfig) {
         viewModel.getHolidayLabelForDate(todayIso)
     }
 
-    val resolvedBusEvent = remember(schoolConfig.activeBusEvent, schoolConfig.activeBusEventDateIso, todayIso) {
-        schoolConfig.effectiveActiveBusEventForDate(todayIso)
+    val fleetResolvedStatus = remember(
+        schoolConfig.activeBusEvent,
+        schoolConfig.activeBusEventDateIso,
+        schoolConfig.lastUpdatedDate,
+        schoolConfig.lastUpdatedTimestamp,
+        schoolConfig.isHolidayOverrideActive,
+        todayHolidayLabel,
+        fleetClockTickMillis
+    ) {
+        schoolConfig.resolveTransportStatus(
+            holidayLabel = todayHolidayLabel,
+            nowMillis = fleetClockTickMillis
+        )
     }
-    var activeBusState by remember(resolvedBusEvent) { mutableStateOf(resolvedBusEvent) }
-
-    val activeStationIndex = when {
-        isTodayHoliday -> 0
-        activeBusState == BusEventType.MORNING_DEPARTURE -> 1
-        activeBusState == BusEventType.ARRIVED_AT_SCHOOL -> 2
-        activeBusState == BusEventType.RETURN_HOME_DEPARTURE -> 0
-        else -> 0
-    }
+    val isTodayHoliday = fleetResolvedStatus.isHoliday
 
     // Custom Full-Width Wavy Emerald Hero Banner Shape (Bezier Wave Bottom matching system identity)
     val fullWidthWavyBannerShape = remember {
@@ -10467,25 +10716,24 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                             color = Color(0xFF065F46)
                         )
                         Text(
-                            text = if (isTodayHoliday) {
-                                "الرحلات متوقفة اليوم (عطلة رسمية)"
-                            } else {
-                                formatBusTimestampPretty(
-                                    if (schoolConfig.activeBusEventDateIso == todayIso) schoolConfig.activeBusEventTimestamp else ""
-                                )
+                            text = when (fleetResolvedStatus.operationalState) {
+                                TransportOperationalState.HOLIDAY_STOPPED -> "الخط متوقف • عطلة رسمية"
+                                TransportOperationalState.STANDBY_OFF_HOURS -> "وضع الاستعداد"
+                                TransportOperationalState.ACTIVE -> formatBusTimestampPretty(schoolConfig.activeBusEventTimestamp)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = if (isTodayHoliday) Color(0xFFB45309) else Color(0xFF047857)
+                            color = when (fleetResolvedStatus.operationalState) {
+                                TransportOperationalState.HOLIDAY_STOPPED -> Color(0xFFB45309)
+                                TransportOperationalState.STANDBY_OFF_HOURS -> Color(0xFF64748B)
+                                TransportOperationalState.ACTIVE -> Color(0xFF047857)
+                            }
                         )
                     }
 
                     FullWidthBezierWaveRoadTrack(
-                        activeBusState = activeBusState,
-                        activeStationIndex = activeStationIndex,
-                        lastUpdatedTimestamp = if (isTodayHoliday) {
-                            "الرحلات متوقفة اليوم (${todayHolidayLabel ?: "عطلة رسمية"})"
-                        } else if (schoolConfig.activeBusEventDateIso == todayIso) {
+                        resolvedStatus = fleetResolvedStatus,
+                        lastUpdatedTimestamp = if (fleetResolvedStatus.isActivelyRunning) {
                             schoolConfig.activeBusEventTimestamp
                         } else {
                             ""
@@ -11093,23 +11341,20 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                     val selectedTargetRouteObj = remember(selectedTripTargetRouteId, registeredRoutesForTrip) {
                         registeredRoutesForTrip.firstOrNull { it.id == selectedTripTargetRouteId }
                     }
-                    val activeEventForSelection = remember(
+                    val selectionResolvedStatus = remember(
                         selectedTripTargetRouteId,
                         selectedTargetRouteObj,
-                        activeBusState,
-                        todayIso
+                        fleetResolvedStatus,
+                        todayHolidayLabel,
+                        fleetClockTickMillis
                     ) {
                         if (selectedTripTargetRouteId != "ALL" && selectedTargetRouteObj != null) {
-                            if (selectedTargetRouteObj.activeBusEventDateIso == todayIso &&
-                                selectedTargetRouteObj.activeBusEvent.isNotBlank()
-                            ) {
-                                runCatching { BusEventType.valueOf(selectedTargetRouteObj.activeBusEvent) }
-                                    .getOrDefault(activeBusState)
-                            } else {
-                                activeBusState
-                            }
+                            selectedTargetRouteObj.resolveTransportStatus(
+                                holidayLabel = todayHolidayLabel,
+                                nowMillis = fleetClockTickMillis
+                            )
                         } else {
-                            activeBusState
+                            fleetResolvedStatus
                         }
                     }
 
@@ -11233,74 +11478,20 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                 }
                             }
 
-                            val controlButtons = listOf(
-                                Triple(BusEventType.MORNING_DEPARTURE, "بدء الانطلاق الصباحي", Icons.Filled.WbSunny),
-                                Triple(BusEventType.ARRIVED_AT_SCHOOL, "تأكيد الوصول للمدرسة", Icons.Filled.Verified),
-                                Triple(BusEventType.RETURN_HOME_DEPARTURE, "انطلاق رحلة العودة للمنازل", Icons.Filled.Home)
+                            CompactTransportControlButtonsRow(
+                                resolvedStatus = selectionResolvedStatus,
+                                onActivateEvent = { busEvent, isHolidayOverride ->
+                                    viewModel.sendBusTrackingAlert(
+                                        eventType = busEvent,
+                                        targetRouteId = selectedTripTargetRouteId,
+                                        isHolidayOverride = isHolidayOverride
+                                    )
+                                },
+                                onEndTrip = {
+                                    viewModel.endBusTrip(targetRouteId = selectedTripTargetRouteId)
+                                },
+                                testTagPrefix = "fleet_control_btn_"
                             )
-                            controlButtons.forEach { (busEvent, fullButtonTitle, btnIcon) ->
-                                val isSelected = activeEventForSelection == busEvent
-                                Button(
-                                    onClick = {
-                                        activeBusState = busEvent
-                                        viewModel.sendBusTrackingAlert(busEvent, selectedTripTargetRouteId)
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = 48.dp)
-                                        .testTag("fleet_control_btn_${busEvent.name}"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isSelected) Color(0xFF047857) else Color(0xFF064E3B),
-                                        contentColor = Color.White
-                                    ),
-                                    border = if (isSelected) BorderStroke(1.5.dp, Color(0xFFFDE68A)) else null
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = btnIcon,
-                                                contentDescription = null,
-                                                tint = if (isSelected) Color(0xFFFDE68A) else Color(0xFF6EE7B7),
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            Text(
-                                                text = fullButtonTitle,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        }
-                                        if (isSelected) {
-                                            Surface(
-                                                shape = RoundedCornerShape(50),
-                                                color = Color(0xFFFDE68A).copy(alpha = 0.22f),
-                                                border = BorderStroke(1.dp, Color(0xFFFDE68A))
-                                            ) {
-                                                Text(
-                                                    text = "المسار النشط الآن",
-                                                    fontSize = 10.5.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color(0xFFFDE68A),
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                                    maxLines = 1,
-                                                    softWrap = false
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -12041,28 +12232,35 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                         FirebaseConfigConstants.applySchoolPrefix(schoolConfig.schoolId, "driver${vIdx + 1}")
                                     }
                                 }
-                                val vehicleSpecificEventToday = if (
-                                    vehicleItem.activeBusEventDateIso == todayIso &&
-                                    vehicleItem.activeBusEvent.isNotBlank()
-                                ) {
-                                    runCatching { BusEventType.valueOf(vehicleItem.activeBusEvent) }
-                                        .getOrDefault(effectiveBusEventToday)
-                                } else {
-                                    effectiveBusEventToday
-                                }
+                                val vehicleResolvedStatus = vehicleItem.resolveTransportStatus(
+                                    holidayLabel = todayHolidayLabel,
+                                    nowMillis = fleetClockTickMillis
+                                )
                                 val currentVehicleStatusLabel = when {
-                                    isTodayHoliday -> "الرحلات متوقفة اليوم (عطلة رسمية)"
-                                    vehicleSpecificEventToday == BusEventType.MORNING_DEPARTURE -> "في الانطلاق الصباحي"
-                                    vehicleSpecificEventToday == BusEventType.ARRIVED_AT_SCHOOL -> "وصلت للمدرسة"
-                                    vehicleSpecificEventToday == BusEventType.RETURN_HOME_DEPARTURE -> "في رحلة العودة"
-                                    else -> "بانتظار الانطلاق"
+                                    vehicleResolvedStatus.operationalState == TransportOperationalState.HOLIDAY_STOPPED ->
+                                        "الخط متوقف • عطلة رسمية"
+                                    vehicleResolvedStatus.operationalState == TransportOperationalState.STANDBY_OFF_HOURS ->
+                                        "في وضع الاستعداد • خارج أوقات الدوام"
+                                    vehicleResolvedStatus.activeEvent == BusEventType.MORNING_DEPARTURE ->
+                                        "في الانطلاق الصباحي"
+                                    vehicleResolvedStatus.activeEvent == BusEventType.ARRIVED_AT_SCHOOL ->
+                                        "وصلت للمدرسة"
+                                    vehicleResolvedStatus.activeEvent == BusEventType.RETURN_HOME_DEPARTURE ->
+                                        "في رحلة العودة"
+                                    else -> "في وضع الاستعداد"
                                 }
                                 val currentVehicleStatusColor = when {
-                                    isTodayHoliday -> Color(0xFF94A3B8)
-                                    vehicleSpecificEventToday == BusEventType.MORNING_DEPARTURE -> Color(0xFF10B981)
-                                    vehicleSpecificEventToday == BusEventType.ARRIVED_AT_SCHOOL -> Color(0xFF059669)
-                                    vehicleSpecificEventToday == BusEventType.RETURN_HOME_DEPARTURE -> Color(0xFFF59E0B)
-                                    else -> Color(0xFF10B981)
+                                    vehicleResolvedStatus.operationalState == TransportOperationalState.HOLIDAY_STOPPED ->
+                                        Color(0xFFF59E0B)
+                                    vehicleResolvedStatus.operationalState == TransportOperationalState.STANDBY_OFF_HOURS ->
+                                        Color(0xFF94A3B8)
+                                    vehicleResolvedStatus.activeEvent == BusEventType.MORNING_DEPARTURE ->
+                                        Color(0xFF10B981)
+                                    vehicleResolvedStatus.activeEvent == BusEventType.ARRIVED_AT_SCHOOL ->
+                                        Color(0xFF059669)
+                                    vehicleResolvedStatus.activeEvent == BusEventType.RETURN_HOME_DEPARTURE ->
+                                        Color(0xFFF59E0B)
+                                    else -> Color(0xFF94A3B8)
                                 }
 
                                 Surface(
